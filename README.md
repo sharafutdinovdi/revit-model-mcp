@@ -1,6 +1,7 @@
-# Revit Model MCP
-
-<!-- screenshot: hero -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_hero_dark.png">
+  <img alt="revit-model-mcp: a terminal session where an MCP client reads a live Revit 2023 model" src="docs/screenshots/revit-model-mcp_hero_light.png" width="100%">
+</picture>
 
 ![Status: unreleased](https://img.shields.io/badge/status-unreleased-grey?style=flat-square) [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) ![Release: pending](https://img.shields.io/badge/release-pending-grey?style=flat-square) ![Revit 2022-2026](https://img.shields.io/badge/Revit-2022--2026-005FB8?style=flat-square) [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
@@ -19,9 +20,12 @@ The Python server can run on Windows or connect from another machine through SSH
 
 ## In action
 
-<!-- screenshot: export-view -->
+The session above ran from a Mac against Revit 2023 on a Windows workstation over SSH: `revit_document_info`, then room areas grouped by level, then `revit_export_view`. The export is the file the last call saved, untouched:
 
-Live Revit screenshots are pending.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_export-view_dark.png">
+  <img alt="View exported by revit_export_view from the Revit sample project" src="docs/screenshots/revit-model-mcp_export-view_light.png" width="100%">
+</picture>
 
 ## Quick start
 
