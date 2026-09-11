@@ -121,7 +121,8 @@ internal static class ActionCommandExecutor
             .Where(level => level is not null).Distinct().ToList();
         if (levels.Count > 0)
         {
-            var plans = document.CollectElements().OfClass<ViewPlan>().Cast<ViewPlan>()
+            using var planCollector = document.CollectElements().OfClass<ViewPlan>();
+            var plans = planCollector.Cast<ViewPlan>()
                 .Where(view => !view.IsTemplate).ToList();
             foreach (var level in levels)
             {
@@ -132,8 +133,11 @@ internal static class ActionCommandExecutor
                 if (target is not null) break;
             }
         }
-        target ??= document.CollectElements().OfClass<View3D>().Cast<View3D>()
-            .FirstOrDefault(view => !view.IsTemplate);
+        if (target is null)
+        {
+            using var viewCollector = document.CollectElements().OfClass<View3D>();
+            target = viewCollector.Cast<View3D>().FirstOrDefault(view => !view.IsTemplate);
+        }
         if (target is null) throw new InvalidOperationException("No non-template level plan or 3D view is available to show these elements.");
 
         var wasOpen = uiDocument.GetOpenUIViews().Any(view => view.ViewId == target.Id);
@@ -168,11 +172,12 @@ internal static class ActionCommandExecutor
 
     private static ActionResultData PlaceFamily(Document document, ActionJobContract action)
     {
-        var symbols = document.CollectElements().OfClass<FamilySymbol>()
+        using var symbols = document.CollectElements().OfClass<FamilySymbol>()
             .WhereParameter(BuiltInParameter.ALL_MODEL_FAMILY_NAME).Equals(action.Family!);
         if (!symbols.Any())
         {
-            var families = document.CollectElements().OfClass<Family>().Cast<Family>().ToList();
+            using var familyCollector = document.CollectElements().OfClass<Family>();
+            var families = familyCollector.Cast<Family>().ToList();
             var categories = families.GroupBy(loaded => loaded.Name, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(group => group.Key,
                     group => string.Join(", ", group.Select(loaded => loaded.FamilyCategory?.Name ?? "Uncategorized").Distinct()),
@@ -181,10 +186,8 @@ internal static class ActionCommandExecutor
                 .Select(name => $"{name} ({categories[name]})").ToList();
             throw new FamilyNotLoadedException(action.Family!, suggestions);
         }
-        symbols = document.CollectElements().OfClass<FamilySymbol>()
-            .WhereParameter(BuiltInParameter.ALL_MODEL_FAMILY_NAME).Equals(action.Family!);
         if (action.TypeName is not null)
-            symbols = symbols.WhereParameter(BuiltInParameter.SYMBOL_NAME_PARAM).Equals(action.TypeName);
+            symbols.WhereParameter(BuiltInParameter.SYMBOL_NAME_PARAM).Equals(action.TypeName);
         var symbol = symbols.FirstOrDefault() as FamilySymbol
                      ?? throw new ArgumentException($"Type '{action.TypeName}' was not found in family '{action.Family}'.");
         var level = FindLevel(document, action.Level!);
@@ -203,9 +206,9 @@ internal static class ActionCommandExecutor
     private static ActionResultData CreateWall(Document document, ActionJobContract action)
     {
         var level = FindLevel(document, action.Level!);
-        var types = document.CollectElements().OfClass<WallType>();
+        using var types = document.CollectElements().OfClass<WallType>();
         if (action.WallType is not null)
-            types = types.WhereParameter(BuiltInParameter.SYMBOL_NAME_PARAM).Equals(action.WallType);
+            types.WhereParameter(BuiltInParameter.SYMBOL_NAME_PARAM).Equals(action.WallType);
         var wallType = types.Cast<WallType>().FirstOrDefault(candidate => action.WallType is not null || candidate.Kind == WallKind.Basic)
                        ?? throw new ArgumentException($"Wall type '{action.WallType ?? "basic wall"}' was not found.");
         var start = new XYZ(Millimeters(action.StartMm[0]), Millimeters(action.StartMm[1]), level.ProjectElevation);
@@ -263,10 +266,13 @@ internal static class ActionCommandExecutor
         return value.ToString("R", CultureInfo.InvariantCulture);
     }
 
-    private static Level FindLevel(Document document, string name) =>
-        document.CollectElements().OfClass<Level>()
-            .WhereParameter(BuiltInParameter.DATUM_TEXT).Equals(name).FirstOrDefault() as Level
-        ?? throw new ArgumentException($"Level '{name}' was not found.");
+    private static Level FindLevel(Document document, string name)
+    {
+        using var levels = document.CollectElements().OfClass<Level>()
+            .WhereParameter(BuiltInParameter.DATUM_TEXT).Equals(name);
+        return levels.FirstOrDefault() as Level
+               ?? throw new ArgumentException($"Level '{name}' was not found.");
+    }
 
     private static List<ElementId> ResolveIds(Document document, IEnumerable<long> values)
     {
@@ -341,8 +347,14 @@ internal static class ActionCommandExecutor
                         resolved = true;
                         continue;
                     }
-                    catch (Autodesk.Revit.Exceptions.ArgumentException) { }
-                    catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
+                    catch (Autodesk.Revit.Exceptions.ArgumentException exception)
+                    {
+                        PluginLog.Error("Action failure resolution was rejected; rolling back.", exception);
+                    }
+                    catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+                    {
+                        PluginLog.Error("Action failure resolution was unavailable; rolling back.", exception);
+                    }
                 }
                 rollBack = true;
             }

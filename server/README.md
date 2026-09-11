@@ -1,6 +1,7 @@
 # Revit Model MCP server
 
-The Python package exposes Revit read tools over MCP stdio.
+The Python package exposes Revit tools over MCP stdio, read-only by default.
+Optional actions require `REVIT_MCP_ALLOW_WRITE=1` and a workstation `allow-write` gate.
 It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
 
 ## Install and run
@@ -13,17 +14,18 @@ uv run --directory server revit-model-mcp
 
 Register a local Windows server with Claude Code:
 
-```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory C:/Projects/revit-model-mcp/server revit-model-mcp
+```powershell
+$server = (Resolve-Path ./server).Path
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$server" revit-model-mcp
 ```
 
 For a client on macOS or Linux:
 
 ```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$PWD/server" revit-model-mcp
 ```
 
-Replace the directory with the checkout path on the MCP client.
+Run the registration commands from the clone root on the MCP client.
 Replace `revit-host` with an alias from the client's SSH configuration.
 The Windows SSH session must use the same account as Revit or an explicitly shared channel directory.
 
@@ -32,6 +34,7 @@ The Windows SSH session must use the same account as Revit or an explicitly shar
 | Variable | Default | Behavior |
 |---|---|---|
 | `REVIT_MCP_HOST` | `local` | Local PowerShell, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
+| `REVIT_MCP_ALLOW_WRITE` | Unset | Only `1` registers the eight action tools at server startup; the workstation gate is also required. |
 | `REVIT_MCP_TOKEN` | Unset | HTTP bearer token from workstation settings. `--token` overrides it. |
 | `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
 | `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
@@ -84,8 +87,37 @@ See [transport](../docs/transport.md) for file handling and SSH behavior.
 
 ## Tests
 
+From the repository root:
+
 ```sh
+cd server
 uv run --with pytest pytest -q
 ```
 
 The tests use mocked host operations and exercise MCP stdio without Revit.
+
+See the [tool arguments](../README.md#tools), [action arguments](../README.md#actions-opt-in) and [response contract](../docs/feed-format.md#command-responses).
+
+## License
+
+MIT License
+
+Copyright (c) 2026 Dinar Sharafutdinov
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

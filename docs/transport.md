@@ -18,7 +18,8 @@ On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json`
 }
 ```
 
-The token persists across restarts.
+The token is per Windows user and persists across restarts.
+Settings and the `allow-write` file remain in this default directory even when `REVIT_MCP_CHANNEL_DIR` overrides the file channel.
 The add-in creates and restricts the file with a protected NTFS ACL granting full control only to the current Windows user.
 Keep the token private and transfer it to the client's secret store through a trusted channel.
 The add-in never logs it.
@@ -97,10 +98,10 @@ netsh http add urlacl url=http://+:53110/ user=<user>
 netsh advfirewall firewall add rule name="Revit Model MCP" dir=in action=allow protocol=TCP localport=53110
 ```
 
-On the Mac, with `REVIT_MCP_TOKEN` supplied by the secret store:
+On the Mac at the clone root, replace `revit-host` with the workstation hostname and supply `REVIT_MCP_TOKEN` through the secret store:
 
 ```sh
-export REVIT_MCP_HOST=http://192.168.1.69:53110
+export REVIT_MCP_HOST=http://revit-host:53110
 uv run --directory server revit-model-mcp
 ```
 

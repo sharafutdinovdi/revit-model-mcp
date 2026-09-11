@@ -13,3 +13,12 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+[*.sln]
+end_of_line = crlf
+
+[*.ps1]
+end_of_line = crlf
+
+[*.cs]
+dotnet_sort_system_directives_first = true

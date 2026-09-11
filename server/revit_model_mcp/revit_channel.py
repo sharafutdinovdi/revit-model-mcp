@@ -348,7 +348,8 @@ class RevitReadChannel:
             result = parse_response(content, job.command)
             if local_path is not None:
                 result["data"]["localPath"] = local_path
-        except (Exception, asyncio.CancelledError) as error:  # noqa: BLE001
+        except (Exception, asyncio.CancelledError) as error:
+            # Preserve the original failure until temporary-file cleanup finishes.
             failure = error
 
         cleanup_names = [temporary_name] if job_prepared and not finish_attempted else []
@@ -356,7 +357,8 @@ class RevitReadChannel:
             cleanup_names.append(response_name)
         try:
             await self.remote.delete_files(cleanup_names)
-        except (Exception, asyncio.CancelledError) as cleanup_error:  # noqa: BLE001
+        except (Exception, asyncio.CancelledError) as cleanup_error:
+            # Cleanup failure must not replace the original command failure.
             if failure is None:
                 failure = RevitChannelError(
                     f"Could not clean up channel temporary files: {cleanup_error}"

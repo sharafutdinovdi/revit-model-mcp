@@ -29,3 +29,27 @@ jobs:
       - name: Test server
         working-directory: server
         run: uv run --with pytest pytest -q
+      - name: Stage add-in artifacts
+        shell: pwsh
+        run: |
+          foreach ($year in '22', '26') {
+            $stage = "artifacts/addin-R$year"
+            New-Item -ItemType Directory -Force "$stage/RevitModelMcp" | Out-Null
+            Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
+            Copy-Item src/RevitModelMcp.Addin/RevitModelMcp.addin, LICENSE, THIRD-PARTY-NOTICES.md $stage
+            if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year add-in" }
+            if (Get-ChildItem $stage -Recurse -Filter 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit-model-mcp-addin-R22
+          path: artifacts/addin-R22/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revit-model-mcp-addin-R26
+          path: artifacts/addin-R26/
+          if-no-files-found: error
+      - name: Build Python package
+        working-directory: server
+        run: uv build
