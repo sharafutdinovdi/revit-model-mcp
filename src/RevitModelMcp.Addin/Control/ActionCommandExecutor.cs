@@ -4,6 +4,7 @@ using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 using Nice3point.Revit.Extensions;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
@@ -21,6 +22,15 @@ internal static class ActionCommandExecutor
     {
         var stopwatch = Stopwatch.StartNew();
         CommandResponse<ActionResultData> response;
+        var dialogsSuppressed = new List<string>();
+        var viewOpened = false;
+        void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
+        {
+            if (arguments is not TaskDialogShowingEventArgs dialog) return;
+            if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
+                dialogsSuppressed.Add(dialog.Message);
+        }
+        application.DialogBoxShowing += SuppressDialog;
         try
         {
             if (!ActionsEnabled) throw new InvalidOperationException("actions disabled on the workstation");
@@ -33,7 +43,11 @@ internal static class ActionCommandExecutor
             ActionResultData data;
             if (job.Command is "select" or "show")
             {
-                if (job.Command == "show") uiDocument.ShowElements(ids);
+                if (job.Command == "show")
+                {
+                    viewOpened = OpenViewForElements(uiDocument, ids);
+                    uiDocument.ShowElements(ids);
+                }
                 if (job.Command == "select" || action.Select) uiDocument.Selection.SetElementIds(ids);
                 data = new ActionResultData { Count = uiDocument.Selection.GetElementIds().Count };
             }
@@ -67,6 +81,12 @@ internal static class ActionCommandExecutor
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
             PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }
+        finally
+        {
+            application.DialogBoxShowing -= SuppressDialog;
+        }
+        response.DialogsSuppressed = dialogsSuppressed;
+        if (job.Command == "show") response.ViewOpened = viewOpened;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application)).Write(response);
@@ -77,9 +97,48 @@ internal static class ActionCommandExecutor
         var error = ActionsEnabled ? message : "actions disabled on the workstation";
         var response = CommandResponse<ActionResultData>.Fail(command, error, 0);
         response.Error = error;
+        response.DialogsSuppressed = [];
+        if (command == "show") response.ViewOpened = false;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, command,
             ReadCommandReader.ReadResponder(application)).Write(response);
+    }
+
+    private static bool OpenViewForElements(UIDocument uiDocument, List<ElementId> ids)
+    {
+        var document = uiDocument.Document;
+        using var idFilter = new ElementIdSetFilter(ids);
+        foreach (var uiView in uiDocument.GetOpenUIViews())
+        {
+            if (!FilteredElementCollector.IsViewValidForElementIteration(document, uiView.ViewId)) continue;
+            using var visible = document.CollectElements(uiView.ViewId).WherePasses(idFilter);
+            if (visible.Any()) return false;
+        }
+
+        View? target = null;
+        var levels = ids.Select(id => id.ToElement(document)?.LevelId.ToElement<Level>(document))
+            .Where(level => level is not null).Distinct().ToList();
+        if (levels.Count > 0)
+        {
+            var plans = document.CollectElements().OfClass<ViewPlan>().Cast<ViewPlan>()
+                .Where(view => !view.IsTemplate).ToList();
+            foreach (var level in levels)
+            {
+                target = plans.Where(view => view.GenLevel?.Id == level!.Id)
+                    .OrderByDescending(view => view.ViewType == ViewType.FloorPlan)
+                    .ThenByDescending(view => view.Name.StartsWith(level!.Name, StringComparison.OrdinalIgnoreCase))
+                    .FirstOrDefault();
+                if (target is not null) break;
+            }
+        }
+        target ??= document.CollectElements().OfClass<View3D>().Cast<View3D>()
+            .FirstOrDefault(view => !view.IsTemplate);
+        if (target is null) throw new InvalidOperationException("No non-template level plan or 3D view is available to show these elements.");
+
+        var wasOpen = uiDocument.GetOpenUIViews().Any(view => view.ViewId == target.Id);
+        // The ExternalEvent runs without a transaction; ShowElements requires the view change immediately.
+        uiDocument.ActiveView = target;
+        return !wasOpen;
     }
 
     private static ActionResultData Mutate(Document document, string command, ActionJobContract action, List<ElementId> ids)
@@ -112,9 +171,14 @@ internal static class ActionCommandExecutor
             .WhereParameter(BuiltInParameter.ALL_MODEL_FAMILY_NAME).Equals(action.Family!);
         if (!symbols.Any())
         {
-            var names = document.CollectElements().OfClass<Family>().Cast<Family>()
-                .Select(loaded => loaded.Name);
-            throw new FamilyNotLoadedException(action.Family!, ActionJobParser.ClosestFamilyNames(action.Family!, names));
+            var families = document.CollectElements().OfClass<Family>().Cast<Family>().ToList();
+            var categories = families.GroupBy(loaded => loaded.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key,
+                    group => string.Join(", ", group.Select(loaded => loaded.FamilyCategory?.Name ?? "Uncategorized").Distinct()),
+                    StringComparer.OrdinalIgnoreCase);
+            var suggestions = ActionJobParser.ClosestFamilyNames(action.Family!, categories.Keys)
+                .Select(name => $"{name} ({categories[name]})").ToList();
+            throw new FamilyNotLoadedException(action.Family!, suggestions);
         }
         symbols = document.CollectElements().OfClass<FamilySymbol>()
             .WhereParameter(BuiltInParameter.ALL_MODEL_FAMILY_NAME).Equals(action.Family!);

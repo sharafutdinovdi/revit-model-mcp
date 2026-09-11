@@ -38,6 +38,18 @@ public static class ActionJobParser
             if (command == "place-family")
             {
                 Require(!string.IsNullOrWhiteSpace(action.Family), "family is required.");
+                var familyParts = action.Family!.Split([':'], 2);
+                action.Family = familyParts[0].Trim();
+                Require(action.Family.Length > 0, "family is required.");
+                if (familyParts.Length == 2)
+                {
+                    var embeddedType = familyParts[1].Trim();
+                    Require(embeddedType.Length > 0, "The type in Family: Type must not be blank.");
+                    Require(action.TypeName is null || string.Equals(action.TypeName.Trim(), embeddedType, StringComparison.OrdinalIgnoreCase),
+                        "typeName conflicts with the type in Family: Type.");
+                    action.TypeName = embeddedType;
+                }
+                else action.TypeName = action.TypeName?.Trim();
                 Require(job.XMm.HasValue && job.YMm.HasValue, "xMm and yMm are required.");
                 Require(Finite(action.XMm, action.YMm, action.RotationDeg), "Placement coordinates and rotation must be finite.");
                 Require(action.TypeName is null || !string.IsNullOrWhiteSpace(action.TypeName), "typeName must not be blank.");
@@ -70,8 +82,17 @@ public static class ActionJobParser
 
     public static List<string> ClosestFamilyNames(string requested, IEnumerable<string> candidates) =>
         candidates.Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(candidate => NameDistance(requested, candidate))
-            .ThenBy(candidate => candidate, StringComparer.OrdinalIgnoreCase).Take(5).ToList();
+            .Select(candidate => new
+            {
+                Name = candidate,
+                Contains = candidate.IndexOf(requested, StringComparison.OrdinalIgnoreCase) >= 0,
+                Similarity = 1.0 - (double)NameDistance(requested, candidate) / Math.Max(1, Math.Max(requested.Length, candidate.Length))
+            })
+            .Where(candidate => candidate.Contains || candidate.Similarity >= 0.5)
+            .OrderByDescending(candidate => candidate.Contains)
+            .ThenByDescending(candidate => candidate.Similarity)
+            .ThenBy(candidate => candidate.Name, StringComparer.OrdinalIgnoreCase)
+            .Take(5).Select(candidate => candidate.Name).ToList();
 
     private static int NameDistance(string requested, string candidate)
     {

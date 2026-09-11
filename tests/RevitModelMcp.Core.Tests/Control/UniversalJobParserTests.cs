@@ -6,6 +6,19 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class UniversalJobParserTests
 {
     [Test]
+    [Arguments("{}", false)]
+    [Arguments("{\"includeGeometry\":false}", false)]
+    [Arguments("{\"includeGeometry\":true}", true)]
+    public async Task Parse_QueryElements_GeometryIsOptIn(string options, bool expected)
+    {
+        var json = options == "{}" ? "{\"command\":\"query-elements\"}"
+            : options.Insert(1, "\"command\":\"query-elements\",");
+        var result = ControlJobParser.Parse(json);
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.QueryElements);
+        await Assert.That(result.IncludeGeometry).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task Parse_QueryElements_ReadsEveryFilterAndOutputControl()
     {
         const string json = """

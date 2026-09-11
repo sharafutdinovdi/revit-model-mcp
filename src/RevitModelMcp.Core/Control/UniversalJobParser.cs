@@ -25,6 +25,7 @@ internal static class UniversalJobParser
         var result = ControlJobParseResult.Create(ControlJobKind.QueryElements, "query-elements");
         ApplyCommon(result, common);
         result.Fields = NormalizeMany(job.Fields);
+        result.IncludeGeometry = job.IncludeGeometry ?? false;
         result.Sort = ParseSort(job.Sort, out var sortError);
         return sortError is null ? result : ControlJobParseResult.Invalid("query-elements", sortError);
     }

@@ -1,4 +1,5 @@
 using Autodesk.Revit.DB;
+using Nice3point.Revit.Extensions;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Query;
@@ -43,6 +44,16 @@ internal static class ElementQueryReader
                 .ToList();
         }
 
+        var elements = preparedPage.Select(reader.ToOutput).ToList();
+        if (job.IncludeGeometry)
+        {
+            foreach (var item in elements)
+            {
+                var element = CreateElementId(item.Id).ToElement(document);
+                if (element is not null) ViewElementReader.ReadGeometry(element, item);
+            }
+        }
+
         return new QueryElementsData
         {
             Offset = job.Offset,
@@ -50,7 +61,7 @@ internal static class ElementQueryReader
             Total = ids.Count,
             HasMore = hasMore,
             Fields = fields.ToList(),
-            Elements = preparedPage.Select(reader.ToOutput).ToList()
+            Elements = elements
         };
     }
 
