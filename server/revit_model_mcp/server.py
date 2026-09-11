@@ -75,7 +75,7 @@ mcp = MCPServer(
     "Revit Model Reader",
     version="0.1.0",
     instructions=(
-        "Read-only access to the active Revit model through RevitModelMcp. "
+        "Read-only by default. Actions are a separate tool set you enable on purpose. "
         "For universal model analysis, call revit_list_catalog first, "
         "revit_aggregate_elements second, and revit_query_elements only when rows are needed."
     ),
@@ -400,6 +400,11 @@ async def revit_list_instances(document: Document = None) -> list[dict[str, obje
         return redact_model_paths(await host.list_revit_instances(document))
     except RevitChannelError as error:
         raise ToolError(str(error)) from error
+
+
+from revit_model_mcp.actions import register_actions
+
+register_actions(mcp, _execute, lambda: host)
 
 
 def main() -> None:

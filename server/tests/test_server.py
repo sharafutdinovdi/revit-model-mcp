@@ -72,7 +72,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             command="revit-model-mcp",
             args=[],
             cwd=str(REPOSITORY_ROOT),
-            env=os.environ.copy(),
+            env={key: value for key, value in os.environ.items() if key != "REVIT_MCP_ALLOW_WRITE"},
         )
 
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:

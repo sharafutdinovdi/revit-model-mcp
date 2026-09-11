@@ -22,6 +22,7 @@ public enum ControlJobKind
     ListCatalog,
     ListWarnings,
     ListRelations,
+    Action,
     Invalid
 }
 
@@ -81,6 +82,7 @@ public sealed class ControlJobParseResult
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
     public int? TargetProcessId { get; internal set; }
+    public ActionJobContract? Action { get; internal set; }
     public string? Error { get; }
 
     public Exception? Cause { get; }
@@ -183,6 +185,7 @@ public sealed class ControlJobParseResult
             "list-catalog" => UniversalJobParser.ParseCatalog(job),
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
+            _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
             _ => Invalid(command, $"Неизвестная команда: {command}.")
         };
         result.TargetDocument = Normalize(job.TargetDocument);
@@ -285,7 +288,7 @@ public static class ControlJobParser
 }
 
 [DataContract]
-public sealed class ControlJobContract
+public sealed partial class ControlJobContract
 {
     [DataMember(Name = "command")]
     public string? Command { get; set; }

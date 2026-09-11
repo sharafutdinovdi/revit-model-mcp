@@ -94,6 +94,12 @@ internal sealed class ControlChannel
             return;
         }
 
+        if (ActionJobParser.IsAction(parsed.Command))
+        {
+            ActionCommandExecutor.Execute(application, parsed, startedAt);
+            return;
+        }
+
         if (parsed.Kind == ControlJobKind.Invalid)
         {
             PluginLog.Info($"Job processing started. Command='{parsed.Command}'.");
@@ -159,7 +165,10 @@ internal sealed class ControlChannel
         {
             PluginLog.Warn(
                 $"Job rejected while busy. Parameters='{parameters}'. TriggerPath='{_triggerFilePath}'.");
-            _session!.RejectJobWhileBusy();
+            if (ActionJobParser.IsAction(parsed.Command))
+                ActionCommandExecutor.WriteError(application, parsed.Command, "The add-in is busy with another command.", DateTimeOffset.Now);
+            else
+                _session!.RejectJobWhileBusy();
         }
     }
 

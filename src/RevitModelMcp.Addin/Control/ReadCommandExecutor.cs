@@ -148,6 +148,11 @@ internal static class ReadCommandExecutor
         string message,
         DateTimeOffset startedAt)
     {
+        if (ActionJobParser.IsAction(command))
+        {
+            ActionCommandExecutor.WriteError(application, command, message, startedAt);
+            return;
+        }
         var output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             command,

@@ -7,7 +7,7 @@
 
 ## What it does
 
-The server gives MCP clients read access to a live Autodesk Revit model.
+The server gives MCP clients read access to a live Autodesk Revit model by default.
 Tools inspect elements, views, parameters and warnings.
 Selected views can be exported to PNG for visual review.
 
@@ -112,10 +112,58 @@ See [architecture](docs/architecture.md) and [transport](docs/transport.md).
 | `revit_list_relations` | Read model object membership or dependencies. |
 | `revit_list_instances` | List Revit processes with active documents, versions and processId. |
 
+## Actions (opt-in)
+
+Read-only by default. Actions are a separate tool set you enable on purpose.
+
+| Tool | Action |
+|---|---|
+| `revit_select` | Select element IDs, or clear selection with an empty list. |
+| `revit_show` | Show elements and optionally select them; Revit may open a suitable view. |
+| `revit_isolate` | Temporarily isolate elements in the active view; `reset=true` clears temporary hide/isolate. |
+| `revit_move` | Move elements by model-axis offsets in millimetres. |
+| `revit_place_family` | Place a loaded family type at model XY in millimetres on a named level; rotate about Z in degrees. |
+| `revit_create_wall` | Create a straight wall between XY endpoints in millimetres on a named level. |
+| `revit_set_parameter` | Set an instance parameter by name, falling back to the type; lengths use mm and areas use m2. |
+| `revit_delete` | Delete elements; the removed count includes dependent elements deleted by Revit. |
+
+Both gates must be enabled:
+
+1. Set `REVIT_MCP_ALLOW_WRITE=1` in the Python server process environment and restart the server.
+   With any other value or no value, MCP `list_tools` does not include the action tools.
+2. Create `%LOCALAPPDATA%\RevitModelMcp\allow-write` on the Revit workstation:
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\RevitModelMcp" | Out-Null
+   New-Item -ItemType File -Force "$env:LOCALAPPDATA\RevitModelMcp\allow-write" | Out-Null
+   ```
+
+The add-in checks the gate file for every action, including selection and navigation.
+Without it, the response contains `success:false` and `error:"actions disabled on the workstation"`.
+Removing the file disables actions immediately; restarting Revit is unnecessary.
+The gate stays in the default local application data directory even if the transport uses `REVIT_MCP_CHANNEL_DIR`.
+
+Actions require exactly one running Revit instance and address its process ID.
+Coordinates use model axes and the named level's project elevation.
+Pass `null` for `type_name` to choose the family's first type, or for `wall_type` to choose the first basic wall type.
+Family placement uses the level-based, nonstructural overload; hosted, face-based and adaptive families may require another placement API and return an error.
+An unloaded family returns up to five closest loaded names.
+Parameter values use invariant numeric notation; other Double parameters use Revit internal units.
+Type parameter edits affect all instances of that type and return `parameterScope:"type"`.
+ElementId and read-only parameters cannot be set.
+
+Every action response includes the active view name in `activeView`, including workstation errors.
+Model changes and temporary isolation use one transaction named after the tool.
+Revit failure messages, including warnings at commit, cause rollback and return their text.
+Selection and navigation use UI calls without model transactions.
+The tools do not save the model.
+After a timeout, inspect the model before retrying an action; the previous call may have executed.
+
 ## Security
 
-The model API is read-only by construction.
-The exposed surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations and PNG view export.
+The model API is read-only by default.
+Action tools are absent unless `REVIT_MCP_ALLOW_WRITE=1`; action execution also requires the workstation gate file described above.
+The default surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations and PNG view export.
 The [command executor](src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
@@ -132,7 +180,7 @@ See [transport](docs/transport.md) and [security reporting](SECURITY.md).
 
 ## Testing
 
-The Python tests cover job construction, transport failures, downloads and MCP stdio registration.
+The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.
 

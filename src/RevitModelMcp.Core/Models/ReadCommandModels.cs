@@ -26,6 +26,12 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "responder", Order = 7)]
     public ResponderInfo Responder { get; set; } = new();
 
+    [DataMember(Name = "error", Order = 8, EmitDefaultValue = false)]
+    public string? Error { get; set; }
+
+    [DataMember(Name = "activeView", Order = 9, EmitDefaultValue = false)]
+    public string? ActiveView { get; set; }
+
     public static CommandResponse<T> Ok(string command, T data, long elapsedMs, string? message = null)
     {
         return new CommandResponse<T>
