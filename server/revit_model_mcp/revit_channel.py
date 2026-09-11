@@ -17,6 +17,7 @@ DEFAULT_PICKUP_TIMEOUT_SECONDS = 300
 ACTIVATION_TASK = os.environ.get("REVIT_MCP_ACTIVATE_TASK", "")
 CHANNEL_DIRECTORY = "RevitModelMcp"
 TRIGGER_FILE = "trigger.txt"
+ACTION_COMMANDS = frozenset({"select", "show", "isolate", "move", "place-family", "create-wall", "set-parameter", "delete"})
 
 
 class RevitChannelError(RuntimeError):
@@ -329,7 +330,9 @@ class RevitReadChannel:
             if response_name is None:
                 raise ResponseTimeoutError(
                     f"The add-in picked up the job, but no response to {job.command} appeared within {timeout_seconds} s. "
-                    "The command may need more time; increase timeout_seconds and retry."
+                    + ("The action may have executed. Inspect the model before retrying."
+                     if job.command in ACTION_COMMANDS else
+                     "The command may need more time; increase timeout_seconds and retry.")
                 )
 
             finish_attempted = True
@@ -384,6 +387,8 @@ def parse_response(content: str, expected_command: str) -> dict[str, Any]:
             "Invalid response: field success is missing or has the wrong type."
         )
     if response["success"] is False:
+        if expected_command in ACTION_COMMANDS:
+            return response
         message = response.get("message")
         raise PluginResponseError(
             message
