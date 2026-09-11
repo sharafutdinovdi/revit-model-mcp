@@ -1,0 +1,36 @@
+# .NET
+[Bb]in/
+[Oo]bj/
+.vs/
+.idea/
+*.user
+*.suo
+*.nupkg
+*.snupkg
+TestResults/
+artifacts/
+/output/
+
+# Build sources are versioned even when a global ignore excludes build folders.
+!/build/
+!/build/**
+/build/**/[Bb]in/
+/build/**/[Oo]bj/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+dist/
+uv.lock
+
+# Local data
+.env
+.env.*
+.DS_Store
+*.rvt
+*.rfa
+*.log
+docs/screenshots/raw/

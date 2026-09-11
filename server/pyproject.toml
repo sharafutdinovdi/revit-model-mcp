@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "revit-model-mcp"
+version = "0.1.0"
+description = "Read-only MCP access to a live Autodesk Revit model"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{name = "Dinar Sharafutdinov"}]
+dependencies = ["mcp>=2.0.0"]
+
+[project.scripts]
+revit-model-mcp = "revit_model_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["revit_model_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

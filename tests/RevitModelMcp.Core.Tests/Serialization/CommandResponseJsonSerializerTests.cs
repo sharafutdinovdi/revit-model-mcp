@@ -1,0 +1,400 @@
+using System.Text.Json;
+using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Serialization;
+
+namespace RevitModelMcp.Core.Tests.Serialization;
+
+public sealed class CommandResponseJsonSerializerTests
+{
+    [Test]
+    public async Task Serialize_DocumentInfo_PreservesEnvelopeAndData()
+    {
+        var response = CommandResponse<DocumentInfoData>.Ok(
+            "document-info",
+            new DocumentInfoData
+            {
+                FileName = "Customer.rvt",
+                RevitVersion = "2024",
+                IsWorkshared = true,
+                ViewCount = 84,
+                Levels = { new DocumentLevelInfo { Name = "01", ElevationMm = 0, RoomCount = 12 } },
+                AreaSchemes =
+                {
+                    new DocumentAreaSchemeInfo { Name = "Gross", IsGrossBuildingArea = true, AreaCount = 5 }
+                },
+                Worksets = { new DocumentWorksetInfo { Name = "Shared Levels and Grids", Kind = "UserWorkset", IsOpen = true } }
+            },
+            31);
+        response.Responder = new ResponderInfo
+        {
+            DocumentName = "Customer.rvt",
+            DocumentPath = @"C:\\Models\\Customer.rvt",
+            ProcessId = 4242,
+            RevitVersion = "2024"
+        };
+
+        using var json = Parse(response);
+
+        await AssertSuccess(json.RootElement, "document-info");
+        await Assert.That(json.RootElement.GetProperty("data").GetProperty("viewCount").GetInt32()).IsEqualTo(84);
+        var responder = json.RootElement.GetProperty("responder");
+        await Assert.That(responder.GetProperty("documentName").GetString()).IsEqualTo("Customer.rvt");
+        await Assert.That(responder.GetProperty("processId").GetInt32()).IsEqualTo(4242);
+    }
+
+    [Test]
+    public async Task Serialize_ListViews_PreservesPreparedView()
+    {
+        var response = CommandResponse<ViewListData>.Ok(
+            "list-views",
+            new ViewListData
+            {
+                Processed = 1,
+                Total = 1,
+                Views =
+                {
+                    new ViewListItem
+                    {
+                        Id = 11,
+                        Name = "План 1",
+                        Type = "FloorPlan",
+                        Level = "01",
+                        Scale = 100,
+                        Template = "АР План"
+                    }
+                }
+            },
+            45,
+            "Число элементов не подсчитывалось.");
+
+        using var json = Parse(response);
+
+        await AssertSuccess(json.RootElement, "list-views");
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("elementPresenceMethod").GetString()).IsEqualTo("not-read");
+        await Assert.That(data.GetProperty("processed").GetInt32()).IsEqualTo(1);
+        await Assert.That(data.GetProperty("total").GetInt32()).IsEqualTo(1);
+        await Assert.That(data.GetProperty("views")[0].TryGetProperty("hasElements", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task Ping_CreatesSuccessWithoutDocumentData()
+    {
+        var response = ReadCommandResponseFactory.Ping(3);
+
+        using var json = Parse(response);
+        var root = json.RootElement;
+
+        await AssertSuccess(root, "ping");
+        await Assert.That(root.GetProperty("data").GetString()).IsEqualTo("pong");
+        await Assert.That(root.GetProperty("elapsedMs").GetInt64()).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task Serialize_ViewSummary_PreservesCategoriesWithoutElements()
+    {
+        var response = CommandResponse<ViewSummaryData>.Ok(
+            "view-summary",
+            new ViewSummaryData
+            {
+                Header = new ViewDumpHeader { Name = "План 1", Type = "FloorPlan", Scale = 100, ElementCount = 21 },
+                Categories = { new ViewCategorySummary { Category = "Стены", Count = 12, DifferentTypes = 3 } }
+            },
+            120);
+
+        using var json = Parse(response);
+
+        await AssertSuccess(json.RootElement, "view-summary");
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("categories")[0].GetProperty("count").GetInt32()).IsEqualTo(12);
+        await Assert.That(data.TryGetProperty("elements", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task Serialize_ViewElements_PreservesPagination()
+    {
+        var response = CommandResponse<ViewElementsData>.Ok(
+            "view-elements",
+            new ViewElementsData
+            {
+                View = "План 1",
+                Categories = { "Стены" },
+                Offset = 10,
+                Limit = 1,
+                Total = 12,
+                HasMore = true,
+                Elements = { new ViewElementDump { Id = 11327511, Category = "Стены" } }
+            },
+            18);
+
+        using var json = Parse(response);
+
+        await AssertSuccess(json.RootElement, "view-elements");
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("total").GetInt32()).IsEqualTo(12);
+        await Assert.That(data.GetProperty("hasMore").GetBoolean()).IsTrue();
+    }
+
+    [Test]
+    public async Task Serialize_ElementDetails_PreservesInstanceAndTypeParameters()
+    {
+        var response = CommandResponse<ElementDetailsData>.Ok(
+            "element-details",
+            new ElementDetailsData
+            {
+                Element = new ViewElementDump { Id = 11327511, Category = "Стены" },
+                Parameters =
+                {
+                    new ElementParameterDetail
+                    {
+                        Name = "Длина",
+                        StorageType = "Double",
+                        HasValue = true,
+                        MetricValue = 2500,
+                        MetricUnit = "mm"
+                    }
+                },
+                TypeElement = new ElementTypeDetails
+                {
+                    Id = 42,
+                    Family = "Basic Wall",
+                    Name = "200 mm",
+                    Parameters = { new ElementParameterDetail { Name = "Толщина", StorageType = "Double", HasValue = true } }
+                },
+                Warnings = { new ElementWarningInfo { Text = "Помещение не замкнуто.", Severity = "Warning" } },
+                Room = new RoomDetails
+                {
+                    Level = "01",
+                    AreaM2 = 12.5,
+                    VolumeM3 = 37.5,
+                    Boundaries =
+                    {
+                        new RoomBoundaryLoop
+                        {
+                            Segments = { new RoomBoundarySegment { ElementId = 7, LengthMm = 2500 } }
+                        }
+                    }
+                }
+            },
+            8);
+
+        using var json = Parse(response);
+
+        await AssertSuccess(json.RootElement, "element-details");
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("parameters")[0].GetProperty("metricValue").GetDouble()).IsEqualTo(2500);
+        await Assert.That(data.GetProperty("typeElement").GetProperty("parameters").GetArrayLength()).IsEqualTo(1);
+        await Assert.That(data.GetProperty("warnings").GetArrayLength()).IsEqualTo(1);
+        await Assert.That(data.GetProperty("room").GetProperty("areaM2").GetDouble()).IsEqualTo(12.5);
+    }
+
+    [Test]
+    public async Task Serialize_QueryElements_PreservesDynamicRequestedFields()
+    {
+        var response = CommandResponse<QueryElementsData>.Ok(
+            "query-elements",
+            new QueryElementsData
+            {
+                Offset = 0,
+                Limit = 100,
+                Total = 1,
+                Fields = { "category", "ADSK_Номер корпуса" },
+                Elements =
+                {
+                    new QueryElementItem
+                    {
+                        Id = 17,
+                        Values =
+                        {
+                            ["category"] = new QueryFieldValue { HasValue = true, Value = "Помещения" },
+                            ["ADSK_Номер корпуса"] = new QueryFieldValue { HasValue = false, Source = "instance" }
+                        }
+                    }
+                }
+            },
+            12);
+
+        using var json = Parse(response);
+        var values = json.RootElement.GetProperty("data").GetProperty("elements")[0].GetProperty("values");
+
+        await Assert.That(values.GetProperty("category").GetProperty("value").GetString()).IsEqualTo("Помещения");
+        await Assert.That(values.GetProperty("ADSK_Номер корпуса").GetProperty("hasValue").GetBoolean()).IsFalse();
+    }
+
+    [Test]
+    public async Task Serialize_AggregateWithoutNumericValues_ReportsResolvedField()
+    {
+        var response = CommandResponse<AggregateElementsData>.Ok(
+            "aggregate-elements",
+            new AggregateElementsData
+            {
+                MatchedElements = 1,
+                GroupBy = { "level" },
+                NumericField = "Area",
+                NumericFieldFound = true,
+                Groups =
+                {
+                    new AggregateGroup
+                    {
+                        Keys = { ["level"] = "01" },
+                        Count = 1,
+                        NumericCount = 0
+                    }
+                }
+            },
+            9);
+
+        using var json = Parse(response);
+        var data = json.RootElement.GetProperty("data");
+
+        await Assert.That(data.GetProperty("numericFieldFound").GetBoolean()).IsTrue();
+        await Assert.That(data.GetProperty("groups")[0].GetProperty("numericCount").GetInt32()).IsEqualTo(0);
+        await Assert.That(data.GetProperty("groups")[0].TryGetProperty("sum", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task Serialize_ViewWarnings_PreservesDocumentScopeMatch()
+    {
+        var response = CommandResponse<ViewWarningsData>.Ok(
+            "view-warnings",
+            new ViewWarningsData
+            {
+                View = "План 1",
+                MatchingNote = "Сопоставление по элементам.",
+                Warnings =
+                {
+                    new ViewWarningInfo
+                    {
+                        Text = "Выделенные стены пересекаются.",
+                        Severity = "Warning",
+                        HasElementsOnView = true,
+                        Elements = { new ViewWarningElementInfo { Id = 17, PresentOnView = true } }
+                    }
+                }
+            },
+            16);
+
+        using var json = Parse(response);
+
+        await AssertSuccess(json.RootElement, "view-warnings");
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("scope").GetString()).IsEqualTo("view-elements");
+        await Assert.That(data.GetProperty("warnings")[0]
+            .GetProperty("hasElementsOnView").GetBoolean()).IsTrue();
+    }
+
+    [Test]
+    public async Task Serialize_ExportView_PreservesFileAndViewMetadata()
+    {
+        var response = CommandResponse<ViewExportData>.Ok(
+            "export-view",
+            new ViewExportData
+            {
+                FileName = "view_20260817_120000_000_42.png",
+                Width = 1600,
+                Height = 900,
+                SizeBytes = 123456,
+                ViewName = "План 1",
+                ViewType = "FloorPlan"
+            },
+            812);
+
+        using var json = Parse(response);
+        var data = json.RootElement.GetProperty("data");
+
+        await AssertSuccess(json.RootElement, "export-view");
+        await Assert.That(data.GetProperty("width").GetInt32()).IsEqualTo(1600);
+        await Assert.That(data.GetProperty("sizeBytes").GetInt64()).IsEqualTo(123456);
+        await Assert.That(data.GetProperty("viewType").GetString()).IsEqualTo("FloorPlan");
+    }
+
+    [Test]
+    public async Task Serialize_MissingView_ReturnsReadableFailureWithoutData()
+    {
+        var response = CommandResponse<ViewSummaryData>.ViewNotFound("view-summary", "Нет вида", 2);
+
+        using var json = Parse(response);
+        var root = json.RootElement;
+
+        await Assert.That(root.GetProperty("success").GetBoolean()).IsFalse();
+        await Assert.That(root.GetProperty("message").GetString()).Contains("не найден");
+        await Assert.That(root.TryGetProperty("data", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task Serialize_InvalidElementId_ReturnsReadableFailureWithoutData()
+    {
+        var response = CommandResponse<ElementDetailsData>.ElementNotFound("element-details", 999, 1);
+
+        using var json = Parse(response);
+        var root = json.RootElement;
+
+        await Assert.That(root.GetProperty("command").GetString()).IsEqualTo("element-details");
+        await Assert.That(root.GetProperty("success").GetBoolean()).IsFalse();
+        await Assert.That(root.GetProperty("message").GetString()).Contains("999");
+    }
+
+    [Test]
+    public async Task Serialize_PartialResult_MarksEnvelopeAndPreservesData()
+    {
+        var response = CommandResponse<ViewElementsData>.PartialResult(
+            "view-elements",
+            new ViewElementsData
+            {
+                View = "План 1",
+                Processed = 1,
+                Elements = { new ViewElementDump { Id = 17 } }
+            },
+            "Обработка прервана.",
+            2500);
+
+        using var json = Parse(response);
+        var root = json.RootElement;
+
+        await Assert.That(root.GetProperty("success").GetBoolean()).IsFalse();
+        await Assert.That(root.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(root.GetProperty("data").GetProperty("processed").GetInt32()).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Execute_WhenPreProcessingThrows_WritesFailureResponseFile()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-tests-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "response.json");
+        try
+        {
+            CommandResponseJsonFile.Execute(
+                path,
+                "failing-command",
+                _ => throw new InvalidOperationException("test failure"));
+
+            await Assert.That(File.Exists(path)).IsTrue();
+            using var json = JsonDocument.Parse(File.ReadAllText(path));
+            var root = json.RootElement;
+            await Assert.That(root.GetProperty("success").GetBoolean()).IsFalse();
+            await Assert.That(root.GetProperty("partial").GetBoolean()).IsFalse();
+            await Assert.That(root.GetProperty("message").GetString()).Contains("test failure");
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, true);
+            }
+        }
+    }
+
+    private static JsonDocument Parse<T>(CommandResponse<T> response)
+    {
+        return JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+    }
+
+    private static async Task AssertSuccess(JsonElement root, string command)
+    {
+        await Assert.That(root.GetProperty("command").GetString()).IsEqualTo(command);
+        await Assert.That(root.GetProperty("success").GetBoolean()).IsTrue();
+        await Assert.That(root.GetProperty("partial").GetBoolean()).IsFalse();
+        await Assert.That(root.TryGetProperty("data", out _)).IsTrue();
+        await Assert.That(root.TryGetProperty("elapsedMs", out _)).IsTrue();
+    }
+}

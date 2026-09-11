@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RevitModelMcp.Core</AssemblyName>
+    <RootNamespace>RevitModelMcp.Core</RootNamespace>
+    <TargetFrameworks>net48;net8.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Configurations>Debug.R22;Debug.R23;Debug.R24;Debug.R25;Debug.R26</Configurations>
+    <Configurations>$(Configurations);Release.R22;Release.R23;Release.R24;Release.R25;Release.R26</Configurations>
+  </PropertyGroup>
+
+</Project>

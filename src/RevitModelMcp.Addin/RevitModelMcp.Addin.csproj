@@ -1,0 +1,33 @@
+<Project Sdk="Nice3point.Revit.Sdk/6.2.3">
+
+  <PropertyGroup>
+    <AssemblyName>RevitModelMcp</AssemblyName>
+    <RootNamespace>RevitModelMcp</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <DeployAddin>true</DeployAddin>
+    <LaunchRevit>true</LaunchRevit>
+    <IsRepackable Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</IsRepackable>
+    <RepackBinariesExcludes>System*.dll</RepackBinariesExcludes>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Authors>Dinar Sharafutdinov</Authors>
+    <Company>Dinar Sharafutdinov</Company>
+    <Configurations>Debug.R22;Debug.R23;Debug.R24;Debug.R25;Debug.R26</Configurations>
+    <Configurations>$(Configurations);Release.R22;Release.R23;Release.R24;Release.R25;Release.R26</Configurations>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nice3point.Revit.Toolkit" Version="$(RevitVersion).*"/>
+    <PackageReference Include="Nice3point.Revit.Extensions" Version="$(RevitVersion).*"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="$(RevitVersion).*"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitVersion).*"/>
+    <PackageReference Include="ILRepack" Version="2.0.46" PrivateAssets="all"/>
+    <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" PrivateAssets="all"/>
+    <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RevitModelMcp.Core\RevitModelMcp.Core.csproj"/>
+  </ItemGroup>
+
+</Project>

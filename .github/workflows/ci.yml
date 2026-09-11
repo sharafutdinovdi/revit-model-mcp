@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build Revit 2026
+        run: dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
+      - name: Build Revit 2022
+        run: dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
+      - name: Test core
+        run: dotnet test tests/RevitModelMcp.Core.Tests
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Test server
+        working-directory: server
+        run: uv run --with pytest pytest -q
