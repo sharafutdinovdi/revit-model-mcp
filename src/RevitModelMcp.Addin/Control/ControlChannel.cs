@@ -1,5 +1,8 @@
 using System.IO;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Serialization;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Output;
@@ -11,6 +14,26 @@ internal sealed class ControlChannel
     private readonly string _triggerFilePath;
     private IControlSession? _session;
     private string? _lastSkippedJob;
+    private readonly object _sync = new();
+    private bool _executing;
+    private bool _stopped;
+    private ControlJobParseResult? _httpJob;
+    private TaskCompletionSource<string>? _httpCompletion;
+    private string? _httpResponse;
+
+    public bool TrySubmit(ControlJobParseResult job, out Task<string>? completion)
+    {
+        lock (_sync)
+        {
+            completion = null;
+            if (_stopped || _executing || _session is not null || _httpJob is not null || File.Exists(_triggerFilePath))
+                return false;
+            _httpJob = job;
+            _httpCompletion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            completion = _httpCompletion.Task;
+            return true;
+        }
+    }
 
     public ControlChannel(string triggerFilePath)
     {
@@ -20,6 +43,50 @@ internal sealed class ControlChannel
     public bool HasActiveSession => _session is not null;
 
     public void Tick(UIApplication application)
+    {
+        lock (_sync)
+        {
+            if (_stopped) return;
+            _executing = true;
+        }
+        try
+        {
+            if (_httpJob is null)
+            {
+                TickFile(application);
+                return;
+            }
+            ResponseDelivery.Current = content => _httpResponse = content;
+            if (_session is not null)
+                ProcessActiveSession(application);
+            else if (!MatchesCurrentInstance(application, _httpJob))
+                TryWriteError(application, _httpJob.Command, "The target document or process does not match this endpoint.", DateTimeOffset.Now);
+            else
+                ProcessJob(application, _httpJob);
+        }
+        catch (Exception exception)
+        {
+            HandleUnhandledException(application, exception);
+        }
+        finally
+        {
+            ResponseDelivery.Current = null;
+            lock (_sync)
+            {
+                if (_httpJob is not null && _session is null)
+                {
+                    _httpCompletion!.TrySetResult(_httpResponse ?? CommandResponseJsonSerializer.Serialize(
+                        CommandResponse<object>.Fail(_httpJob.Command, "The command ended without a response.", 0)));
+                    _httpJob = null;
+                    _httpCompletion = null;
+                    _httpResponse = null;
+                }
+                _executing = false;
+            }
+        }
+    }
+
+    private void TickFile(UIApplication application)
     {
         if (_session is not null)
         {
@@ -67,9 +134,13 @@ internal sealed class ControlChannel
             return;
         }
 
+        ProcessJob(application, parsed);
+    }
+
+    private void ProcessJob(UIApplication application, ControlJobParseResult parsed)
+    {
         var startedAt = DateTimeOffset.Now;
-        PluginLog.Info(
-            $"Job received. Command='{parsed.Command}'. Parameters='{content}'. TriggerPath='{_triggerFilePath}'.");
+        PluginLog.Info($"Job received. Command='{parsed.Command}'.");
         if (parsed.Cause is not null)
         {
             PluginLog.Error($"Job parsing failed. Command='{parsed.Command}'.", parsed.Cause);
@@ -167,6 +238,8 @@ internal sealed class ControlChannel
                 $"Job rejected while busy. Parameters='{parameters}'. TriggerPath='{_triggerFilePath}'.");
             if (ActionJobParser.IsAction(parsed.Command))
                 ActionCommandExecutor.WriteError(application, parsed.Command, "The add-in is busy with another command.", DateTimeOffset.Now);
+            else if (_httpJob is not null)
+                TryWriteError(application, parsed.Command, "The add-in is busy with another command.", DateTimeOffset.Now);
             else
                 _session!.RejectJobWhileBusy();
         }
@@ -182,7 +255,16 @@ internal sealed class ControlChannel
     {
         try
         {
-            RejectPendingJob(application);
+            var delivery = ResponseDelivery.Current;
+            try
+            {
+                ResponseDelivery.Current = null;
+                RejectPendingJob(application);
+            }
+            finally
+            {
+                ResponseDelivery.Current = delivery;
+            }
             _session!.ProcessTick(application);
         }
         catch (Exception exception)
@@ -244,6 +326,14 @@ internal sealed class ControlChannel
 
     public void Shutdown()
     {
+        lock (_sync)
+        {
+            _stopped = true;
+            _httpCompletion?.TrySetResult(CommandResponseJsonSerializer.Serialize(
+                CommandResponse<object>.Fail(_httpJob?.Command ?? "invalid", "Revit is shutting down.", 0)));
+            _httpJob = null;
+            _httpCompletion = null;
+        }
         if (_session is null)
         {
             return;

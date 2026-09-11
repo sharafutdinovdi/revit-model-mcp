@@ -15,7 +15,7 @@ namespace RevitModelMcp.Control;
 
 internal static class ActionCommandExecutor
 {
-    private static bool ActionsEnabled => File.Exists(Path.Combine(
+    internal static bool ActionsEnabled => File.Exists(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "allow-write"));
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)

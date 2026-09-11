@@ -29,6 +29,7 @@ public sealed class Application : ExternalApplication
     private TriggerFileWatcher? _triggerWatcher;
     private InstanceHeartbeat? _instanceHeartbeat;
     private Document? _activeDocument;
+    private HttpChannel? _httpChannel;
 
     public override void OnStartup()
     {
@@ -52,6 +53,17 @@ public sealed class Application : ExternalApplication
         Application.ControlledApplication.DocumentClosing += OnDocumentClosing;
         _activeDocument = RevitContext.UiApplication?.ActiveUIDocument?.Document;
         _instanceHeartbeat.Start(_activeDocument);
+        try
+        {
+            _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
+                Application.ControlledApplication.VersionNumber, HttpSettings.Load());
+            _httpChannel.UpdateDocument(_activeDocument?.Title);
+            _httpChannel.Start();
+        }
+        catch (Exception exception)
+        {
+            PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+        }
     }
 
     public override void OnShutdown()
@@ -63,6 +75,8 @@ public sealed class Application : ExternalApplication
         _instanceHeartbeat = null;
         _triggerWatcher?.Dispose();
         _triggerWatcher = null;
+        _httpChannel?.Dispose();
+        _httpChannel = null;
         _controlChannel.Shutdown();
         _externalEvent?.Dispose();
         _externalEvent = null;
@@ -75,6 +89,7 @@ public sealed class Application : ExternalApplication
     {
         _activeDocument = args.CurrentActiveView?.Document;
         _instanceHeartbeat?.UpdateDocument(_activeDocument);
+        _httpChannel?.UpdateDocument(_activeDocument?.Title);
     }
 
     private void OnDocumentClosing(object? sender, DocumentClosingEventArgs args)
@@ -84,6 +99,7 @@ public sealed class Application : ExternalApplication
             // Закрытый активный документ нельзя оставлять в heartbeat до следующего переключения вида.
             _activeDocument = null;
             _instanceHeartbeat?.UpdateDocument(null);
+            _httpChannel?.UpdateDocument(null);
         }
     }
 

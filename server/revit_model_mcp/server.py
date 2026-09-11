@@ -19,13 +19,16 @@ from revit_model_mcp.revit_channel import (
     RevitReadChannel,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
+from revit_model_mcp.http_host import HttpHost
 
-def create_host(value: str) -> SshPowerShellHost:
+def create_host(value: str, token: str | None = None) -> SshPowerShellHost | HttpHost:
+    if value.startswith(("http://", "https://")):
+        return HttpHost(value, token)
     if value == "local":
         return SshPowerShellHost("local", local=True)
     if value.startswith("ssh:") and value[4:]:
         return SshPowerShellHost(value[4:])
-    raise ValueError("REVIT_MCP_HOST must be local or ssh:<alias>.")
+    raise ValueError("REVIT_MCP_HOST must be local, ssh:<alias>, http://host:port or https://host:port.")
 
 
 host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
@@ -112,7 +115,7 @@ async def revit_ping(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Check the RevitModelMcp file channel without reading the model.
+    """Check the RevitModelMcp connection without reading the model.
     
     Returns pong even when no document is active.
     Parameters: timeout_seconds, pickup_timeout_seconds, document.
@@ -428,11 +431,12 @@ def main() -> None:
             f"  redact paths: {os.environ.get('REVIT_MCP_REDACT_PATHS') == '1'}"
         ),
     )
-    parser.add_argument("--host", default=default_host, help="local or ssh:<alias>; overrides REVIT_MCP_HOST.")
+    parser.add_argument("--host", default=default_host, help="local, ssh:<alias>, http://host:port or https://host:port; overrides REVIT_MCP_HOST.")
     parser.add_argument("--redact-paths", action="store_true", help="Return model file names without directory paths.")
+    parser.add_argument("--token", default=None, help="HTTP bearer token; overrides REVIT_MCP_TOKEN. Prefer the environment to keep tokens out of shell history.")
     args = parser.parse_args()
     global host, channel
-    host = create_host(args.host)
+    host = create_host(args.host, args.token)
     channel = RevitReadChannel(host)
     if args.redact_paths:
         os.environ["REVIT_MCP_REDACT_PATHS"] = "1"
