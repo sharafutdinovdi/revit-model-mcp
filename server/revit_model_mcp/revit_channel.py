@@ -149,6 +149,7 @@ class ReadJob:
         limit: int = 100,
         sort_field: str = "id",
         sort_direction: str = "asc",
+        include_geometry: bool = False,
     ) -> ReadJob:
         try:
             payload = query_payload(
@@ -158,6 +159,8 @@ class ReadJob:
             )
         except ValueError as error:
             raise RevitChannelError(str(error)) from error
+        if include_geometry:
+            payload["includeGeometry"] = True
         return cls("query-elements", payload)
 
     @classmethod

@@ -1,6 +1,7 @@
 using System.Globalization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
+using Nice3point.Revit.Extensions;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Units;
 
@@ -57,6 +58,8 @@ internal sealed class ViewElementReader
             Warnings = ReadWarnings(element)
         };
 
+        ReadGeometry(element, result);
+
         if (element is Room room)
         {
             result.Room = ReadRoom(room);
@@ -77,6 +80,43 @@ internal sealed class ViewElementReader
         };
         return result;
     }
+
+    public static void ReadGeometry(Element element, ElementGeometryData result)
+    {
+        var location = element.Location;
+        if (location is LocationPoint point)
+        {
+            var coordinates = CoordinatesMm(point.Point);
+            result.Location = new ElementLocationData
+            {
+                Type = "point", XMm = coordinates[0], YMm = coordinates[1], ZMm = coordinates[2]
+            };
+            if (element is Room room && room.Area > 0)
+                result.RoomCenterMm = coordinates;
+        }
+        else if (location is LocationCurve curveLocation && curveLocation.Curve is { IsBound: true } curve)
+        {
+            result.Location = new ElementLocationData
+            {
+                Type = "curve",
+                StartMm = CoordinatesMm(curve.GetEndPoint(0)),
+                EndMm = CoordinatesMm(curve.GetEndPoint(1)),
+                LengthMm = Math.Round(curve.Length.ToMillimeters(), 1)
+            };
+        }
+
+        using var bounds = element.get_BoundingBox(null);
+        if (bounds is null) return;
+        result.BoundingBox = new ElementBoundingBoxData
+        {
+            MinMm = CoordinatesMm(bounds.Min),
+            MaxMm = CoordinatesMm(bounds.Max),
+            CenterMm = CoordinatesMm((bounds.Min + bounds.Max) / 2)
+        };
+    }
+
+    private static double[] CoordinatesMm(XYZ point) =>
+        [Math.Round(point.X.ToMillimeters(), 1), Math.Round(point.Y.ToMillimeters(), 1), Math.Round(point.Z.ToMillimeters(), 1)];
 
     private List<ElementWarningInfo> ReadWarnings(Element element)
     {

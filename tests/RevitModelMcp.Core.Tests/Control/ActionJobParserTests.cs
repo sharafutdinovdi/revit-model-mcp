@@ -91,9 +91,49 @@ public sealed class ActionJobParserTests
     public async Task ClosestFamilies_RanksNamesAndLimitsResults()
     {
         var names = ActionJobParser.ClosestFamilyNames("desk", new[] { "Chair", "Desks", "Desk", "DESK", "Desk large", "Door", "Window", "Roof" });
-        await Assert.That(names.Count).IsEqualTo(5);
+        await Assert.That(names.Count).IsEqualTo(3);
         await Assert.That(names[0]).IsEqualTo("Desk");
         await Assert.That(names[1]).IsEqualTo("Desks");
+    }
+
+    [Test]
+    public async Task ClosestFamilies_PrefersSubstringsAndRejectsUnrelatedNames()
+    {
+        var names = ActionJobParser.ClosestFamilyNames("Desk", new[] { "Fryer", "Task", "Desl", "Office Desk Adjustable", "DESK" });
+        await Assert.That(names).IsEquivalentTo(new[] { "DESK", "Office Desk Adjustable", "Desl", "Task" });
+        await Assert.That(names[0]).IsEqualTo("DESK");
+        await Assert.That(names[1]).IsEqualTo("Office Desk Adjustable");
+        await Assert.That(ActionJobParser.ClosestFamilyNames("Desk", new[] { "Fryer", "Window", "Chair" })).IsEmpty();
+        await Assert.That(ActionJobParser.ClosestFamilyNames("Desk", Enumerable.Range(0, 10).Select(index => $"Desk {index}")).Count).IsEqualTo(5);
+    }
+
+    [Test]
+    [Arguments("null")]
+    [Arguments("\"1200\"")]
+    public async Task Parse_PlaceFamily_SplitsFamilyAndType(string typeName)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"place-family","family":" desk : 1200 ","typeName":{{typeName}},"xMm":0,"yMm":0,"level":"01"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Family).IsEqualTo("desk");
+        await Assert.That(result.Action.TypeName).IsEqualTo("1200");
+    }
+
+    [Test]
+    public async Task Parse_PlaceFamily_MatchesEmbeddedTypeCaseInsensitively()
+    {
+        var result = ControlJobParser.Parse("""{"command":"place-family","family":"Desk: LARGE","typeName":"large","xMm":0,"yMm":0,"level":"01"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.TypeName).IsEqualTo("LARGE");
+    }
+
+    [Test]
+    [Arguments("Desk:", "null")]
+    [Arguments(":1200", "null")]
+    [Arguments("Desk:1200", "\"1500\"")]
+    public async Task Parse_PlaceFamily_RejectsMalformedOrConflictingType(string family, string typeName)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"place-family","family":"{{family}}","typeName":{{typeName}},"xMm":0,"yMm":0,"level":"01"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
     }
 
     [Test]

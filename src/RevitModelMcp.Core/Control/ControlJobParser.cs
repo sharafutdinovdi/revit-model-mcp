@@ -70,6 +70,8 @@ public sealed class ControlJobParseResult
 
     public string? WarningText { get; internal set; }
 
+    public bool IncludeGeometry { get; internal set; }
+
     public bool IncludeElements { get; internal set; }
 
     public string? Relation { get; internal set; }
@@ -355,6 +357,9 @@ public sealed partial class ControlJobContract
 
     [DataMember(Name = "warningText")]
     public string? WarningText { get; set; }
+
+    [DataMember(Name = "includeGeometry")]
+    public bool? IncludeGeometry { get; set; }
 
     [DataMember(Name = "includeElements")]
     public bool? IncludeElements { get; set; }

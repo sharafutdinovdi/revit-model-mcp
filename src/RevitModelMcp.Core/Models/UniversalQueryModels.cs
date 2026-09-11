@@ -73,7 +73,7 @@ public sealed class QueryElementsData
 }
 
 [DataContract]
-public sealed class QueryElementItem
+public sealed class QueryElementItem : ElementGeometryData
 {
     [DataMember(Name = "id")]
     public long Id { get; set; }

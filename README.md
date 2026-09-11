@@ -106,11 +106,24 @@ See [architecture](docs/architecture.md) and [transport](docs/transport.md).
 | `revit_view_summary` | Read element categories and counts for a selected view. |
 | `revit_export_view` | Export a selected view to PNG when numbers do not explain geometry. |
 | `revit_view_elements` | Read one page of elements in a selected view. |
-| `revit_element_details` | Read all parameters of an element by Revit id. |
+| `revit_element_details` | Read parameters and geometry of an element by Revit id. |
 | `revit_view_warnings` | Read Revit warnings related to elements in a selected view. |
 | `revit_list_warnings` | Group model warnings by text. |
 | `revit_list_relations` | Read model object membership or dependencies. |
 | `revit_list_instances` | List Revit processes with active documents, versions and processId. |
+
+`revit_element_details` returns geometry alongside parameters in `data`.
+`revit_query_elements(include_geometry=True)` adds the same fields to each element in the returned page.
+The query flag defaults to `False`; default queries omit geometry.
+All coordinates use model axes in millimetres rounded to one decimal place.
+
+| Field | Contents |
+|---|---|
+| `location` | Point: `type:"point"`, `xMm`, `yMm`, `zMm`. Curve: `type:"curve"`, `startMm`, `endMm`, `lengthMm`. |
+| `boundingBox` | `minMm`, `maxMm`, `centerMm` as `[x,y,z]` arrays from the element's model bounding box. Rooms use their own bounding box. |
+| `roomCenterMm` | `[x,y,z]` from a placed room's location. Use `roomCenterMm` when placing something inside a room. A bounding box centre may lie outside a nonrectangular room. |
+
+Unavailable geometry is omitted.
 
 ## Actions (opt-in)
 
@@ -119,13 +132,27 @@ Read-only by default. Actions are a separate tool set you enable on purpose.
 | Tool | Action |
 |---|---|
 | `revit_select` | Select element IDs, or clear selection with an empty list. |
-| `revit_show` | Show elements and optionally select them; Revit may open a suitable view. |
+| `revit_show` | Open a suitable view when needed, show elements and optionally select them; return `activeView` and `viewOpened`. |
 | `revit_isolate` | Temporarily isolate elements in the active view; `reset=true` clears temporary hide/isolate. |
 | `revit_move` | Move elements by model-axis offsets in millimetres. |
-| `revit_place_family` | Place a loaded family type at model XY in millimetres on a named level; rotate about Z in degrees. |
+| `revit_place_family` | Place a loaded family name or `Family: Type`, case-insensitively, at model XY in millimetres on a named level; rotate about Z in degrees. |
 | `revit_create_wall` | Create a straight wall between XY endpoints in millimetres on a named level. |
 | `revit_set_parameter` | Set an instance parameter by name, falling back to the type; lengths use mm and areas use m2. |
 | `revit_delete` | Delete elements; the removed count includes dependent elements deleted by Revit. |
+
+`revit_show` checks the open UI views before calling `ShowElements`.
+If none contains a requested element, it opens a non-template plan for an element's level.
+Floor plans take priority, followed by names starting with the level name.
+Without a matching plan it uses the first non-template 3D view.
+The handler sets `UIDocument.ActiveView` synchronously inside its ExternalEvent without a transaction; `ShowElements` needs the view active immediately.
+`RequestViewChange` defers the change until control returns to Revit.
+The response includes `activeView` and `viewOpened`, which reports whether the handler opened a previously closed view.
+
+Every action suppresses TaskDialog prompts with OK, or Yes if OK is unavailable, and returns their messages in `dialogsSuppressed`.
+The dialog handler is removed in `finally`, including on errors.
+Missing families return up to five similar names with their family categories in `closestFamilies`; unrelated names are omitted.
+For `Family: Type`, `type_name=null` uses the embedded type; a conflicting `type_name` is rejected.
+For a family name alone, `type_name=null` selects the first loaded type.
 
 Both gates must be enabled:
 

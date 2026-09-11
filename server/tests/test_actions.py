@@ -120,8 +120,18 @@ def test_mm_conversion_rejects_non_finite(value):
 
 def test_action_failure_preserves_gate_message_view_and_suggestions():
     response = {"command": "place-family", "success": False, "error": "Family not loaded",
-                "activeView": "Level 1", "data": {"closestFamilies": ["Desk"]}}
+                "activeView": "Level 1", "data": {"closestFamilies": ["Office Desk (Furniture)"]}}
     assert parse_response(json.dumps(response), "place-family") == response
     response = {"command": "move", "success": False,
                 "error": "actions disabled on the workstation", "activeView": "Level 1"}
     assert parse_response(json.dumps(response), "move") == response
+
+
+@pytest.mark.parametrize("view_opened", [True, False])
+@pytest.mark.parametrize("success", [True, False])
+def test_show_response_preserves_view_opened_and_dialogs(view_opened, success):
+    response = {"command": "show", "success": success, "activeView": "L5_SD",
+                "viewOpened": view_opened, "dialogsSuppressed": ["Continue?"], "data": {"count": 1}}
+    if not success:
+        response["error"] = "Show failed after opening view"
+    assert parse_response(json.dumps(response), "show") == response

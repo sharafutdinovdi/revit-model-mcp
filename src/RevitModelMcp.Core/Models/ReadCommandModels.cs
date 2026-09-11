@@ -32,6 +32,12 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "activeView", Order = 9, EmitDefaultValue = false)]
     public string? ActiveView { get; set; }
 
+    [DataMember(Name = "viewOpened", Order = 10, EmitDefaultValue = false)]
+    public bool? ViewOpened { get; set; }
+
+    [DataMember(Name = "dialogsSuppressed", Order = 11, EmitDefaultValue = false)]
+    public List<string>? DialogsSuppressed { get; set; }
+
     public static CommandResponse<T> Ok(string command, T data, long elapsedMs, string? message = null)
     {
         return new CommandResponse<T>
@@ -257,7 +263,7 @@ public sealed class ViewElementsData
 }
 
 [DataContract]
-public sealed class ElementDetailsData
+public sealed class ElementDetailsData : ElementGeometryData
 {
     [DataMember(Name = "element")]
     public ViewElementDump Element { get; set; } = new();
@@ -386,4 +392,55 @@ public static class PageSlice
         var hasMore = (long)offset + page.Count < items.Count;
         return (page, hasMore);
     }
+}
+
+[DataContract]
+public class ElementGeometryData
+{
+    [DataMember(Name = "location", EmitDefaultValue = false)]
+    public ElementLocationData? Location { get; set; }
+
+    [DataMember(Name = "boundingBox", EmitDefaultValue = false)]
+    public ElementBoundingBoxData? BoundingBox { get; set; }
+
+    [DataMember(Name = "roomCenterMm", EmitDefaultValue = false)]
+    public double[]? RoomCenterMm { get; set; }
+}
+
+[DataContract]
+public sealed record ElementLocationData
+{
+    [DataMember(Name = "type")]
+    public string Type { get; set; } = string.Empty;
+
+    [DataMember(Name = "xMm", EmitDefaultValue = false)]
+    public double? XMm { get; set; }
+
+    [DataMember(Name = "yMm", EmitDefaultValue = false)]
+    public double? YMm { get; set; }
+
+    [DataMember(Name = "zMm", EmitDefaultValue = false)]
+    public double? ZMm { get; set; }
+
+    [DataMember(Name = "startMm", EmitDefaultValue = false)]
+    public double[]? StartMm { get; set; }
+
+    [DataMember(Name = "endMm", EmitDefaultValue = false)]
+    public double[]? EndMm { get; set; }
+
+    [DataMember(Name = "lengthMm", EmitDefaultValue = false)]
+    public double? LengthMm { get; set; }
+}
+
+[DataContract]
+public sealed record ElementBoundingBoxData
+{
+    [DataMember(Name = "minMm")]
+    public double[] MinMm { get; set; } = [];
+
+    [DataMember(Name = "maxMm")]
+    public double[] MaxMm { get; set; } = [];
+
+    [DataMember(Name = "centerMm")]
+    public double[] CenterMm { get; set; } = [];
 }

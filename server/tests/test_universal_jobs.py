@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import json
 
-from revit_model_mcp.revit_channel import ReadJob
+from revit_model_mcp.revit_channel import ReadJob, parse_response
 
 
 class UniversalReadJobTests(unittest.TestCase):
@@ -47,6 +48,22 @@ class UniversalReadJobTests(unittest.TestCase):
                 "sort": {"field": "level", "direction": "desc"},
             },
         )
+
+    def test_query_geometry_is_opt_in(self) -> None:
+        self.assertNotIn("includeGeometry", ReadJob.query_elements().payload)
+        self.assertNotIn("includeGeometry", ReadJob.query_elements(include_geometry=False).payload)
+        self.assertTrue(ReadJob.query_elements(include_geometry=True).payload["includeGeometry"])
+
+    def test_response_parser_preserves_geometry_for_details_and_query(self) -> None:
+        bounds = {"minMm": [-100, 0, 0], "maxMm": [100, 200, 3000], "centerMm": [0, 100, 1500]}
+        point = {"location": {"type": "point", "xMm": 0, "yMm": 100.1, "zMm": 0},
+                 "boundingBox": bounds, "roomCenterMm": [0, 100.1, 0]}
+        curve = {"location": {"type": "curve", "startMm": [0, 0, 0], "endMm": [1000.2, 0, 0], "lengthMm": 1000.2},
+                 "boundingBox": bounds}
+        for command, data in (("element-details", point), ("element-details", curve),
+                              ("query-elements", {"elements": [dict(id=1, **point), dict(id=2, **curve), {"id": 3}]})):
+            response = {"command": command, "success": True, "data": data}
+            self.assertEqual(parse_response(json.dumps(response), command), response)
 
     def test_forms_aggregate_elements_job(self) -> None:
         job = ReadJob.aggregate_elements(

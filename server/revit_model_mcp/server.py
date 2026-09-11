@@ -66,6 +66,7 @@ SaveTo = Annotated[str | None, Field(validation_alias=AliasChoices("save_to", "s
 OptionalViewName = Annotated[str | None, Field(validation_alias=AliasChoices("view", "view_name", "viewName"))]
 ElementId = Annotated[int, Field(validation_alias=AliasChoices("element_id", "elementId", "id"))]
 WarningText = Annotated[str | None, Field(validation_alias=AliasChoices("warning_text", "warningText"))]
+IncludeGeometry = Annotated[bool, Field(validation_alias=AliasChoices("include_geometry", "includeGeometry"))]
 IncludeElements = Annotated[bool, Field(validation_alias=AliasChoices("include_elements", "includeElements"))]
 SourceId = Annotated[int | None, Field(validation_alias=AliasChoices("source_id", "sourceId"))]
 SourceName = Annotated[str | None, Field(validation_alias=AliasChoices("source_name", "sourceName"))]
@@ -204,6 +205,7 @@ async def revit_query_elements(
     limit: int = 100,
     sort_field: SortField = "id",
     sort_direction: SortDirection = "asc",
+    include_geometry: IncludeGeometry = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
@@ -214,12 +216,15 @@ async def revit_query_elements(
     parameter_filters accepts equals, contains, greater, less, empty, not-empty,
     exists. fields accepts system fields or exact localized parameter names.
     Advance offset while hasMore=true. sort_direction accepts asc or desc.
-    Parameters: categories, family, type_name, level, view, workset, phase, area_scheme, parameter_filters, fields, offset, limit, sort_field, sort_direction, timeout_seconds, pickup_timeout_seconds, document.
+    include_geometry=true adds location and boundingBox in model millimetres,
+    rounded to 1 decimal, plus roomCenterMm for placed rooms. Default false keeps
+    large queries small. Use roomCenterMm when placing something inside a room.
+    Parameters: categories, family, type_name, level, view, workset, phase, area_scheme, parameter_filters, fields, offset, limit, sort_field, sort_direction, include_geometry, timeout_seconds, pickup_timeout_seconds, document.
     """
     return await _execute(
         ReadJob.query_elements(
             categories, family, type_name, level, view, workset, phase, area_scheme,
-            parameter_filters, fields, offset, limit, sort_field, sort_direction,
+            parameter_filters, fields, offset, limit, sort_field, sort_direction, include_geometry,
         ),
         timeout_seconds,
         pickup_timeout_seconds,
@@ -317,11 +322,14 @@ async def revit_element_details(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read all parameters of an element by Revit id.
+    """Read parameters and geometry of an element by Revit id.
     
     Use an id from revit_query_elements or revit_view_elements. Returns instance
     and type parameters and related warnings. Rooms also include level, area,
-    volume and boundaries.
+    volume and boundaries. location and boundingBox use model millimetres rounded
+    to 1 decimal. Unavailable geometry is omitted. Use roomCenterMm from the
+    room location when placing something inside a room; boundingBox.centerMm
+    may lie outside a nonrectangular room.
     Parameters: element_id, timeout_seconds, pickup_timeout_seconds, document.
     """
     return await _execute(ReadJob.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document)

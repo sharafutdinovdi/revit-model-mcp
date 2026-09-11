@@ -384,6 +384,87 @@ public sealed class CommandResponseJsonSerializerTests
         }
     }
 
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task Serialize_Show_PreservesFalseViewOpenedAndSuppressedDialogs(bool viewOpened)
+    {
+        var response = CommandResponse<string>.Ok("show", "done", 1);
+        response.ActiveView = "L5_SD";
+        response.ViewOpened = viewOpened;
+        response.DialogsSuppressed = ["Continue?"];
+        using var json = Parse(response);
+        await Assert.That(json.RootElement.GetProperty("viewOpened").GetBoolean()).IsEqualTo(viewOpened);
+        await Assert.That(json.RootElement.GetProperty("activeView").GetString()).IsEqualTo("L5_SD");
+        await Assert.That(json.RootElement.GetProperty("dialogsSuppressed")[0].GetString()).IsEqualTo("Continue?");
+    }
+
+    [Test]
+    public async Task Serialize_ElementDetails_PreservesPointBoundingBoxAndRoomCenter()
+    {
+        var data = new ElementDetailsData
+        {
+            Location = new ElementLocationData { Type = "point", XMm = 0, YMm = -123.4, ZMm = 5000 },
+            BoundingBox = new ElementBoundingBoxData
+            {
+                MinMm = [-1000, -500, 5000], MaxMm = [1000, 500, 8000], CenterMm = [0, 0, 6500]
+            },
+            RoomCenterMm = [0, -123.4, 5000]
+        };
+        using var json = Parse(CommandResponse<ElementDetailsData>.Ok("element-details", data, 1));
+        var geometry = json.RootElement.GetProperty("data");
+        var location = geometry.GetProperty("location");
+        await Assert.That(location.GetProperty("type").GetString()).IsEqualTo("point");
+        await Assert.That(location.GetProperty("xMm").GetDouble()).IsEqualTo(0);
+        await Assert.That(location.GetProperty("yMm").GetDouble()).IsEqualTo(-123.4);
+        await Assert.That(location.GetProperty("zMm").GetDouble()).IsEqualTo(5000);
+        await Assert.That(location.TryGetProperty("startMm", out _)).IsFalse();
+        await Assert.That(location.TryGetProperty("lengthMm", out _)).IsFalse();
+        await Assert.That(geometry.GetProperty("roomCenterMm")[1].GetDouble()).IsEqualTo(-123.4);
+        var bounds = geometry.GetProperty("boundingBox");
+        await Assert.That(bounds.GetProperty("minMm")[0].GetDouble()).IsEqualTo(-1000);
+        await Assert.That(bounds.GetProperty("maxMm")[2].GetDouble()).IsEqualTo(8000);
+        await Assert.That(bounds.GetProperty("centerMm")[2].GetDouble()).IsEqualTo(6500);
+    }
+
+    [Test]
+    public async Task Serialize_QueryElements_PreservesCurveGeometryAndOmitsUnavailableFields()
+    {
+        var data = new QueryElementsData
+        {
+            Elements =
+            [
+                new QueryElementItem
+                {
+                    Id = 17,
+                    Location = new ElementLocationData { Type = "curve", StartMm = [0, 10.1, 0], EndMm = [1000.2, 10.1, 0], LengthMm = 1000.2 },
+                    BoundingBox = new ElementBoundingBoxData { MinMm = [0, 0, 0], MaxMm = [1000.2, 200, 3000], CenterMm = [500.1, 100, 1500] }
+                },
+                new QueryElementItem { Id = 18 },
+                new QueryElementItem { Id = 19, Location = new ElementLocationData { Type = "point", XMm = 0, YMm = 0, ZMm = 0 }, RoomCenterMm = [0, 0, 0] }
+            ]
+        };
+        using var json = Parse(CommandResponse<QueryElementsData>.Ok("query-elements", data, 1));
+        var elements = json.RootElement.GetProperty("data").GetProperty("elements");
+        var location = elements[0].GetProperty("location");
+        await Assert.That(location.GetProperty("type").GetString()).IsEqualTo("curve");
+        await Assert.That(location.GetProperty("startMm")[1].GetDouble()).IsEqualTo(10.1);
+        await Assert.That(location.GetProperty("endMm")[0].GetDouble()).IsEqualTo(1000.2);
+        await Assert.That(location.GetProperty("lengthMm").GetDouble()).IsEqualTo(1000.2);
+        await Assert.That(location.TryGetProperty("xMm", out _)).IsFalse();
+        await Assert.That(elements[0].TryGetProperty("roomCenterMm", out _)).IsFalse();
+        await Assert.That(elements[0].GetProperty("boundingBox").GetProperty("centerMm")[0].GetDouble()).IsEqualTo(500.1);
+        await Assert.That(elements[1].TryGetProperty("location", out _)).IsFalse();
+        await Assert.That(elements[1].TryGetProperty("boundingBox", out _)).IsFalse();
+        await Assert.That(elements[1].TryGetProperty("roomCenterMm", out _)).IsFalse();
+        await Assert.That(elements[2].GetProperty("roomCenterMm")[0].GetDouble()).IsEqualTo(0);
+
+        using var missing = Parse(CommandResponse<ElementDetailsData>.Ok("element-details", new ElementDetailsData(), 1));
+        await Assert.That(missing.RootElement.GetProperty("data").TryGetProperty("location", out _)).IsFalse();
+        await Assert.That(missing.RootElement.GetProperty("data").TryGetProperty("boundingBox", out _)).IsFalse();
+        await Assert.That(missing.RootElement.TryGetProperty("viewOpened", out _)).IsFalse();
+    }
+
     private static JsonDocument Parse<T>(CommandResponse<T> response)
     {
         return JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));

@@ -43,7 +43,7 @@ EXPECTED_PARAMETERS = {
     "revit_query_elements": [
         "categories", "family", "type_name", "level", "view", "workset", "phase",
         "area_scheme", "parameter_filters", "fields", "offset", "limit",
-        "sort_field", "sort_direction", "timeout_seconds", "pickup_timeout_seconds", "document",
+        "sort_field", "sort_direction", "include_geometry", "timeout_seconds", "pickup_timeout_seconds", "document",
     ],
     "revit_list_views": ["view_type", "name_contains", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
@@ -102,6 +102,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Start universal queries here", tools["revit_list_catalog"].description)
         self.assertIn("after revit_list_catalog", tools["revit_aggregate_elements"].description)
         self.assertIn("after revit_list_catalog", tools["revit_query_elements"].description)
+        self.assertFalse(tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"])
+        self.assertIn("roomCenterMm", tools["revit_query_elements"].description)
+        self.assertIn("roomCenterMm", tools["revit_element_details"].description)
         self.assertEqual(
             tools["revit_view_elements"].input_schema["properties"]["timeout_seconds"][
                 "default"
@@ -158,6 +161,15 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(export_view.save_to, "/tmp/plan.png")
         self.assertEqual(camel_relation.payload, snake_relation.payload)
         self.assertEqual(camel_relation.payload["sourceName"], "01")
+
+    async def test_query_geometry_flag_reaches_channel_with_both_aliases(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            for name in ("include_geometry", "includeGeometry"):
+                await revit_server.mcp.call_tool("revit_query_elements", {name: True})
+                self.assertTrue(channel.calls[-1][0].payload["includeGeometry"])
+            await revit_server.mcp.call_tool("revit_query_elements", {})
+            self.assertNotIn("includeGeometry", channel.calls[-1][0].payload)
 
     async def test_list_instances_reads_processes_without_channel(self) -> None:
         class RecordingHost:

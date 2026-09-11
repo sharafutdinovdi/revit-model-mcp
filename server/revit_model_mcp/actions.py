@@ -61,7 +61,7 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_show(element_ids: NonEmptyIds, select: bool = True) -> dict[str, Any]:
-        """Show elements when locating them visually, optionally selecting them; IDs are unitless and Revit may switch views."""
+        """Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless."""
         return await send("show", elementIds=element_ids, select=select)
 
     @action
@@ -78,7 +78,14 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_place_family(family: Name, type_name: Name | None, x_mm: Number, y_mm: Number, level: Name, rotation_deg: Number = 0) -> dict[str, Any]:
-        """Place a loaded unhosted family on a named level for layout; model XY is in millimetres and Z rotation in degrees; null type_name chooses the first type."""
+        """Place a loaded unhosted family on a named level for layout.
+
+        family accepts a family name or Family: Type, case-insensitively.
+        null type_name uses the embedded type or the first type. Conflicting types
+        are rejected. Missing families return similar names with categories.
+        Model XY is in millimetres and Z rotation in degrees.
+        Use roomCenterMm when placing something inside a room.
+        """
         return await send("place-family", family=family, typeName=type_name, xMm=x_mm, yMm=y_mm, level=level, rotationDeg=rotation_deg)
 
     @action
