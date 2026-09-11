@@ -156,6 +156,7 @@ Unavailable geometry is omitted.
 ## Actions (opt-in)
 
 Read-only by default. Actions are a separate tool set you enable on purpose.
+Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
 | Tool | Action |
 |---|---|

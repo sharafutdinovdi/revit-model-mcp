@@ -147,4 +147,61 @@ public sealed class ActionJobParserTests
         await Assert.That(json).Contains("\"error\":\"actions disabled on the workstation\"");
         await Assert.That(json).Contains("\"activeView\":\"Level 1\"");
     }
+
+    [Test]
+    [Arguments(true, false, false, false, ActionFailureDisposition.DismissWarning)]
+    [Arguments(true, false, false, true, ActionFailureDisposition.DismissWarning)]
+    [Arguments(false, true, true, false, ActionFailureDisposition.ResolveError)]
+    [Arguments(false, true, false, false, ActionFailureDisposition.RollBack)]
+    [Arguments(false, true, true, true, ActionFailureDisposition.RollBack)]
+    [Arguments(false, false, true, false, ActionFailureDisposition.RollBack)]
+    public async Task ClassifyFailure_WarningsContinueAndUnsafeOrRepeatedErrorsRollBack(
+        bool isWarning, bool isError, bool hasSafeResolution, bool resolutionAttempted,
+        ActionFailureDisposition expected)
+    {
+        await Assert.That(ActionFailurePolicy.Classify(isWarning, isError, hasSafeResolution, resolutionAttempted))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments("move")]
+    [Arguments("place-family")]
+    [Arguments("create-wall")]
+    [Arguments("set-parameter")]
+    [Arguments("delete")]
+    [Arguments("isolate")]
+    public async Task Serialize_ActionSuccess_ReportsDismissedWarnings(string command)
+    {
+        var response = CommandResponse<ActionResultData>.Ok(command, new ActionResultData { Count = 1 }, 0);
+        response.WarningsDismissed = ["Identical instances.", "Second warning."];
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.GetProperty("success").GetBoolean()).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("warningsDismissed").EnumerateArray()
+            .Select(warning => warning.GetString()).ToArray()).IsEquivalentTo(new string?[] { "Identical instances.", "Second warning." });
+        await Assert.That(json.RootElement.GetProperty("data").GetProperty("count").GetInt32()).IsEqualTo(1);
+        await Assert.That(json.RootElement.TryGetProperty("message", out _)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Serialize_ActionSuccess_OmitsAbsentOrEmptyWarnings(bool emptyList)
+    {
+        var response = CommandResponse<ActionResultData>.Ok("move", new ActionResultData { Count = 1 }, 0);
+        response.WarningsDismissed = emptyList ? [] : null;
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.TryGetProperty("warningsDismissed", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task Serialize_RolledBackAction_ReportsErrorsWithoutSuccessData()
+    {
+        var response = CommandResponse<ActionResultData>.Fail("move", "First error.; Second error.", 0);
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.GetProperty("success").GetBoolean()).IsFalse();
+        await Assert.That(json.RootElement.GetProperty("message").GetString()).IsEqualTo("First error.; Second error.");
+        await Assert.That(json.RootElement.TryGetProperty("data", out _)).IsFalse();
+        await Assert.That(json.RootElement.TryGetProperty("warningsDismissed", out _)).IsFalse();
+    }
+
 }

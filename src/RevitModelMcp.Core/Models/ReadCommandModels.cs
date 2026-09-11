@@ -38,6 +38,15 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "dialogsSuppressed", Order = 11, EmitDefaultValue = false)]
     public List<string>? DialogsSuppressed { get; set; }
 
+    [DataMember(Name = "warningsDismissed", Order = 12, EmitDefaultValue = false)]
+    public List<string>? WarningsDismissed
+    {
+        get => warningsDismissed is { Count: > 0 } ? warningsDismissed : null;
+        set => warningsDismissed = value;
+    }
+
+    private List<string>? warningsDismissed;
+
     public static CommandResponse<T> Ok(string command, T data, long elapsedMs, string? message = null)
     {
         return new CommandResponse<T>
@@ -443,4 +452,22 @@ public sealed record ElementBoundingBoxData
 
     [DataMember(Name = "centerMm")]
     public double[] CenterMm { get; set; } = [];
+}
+
+public enum ActionFailureDisposition
+{
+    DismissWarning,
+    ResolveError,
+    RollBack
+}
+
+public static class ActionFailurePolicy
+{
+    public static ActionFailureDisposition Classify(
+        bool isWarning, bool isError, bool hasSafeResolution, bool resolutionAttempted)
+    {
+        if (isWarning) return ActionFailureDisposition.DismissWarning;
+        if (isError && hasSafeResolution && !resolutionAttempted) return ActionFailureDisposition.ResolveError;
+        return ActionFailureDisposition.RollBack;
+    }
 }
