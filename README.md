@@ -20,7 +20,18 @@ The Python server can run on Windows or connect from another machine through HTT
 
 ## In action
 
-The session above ran from a Mac against Revit 2023 on a Windows workstation over SSH: `revit_document_info`, then room areas grouped by level, then `revit_export_view`. The export is the file the last call saved, untouched:
+Claude Desktop on a Mac, Revit 2026 on a Windows workstation on the same network, the server in between. Every step below is one sentence typed by a person; the tool calls are chosen by the model.
+
+<img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
+
+What happens in the recording, in order:
+
+1. "What model is open in Revit right now?" The model reads the document, levels and room counts.
+2. "Which level has the most room area? Find the largest room and show it to me." It aggregates room areas per level, queries the rooms on the winner, and calls `revit_show`: Revit opens the matching floor plan, zooms to the room and selects it.
+3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
+4. "Reset the view and delete that chair." The temporary isolate is cleared and the element is removed; the model is back to where it started.
+
+The header image is the same server driven from a terminal client against Revit 2023 over SSH. The view export it ends with is the file `revit_export_view` saved, untouched:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_export-view_dark.png">
