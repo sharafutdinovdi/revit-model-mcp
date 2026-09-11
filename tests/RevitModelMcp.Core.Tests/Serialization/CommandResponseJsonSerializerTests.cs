@@ -13,11 +13,11 @@ public sealed class CommandResponseJsonSerializerTests
             "document-info",
             new DocumentInfoData
             {
-                FileName = "Customer.rvt",
+                FileName = "Sample Model.rvt",
                 RevitVersion = "2024",
                 IsWorkshared = true,
                 ViewCount = 84,
-                Levels = { new DocumentLevelInfo { Name = "01", ElevationMm = 0, RoomCount = 12 } },
+                Levels = { new DocumentLevelInfo { Name = "Level 1", ElevationMm = 0, RoomCount = 12 } },
                 AreaSchemes =
                 {
                     new DocumentAreaSchemeInfo { Name = "Gross", IsGrossBuildingArea = true, AreaCount = 5 }
@@ -27,8 +27,8 @@ public sealed class CommandResponseJsonSerializerTests
             31);
         response.Responder = new ResponderInfo
         {
-            DocumentName = "Customer.rvt",
-            DocumentPath = @"C:\\Models\\Customer.rvt",
+            DocumentName = "Sample Model.rvt",
+            DocumentPath = @"C:\\Models\\Sample Model.rvt",
             ProcessId = 4242,
             RevitVersion = "2024"
         };
@@ -38,7 +38,7 @@ public sealed class CommandResponseJsonSerializerTests
         await AssertSuccess(json.RootElement, "document-info");
         await Assert.That(json.RootElement.GetProperty("data").GetProperty("viewCount").GetInt32()).IsEqualTo(84);
         var responder = json.RootElement.GetProperty("responder");
-        await Assert.That(responder.GetProperty("documentName").GetString()).IsEqualTo("Customer.rvt");
+        await Assert.That(responder.GetProperty("documentName").GetString()).IsEqualTo("Sample Model.rvt");
         await Assert.That(responder.GetProperty("processId").GetInt32()).IsEqualTo(4242);
     }
 
@@ -56,16 +56,16 @@ public sealed class CommandResponseJsonSerializerTests
                     new ViewListItem
                     {
                         Id = 11,
-                        Name = "План 1",
+                        Name = "Level 1 Plan",
                         Type = "FloorPlan",
-                        Level = "01",
+                        Level = "Level 1",
                         Scale = 100,
-                        Template = "АР План"
+                        Template = "Floor Plan Template"
                     }
                 }
             },
             45,
-            "Число элементов не подсчитывалось.");
+            "Element counts were not calculated.");
 
         using var json = Parse(response);
 
@@ -97,8 +97,8 @@ public sealed class CommandResponseJsonSerializerTests
             "view-summary",
             new ViewSummaryData
             {
-                Header = new ViewDumpHeader { Name = "План 1", Type = "FloorPlan", Scale = 100, ElementCount = 21 },
-                Categories = { new ViewCategorySummary { Category = "Стены", Count = 12, DifferentTypes = 3 } }
+                Header = new ViewDumpHeader { Name = "Level 1 Plan", Type = "FloorPlan", Scale = 100, ElementCount = 21 },
+                Categories = { new ViewCategorySummary { Category = "Walls", Count = 12, DifferentTypes = 3 } }
             },
             120);
 
@@ -117,13 +117,13 @@ public sealed class CommandResponseJsonSerializerTests
             "view-elements",
             new ViewElementsData
             {
-                View = "План 1",
-                Categories = { "Стены" },
+                View = "Level 1 Plan",
+                Categories = { "Walls" },
                 Offset = 10,
                 Limit = 1,
                 Total = 12,
                 HasMore = true,
-                Elements = { new ViewElementDump { Id = 11327511, Category = "Стены" } }
+                Elements = { new ViewElementDump { Id = 11327511, Category = "Walls" } }
             },
             18);
 
@@ -142,12 +142,12 @@ public sealed class CommandResponseJsonSerializerTests
             "element-details",
             new ElementDetailsData
             {
-                Element = new ViewElementDump { Id = 11327511, Category = "Стены" },
+                Element = new ViewElementDump { Id = 11327511, Category = "Walls" },
                 Parameters =
                 {
                     new ElementParameterDetail
                     {
-                        Name = "Длина",
+                        Name = "Length",
                         StorageType = "Double",
                         HasValue = true,
                         MetricValue = 2500,
@@ -158,13 +158,13 @@ public sealed class CommandResponseJsonSerializerTests
                 {
                     Id = 42,
                     Family = "Basic Wall",
-                    Name = "200 mm",
-                    Parameters = { new ElementParameterDetail { Name = "Толщина", StorageType = "Double", HasValue = true } }
+                    Name = "Wall Type A",
+                    Parameters = { new ElementParameterDetail { Name = "Thickness", StorageType = "Double", HasValue = true } }
                 },
-                Warnings = { new ElementWarningInfo { Text = "Помещение не замкнуто.", Severity = "Warning" } },
+                Warnings = { new ElementWarningInfo { Text = "Room is not enclosed.", Severity = "Warning" } },
                 Room = new RoomDetails
                 {
-                    Level = "01",
+                    Level = "Level 1",
                     AreaM2 = 12.5,
                     VolumeM3 = 37.5,
                     Boundaries =
@@ -198,7 +198,7 @@ public sealed class CommandResponseJsonSerializerTests
                 Offset = 0,
                 Limit = 100,
                 Total = 1,
-                Fields = { "category", "ADSK_Номер корпуса" },
+                Fields = { "category", "Building Number" },
                 Elements =
                 {
                     new QueryElementItem
@@ -206,8 +206,8 @@ public sealed class CommandResponseJsonSerializerTests
                         Id = 17,
                         Values =
                         {
-                            ["category"] = new QueryFieldValue { HasValue = true, Value = "Помещения" },
-                            ["ADSK_Номер корпуса"] = new QueryFieldValue { HasValue = false, Source = "instance" }
+                            ["category"] = new QueryFieldValue { HasValue = true, Value = "Rooms" },
+                            ["Building Number"] = new QueryFieldValue { HasValue = false, Source = "instance" }
                         }
                     }
                 }
@@ -217,8 +217,8 @@ public sealed class CommandResponseJsonSerializerTests
         using var json = Parse(response);
         var values = json.RootElement.GetProperty("data").GetProperty("elements")[0].GetProperty("values");
 
-        await Assert.That(values.GetProperty("category").GetProperty("value").GetString()).IsEqualTo("Помещения");
-        await Assert.That(values.GetProperty("ADSK_Номер корпуса").GetProperty("hasValue").GetBoolean()).IsFalse();
+        await Assert.That(values.GetProperty("category").GetProperty("value").GetString()).IsEqualTo("Rooms");
+        await Assert.That(values.GetProperty("Building Number").GetProperty("hasValue").GetBoolean()).IsFalse();
     }
 
     [Test]
@@ -236,7 +236,7 @@ public sealed class CommandResponseJsonSerializerTests
                 {
                     new AggregateGroup
                     {
-                        Keys = { ["level"] = "01" },
+                        Keys = { ["level"] = "Level 1" },
                         Count = 1,
                         NumericCount = 0
                     }
@@ -259,13 +259,13 @@ public sealed class CommandResponseJsonSerializerTests
             "view-warnings",
             new ViewWarningsData
             {
-                View = "План 1",
-                MatchingNote = "Сопоставление по элементам.",
+                View = "Level 1 Plan",
+                MatchingNote = "Matching uses elements.",
                 Warnings =
                 {
                     new ViewWarningInfo
                     {
-                        Text = "Выделенные стены пересекаются.",
+                        Text = "Highlighted walls overlap.",
                         Severity = "Warning",
                         HasElementsOnView = true,
                         Elements = { new ViewWarningElementInfo { Id = 17, PresentOnView = true } }
@@ -294,7 +294,7 @@ public sealed class CommandResponseJsonSerializerTests
                 Width = 1600,
                 Height = 900,
                 SizeBytes = 123456,
-                ViewName = "План 1",
+                ViewName = "Level 1 Plan",
                 ViewType = "FloorPlan"
             },
             812);
@@ -311,13 +311,13 @@ public sealed class CommandResponseJsonSerializerTests
     [Test]
     public async Task Serialize_MissingView_ReturnsReadableFailureWithoutData()
     {
-        var response = CommandResponse<ViewSummaryData>.ViewNotFound("view-summary", "Нет вида", 2);
+        var response = CommandResponse<ViewSummaryData>.ViewNotFound("view-summary", "Missing View", 2);
 
         using var json = Parse(response);
         var root = json.RootElement;
 
         await Assert.That(root.GetProperty("success").GetBoolean()).IsFalse();
-        await Assert.That(root.GetProperty("message").GetString()).Contains("не найден");
+        await Assert.That(root.GetProperty("message").GetString()).Contains("was not found");
         await Assert.That(root.TryGetProperty("data", out _)).IsFalse();
     }
 
@@ -341,11 +341,11 @@ public sealed class CommandResponseJsonSerializerTests
             "view-elements",
             new ViewElementsData
             {
-                View = "План 1",
+                View = "Level 1 Plan",
                 Processed = 1,
                 Elements = { new ViewElementDump { Id = 17 } }
             },
-            "Обработка прервана.",
+            "Processing interrupted.",
             2500);
 
         using var json = Parse(response);
@@ -390,12 +390,12 @@ public sealed class CommandResponseJsonSerializerTests
     public async Task Serialize_Show_PreservesFalseViewOpenedAndSuppressedDialogs(bool viewOpened)
     {
         var response = CommandResponse<string>.Ok("show", "done", 1);
-        response.ActiveView = "L5_SD";
+        response.ActiveView = "Level 5 Plan";
         response.ViewOpened = viewOpened;
         response.DialogsSuppressed = ["Continue?"];
         using var json = Parse(response);
         await Assert.That(json.RootElement.GetProperty("viewOpened").GetBoolean()).IsEqualTo(viewOpened);
-        await Assert.That(json.RootElement.GetProperty("activeView").GetString()).IsEqualTo("L5_SD");
+        await Assert.That(json.RootElement.GetProperty("activeView").GetString()).IsEqualTo("Level 5 Plan");
         await Assert.That(json.RootElement.GetProperty("dialogsSuppressed")[0].GetString()).IsEqualTo("Continue?");
     }
 

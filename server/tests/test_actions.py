@@ -53,8 +53,8 @@ def action_server():
     ("revit_show", {"element_ids": [1]}, {"elementIds": [1], "select": True}),
     ("revit_isolate", {"element_ids": [], "reset": True}, {"elementIds": [], "reset": True}),
     ("revit_move", {"element_ids": [1], "dx_mm": 304.8, "dy_mm": -50}, {"elementIds": [1], "dxMm": 304.8, "dyMm": -50.0, "dzMm": 0}),
-    ("revit_place_family", {"family": "Desk", "type_name": None, "x_mm": 100, "y_mm": 200, "level": "01"}, {"family": "Desk", "typeName": None, "xMm": 100.0, "yMm": 200.0, "level": "01", "rotationDeg": 0}),
-    ("revit_create_wall", {"start_mm": [0, 0], "end_mm": [2000, 0], "level": "01", "wall_type": None}, {"startMm": [0.0, 0.0], "endMm": [2000.0, 0.0], "level": "01", "wallType": None, "heightMm": 3000}),
+    ("revit_place_family", {"family": "Desk", "type_name": None, "x_mm": 100, "y_mm": 200, "level": "Level 1"}, {"family": "Desk", "typeName": None, "xMm": 100.0, "yMm": 200.0, "level": "Level 1", "rotationDeg": 0}),
+    ("revit_create_wall", {"start_mm": [0, 0], "end_mm": [2000, 0], "level": "Level 1", "wall_type": None}, {"startMm": [0.0, 0.0], "endMm": [2000.0, 0.0], "level": "Level 1", "wallType": None, "heightMm": 3000}),
     ("revit_set_parameter", {"element_id": 1, "parameter": "Comments", "value": ""}, {"elementId": 1, "parameter": "Comments", "value": ""}),
     ("revit_delete", {"element_ids": [1, 2]}, {"elementIds": [1, 2]}),
 ])
@@ -80,10 +80,10 @@ def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload)
     ("revit_isolate", {"element_ids": []}),
     ("revit_move", {"element_ids": [1], "dx_mm": math.inf, "dy_mm": 0}),
     ("revit_move", {"element_ids": [1], "dx_mm": 0}),
-    ("revit_create_wall", {"start_mm": [0], "end_mm": [1, 2], "level": "01", "wall_type": None}),
-    ("revit_create_wall", {"start_mm": [0, 0], "end_mm": [0, 0], "level": "01", "wall_type": None}),
-    ("revit_create_wall", {"start_mm": [0, 0], "end_mm": [1, 2], "level": "01", "wall_type": None, "height_mm": -1}),
-    ("revit_place_family", {"family": " ", "type_name": None, "x_mm": 0, "y_mm": 0, "level": "01"}),
+    ("revit_create_wall", {"start_mm": [0], "end_mm": [1, 2], "level": "Level 1", "wall_type": None}),
+    ("revit_create_wall", {"start_mm": [0, 0], "end_mm": [0, 0], "level": "Level 1", "wall_type": None}),
+    ("revit_create_wall", {"start_mm": [0, 0], "end_mm": [1, 2], "level": "Level 1", "wall_type": None, "height_mm": -1}),
+    ("revit_place_family", {"family": " ", "type_name": None, "x_mm": 0, "y_mm": 0, "level": "Level 1"}),
     ("revit_set_parameter", {"element_id": 1, "parameter": " ", "value": "x"}),
 ])
 def test_invalid_arguments_never_reach_channel(name, arguments):
@@ -130,7 +130,7 @@ def test_action_failure_preserves_gate_message_view_and_suggestions():
 @pytest.mark.parametrize("view_opened", [True, False])
 @pytest.mark.parametrize("success", [True, False])
 def test_show_response_preserves_view_opened_and_dialogs(view_opened, success):
-    response = {"command": "show", "success": success, "activeView": "L5_SD",
+    response = {"command": "show", "success": success, "activeView": "Level 5 Plan",
                 "viewOpened": view_opened, "dialogsSuppressed": ["Continue?"], "data": {"count": 1}}
     if not success:
         response["error"] = "Show failed after opening view"

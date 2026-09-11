@@ -46,7 +46,7 @@ public static class QueryResultProcessor
     {
         if (groupBy.Count is < 1 or > 2)
         {
-            throw new ArgumentOutOfRangeException(nameof(groupBy), "Нужно указать один или два поля группировки.");
+            throw new ArgumentOutOfRangeException(nameof(groupBy), "One or two grouping fields are required.");
         }
 
         var result = new AggregateElementsData

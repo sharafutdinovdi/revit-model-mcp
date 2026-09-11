@@ -21,7 +21,7 @@ internal static class ReadCommandExecutor
         output.Write(CommandResponse<string>.PartialResult(
             job.Command,
             "accepted",
-            "Команда принята и выполняется.",
+            "Command accepted and running.",
             0));
         output.Log(job.Command, "accepted", 0, 0, 0, null);
         var stopwatch = Stopwatch.StartNew();
@@ -36,7 +36,7 @@ internal static class ReadCommandExecutor
             }
 
             var document = application.ActiveUIDocument?.Document
-                           ?? throw new InvalidOperationException("Нет активного документа Revit.");
+                           ?? throw new InvalidOperationException("No active Revit document.");
             switch (job.Kind)
             {
                 case ControlJobKind.DocumentInfo:
@@ -60,7 +60,7 @@ internal static class ReadCommandExecutor
                         output.Write(CommandResponse<ViewListData>.PartialResult(
                             job.Command,
                             views,
-                            $"Достигнут лимит 60 секунд. Обработано видов: {views.Processed} из {views.Total}.",
+                            $"The 60-second limit was reached. Processed {views.Processed} of {views.Total} views.",
                             stopwatch.ElapsedMilliseconds));
                         LogFinished(
                             job.Command,
@@ -76,7 +76,7 @@ internal static class ReadCommandExecutor
                             job.Command,
                             views,
                             stopwatch,
-                            "Элементы видов не читались; их состав доступен через view-summary.");
+                            "View elements were not read; use view-summary to inspect their composition.");
                     }
 
                     break;
@@ -93,7 +93,7 @@ internal static class ReadCommandExecutor
                         job,
                         stopwatch,
                         ReadCommandReader.ReadViewWarnings,
-                        "Сопоставление выполнено по участвующим элементам предупреждений.");
+                        "Matching uses the elements involved in warnings.");
                     break;
                 case ControlJobKind.ExportView:
                     ExecuteExportView(output, document, job, stopwatch, startedAt.LocalDateTime);
@@ -118,7 +118,7 @@ internal static class ReadCommandExecutor
                     WriteSuccess(output, job.Command, RelationReader.Read(document, job), stopwatch);
                     break;
                 default:
-                    WriteFailure<object>(output, job.Command, "Команда не относится к быстрым командам чтения.", stopwatch);
+                    WriteFailure<object>(output, job.Command, "The command is not a fast read command.", stopwatch);
                     break;
             }
         }
@@ -128,7 +128,7 @@ internal static class ReadCommandExecutor
             PluginLog.Error($"Job processing failed. Command='{job.Command}'.", exception);
             output.Write(CommandResponse<object>.Fail(
                 job.Command,
-                $"Не удалось выполнить команду: {exception}",
+                $"Failed to execute the command: {exception}",
                 stopwatch.ElapsedMilliseconds));
             LogFinished(job.Command, "error", stopwatch.ElapsedMilliseconds, output.FilePath, exception.Message);
         }
@@ -139,7 +139,7 @@ internal static class ReadCommandExecutor
         ControlJobParseResult job,
         DateTimeOffset startedAt)
     {
-        WriteError(application, job.Command, job.Error ?? "Некорректное задание.", startedAt);
+        WriteError(application, job.Command, job.Error ?? "Invalid job.", startedAt);
     }
 
     public static void WriteError(
@@ -206,11 +206,11 @@ internal static class ReadCommandExecutor
                     ? "metadata-read"
                     : "processing";
         output.Log(command, state, data.Processed, data.Total, elapsedMs, currentView);
-        var current = string.IsNullOrWhiteSpace(currentView) ? string.Empty : $" Текущий вид: «{currentView}».";
+        var current = string.IsNullOrWhiteSpace(currentView) ? string.Empty : $" Current view: '{currentView}'.";
         output.Write(CommandResponse<ViewListData>.PartialResult(
             command,
             data,
-            $"Обработано видов: {data.Processed} из {data.Total}.{current} Элементы видов не читались.",
+            $"Processed {data.Processed} of {data.Total} views.{current} View elements were not read.",
             elapsedMs));
         return !timedOut;
     }
@@ -275,7 +275,7 @@ internal static class ReadCommandExecutor
             WriteFailure<ViewExportData>(
                 output,
                 job.Command,
-                $"Не удалось экспортировать вид «{view.Name}» типа {view.ViewType}: {exception.Message}",
+                $"Failed to export view '{view.Name}' of type {view.ViewType}: {exception.Message}",
                 stopwatch);
         }
         catch (System.IO.IOException exception)
@@ -304,8 +304,8 @@ internal static class ReadCommandExecutor
         if (stopwatch.ElapsedMilliseconds >= MaximumFastCommandDurationMs)
         {
             var timeoutMessage = string.IsNullOrWhiteSpace(message)
-                ? "Достигнут лимит 60 секунд; результат помечен частичным."
-                : $"{message} Достигнут лимит 60 секунд; результат помечен частичным.";
+                ? "The 60-second limit was reached; the result is marked as partial."
+                : $"{message} The 60-second limit was reached; the result is marked as partial.";
             output.Write(CommandResponse<T>.PartialResult(
                 command,
                 data,
@@ -318,8 +318,8 @@ internal static class ReadCommandExecutor
         if (stopwatch.ElapsedMilliseconds >= 2_000)
         {
             message = string.IsNullOrWhiteSpace(message)
-                ? "Команда заняла больше двух секунд; стоимость указана в elapsedMs."
-                : $"{message} Команда заняла больше двух секунд; стоимость указана в elapsedMs.";
+                ? "The command took more than two seconds; elapsedMs reports the duration."
+                : $"{message} The command took more than two seconds; elapsedMs reports the duration.";
         }
 
         output.Write(CommandResponse<T>.Ok(command, data, stopwatch.ElapsedMilliseconds, message));

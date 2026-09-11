@@ -9,11 +9,11 @@ namespace RevitModelMcp.Capture;
 
 internal sealed class ViewElementReader
 {
-    private static readonly string[] ProfilePrefixes = { "ADSK_", "RUS_", "BS_" };
-    private static readonly string[] LengthNames = { "Length", "Длина" };
-    private static readonly string[] ThicknessNames = { "Thickness", "Толщина" };
-    private static readonly string[] AreaNames = { "Area", "Площадь" };
-    private static readonly string[] VolumeNames = { "Volume", "Объем", "Объём" };
+    private static readonly string[] ProfilePrefixes = { "Project_" };
+    private static readonly string[] LengthNames = { "Length" };
+    private static readonly string[] ThicknessNames = { "Thickness" };
+    private static readonly string[] AreaNames = { "Area" };
+    private static readonly string[] VolumeNames = { "Volume" };
 
     private readonly Document _document;
     private readonly HashSet<long> _warningElementIds;
@@ -193,7 +193,7 @@ internal sealed class ViewElementReader
             }
             catch
             {
-                // Один повреждённый параметр не должен скрывать остальные данные элемента.
+                // One damaged parameter must not hide the remaining element data.
             }
         }
     }
@@ -271,17 +271,17 @@ internal sealed class ViewElementReader
             var dataType = parameter.Definition.GetDataType();
             if (dataType == SpecTypeId.Length)
             {
-                return $"{UnitConverter.FeetToMillimeters(value).ToString("0.###", CultureInfo.InvariantCulture)} мм";
+                return $"{UnitConverter.FeetToMillimeters(value).ToString("0.###", CultureInfo.InvariantCulture)} mm";
             }
 
             if (dataType == SpecTypeId.Area)
             {
-                return $"{UnitConverter.SquareFeetToSquareMeters(value).ToString("0.######", CultureInfo.InvariantCulture)} м²";
+                return $"{UnitConverter.SquareFeetToSquareMeters(value).ToString("0.######", CultureInfo.InvariantCulture)} m²";
             }
 
             if (dataType == SpecTypeId.Volume)
             {
-                return $"{UnitConverter.CubicFeetToCubicMeters(value).ToString("0.######", CultureInfo.InvariantCulture)} м³";
+                return $"{UnitConverter.CubicFeetToCubicMeters(value).ToString("0.######", CultureInfo.InvariantCulture)} m³";
             }
 
             return value.ToString("0.#########", CultureInfo.InvariantCulture);
@@ -307,7 +307,7 @@ internal sealed class ViewElementReader
             }
             catch
             {
-                // Повреждённый параметр не должен прерывать точечное чтение элемента.
+                // A damaged parameter must not interrupt reading an individual element.
             }
         }
 
@@ -321,7 +321,7 @@ internal sealed class ViewElementReader
     {
         var detail = new ElementParameterDetail
         {
-            Name = parameter.Definition?.Name ?? "<без имени>",
+            Name = parameter.Definition?.Name ?? "<unnamed>",
             StorageType = parameter.StorageType.ToString(),
             HasValue = parameter.HasValue
         };

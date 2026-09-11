@@ -17,7 +17,7 @@ internal static class CatalogReader
             "worksets" => ReadWorksets(document),
             "phases" => ReadPhases(document),
             "parameters" => ReadParameters(document),
-            _ => throw new ArgumentOutOfRangeException(nameof(section), section, "Неизвестный раздел catalog.")
+            _ => throw new ArgumentOutOfRangeException(nameof(section), section, "Unknown catalog section.")
         };
         return new CatalogData { Section = section, Items = items };
     }

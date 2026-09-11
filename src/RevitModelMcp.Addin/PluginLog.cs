@@ -66,7 +66,7 @@ internal static class PluginLog
         }
         catch
         {
-            // Сбой диагностики не должен выходить в Revit и мешать записи основного ответа.
+            // Diagnostic failures must not escape into Revit or interrupt the main response.
         }
     }
 
@@ -109,7 +109,7 @@ internal static class PluginLog
         }
         catch
         {
-            // Fallback сохраняет диагностику, если Documents временно недоступен.
+            // The fallback preserves diagnostics when Documents is temporarily unavailable.
             var fallback = Path.Combine(Path.GetTempPath(), "RevitModelMcp", "Logs");
             Directory.CreateDirectory(fallback);
             return fallback;
@@ -129,7 +129,7 @@ internal static class PluginLog
         }
         catch
         {
-            // Ротация вторична: действующий журнал всё равно должен продолжить писаться.
+            // Logging must continue even if rotation fails.
         }
     }
 

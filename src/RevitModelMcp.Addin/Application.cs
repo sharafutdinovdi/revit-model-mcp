@@ -96,7 +96,7 @@ public sealed class Application : ExternalApplication
     {
         if (ReferenceEquals(args.Document, _activeDocument))
         {
-            // Закрытый активный документ нельзя оставлять в heartbeat до следующего переключения вида.
+            // The heartbeat must clear a closed active document without waiting for a view switch.
             _activeDocument = null;
             _instanceHeartbeat?.UpdateDocument(null);
             _httpChannel?.UpdateDocument(null);
@@ -107,7 +107,7 @@ public sealed class Application : ExternalApplication
     {
         try
         {
-            // Raise разрешён с потока watcher; Revit API вызывается только внутри Execute.
+            // Raise is allowed on the watcher thread; Revit API calls run only inside Execute.
             _requestQueue?.Request();
         }
         catch (Exception exception)
@@ -204,7 +204,7 @@ internal sealed class InstanceHeartbeat : IDisposable
         }
         catch (Exception exception)
         {
-            // Heartbeat не должен мешать загрузке и основной работе плагина.
+            // Heartbeat failures must not interrupt add-in loading or operations.
             PluginLog.Error($"Instance heartbeat write failed. Path='{_path}'.", exception);
         }
     }
@@ -219,7 +219,7 @@ internal sealed class InstanceHeartbeat : IDisposable
             {
                 try
                 {
-                    // После аварии Revit удалить файл может только следующий живой экземпляр.
+                    // After a Revit crash, only the next running instance can delete the file.
                     File.Delete(candidate);
                 }
                 catch (Exception exception)
@@ -244,7 +244,7 @@ internal sealed class InstanceHeartbeat : IDisposable
             }
             catch (Exception exception)
             {
-                // Файл протухнет за минуту, если ОС не дала удалить его при выгрузке.
+                // The file expires after one minute if the OS prevents deletion during shutdown.
                 PluginLog.Error($"Instance heartbeat shutdown cleanup failed. Path='{_path}'.", exception);
             }
         }
@@ -269,14 +269,14 @@ internal sealed class ControlExternalEventHandler : IExternalEventHandler
     public void Execute(UIApplication application)
     {
         var requestQueue = _requestQueue
-                           ?? throw new InvalidOperationException("Очередь ExternalEvent не инициализирована.");
+                           ?? throw new InvalidOperationException("The ExternalEvent queue is not initialized.");
         requestQueue.Execute(
             () =>
             {
                 _controlChannel.Tick(application);
                 if (_controlChannel.HasActiveSession)
                 {
-                    // Порционная сессия просит следующий Execute без зависимости от Idling.
+                    // The batch session requests the next Execute independently of Idling.
                     requestQueue.Request();
                 }
             },

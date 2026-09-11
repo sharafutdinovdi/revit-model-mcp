@@ -15,7 +15,7 @@ internal static class ModelWarningReader
         if (warningText is not null && selected.Count == 0)
         {
             throw new ArgumentException(
-                $"Предупреждение с текстом «{warningText}» не найдено. Сначала вызовите list-warnings без warningText.");
+                $"No warning with text '{warningText}' was found. First call list-warnings without warningText.");
         }
 
         var groups = selected.GroupBy(

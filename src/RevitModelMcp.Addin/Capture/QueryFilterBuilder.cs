@@ -106,7 +106,7 @@ internal static class QueryFilterBuilder
                 if (descriptor.Kind is not (QueryParameterKind.String or QueryParameterKind.Unknown))
                 {
                     throw new ArgumentException(
-                        $"Оператор contains применим только к текстовому параметру; «{descriptor.Name}» имеет тип {descriptor.Kind}.");
+                        $"The contains operator requires a text parameter; '{descriptor.Name}' has type {descriptor.Kind}.");
                 }
 
                 rule = CreateContainsRule(descriptor.Id, filter.Value!);
@@ -156,7 +156,7 @@ internal static class QueryFilterBuilder
     {
         if (!int.TryParse(filter.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
         {
-            throw new ArgumentException($"Значение «{filter.Value}» параметра «{descriptor.Name}» не является целым числом.");
+            throw new ArgumentException($"Value '{filter.Value}' for parameter '{descriptor.Name}' is not an integer.");
         }
 
         return filter.Operator switch
@@ -201,7 +201,7 @@ internal static class QueryFilterBuilder
         var result = new List<ElementId>();
         foreach (var name in names)
         {
-            // Подписи берём из самого Revit, а BuiltInCategory оставляем английским алиасом без словаря.
+            // Labels come from Revit; BuiltInCategory provides the English alias without a translation dictionary.
             var category = CategoryNameResolver.Resolve(name, categories, GetRevitCategoryNames, GetBuiltInCategoryName);
             result.Add(category.Id);
         }
@@ -231,7 +231,7 @@ internal static class QueryFilterBuilder
         }
         catch
         {
-            // Не у каждой служебной категории есть отображаемая подпись.
+            // Some internal categories have no display label.
         }
 
         if (!string.IsNullOrWhiteSpace(localizedName))
@@ -255,28 +255,28 @@ internal static class QueryFilterBuilder
     private static View ResolveView(Document document, string name) =>
         new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>()
             .FirstOrDefault(view => !view.IsTemplate && string.Equals(view.Name, name, StringComparison.OrdinalIgnoreCase))
-        ?? throw NotFound("Вид", name, "views");
+        ?? throw NotFound("View", name, "views");
 
     private static Level ResolveLevel(Document document, string name) =>
         new FilteredElementCollector(document).OfClass(typeof(Level)).Cast<Level>()
             .FirstOrDefault(level => string.Equals(level.Name, name, StringComparison.OrdinalIgnoreCase))
-        ?? throw NotFound("Уровень", name, "levels");
+        ?? throw NotFound("Level", name, "levels");
 
     private static Workset ResolveWorkset(Document document, string name) =>
         new FilteredWorksetCollector(document).ToWorksets()
             .FirstOrDefault(workset => string.Equals(workset.Name, name, StringComparison.OrdinalIgnoreCase))
-        ?? throw NotFound("Рабочий набор", name, "worksets");
+        ?? throw NotFound("Workset", name, "worksets");
 
     private static Phase? ResolvePhase(Document document, string? name) => name is null
         ? null
         : document.Phases.Cast<Phase>().FirstOrDefault(phase => string.Equals(phase.Name, name, StringComparison.OrdinalIgnoreCase))
-          ?? throw NotFound("Фаза", name, "phases");
+          ?? throw NotFound("Phase", name, "phases");
 
     private static AreaScheme? ResolveAreaScheme(Document document, string? name) => name is null
         ? null
         : new FilteredElementCollector(document).OfClass(typeof(AreaScheme)).Cast<AreaScheme>()
             .FirstOrDefault(scheme => string.Equals(scheme.Name, name, StringComparison.OrdinalIgnoreCase))
-          ?? throw NotFound("Схема зонирования", name, "area-schemes");
+          ?? throw NotFound("Area scheme", name, "area-schemes");
 
     private static void AddElementIdRule(List<ElementFilter> filters, BuiltInParameter parameter, Element? value)
     {
@@ -312,13 +312,13 @@ internal static class QueryFilterBuilder
     private static double ParseDouble(string value, string parameter) =>
         double.TryParse(value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             ? parsed
-            : throw new ArgumentException($"Значение «{value}» параметра «{parameter}» не является числом.");
+            : throw new ArgumentException($"Value '{value}' for parameter '{parameter}' is not a number.");
 
     private static ArgumentException NotFound(string kind, string name, string section) =>
-        new($"{kind} «{name}» не найден. Посмотрите list-catalog с section={section}.");
+        new($"{kind} '{name}' was not found. Use list-catalog with section={section}.");
 
     private static NotSupportedException Unsupported(ParameterFilterSpec filter) =>
-        new($"Оператор {filter.Operator} не поддерживается для параметра «{filter.Parameter}».");
+        new($"Operator {filter.Operator} is not supported for parameter '{filter.Parameter}'.");
 
     private static FilterRule CreateContainsRule(ElementId id, string value)
     {

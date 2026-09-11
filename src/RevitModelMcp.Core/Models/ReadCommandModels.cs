@@ -89,12 +89,12 @@ public sealed class CommandResponse<T>
 
     public static CommandResponse<T> ViewNotFound(string command, string view, long elapsedMs)
     {
-        return Fail(command, $"Вид «{view}» не найден. Посмотрите допустимые виды через list-views.", elapsedMs);
+        return Fail(command, $"View '{view}' was not found. Use list-views to see available views.", elapsedMs);
     }
 
     public static CommandResponse<T> ElementNotFound(string command, long id, long elapsedMs)
     {
-        return Fail(command, $"Элемент с id {id} не найден.", elapsedMs);
+        return Fail(command, $"Element with id {id} was not found.", elapsedMs);
     }
 }
 

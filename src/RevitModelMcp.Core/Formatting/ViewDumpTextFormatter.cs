@@ -16,19 +16,19 @@ public static class ViewDumpTextFormatter
         }
 
         var builder = new StringBuilder();
-        builder.AppendLine("RevitModelMcp — ВЫГРУЗКА СОСТАВА ВИДОВ");
-        builder.AppendLine($"ответил: {report.Responder.DocumentName} | PID {report.Responder.ProcessId} | Revit {report.Responder.RevitVersion}");
-        builder.AppendLine($"путь: {report.Responder.DocumentPath}");
-        builder.AppendLine($"статус: {report.Status}");
-        builder.AppendLine($"прогресс: {report.ProcessedElements} / {report.TotalElements} элементов");
+        builder.AppendLine("RevitModelMcp — VIEW CONTENTS DUMP");
+        builder.AppendLine($"responder: {report.Responder.DocumentName} | PID {report.Responder.ProcessId} | Revit {report.Responder.RevitVersion}");
+        builder.AppendLine($"path: {report.Responder.DocumentPath}");
+        builder.AppendLine($"status: {report.Status}");
+        builder.AppendLine($"progress: {report.ProcessedElements} / {report.TotalElements} elements");
         if (!string.IsNullOrWhiteSpace(report.Message))
         {
-            builder.AppendLine($"сообщение: {report.Message}");
+            builder.AppendLine($"message: {report.Message}");
         }
 
         if (report.RejectedJobsWhileBusy > 0)
         {
-            builder.AppendLine($"отклонено заданий во время работы: {report.RejectedJobsWhileBusy} (RevitModelMcp занят)");
+            builder.AppendLine($"jobs rejected while busy: {report.RejectedJobsWhileBusy} (RevitModelMcp is busy)");
         }
 
         builder.AppendLine();
@@ -43,7 +43,7 @@ public static class ViewDumpTextFormatter
 
     private static void AppendView(StringBuilder builder, ViewDumpView view)
     {
-        builder.AppendLine($"ВИД: «{view.RequestedName}»");
+        builder.AppendLine($"VIEW: '{view.RequestedName}'");
         if (view.Status == "not-found" || view.Status == "error")
         {
             builder.AppendLine($"  {view.Error ?? view.Status}");
@@ -54,24 +54,24 @@ public static class ViewDumpTextFormatter
         var header = view.Header;
         if (header is null)
         {
-            builder.AppendLine($"  статус: {view.Status}");
+            builder.AppendLine($"  status: {view.Status}");
             builder.AppendLine();
             return;
         }
 
-        builder.AppendLine($"  тип: {Value(header.Type)}   уровень: {Value(header.Level)}");
-        builder.AppendLine($"  масштаб: 1:{header.Scale}   шаблон: {Value(header.Template)}");
-        builder.AppendLine($"  дисциплина: {Value(header.Discipline)}   фильтров: {header.FilterCount}   переопределений графики: {header.GraphicOverrideCount}");
-        builder.AppendLine($"  элементов всего: {header.ElementCount}");
+        builder.AppendLine($"  type: {Value(header.Type)}   level: {Value(header.Level)}");
+        builder.AppendLine($"  scale: 1:{header.Scale}   template: {Value(header.Template)}");
+        builder.AppendLine($"  discipline: {Value(header.Discipline)}   filters: {header.FilterCount}   graphic overrides: {header.GraphicOverrideCount}");
+        builder.AppendLine($"  total elements: {header.ElementCount}");
         builder.AppendLine();
-        builder.AppendLine("ПО КАТЕГОРИЯМ");
+        builder.AppendLine("BY CATEGORY");
         foreach (var category in view.Categories)
         {
             builder.AppendLine($"  {category.Category,-28} {category.Count,8} {category.DifferentTypes,6}");
         }
 
         builder.AppendLine();
-        builder.AppendLine("ЭЛЕМЕНТЫ");
+        builder.AppendLine("ELEMENTS");
         foreach (var element in view.Elements)
         {
             AppendElement(builder, element);
@@ -88,13 +88,13 @@ public static class ViewDumpTextFormatter
         builder.AppendLine($"id={element.Id} | {Value(element.Category)} | {familyAndType} | {Value(element.Name)}");
 
         var dimensions = new List<string>();
-        AddNumber(dimensions, "длина", element.LengthMm, "мм");
-        AddNumber(dimensions, "толщина", element.ThicknessMm, "мм");
-        AddNumber(dimensions, "площадь", element.AreaM2, "м²");
-        AddNumber(dimensions, "объём", element.VolumeM3, "м³");
+        AddNumber(dimensions, "length", element.LengthMm, "mm");
+        AddNumber(dimensions, "thickness", element.ThicknessMm, "mm");
+        AddNumber(dimensions, "area", element.AreaM2, "m²");
+        AddNumber(dimensions, "volume", element.VolumeM3, "m³");
         if (!string.IsNullOrWhiteSpace(element.Level))
         {
-            dimensions.Insert(0, $"уровень={element.Level}");
+            dimensions.Insert(0, $"level={element.Level}");
         }
 
         if (dimensions.Count > 0)
@@ -113,17 +113,17 @@ public static class ViewDumpTextFormatter
         var context = new List<string>();
         if (!string.IsNullOrWhiteSpace(element.Workset))
         {
-            context.Add($"раб.набор={element.Workset}");
+            context.Add($"workset={element.Workset}");
         }
 
         if (!string.IsNullOrWhiteSpace(element.Phase))
         {
-            context.Add($"фаза={element.Phase}");
+            context.Add($"phase={element.Phase}");
         }
 
         if (element.HasWarnings)
         {
-            context.Add("предупреждение Revit=да");
+            context.Add("Revit warning=yes");
         }
 
         if (context.Count > 0)
@@ -134,11 +134,11 @@ public static class ViewDumpTextFormatter
 
     private static void AppendViewCleanup(StringBuilder builder, ViewDumpReport report)
     {
-        builder.AppendLine("ОТКРЫТЫЕ ВИДЫ");
-        builder.AppendLine($"  исходный активный вид восстановлен: {FormatBoolean(report.OriginalViewRestored)}");
-        builder.AppendLine($"  открыто RevitModelMcp: {FormatNames(report.OpenedViews)}");
-        builder.AppendLine($"  закрыто RevitModelMcp: {FormatNames(report.ClosedViews)}");
-        builder.AppendLine("  виды, открытые пользователем до запуска, не закрывались");
+        builder.AppendLine("OPEN VIEWS");
+        builder.AppendLine($"  original active view restored: {FormatBoolean(report.OriginalViewRestored)}");
+        builder.AppendLine($"  opened by RevitModelMcp: {FormatNames(report.OpenedViews)}");
+        builder.AppendLine($"  closed by RevitModelMcp: {FormatNames(report.ClosedViews)}");
+        builder.AppendLine("  views opened by the user before the dump were left open");
     }
 
     private static void AddNumber(List<string> values, string name, double? value, string unit)
@@ -156,7 +156,7 @@ public static class ViewDumpTextFormatter
 
     private static string FormatBoolean(bool? value)
     {
-        return value.HasValue ? (value.Value ? "да" : "нет") : "ещё нет";
+        return value.HasValue ? (value.Value ? "yes" : "no") : "not yet";
     }
 
     private static string FormatNames(IReadOnlyCollection<string> names)

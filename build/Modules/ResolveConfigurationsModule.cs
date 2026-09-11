@@ -26,8 +26,8 @@ public sealed class ResolveConfigurationsModule : Module<string[]>
 
     private static async Task<SolutionModel> LoadSolutionModelAsync(IModuleContext context, CancellationToken cancellationToken)
     {
-        // Ищем решение от каталога своего решения, а не от git-корня: в монорепо
-        // поиск от корня находит .slnx соседнего плагина. См. SolutionRoot.
+        // Solution discovery starts in the solution directory; the git root may contain
+        // a neighboring add-in's .slnx file. See SolutionRoot.
         var solution = SolutionRoot.Directory.FindFile(file => file.Extension == ".slnx");
         if (solution is not null)
         {

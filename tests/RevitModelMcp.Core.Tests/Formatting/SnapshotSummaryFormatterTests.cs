@@ -10,16 +10,16 @@ public sealed class SnapshotSummaryFormatterTests
     {
         var snapshot = new Snapshot
         {
-            WsRegionCount = 31,
-            WsRegions = Enumerable.Range(1, 31)
-                .Select(id => new WsRegionSnapshot { Id = id, FamilyName = "WS_Region" })
+            RegionCount = 31,
+            Regions = Enumerable.Range(1, 31)
+                .Select(id => new RegionSnapshot { Id = id, FamilyName = "Region" })
                 .ToList()
         };
 
         var summary = SnapshotSummaryFormatter.Format(snapshot);
 
-        await Assert.That(summary).Contains("- 30: WS_Region");
-        await Assert.That(summary).DoesNotContain("- 31: WS_Region");
+        await Assert.That(summary).Contains("- 30: Region");
+        await Assert.That(summary).DoesNotContain("- 31: Region");
     }
 
     [Test]
@@ -31,8 +31,8 @@ public sealed class SnapshotSummaryFormatterTests
             PanelStats = new PanelStatsSnapshot
             {
                 PanelsOnView = 401,
-                PanelsWithQicSegment = 20,
-                PanelsWithQicNumber = 19,
+                PanelsWithSegment = 20,
+                PanelsWithNumber = 19,
                 PanelsWithMark = 18,
                 PanelTagsOnView = 17
             },
@@ -45,7 +45,7 @@ public sealed class SnapshotSummaryFormatterTests
                     Params =
                     {
                         ["Mark"] = $"M-{id}",
-                        ["QIC_SEGMENT"] = "S-1"
+                        ["Segment"] = "S-1"
                     }
                 })
                 .ToList()
@@ -55,9 +55,9 @@ public sealed class SnapshotSummaryFormatterTests
 
         await Assert.That(summary).Contains("Curtain panels");
         await Assert.That(summary).Contains(
-            "panels: 401 | QIC_SEGMENT: 20 | QIC_NUMBER: 19 | Mark: 18 | tags: 17");
+            "panels: 401 | Segment: 20 | Number: 19 | Mark: 18 | tags: 17");
         await Assert.That(summary).Contains("capture capped at 400 panels");
-        await Assert.That(summary).Contains("- 25 | Panel Family/Panel Type | Mark=M-25, QIC_SEGMENT=S-1");
+        await Assert.That(summary).Contains("- 25 | Panel Family/Panel Type | Mark=M-25, Segment=S-1");
         await Assert.That(summary).DoesNotContain("- 26 | Panel Family/Panel Type");
     }
 }

@@ -73,7 +73,7 @@ internal static class ElementQueryReader
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var context = QueryFilterBuilder.Build(document, job.Filters, fields);
-        // Схему проверяем до чтения значений, чтобы пустой результат не маскировал опечатку в имени.
+        // Schema validation precedes value reads; an empty result must not hide a misspelled name.
         QueryParameterValidator.ValidateAggregateFields(job.GroupBy, job.NumericField, context.ResolvedFields);
         var reader = new ElementFieldReader(document);
         var records = context.CreateCollector()

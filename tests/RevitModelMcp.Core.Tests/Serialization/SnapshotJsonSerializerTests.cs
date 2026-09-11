@@ -33,14 +33,14 @@ public sealed class SnapshotJsonSerializerTests
     {
         var snapshot = new Snapshot
         {
-            Responder = new ResponderInfo { DocumentName = "Customer.rvt", ProcessId = 4242 },
+            Responder = new ResponderInfo { DocumentName = "Sample Model.rvt", ProcessId = 4242 },
             AllSectionViews =
             {
                 new SectionViewSnapshot
                 {
                     Id = 42,
-                    Name = "ACP Section (1)",
-                    TemplateName = "ACP Template",
+                    Name = "Coordination Section (1)",
+                    TemplateName = "Coordination Template",
                     Scale = 50,
                     CropActive = true,
                     CropBboxMm = new SectionCropBoundingBoxSnapshot
@@ -53,12 +53,12 @@ public sealed class SnapshotJsonSerializerTests
                         MaxZ = 6
                     },
                     IsNameDuplicate = true,
-                    Prefix = "ACP"
+                    Prefix = "Coordination"
                 }
             },
             DuplicateBaseNames =
             {
-                new DuplicateBaseNameSnapshot { BaseName = "ACP Section", Count = 2 }
+                new DuplicateBaseNameSnapshot { BaseName = "Coordination Section", Count = 2 }
             }
         };
 
@@ -70,15 +70,15 @@ public sealed class SnapshotJsonSerializerTests
         var duplicate = root.GetProperty("duplicateBaseNames")[0];
 
         await Assert.That(section.GetProperty("id").GetInt64()).IsEqualTo(42);
-        await Assert.That(section.GetProperty("name").GetString()).IsEqualTo("ACP Section (1)");
-        await Assert.That(section.GetProperty("templateName").GetString()).IsEqualTo("ACP Template");
+        await Assert.That(section.GetProperty("name").GetString()).IsEqualTo("Coordination Section (1)");
+        await Assert.That(section.GetProperty("templateName").GetString()).IsEqualTo("Coordination Template");
         await Assert.That(section.GetProperty("scale").GetInt32()).IsEqualTo(50);
         await Assert.That(section.GetProperty("cropActive").GetBoolean()).IsTrue();
         await Assert.That(section.GetProperty("isNameDuplicate").GetBoolean()).IsTrue();
-        await Assert.That(section.GetProperty("prefix").GetString()).IsEqualTo("ACP");
+        await Assert.That(section.GetProperty("prefix").GetString()).IsEqualTo("Coordination");
         await Assert.That(crop.GetProperty("minX").GetDouble()).IsEqualTo(1);
         await Assert.That(crop.GetProperty("maxZ").GetDouble()).IsEqualTo(6);
-        await Assert.That(duplicate.GetProperty("baseName").GetString()).IsEqualTo("ACP Section");
+        await Assert.That(duplicate.GetProperty("baseName").GetString()).IsEqualTo("Coordination Section");
         await Assert.That(duplicate.GetProperty("count").GetInt32()).IsEqualTo(2);
         await Assert.That(root.GetProperty("responder").GetProperty("processId").GetInt32()).IsEqualTo(4242);
     }
@@ -138,15 +138,15 @@ public sealed class SnapshotJsonSerializerTests
                     Params =
                     {
                         ["Mark"] = "P-01",
-                        ["QIC_NUMBER"] = "42"
+                        ["Number"] = "42"
                     }
                 }
             },
             PanelStats = new PanelStatsSnapshot
             {
                 PanelsOnView = 401,
-                PanelsWithQicSegment = 200,
-                PanelsWithQicNumber = 201,
+                PanelsWithSegment = 200,
+                PanelsWithNumber = 201,
                 PanelsWithMark = 202,
                 PanelTagsOnView = 203
             }
@@ -163,10 +163,10 @@ public sealed class SnapshotJsonSerializerTests
         await Assert.That(panel.GetProperty("familyName").GetString()).IsEqualTo("Panel Family");
         await Assert.That(panel.GetProperty("typeName").GetString()).IsEqualTo("Panel Type");
         await Assert.That(panel.GetProperty("params").GetProperty("Mark").GetString()).IsEqualTo("P-01");
-        await Assert.That(panel.GetProperty("params").GetProperty("QIC_NUMBER").GetString()).IsEqualTo("42");
+        await Assert.That(panel.GetProperty("params").GetProperty("Number").GetString()).IsEqualTo("42");
         await Assert.That(stats.GetProperty("panelsOnView").GetInt32()).IsEqualTo(401);
-        await Assert.That(stats.GetProperty("panelsWithQicSegment").GetInt32()).IsEqualTo(200);
-        await Assert.That(stats.GetProperty("panelsWithQicNumber").GetInt32()).IsEqualTo(201);
+        await Assert.That(stats.GetProperty("panelsWithSegment").GetInt32()).IsEqualTo(200);
+        await Assert.That(stats.GetProperty("panelsWithNumber").GetInt32()).IsEqualTo(201);
         await Assert.That(stats.GetProperty("panelsWithMark").GetInt32()).IsEqualTo(202);
         await Assert.That(stats.GetProperty("panelTagsOnView").GetInt32()).IsEqualTo(203);
     }

@@ -58,7 +58,7 @@ def endpoint():
                 if state["polls"] == 1 or state["forever"]:
                     return self.reply(202, {"jobId": "job-1"})
             if route.path.startswith("/views/"):
-                assert unquote(route.path) == "/views/План / A #1/image"
+                assert unquote(route.path) == "/views/Plan 東京 Δ / A #1/image"
                 assert parse_qs(route.query) == {"pixel": ["1600"], "jobId": ["job-1"], "document": ["Model"]}
                 return self.reply(200, PNG, "image/png")
             command = state["payload"]["command"]
@@ -130,10 +130,10 @@ def test_timeout_keeps_late_job_id(endpoint):
     assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
 
 
-def test_image_download_uses_http_and_preserves_metadata(endpoint, tmp_path):
+def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metadata(endpoint, tmp_path):
     host, state = endpoint
     target = tmp_path / "image.png"
-    job = ReadJob.export_view("План / A #1", save_to=str(target)).for_document("Model")
+    job = ReadJob.export_view("Plan 東京 Δ / A #1", save_to=str(target)).for_document("Model")
     result = asyncio.run(RevitReadChannel(host).execute(job))
     assert target.read_bytes() == PNG
     assert result["data"]["width"] == 1600

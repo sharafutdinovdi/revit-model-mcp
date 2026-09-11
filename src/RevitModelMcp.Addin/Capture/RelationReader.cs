@@ -16,13 +16,13 @@ internal static class RelationReader
             "nested-family" => ReadNestedFamily(document, job.SourceId!.Value),
             "area-scheme-elements" => ReadAreaScheme(document, job.SourceName!),
             "view-template-dependents" => ReadTemplateViews(document, job.SourceName!),
-            _ => throw new ArgumentOutOfRangeException(nameof(job.Relation), job.Relation, "Неизвестная relation.")
+            _ => throw new ArgumentOutOfRangeException(nameof(job.Relation), job.Relation, "Unknown relation.")
         };
     }
 
     private static RelationsData ReadLevelRooms(Document document, string name)
     {
-        var level = FindByName<Level>(document, name, "Уровень", "levels");
+        var level = FindByName<Level>(document, name, "Level", "levels");
         var rooms = new FilteredElementCollector(document).OfCategory(BuiltInCategory.OST_Rooms)
             .WhereElementIsNotElementType().WherePasses(new ElementLevelFilter(level.Id)).OfType<Room>();
         return Create(document, "level-rooms", level, rooms);
@@ -31,20 +31,20 @@ internal static class RelationReader
     private static RelationsData ReadGroup(Document document, long id)
     {
         var group = GetElement(document, id) as Group
-                    ?? throw new ArgumentException($"Группа с id {id} не найдена.");
+                    ?? throw new ArgumentException($"Group with id {id} was not found.");
         return Create(document, "group-elements", group, group.GetMemberIds().Select(document.GetElement));
     }
 
     private static RelationsData ReadNestedFamily(Document document, long id)
     {
         var family = GetElement(document, id) as FamilyInstance
-                     ?? throw new ArgumentException($"Экземпляр семейства с id {id} не найден.");
+                     ?? throw new ArgumentException($"Family instance with id {id} was not found.");
         return Create(document, "nested-family", family, family.GetSubComponentIds().Select(document.GetElement));
     }
 
     private static RelationsData ReadAreaScheme(Document document, string name)
     {
-        var scheme = FindByName<AreaScheme>(document, name, "Схема зонирования", "area-schemes");
+        var scheme = FindByName<AreaScheme>(document, name, "Area scheme", "area-schemes");
         var areas = new FilteredElementCollector(document).OfCategory(BuiltInCategory.OST_Areas)
             .WhereElementIsNotElementType()
             .WherePasses(new ElementParameterFilter(ParameterFilterRuleFactory.CreateEqualsRule(
@@ -57,7 +57,7 @@ internal static class RelationReader
         var template = new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>()
             .FirstOrDefault(view => view.IsTemplate && string.Equals(view.Name, name, StringComparison.OrdinalIgnoreCase))
                        ?? throw new ArgumentException(
-                           $"Шаблон вида «{name}» не найден. Посмотрите list-catalog с section=views.");
+                           $"View template '{name}' was not found. Use list-catalog with section=views.");
         var views = new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>()
             .Where(view => !view.IsTemplate && view.ViewTemplateId == template.Id);
         return Create(document, "view-template-dependents", template, views);
@@ -93,7 +93,7 @@ internal static class RelationReader
     private static T FindByName<T>(Document document, string name, string kind, string section) where T : Element =>
         new FilteredElementCollector(document).OfClass(typeof(T)).Cast<T>()
             .FirstOrDefault(element => string.Equals(element.Name, name, StringComparison.OrdinalIgnoreCase))
-        ?? throw new ArgumentException($"{kind} «{name}» не найден. Посмотрите list-catalog с section={section}.");
+        ?? throw new ArgumentException($"{kind} '{name}' was not found. Use list-catalog with section={section}.");
 
     private static Element? GetElement(Document document, long id) => document.GetElement(CreateElementId(id));
 

@@ -17,8 +17,8 @@ public sealed class CleanProjectModule(IOptions<BuildOptions> buildOptions) : Sy
 {
     protected override void ExecuteModule(IModuleContext context, CancellationToken cancellationToken)
     {
-        // Область чистки — каталог своего решения, не git-корень: в монорепо
-        // это снесло бы bin/obj всех соседних плагинов. См. SolutionRoot.
+        // Cleanup is scoped to the solution directory; the git root may contain
+        // neighboring add-ins whose bin/obj directories must be preserved. See SolutionRoot.
         var rootDirectory = SolutionRoot.Directory;
         var outputDirectory = rootDirectory.GetFolder(buildOptions.Value.OutputDirectory);
         var buildOutputDirectories = rootDirectory

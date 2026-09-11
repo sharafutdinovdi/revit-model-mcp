@@ -14,11 +14,11 @@ public sealed class Snapshot
     [DataMember(Name = "activeView")]
     public ActiveViewSnapshot ActiveView { get; set; } = new();
 
-    [DataMember(Name = "wsRegions")]
-    public List<WsRegionSnapshot> WsRegions { get; set; } = new();
+    [DataMember(Name = "regions")]
+    public List<RegionSnapshot> Regions { get; set; } = new();
 
-    [DataMember(Name = "wsRegionCount")]
-    public int WsRegionCount { get; set; }
+    [DataMember(Name = "regionCount")]
+    public int RegionCount { get; set; }
 
     [DataMember(Name = "elementsOnView")]
     public Dictionary<string, int> ElementsOnView { get; set; } = new();

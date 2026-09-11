@@ -31,7 +31,7 @@ internal sealed class ViewElementsSession : IControlSession
         DateTimeOffset startedAt)
     {
         _document = application.ActiveUIDocument?.Document
-                    ?? throw new InvalidOperationException("Нет активного документа Revit.");
+                    ?? throw new InvalidOperationException("No active Revit document.");
         _output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             job.Command,
@@ -43,12 +43,12 @@ internal sealed class ViewElementsSession : IControlSession
             Offset = job.Offset,
             Limit = job.Limit
         };
-        WritePartial("Команда принята; подготавливается список элементов вида.");
+        WritePartial("Command accepted; preparing the view element list.");
 
         var view = ReadCommandReader.FindView(_document, job.View!);
         if (view is null)
         {
-            Fail($"Вид «{job.View}» не найден.");
+            Fail($"View '{job.View}' was not found.");
             _pageIds = Array.Empty<ElementId>();
             _reader = new ViewElementReader(_document, new HashSet<long>());
             _unknownCategories = new List<string>();
@@ -80,7 +80,7 @@ internal sealed class ViewElementsSession : IControlSession
         _data.Total = allIds.Count;
         _data.HasMore = page.HasMore;
         _reader = new ViewElementReader(_document, ReadCommandReader.ReadWarningElementIds(_document));
-        WritePartial("Список элементов подготовлен; чтение данных продолжается порциями.");
+        WritePartial("The element list is ready; reading data in batches.");
     }
 
     public bool IsFinished { get; private set; }
@@ -98,14 +98,14 @@ internal sealed class ViewElementsSession : IControlSession
             if (_executions > MaximumExecutions || _stopwatch.ElapsedMilliseconds >= MaximumDurationMs)
             {
                 StopWithPartial(
-                    $"Достигнут предел обработки: {_executions} вызовов ExternalEvent или 120 секунд. " +
-                    $"Обработано элементов: {_data.Processed} из {_pageIds.Count}.");
+                    $"Processing limit reached: {_executions} ExternalEvent calls or 120 seconds. " +
+                    $"Processed {_data.Processed} of {_pageIds.Count} elements.");
                 return;
             }
 
             if (application.ActiveUIDocument?.Document != _document)
             {
-                Fail("Активный документ изменился во время чтения элементов.");
+                Fail("The active document changed while reading elements.");
                 return;
             }
 
@@ -127,26 +127,26 @@ internal sealed class ViewElementsSession : IControlSession
             }
             else
             {
-                WritePartial("Обработка ожидает следующий вызов ExternalEvent.");
+                WritePartial("Processing is waiting for the next ExternalEvent call.");
             }
         }
         catch (Exception exception)
         {
             PluginLog.Error("View-elements processing failed.", exception);
-            StopWithPartial($"Чтение элементов остановлено: {exception}");
+            StopWithPartial($"Element reading stopped: {exception}");
         }
     }
 
     public void RejectJobWhileBusy()
     {
         _data.RejectedJobsWhileBusy++;
-        WritePartial("Новое задание отклонено: RevitModelMcp занят чтением элементов.");
+        WritePartial("New job rejected: RevitModelMcp is busy reading elements.");
     }
 
     public void Abort(Exception exception)
     {
         PluginLog.Error("View-elements session aborted.", exception);
-        StopWithPartial($"Чтение элементов аварийно остановлено: {exception}");
+        StopWithPartial($"Element reading aborted: {exception}");
     }
 
     private void Complete()
@@ -155,12 +155,12 @@ internal sealed class ViewElementsSession : IControlSession
         var messages = new List<string>();
         if (_unknownCategories.Count > 0)
         {
-            messages.Add($"Категории не найдены: {string.Join(", ", _unknownCategories)}.");
+            messages.Add($"Categories not found: {string.Join(", ", _unknownCategories)}.");
         }
 
         if (_data.RejectedJobsWhileBusy > 0)
         {
-            messages.Add($"Отклонено заданий во время чтения: {_data.RejectedJobsWhileBusy}.");
+            messages.Add($"Jobs rejected while reading: {_data.RejectedJobsWhileBusy}.");
         }
 
         _output.Write(CommandResponse<ViewElementsData>.Ok(

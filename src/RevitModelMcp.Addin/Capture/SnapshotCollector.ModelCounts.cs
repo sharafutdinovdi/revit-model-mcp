@@ -17,9 +17,9 @@ internal sealed partial class SnapshotCollector
             return;
         }
 
-        TryCapture(() => _snapshot.ModelCounts.TotalWsRegion = CountAllWsRegions());
-        TryCapture(() => _snapshot.ModelCounts.AcpViews = CountViewsWithPrefix("ACP_"));
-        TryCapture(() => _snapshot.ModelCounts.ConViews = CountViewsWithPrefix("CON_"));
+        TryCapture(() => _snapshot.ModelCounts.TotalRegions = CountAllRegions());
+        TryCapture(() => _snapshot.ModelCounts.CoordinationViews = CountViewsWithPrefix("Coordination_"));
+        TryCapture(() => _snapshot.ModelCounts.ConstructionViews = CountViewsWithPrefix("Construction_"));
         TryCapture(() => _snapshot.ModelCounts.Sheets = new FilteredElementCollector(_document)
             .OfClass(typeof(ViewSheet))
             .WhereElementIsNotElementType()
@@ -30,7 +30,7 @@ internal sealed partial class SnapshotCollector
             .Count(view => !view.IsTemplate && view.ViewType == ViewType.Section));
     }
 
-    private int CountAllWsRegions()
+    private int CountAllRegions()
     {
         var count = 0;
         var collector = new FilteredElementCollector(_document!)
@@ -41,7 +41,7 @@ internal sealed partial class SnapshotCollector
         {
             try
             {
-                if (IsWsRegion(RevitValueReader.GetFamilyName(element)))
+                if (IsRegion(RevitValueReader.GetFamilyName(element)))
                 {
                     count++;
                 }
@@ -151,11 +151,11 @@ internal sealed partial class SnapshotCollector
 
     private static string GetViewPrefix(string? name)
     {
-        if (name?.StartsWith("ACP", StringComparison.Ordinal) == true)
+        if (name?.StartsWith("Coordination", StringComparison.Ordinal) == true)
         {
-            return "ACP";
+            return "Coordination";
         }
 
-        return name?.StartsWith("CON", StringComparison.Ordinal) == true ? "CON" : "other";
+        return name?.StartsWith("Construction", StringComparison.Ordinal) == true ? "Construction" : "other";
     }
 }
