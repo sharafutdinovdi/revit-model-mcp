@@ -107,7 +107,7 @@ internal sealed class ControlChannel
         }
         catch (IOException)
         {
-            // Вызывающая сторона может ещё дописывать файл; резервный таймер повторит чтение.
+            // The publisher may still be writing; the fallback timer retries the read.
             return;
         }
         catch (Exception exception)
@@ -115,7 +115,7 @@ internal sealed class ControlChannel
             PluginLog.Error($"Job read failed. TriggerPath='{_triggerFilePath}'.", exception);
             if (TryDeleteTriggerFile())
             {
-                TryWriteError(application, "invalid", $"Не удалось прочитать задание: {exception}", DateTimeOffset.Now);
+                TryWriteError(application, "invalid", $"Could not read the job: {exception}", DateTimeOffset.Now);
             }
 
             return;
@@ -159,7 +159,7 @@ internal sealed class ControlChannel
             catch (Exception exception)
             {
                 PluginLog.Error("Legacy snapshot failed.", exception);
-                TryWriteError(application, "legacy-snapshot", $"Не удалось выполнить команду: {exception}", startedAt);
+                TryWriteError(application, "legacy-snapshot", $"Could not execute the command: {exception}", startedAt);
             }
 
             return;
@@ -174,7 +174,7 @@ internal sealed class ControlChannel
         if (parsed.Kind == ControlJobKind.Invalid)
         {
             PluginLog.Info($"Job processing started. Command='{parsed.Command}'.");
-            TryWriteError(application, parsed.Command, parsed.Error ?? "Некорректное задание.", startedAt);
+            TryWriteError(application, parsed.Command, parsed.Error ?? "Invalid job.", startedAt);
             return;
         }
 
@@ -200,7 +200,7 @@ internal sealed class ControlChannel
             TryWriteError(
                 application,
                 parsed.Command,
-                $"Не удалось начать выполнение команды: {exception}",
+                $"Could not start the command: {exception}",
                 startedAt);
             _session = null;
         }
@@ -269,7 +269,7 @@ internal sealed class ControlChannel
         }
         catch (Exception exception)
         {
-            // Последний защитный слой нужен, чтобы сбой сессии не остался без terminal response.
+            // Failures outside the session handler still require a terminal response.
             PluginLog.Error("Active session failed outside its handler.", exception);
             try
             {
@@ -296,7 +296,7 @@ internal sealed class ControlChannel
         }
         catch (Exception exception)
         {
-            // Заблокированный trigger оставляем таймеру: он повторит попытку без внешнего запроса.
+            // The fallback timer retries a locked trigger.
             PluginLog.Error($"Trigger delete failed. TriggerPath='{_triggerFilePath}'.", exception);
             return false;
         }
@@ -318,7 +318,7 @@ internal sealed class ControlChannel
         }
         catch (Exception exception)
         {
-            // Заблокированный trigger оставляем таймеру: он повторит попытку без внешнего запроса.
+            // The fallback timer retries a locked trigger.
             PluginLog.Error($"Trigger delete failed. TriggerPath='{_triggerFilePath}'.", exception);
             return false;
         }
@@ -341,7 +341,7 @@ internal sealed class ControlChannel
 
         try
         {
-            _session.Abort(new OperationCanceledException("Revit завершает работу."));
+            _session.Abort(new OperationCanceledException("Revit is shutting down."));
         }
         catch (Exception exception)
         {
@@ -355,7 +355,7 @@ internal sealed class ControlChannel
 
     public void HandleUnhandledException(UIApplication application, Exception exception)
     {
-        // Даже сбой над обычной защитой Tick обязан закончиться terminal response.
+        // Unhandled event failures still require a terminal response.
         PluginLog.Error("Unhandled control channel error in ExternalEvent.", exception);
         if (_session is not null)
         {
@@ -378,7 +378,7 @@ internal sealed class ControlChannel
         TryWriteError(
             application,
             "invalid",
-            $"Обработка задания аварийно завершилась: {exception}",
+            $"Job processing failed: {exception}",
             DateTimeOffset.Now);
     }
 

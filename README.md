@@ -3,33 +3,34 @@
   <img alt="revit-model-mcp: a terminal session where an MCP client reads a live Revit 2023 model" src="docs/screenshots/revit-model-mcp_hero_light.png" width="100%">
 </picture>
 
-![Status: unreleased](https://img.shields.io/badge/status-unreleased-grey?style=flat-square) [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) ![Release: pending](https://img.shields.io/badge/release-pending-grey?style=flat-square) ![Revit 2022-2026](https://img.shields.io/badge/Revit-2022--2026-005FB8?style=flat-square) [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+![Status: preview](https://img.shields.io/badge/status-preview-grey?style=flat-square) [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?include_prereleases&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases) ![Revit 2022-2026](https://img.shields.io/badge/Revit-2022--2026-005FB8?style=flat-square) [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 ## What it does
 
-The server gives MCP clients read access to a live Autodesk Revit model by default.
-Tools inspect elements, views, parameters and warnings.
-Selected views can be exported to PNG for visual review.
+The server reads a live Autodesk Revit model by default: elements, views, parameters, warnings and PNG view exports.
+Actions are opt-in and require two gates: `REVIT_MCP_ALLOW_WRITE=1` in the server and an `allow-write` file on the Revit workstation.
+The client can run locally or reach a remote Windows workstation over LAN, Tailscale or an SSH tunnel using HTTP with a bearer token.
 
 ## Why
 
-Model inspection combines quantities and geometry.
-An MCP client can discover model categories, aggregate element data and inspect selected views through the same connection.
-The add-in handles Revit API access inside Revit.
-The Python server can run on Windows or connect from another machine through HTTP or SSH.
+Model review needs quantities and geometry.
+An MCP client can discover categories, aggregate element data and export views through one connection.
+The add-in handles API access inside Revit while the Python server runs on the client's machine.
 
 ## In action
 
-Claude Desktop on a Mac, Revit 2026 on a Windows workstation on the same network, the server in between. Every step below is one sentence typed by a person; the tool calls are chosen by the model.
+Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation.
+Both action gates are enabled in this recording.
 
 <img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
 
 What happens in the recording, in order:
 
-1. "What model is open in Revit right now?" The model reads the document, levels and room counts.
-2. "Which level has the most room area? Find the largest room and show it to me." It aggregates room areas per level, queries the rooms on the winner, and calls `revit_show`: Revit opens the matching floor plan, zooms to the room and selects it.
+1. "What model is open in Revit right now?" The client reads the document, levels and room counts.
+2. "Which level has the most room area? Find the largest room and show it to me." The client aggregates room areas by level and queries the largest room.
+   `revit_show` opens a matching plan and selects the room.
 3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
-4. "Reset the view and delete that chair." The temporary isolate is cleared and the element is removed; the model is back to where it started.
+4. "Reset the view and delete that chair." The temporary isolate is cleared and the chair is deleted.
 
 The header image is the same server driven from a terminal client against Revit 2023 over SSH. The view export it ends with is the file `revit_export_view` saved, untouched:
 
@@ -40,13 +41,23 @@ The header image is the same server driven from a terminal client against Revit 
 
 ## Quick start
 
-This checkout is unreleased.
 The add-in requires Windows and Revit 2022-2026.
-The server requires Python 3.11 or later and uv.
+Build with the .NET SDK selected by [`global.json`](global.json).
+The server requires Python 3.11 or later, [uv](https://docs.astral.sh/uv/getting-started/installation/) and an MCP client.
+Clone on each machine that will build or run a component:
+
+```sh
+git clone https://github.com/sharafutdinovdi/revit-model-mcp.git
+cd revit-model-mcp
+```
+
+The commands below start from the repository root.
+Installation uses inline PowerShell commands; this repository has no install `.ps1` script.
 
 On Windows, build from the repository root and install the Revit 2026 output:
 
 ```powershell
+$ErrorActionPreference = 'Stop'
 dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 $addins = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2026'
@@ -68,45 +79,17 @@ It adds no ribbon tab or button.
 Register the server with Claude Code on that Windows machine:
 
 ```powershell
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory C:/Projects/revit-model-mcp/server revit-model-mcp
+$server = (Resolve-Path ./server).Path
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$server" revit-model-mcp
 ```
 
-For a remote client, HTTP needs no SSH server on the workstation.
-The add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json` with a generated bearer token and a loopback listener at port 53110.
-Supply that token as `REVIT_MCP_TOKEN` through the client's secret store.
-With an existing SSH route, keep the workstation bind on loopback:
-
-```sh
-ssh -N -L 53110:127.0.0.1:53110 user@host
-```
-
-In another terminal:
-
-```sh
-export REVIT_MCP_HOST=http://127.0.0.1:53110
-uv run --directory server revit-model-mcp
-```
-
-The [remote setup commands](docs/transport.md#remote-setups) cover direct LAN, Tailscale, SSH forwarding and the legacy file channel.
-Direct LAN uses `REVIT_MCP_HOST=http://192.168.1.69:53110` plus explicit `0.0.0.0` binding, URL ACL and firewall setup.
-Tailscale uses `http://<tailscale-ip>:53110` with the listener bound to that interface.
-For a corporate PC without admin rights, use provisioned Tailscale or an existing SSH tunnel; never expose the port on the office LAN.
-
-For the legacy file channel from macOS or Linux with an existing Windows SSH alias:
-
-```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
-```
-
-Replace the checkout path and `revit-host` alias with the client's values.
-The SSH account must be the Windows account running Revit.
-`uv run --directory server revit-model-mcp --help` prints environment transport settings without opening a connection.
-See [server setup](server/README.md) for channel overrides and SSH multiplexing.
+For remote clients, use the setup in [Transports and remote workstations](#transports-and-remote-workstations).
+`uv run --directory server revit-model-mcp --help` checks package startup and prints configuration without contacting Revit.
 
 Ask the MCP client to call `revit_ping`.
 The expected successful response has `command: "ping"` and `success: true`.
 Then call `revit_document_info` to inspect the active model.
-Supply `document` when multiple Revit instances are running.
+For file transports, supply a distinctive `document` title when multiple Revit instances are running.
 
 ## How it works
 
@@ -123,8 +106,9 @@ The server submits jobs over HTTP or writes them to the Windows file channel.
 The add-in processes both through the same ExternalEvent and accepts one job at a time.
 HTTP returns JSON and PNG directly; local and SSH modes keep their file-based responses.
 A heartbeat identifies each Revit instance and its active document.
-The public tools read model data and export images without editing model elements.
-See [architecture](docs/architecture.md) and [transport](docs/transport.md).
+The default tools read model data and export images.
+Opt-in actions use the same channel and execute in the Revit API context.
+See [how it works](docs/how-it-works.md), [architecture](docs/architecture.md) and the [feed format](docs/feed-format.md).
 
 ## Tools
 
@@ -132,24 +116,34 @@ All tools support local, SSH and HTTP transports.
 `revit_export_view` downloads PNG through `/views/{name}/image` in HTTP mode.
 `revit_list_instances` reports the connected Revit process in HTTP mode.
 
-<!-- Generated from decorated tool functions in server/revit_model_mcp/server.py. -->
+Every read tool except `revit_export_view` and `revit_list_instances` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`.
+Timeouts are seconds; pickup timeout applies only to local and SSH transports.
+Arguments without defaults in these tables are required.
+The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
 
-| Tool | Purpose |
-|---|---|
-| `revit_ping` | Check the RevitModelMcp connection without reading the model. |
-| `revit_document_info` | Read general information about the active Revit model. |
-| `revit_list_catalog` | Discover valid model names before filtering. |
-| `revit_aggregate_elements` | Read a compact element summary after revit_list_catalog. |
-| `revit_query_elements` | Read a page of elements after revit_list_catalog. |
-| `revit_list_views` | Find views in the active model before analyzing a view. |
-| `revit_view_summary` | Read element categories and counts for a selected view. |
-| `revit_export_view` | Export a selected view to PNG when numbers do not explain geometry. |
-| `revit_view_elements` | Read one page of elements in a selected view. |
-| `revit_element_details` | Read parameters and geometry of an element by Revit id. |
-| `revit_view_warnings` | Read Revit warnings related to elements in a selected view. |
-| `revit_list_warnings` | Group model warnings by text. |
-| `revit_list_relations` | Read model object membership or dependencies. |
-| `revit_list_instances` | List Revit processes with active documents, versions and processId. |
+| Tool | Arguments beyond the common read options | Purpose |
+|---|---|---|
+| `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
+| `revit_document_info` | None | Read document, levels, area schemes and worksets. |
+| `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
+| `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields; return counts and optional sum/average. |
+| `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
+| `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
+| `revit_view_summary` | `view` | Read view metadata and category counts. |
+| `revit_export_view` | `view`, `pixel_size=1600`, `save_to=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
+| `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
+| `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID. |
+| `revit_view_warnings` | `view` | Read warnings involving elements in a view. |
+| `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
+| `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
+| `revit_list_instances` | `document=null`; no timeout arguments | List endpoint or heartbeat information. |
+
+Offsets are zero-based row counts; limits are positive row counts.
+Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
+Other numeric filter values follow document display units; returned query values carry a `unit` field when available.
+See the [feed format](docs/feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.
+Parameter names come from the model's language; use `revit_list_catalog(section="parameters")` before filtering.
+`save_to` is a new file path on the MCP client's machine and never overwrites an existing file.
 
 `revit_element_details` returns geometry alongside parameters in `data`.
 `revit_query_elements(include_geometry=True)` adds the same fields to each element in the returned page.
@@ -169,16 +163,23 @@ Unavailable geometry is omitted.
 Read-only by default. Actions are a separate tool set you enable on purpose.
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
-| Tool | Action |
-|---|---|
-| `revit_select` | Select element IDs, or clear selection with an empty list. |
-| `revit_show` | Open a suitable view when needed, show elements and optionally select them; return `activeView` and `viewOpened`. |
-| `revit_isolate` | Temporarily isolate elements in the active view; `reset=true` clears temporary hide/isolate. |
-| `revit_move` | Move elements by model-axis offsets in millimetres. |
-| `revit_place_family` | Place a loaded family name or `Family: Type`, case-insensitively, at model XY in millimetres on a named level; rotate about Z in degrees. |
-| `revit_create_wall` | Create a straight wall between XY endpoints in millimetres on a named level. |
-| `revit_set_parameter` | Set an instance parameter by name, falling back to the type; lengths use mm and areas use m2. |
-| `revit_delete` | Delete elements; the removed count includes dependent elements deleted by Revit. |
+Action tools have no `document` or timeout arguments.
+They use the default timeouts and require exactly one instance returned by the transport.
+HTTP addresses one endpoint; the file transports discover workstation instances.
+All IDs are unitless Revit element IDs.
+
+| Tool | Arguments | Action and units |
+|---|---|---|
+| `revit_select` | `element_ids` | Select IDs; `[]` clears selection. |
+| `revit_show` | `element_ids`, `select=true` | Show nonempty IDs; return `activeView` and `viewOpened`. |
+| `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
+| `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
+| `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
+| `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
+| `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. |
+| `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
+
+`type_name` and `wall_type` are required arguments that accept `null`.
 
 `revit_show` checks the open UI views before calling `ShowElements`.
 If none contains a requested element, it opens a non-template plan for an element's level.
@@ -188,7 +189,8 @@ The handler sets `UIDocument.ActiveView` synchronously inside its ExternalEvent 
 `RequestViewChange` defers the change until control returns to Revit.
 The response includes `activeView` and `viewOpened`, which reports whether the handler opened a previously closed view.
 
-Every action suppresses TaskDialog prompts with OK, or Yes if OK is unavailable, and returns their messages in `dialogsSuppressed`.
+During action execution, the handler attempts to dismiss TaskDialog prompts with OK and then Yes.
+Messages from successful overrides appear in `dialogsSuppressed`.
 The dialog handler is removed in `finally`, including on errors.
 Missing families return up to five similar names with their family categories in `closestFamilies`; unrelated names are omitted.
 For `Family: Type`, `type_name=null` uses the embedded type; a conflicting `type_name` is rejected.
@@ -210,7 +212,7 @@ Without it, the response contains `success:false` and `error:"actions disabled o
 Removing the file disables actions immediately; restarting Revit is unnecessary.
 The gate stays in the default local application data directory even if the transport uses `REVIT_MCP_CHANNEL_DIR`.
 
-Actions require exactly one running Revit instance and address its process ID.
+Actions address the process ID reported by the transport.
 Coordinates use model axes and the named level's project elevation.
 Pass `null` for `type_name` to choose the family's first type, or for `wall_type` to choose the first basic wall type.
 Family placement uses the level-based, nonstructural overload; hosted, face-based and adaptive families may require another placement API and return an error.
@@ -219,12 +221,44 @@ Parameter values use invariant numeric notation; other Double parameters use Rev
 Type parameter edits affect all instances of that type and return `parameterScope:"type"`.
 ElementId and read-only parameters cannot be set.
 
-Every action response includes the active view name in `activeView`, including workstation errors.
+Responses from the action executor include `activeView`, including action errors.
+Transport rejection and target-mismatch responses may omit action metadata.
 Model changes and temporary isolation use one transaction named after the tool.
-Revit failure messages, including warnings at commit, cause rollback and return their text.
+Warnings at commit are dismissed and reported on successful actions.
+Errors permit one `FixElements` or `SetValue` resolution when Revit allows it; unresolved or repeated errors roll back the transaction.
 Selection and navigation use UI calls without model transactions.
 The tools do not save the model.
 After a timeout, inspect the model before retrying an action; the previous call may have executed.
+
+## Transports and remote workstations
+
+| Route | Server setting | Workstation setup |
+|---|---|---|
+| Local Windows | `REVIT_MCP_HOST=local` | Run PowerShell under the Revit user's account. |
+| HTTP over LAN | `REVIT_MCP_HOST=http://revit-host:53110` | Explicit interface bind, URL ACL and restricted firewall rule. |
+| HTTP over Tailscale | `REVIT_MCP_HOST=http://<tailscale-ip>:53110` | Bind to the permitted Tailscale interface. |
+| HTTP over an SSH tunnel | `REVIT_MCP_HOST=http://127.0.0.1:53110` | Keep the default loopback bind. |
+| SSH file channel | `REVIT_MCP_HOST=ssh:revit-host` | Existing SSH alias and Windows PowerShell access. |
+
+Every HTTP route uses `REVIT_MCP_TOKEN` from `%LOCALAPPDATA%\RevitModelMcp\settings.json`, except unauthenticated `/health`.
+Supply the token through the MCP client's secret store.
+With existing SSH access, open a tunnel from the client:
+
+```sh
+ssh -N -L 53110:127.0.0.1:53110 user@host
+```
+
+Replace `user@host` with the permitted workstation account and host.
+In another terminal at the clone root, register the endpoint with Claude Code:
+
+```sh
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=http://127.0.0.1:53110 -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$PWD/server" revit-model-mcp
+```
+
+The server process must inherit `REVIT_MCP_TOKEN` from the client's environment or secret configuration.
+For the SSH file channel, use `-e REVIT_MCP_HOST=ssh:revit-host` instead; no HTTP token is needed.
+See [remote setup](docs/transport.md#remote-setups) for LAN, Tailscale, URL ACL and firewall commands.
+HTTP has no built-in TLS; use an encrypted tunnel for remote access.
 
 ## Security
 
@@ -240,7 +274,7 @@ This covers nested results and instance listings.
 Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
 
 HTTP binds to `127.0.0.1:53110` by default.
-A per-machine 32-byte random bearer token is generated in `settings.json`; its protected NTFS ACL grants access only to the current user.
+A per-user 32-byte random bearer token is generated in `settings.json`; its protected NTFS ACL grants access only to the current user.
 The token is never logged.
 All HTTP routes except `/health` require it; health exposes the active document name and process information.
 There is no built-in TLS: put remote access behind a tunnel or a TLS proxy.
@@ -275,7 +309,10 @@ cd server
 uv run --with pytest pytest -q
 ```
 
-The CI workflow builds the add-in for Revit 2022 and 2026 on `windows-latest`, runs the core tests and the server tests on every push: [latest run](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml). First run on 2026-09-11: both builds succeeded, core tests passed, 55 server tests passed.
+CI builds Revit 2022 and 2026 on Windows and uploads both outputs as artifacts.
+It runs the Core and server tests on every push and pull request: [latest run](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml).
+Release tags build all five Revit configurations and the Python wheel before publishing assets.
+The recordings above show live sessions; automated tests do not validate live Revit behavior.
 
 ## Compatibility
 
@@ -291,7 +328,8 @@ The CI workflow builds the add-in for Revit 2022 and 2026 on `windows-latest`, r
 | SSH transport | SSH client on Windows, macOS or Linux; Windows SSH host with PowerShell |
 
 The CI workflow targets Revit 2022 and 2026 builds on Windows.
-Live model validation and release packaging are pending.
+The tag workflow packages Revit 2022-2026; installing each year still requires validation in that Revit version.
+See [known gaps](docs/roadmap.md#known-gaps).
 
 ## Author and license
 

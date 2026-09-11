@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install uv
+      - name: Validate release version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Expected a v<semver> tag' }
+          $packageVersion = python -c "import tomllib; print(tomllib.load(open('server/pyproject.toml', 'rb'))['project']['version'])"
+          if ($LASTEXITCODE -ne 0 -or $packageVersion -ne $version) { throw 'Tag and Python package versions must match' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Test core
+        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
+      - name: Test server
+        working-directory: server
+        run: uv run --with pytest pytest -q
+      - name: Build and zip Revit 2022-2026
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/release | Out-Null
+          foreach ($year in '22', '23', '24', '25', '26') {
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
+            if ($LASTEXITCODE -ne 0) { throw "R$year build failed" }
+            $stage = "artifacts/addin-R$year"
+            New-Item -ItemType Directory -Force "$stage/RevitModelMcp" | Out-Null
+            Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
+            Copy-Item src/RevitModelMcp.Addin/RevitModelMcp.addin, LICENSE, THIRD-PARTY-NOTICES.md $stage
+            if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year add-in" }
+            if (Get-ChildItem $stage -Recurse -Filter 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
+            Compress-Archive -Path "$stage/*" -DestinationPath "artifacts/release/revit-model-mcp-addin-$env:RELEASE_VERSION-R$year.zip"
+          }
+      - name: Build Python package
+        working-directory: server
+        run: uv build
+      - name: Stage wheel
+        shell: pwsh
+        run: Copy-Item server/dist/*.whl artifacts/release/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts/release/
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: artifacts/release
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --generate-notes

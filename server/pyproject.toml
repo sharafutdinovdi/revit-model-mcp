@@ -5,12 +5,28 @@ build-backend = "hatchling.build"
 [project]
 name = "revit-model-mcp"
 version = "0.1.0"
-description = "Read-only MCP access to a live Autodesk Revit model"
+description = "MCP access to live Autodesk Revit models, read-only by default with opt-in actions"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
+license-files = ["README.md"]
 authors = [{name = "Dinar Sharafutdinov"}]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = ["mcp>=2.0.0"]
+
+[project.urls]
+Repository = "https://github.com/sharafutdinovdi/revit-model-mcp"
+Documentation = "https://github.com/sharafutdinovdi/revit-model-mcp#readme"
+Issues = "https://github.com/sharafutdinovdi/revit-model-mcp/issues"
 
 [project.scripts]
 revit-model-mcp = "revit_model_mcp.server:main"

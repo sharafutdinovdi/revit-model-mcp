@@ -58,7 +58,8 @@ internal sealed class HttpChannel : IDisposable
         }
         catch (HttpListenerException exception) when (exception.NativeErrorCode == 5)
         {
-            PluginLog.Warn($"HTTP access denied. Run once from an elevated command prompt: netsh http add urlacl url={prefix} user={WindowsIdentity.GetCurrent().Name}");
+            using var identity = WindowsIdentity.GetCurrent();
+            PluginLog.Warn($"HTTP access denied. Run once from an elevated command prompt: netsh http add urlacl url={prefix} user={identity.Name}");
         }
         catch (HttpListenerException exception)
         {
@@ -77,7 +78,7 @@ internal sealed class HttpChannel : IDisposable
             }
             catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException)
             {
-                if (!_shutdown.IsCancellationRequested) PluginLog.Warn("HTTP listener stopped unexpectedly.");
+                if (!_shutdown.IsCancellationRequested) PluginLog.Error("HTTP listener stopped unexpectedly.", exception);
                 return;
             }
         }
@@ -91,7 +92,7 @@ internal sealed class HttpChannel : IDisposable
             if (_settings.HttpBind != "0.0.0.0" &&
                 !Equals(context.Request.LocalEndPoint.Address, IPAddress.Parse(_settings.HttpBind)))
             {
-                await JsonAsync(context, 403, new() { ["error"] = "This network interface is disabled." });
+                await JsonAsync(context, 403, new() { ["error"] = "This network interface is disabled." }).ConfigureAwait(false);
                 return;
             }
             var path = context.Request.Url!.AbsolutePath;
@@ -102,13 +103,13 @@ internal sealed class HttpChannel : IDisposable
                 {
                     ["ok"] = true, ["revitVersion"] = _version, ["documentName"] = _documentName,
                     ["processId"] = _processId, ["readOnly"] = !ActionCommandExecutor.ActionsEnabled
-                });
+                }).ConfigureAwait(false);
                 return;
             }
             if (!Authenticated(context.Request.Headers["Authorization"]))
             {
                 context.Response.AddHeader("WWW-Authenticate", "Bearer");
-                await JsonAsync(context, 401, new() { ["error"] = "A valid bearer token is required." });
+                await JsonAsync(context, 401, new() { ["error"] = "A valid bearer token is required." }).ConfigureAwait(false);
                 return;
             }
             if (method == "GET" && path.StartsWith("/jobs/", StringComparison.Ordinal))
@@ -116,10 +117,10 @@ internal sealed class HttpChannel : IDisposable
                 RemoveExpiredResults();
                 if (!_jobs.TryGetValue(path.Substring(6), out var existing))
                 {
-                    await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." });
+                    await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
                     return;
                 }
-                await SendJobAsync(context, existing, 0);
+                await SendJobAsync(context, existing, 0).ConfigureAwait(false);
                 return;
             }
             if (method == "POST" && path == "/jobs")
@@ -133,13 +134,13 @@ internal sealed class HttpChannel : IDisposable
                     if (read == 0) break;
                     if (body.Length + read > 1024 * 1024)
                     {
-                        await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." });
+                        await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
                         return;
                     }
                     body.Write(buffer, 0, read);
                 }
-                var job = await SubmitAsync(context, ControlJobParser.Parse(Encoding.UTF8.GetString(body.ToArray())));
-                if (job is not null) await SendJobAsync(context, job, timeout);
+                var job = await SubmitAsync(context, ControlJobParser.Parse(Encoding.UTF8.GetString(body.ToArray()))).ConfigureAwait(false);
+                if (job is not null) await SendJobAsync(context, job, timeout).ConfigureAwait(false);
                 return;
             }
             if (method == "GET" && path.StartsWith("/views/", StringComparison.Ordinal) && path.EndsWith("/image", StringComparison.Ordinal))
@@ -148,7 +149,7 @@ internal sealed class HttpChannel : IDisposable
                 var parameter = context.Request.QueryString["pixel"];
                 if (parameter is not null && (!int.TryParse(parameter, out pixel) || pixel is < 1 or > 4000))
                 {
-                    await JsonAsync(context, 400, new() { ["error"] = "pixel must be between 1 and 4000." });
+                    await JsonAsync(context, 400, new() { ["error"] = "pixel must be between 1 and 4000." }).ConfigureAwait(false);
                     return;
                 }
                 var name = Uri.UnescapeDataString(path.Substring(7, path.Length - 13));
@@ -165,18 +166,18 @@ internal sealed class HttpChannel : IDisposable
                         job.Command.View != name || job.Command.PixelSize != pixel ||
                         job.Command.TargetDocument != context.Request.QueryString["document"])
                     {
-                        await JsonAsync(context, 404, new() { ["error"] = "Matching image job not found or expired." });
+                        await JsonAsync(context, 404, new() { ["error"] = "Matching image job not found or expired." }).ConfigureAwait(false);
                         return;
                     }
                 }
                 else
                 {
-                    job = await SubmitAsync(context, ControlJobParser.Parse(HttpSettings.Serialize(payload)));
+                    job = await SubmitAsync(context, ControlJobParser.Parse(HttpSettings.Serialize(payload))).ConfigureAwait(false);
                 }
                 if (job is null) return;
-                if (!await WaitAsync(job, 120))
+                if (!await WaitAsync(job, 120).ConfigureAwait(false))
                 {
-                    await JsonAsync(context, 202, new() { ["jobId"] = job.Id });
+                    await JsonAsync(context, 202, new() { ["jobId"] = job.Id }).ConfigureAwait(false);
                     return;
                 }
                 var result = await job.Completion.ConfigureAwait(false);
@@ -184,7 +185,7 @@ internal sealed class HttpChannel : IDisposable
                 var response = XElement.Load(reader);
                 if (response.Element("success")?.Value != "true")
                 {
-                    await BytesAsync(context, 422, Encoding.UTF8.GetBytes(result), "application/json");
+                    await BytesAsync(context, 422, Encoding.UTF8.GetBytes(result), "application/json").ConfigureAwait(false);
                     return;
                 }
                 var fileName = response.Element("data")?.Element("fileName")?.Value;
@@ -194,17 +195,21 @@ internal sealed class HttpChannel : IDisposable
                 var bytes = File.ReadAllBytes(imagePath);
                 job.ImagePath = imagePath;
                 context.Response.Headers["X-Revit-Job-Id"] = job.Id;
-                await BytesAsync(context, 200, bytes, "image/png");
+                await BytesAsync(context, 200, bytes, "image/png").ConfigureAwait(false);
                 return;
             }
-            await JsonAsync(context, 404, new() { ["error"] = "Endpoint not found." });
+            await JsonAsync(context, 404, new() { ["error"] = "Endpoint not found." }).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
             // Request headers, bodies and exception messages may contain credentials.
             PluginLog.Warn($"HTTP request failed. Type='{exception.GetType().Name}'.");
-            try { await JsonAsync(context, 500, new() { ["error"] = "HTTP request failed; check the add-in log." }); }
-            catch (Exception) { context.Response.Abort(); }
+            try { await JsonAsync(context, 500, new() { ["error"] = "HTTP request failed; check the add-in log." }).ConfigureAwait(false); }
+            catch (Exception responseException)
+            {
+                PluginLog.Warn($"HTTP error response could not be delivered. Type='{responseException.GetType().Name}'.");
+                context.Response.Abort();
+            }
         }
         finally
         {
@@ -240,12 +245,12 @@ internal sealed class HttpChannel : IDisposable
     {
         if (ActionJobParser.IsAction(command.Command) && !ActionCommandExecutor.ActionsEnabled)
         {
-            await JsonAsync(context, 403, new() { ["error"] = "actions disabled on the workstation" });
+            await JsonAsync(context, 403, new() { ["error"] = "actions disabled on the workstation" }).ConfigureAwait(false);
             return null;
         }
         if (!_channel.TrySubmit(command, out var completion))
         {
-            await JsonAsync(context, 409, new() { ["error"] = "The add-in is busy with another command." });
+            await JsonAsync(context, 409, new() { ["error"] = "The add-in is busy with another command." }).ConfigureAwait(false);
             return null;
         }
         var job = new HttpJob(Guid.NewGuid().ToString("N"), command, completion!);
@@ -274,10 +279,10 @@ internal sealed class HttpChannel : IDisposable
     private async Task SendJobAsync(HttpListenerContext context, HttpJob job, int seconds)
     {
         context.Response.Headers["X-Revit-Job-Id"] = job.Id;
-        if (await WaitAsync(job, seconds))
-            await BytesAsync(context, 200, Encoding.UTF8.GetBytes(await job.Completion.ConfigureAwait(false)), "application/json");
+        if (await WaitAsync(job, seconds).ConfigureAwait(false))
+            await BytesAsync(context, 200, Encoding.UTF8.GetBytes(await job.Completion.ConfigureAwait(false)), "application/json").ConfigureAwait(false);
         else
-            await JsonAsync(context, 202, new() { ["jobId"] = job.Id });
+            await JsonAsync(context, 202, new() { ["jobId"] = job.Id }).ConfigureAwait(false);
     }
 
     private void RemoveExpiredResults()
@@ -351,8 +356,8 @@ internal sealed record HttpSettings
         HttpSettings settings;
         var security = new FileSecurity();
         security.SetAccessRuleProtection(true, false);
-        var identity = WindowsIdentity.GetCurrent().User!;
-        security.AddAccessRule(new FileSystemAccessRule(identity, FileSystemRights.FullControl, AccessControlType.Allow));
+        using var identity = WindowsIdentity.GetCurrent();
+        security.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.FullControl, AccessControlType.Allow));
         var rights = FileSystemRights.Read | FileSystemRights.Write | FileSystemRights.ChangePermissions;
 #if NETFRAMEWORK
         using (var stream = new FileStream(path, FileMode.OpenOrCreate, rights, FileShare.None, 4096, FileOptions.None, security))
