@@ -51,6 +51,11 @@ internal static class SnapshotFileWriter
             Directory.CreateDirectory(outputDirectory);
             var encoding = new UTF8Encoding(false);
             var json = SnapshotJsonSerializer.Serialize(snapshot);
+            if (ResponseDelivery.Current is { } delivery)
+            {
+                delivery(json);
+                return SnapshotWriteResult.Succeeded(latestPath);
+            }
             File.WriteAllText(latestPath, json, encoding);
             File.WriteAllText(historyPath, json, encoding);
             File.WriteAllText(summaryPath, SnapshotSummaryFormatter.Format(snapshot), encoding);

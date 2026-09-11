@@ -39,6 +39,11 @@ internal sealed class ViewDumpOutput
 
     public void Write(ViewDumpReport report)
     {
+        if (ResponseDelivery.Current is { } delivery)
+        {
+            delivery(ViewDumpJsonSerializer.Serialize(report));
+            return;
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(JsonPath)!);
         File.WriteAllText(JsonPath, ViewDumpJsonSerializer.Serialize(report), Utf8WithoutBom);
         File.WriteAllText(TextPath, ViewDumpTextFormatter.Format(report), Utf8WithoutBom);

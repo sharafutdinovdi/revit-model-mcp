@@ -31,7 +31,8 @@ The Windows SSH session must use the same account as Revit or an explicitly shar
 
 | Variable | Default | Behavior |
 |---|---|---|
-| `REVIT_MCP_HOST` | `local` | Runs Windows PowerShell locally. `ssh:<alias>` runs it through the local SSH client. `--host` overrides this variable. |
+| `REVIT_MCP_HOST` | `local` | Local PowerShell, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
+| `REVIT_MCP_TOKEN` | Unset | HTTP bearer token from workstation settings. `--token` overrides it. |
 | `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
 | `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
 | `REVIT_MCP_ACTIVATE_TASK` | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
@@ -39,7 +40,7 @@ The Windows SSH session must use the same account as Revit or an explicitly shar
 | `REVIT_MCP_REDACT_PATHS` | Unset | `1` replaces every response `documentPath` value with its file name. `--redact-paths` enables the same behavior. |
 
 SSH mode passes `ControlMaster=auto`, `ControlPath=<dir>/mux-%C` and `ControlPersist=600` on every invocation.
-The socket directory is `$XDG_RUNTIME_DIR` when nonempty, otherwise `~/.cache/revit-model-mcp/`.
+The socket directory is `$XDG_RUNTIME_DIR` when nonempty, otherwise `/tmp/revit-model-mcp-<uid>/`.
 The directory is created or restricted to mode `0700` on macOS and Linux.
 Keep its absolute path short for Unix socket limits; `%C` hashes the connection identity.
 The master connection remains available for 600 seconds after its last client disconnects.
@@ -64,7 +65,12 @@ Python tool descriptions and server-generated messages are English.
 
 ## Request behavior
 
-The default pickup timeout is 300 seconds.
+For HTTP setup and remote access commands, see [transport](../docs/transport.md#http-configuration).
+HTTP submits once and polls by job ID within `timeout_seconds`; pickup timeout applies only to file transports.
+HTTP exports download PNG directly without remote PowerShell.
+Each HTTP endpoint represents one Revit process.
+
+The default file pickup timeout is 300 seconds.
 The response timeout is 120 seconds after pickup.
 Most tools accept `pickup_timeout_seconds` and `timeout_seconds`.
 `revit_export_view` uses the defaults.

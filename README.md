@@ -16,7 +16,7 @@ Selected views can be exported to PNG for visual review.
 Model inspection combines quantities and geometry.
 An MCP client can discover model categories, aggregate element data and inspect selected views through the same connection.
 The add-in handles Revit API access inside Revit.
-The Python server can run on Windows or connect from another machine through SSH.
+The Python server can run on Windows or connect from another machine through HTTP or SSH.
 
 ## In action
 
@@ -60,7 +60,28 @@ Register the server with Claude Code on that Windows machine:
 claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory C:/Projects/revit-model-mcp/server revit-model-mcp
 ```
 
-For a macOS or Linux client with an existing Windows SSH alias:
+For a remote client, HTTP needs no SSH server on the workstation.
+The add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json` with a generated bearer token and a loopback listener at port 53110.
+Supply that token as `REVIT_MCP_TOKEN` through the client's secret store.
+With an existing SSH route, keep the workstation bind on loopback:
+
+```sh
+ssh -N -L 53110:127.0.0.1:53110 user@host
+```
+
+In another terminal:
+
+```sh
+export REVIT_MCP_HOST=http://127.0.0.1:53110
+uv run --directory server revit-model-mcp
+```
+
+The [remote setup commands](docs/transport.md#remote-setups) cover direct LAN, Tailscale, SSH forwarding and the legacy file channel.
+Direct LAN uses `REVIT_MCP_HOST=http://192.168.1.69:53110` plus explicit `0.0.0.0` binding, URL ACL and firewall setup.
+Tailscale uses `http://<tailscale-ip>:53110` with the listener bound to that interface.
+For a corporate PC without admin rights, use provisioned Tailscale or an existing SSH tunnel; never expose the port on the office LAN.
+
+For the legacy file channel from macOS or Linux with an existing Windows SSH alias:
 
 ```sh
 claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
@@ -83,21 +104,28 @@ flowchart LR
     Client[MCP client] <-->|stdio| Server[Python server]
     Server <-->|local PowerShell or SSH| Channel[Windows file channel]
     Channel <-->|ExternalEvent| Revit[Revit add-in]
+    Server <-->|HTTP + bearer token| Endpoint[Add-in HTTP listener]
+    Endpoint <-->|ExternalEvent| Revit
 ```
 
-The server writes jobs to `%LOCALAPPDATA%\RevitModelMcp` on Windows.
-The add-in processes them through ExternalEvent and writes JSON responses.
+The server submits jobs over HTTP or writes them to the Windows file channel.
+The add-in processes both through the same ExternalEvent and accepts one job at a time.
+HTTP returns JSON and PNG directly; local and SSH modes keep their file-based responses.
 A heartbeat identifies each Revit instance and its active document.
 The public tools read model data and export images without editing model elements.
 See [architecture](docs/architecture.md) and [transport](docs/transport.md).
 
 ## Tools
 
+All tools support local, SSH and HTTP transports.
+`revit_export_view` downloads PNG through `/views/{name}/image` in HTTP mode.
+`revit_list_instances` reports the connected Revit process in HTTP mode.
+
 <!-- Generated from decorated tool functions in server/revit_model_mcp/server.py. -->
 
 | Tool | Purpose |
 |---|---|
-| `revit_ping` | Check the RevitModelMcp file channel without reading the model. |
+| `revit_ping` | Check the RevitModelMcp connection without reading the model. |
 | `revit_document_info` | Read general information about the active Revit model. |
 | `revit_list_catalog` | Discover valid model names before filtering. |
 | `revit_aggregate_elements` | Read a compact element summary after revit_list_catalog. |
@@ -199,6 +227,14 @@ Channel jobs, responses, heartbeats and diagnostic logs also write files outside
 This covers nested results and instance listings.
 Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
 
+HTTP binds to `127.0.0.1:53110` by default.
+A per-machine 32-byte random bearer token is generated in `settings.json`; its protected NTFS ACL grants access only to the current user.
+The token is never logged.
+All HTTP routes except `/health` require it; health exposes the active document name and process information.
+There is no built-in TLS: put remote access behind a tunnel or a TLS proxy.
+Set `REVIT_MCP_HTTP_ENABLED=0` in Revit's environment or `httpEnabled=false` in settings to disable the listener entirely.
+Actions require both gates over every transport.
+
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
 The default multiplexing socket directory has mode `0700` on macOS and Linux.
@@ -208,6 +244,7 @@ See [transport](docs/transport.md) and [security reporting](SECURITY.md).
 ## Testing
 
 The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
+A threaded fake HTTP server covers health, authentication, busy responses, job polling and PNG download.
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.
 
@@ -238,6 +275,7 @@ The CI workflow builds the add-in for Revit 2022 and 2026 on `windows-latest`, r
 | Build SDK | Selected by `global.json` |
 | Python server | Python 3.11+, MCP Python SDK 2+ |
 | Local transport | Windows PowerShell under the Revit user's account |
+| HTTP transport | Standard-library HTTP/HTTPS client; Windows HttpListener on .NET 4.8 and 8 |
 | SSH transport | SSH client on Windows, macOS or Linux; Windows SSH host with PowerShell |
 
 The CI workflow targets Revit 2022 and 2026 builds on Windows.

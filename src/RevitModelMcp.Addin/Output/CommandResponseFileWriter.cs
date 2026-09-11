@@ -50,6 +50,11 @@ internal sealed class CommandResponseFileWriter
         try
         {
             response.Responder = _responder;
+            if (ResponseDelivery.Current is { } delivery)
+            {
+                delivery(CommandResponseJsonSerializer.Serialize(response));
+                return;
+            }
             CommandResponseJsonFile.Write(_path, response);
             var outcome = response.Success ? "success" : response.Partial ? "partial" : "error";
             PluginLog.Info(
@@ -70,4 +75,9 @@ internal sealed class CommandResponseFileWriter
             $"Progress. Command='{command}'. State='{state}'. Processed={processed}. " +
             $"Total={total}. ElapsedMs={elapsedMs}. CurrentView='{safeView ?? string.Empty}'.");
     }
+}
+
+internal static class ResponseDelivery
+{
+    [ThreadStatic] public static Action<string>? Current;
 }
