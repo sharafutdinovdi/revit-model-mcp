@@ -24,6 +24,7 @@ internal static class ActionCommandExecutor
         CommandResponse<ActionResultData> response;
         var dialogsSuppressed = new List<string>();
         var viewOpened = false;
+        var failures = new ActionFailures();
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
             if (arguments is not TaskDialogShowingEventArgs dialog) return;
@@ -56,7 +57,6 @@ internal static class ActionCommandExecutor
                 using var transaction = new Transaction(document, "revit_" + job.Command.Replace('-', '_'));
                 if (transaction.Start() != TransactionStatus.Started)
                     throw new InvalidOperationException("Could not start the action transaction.");
-                var failures = new RollbackFailures();
                 transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
                     .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
                 try
@@ -72,6 +72,7 @@ internal static class ActionCommandExecutor
                 }
             }
             response = CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
+            response.WarningsDismissed = failures.WarningsDismissed;
         }
         catch (Exception exception)
         {
@@ -292,16 +293,62 @@ internal static class ActionCommandExecutor
         public List<string> ClosestFamilies { get; } = closestFamilies;
     }
 
-    private sealed class RollbackFailures : IFailuresPreprocessor
+    private sealed class ActionFailures : IFailuresPreprocessor
     {
+        public List<string> WarningsDismissed { get; } = [];
         public string? Message { get; private set; }
 
         public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
         {
-            var messages = failuresAccessor.GetFailureMessages();
-            if (messages.Count == 0) return FailureProcessingResult.Continue;
-            Message = string.Join("; ", messages.Select(message => message.GetDescriptionText()));
-            return FailureProcessingResult.ProceedWithRollBack;
+            var errors = new List<string>();
+            var resolved = false;
+            var rollBack = false;
+            foreach (var failure in failuresAccessor.GetFailureMessages())
+            {
+                var severity = failure.GetSeverity();
+                if (severity == FailureSeverity.None) continue;
+                var description = failure.GetDescriptionText();
+                var resolution = FailureResolutionType.Invalid;
+                // Other resolutions can delete, detach, skip or move elements outside the requested action.
+                if (severity == FailureSeverity.Error && failure.HasResolutions())
+                {
+                    foreach (var candidate in new[] { FailureResolutionType.FixElements, FailureResolutionType.SetValue })
+                    {
+                        if (!failure.HasResolutionOfType(candidate)
+                            || !failuresAccessor.IsFailureResolutionPermitted(failure, candidate)) continue;
+                        resolution = candidate;
+                        break;
+                    }
+                }
+                var disposition = ActionFailurePolicy.Classify(
+                    severity == FailureSeverity.Warning, severity == FailureSeverity.Error,
+                    resolution != FailureResolutionType.Invalid,
+                    severity == FailureSeverity.Error && failuresAccessor.GetAttemptedResolutionTypes(failure).Count > 0);
+                if (disposition == ActionFailureDisposition.DismissWarning)
+                {
+                    failuresAccessor.DeleteWarning(failure);
+                    WarningsDismissed.Add(description);
+                    continue;
+                }
+
+                errors.Add(description);
+                if (disposition == ActionFailureDisposition.ResolveError)
+                {
+                    try
+                    {
+                        failure.SetCurrentResolutionType(resolution);
+                        failuresAccessor.ResolveFailure(failure);
+                        resolved = true;
+                        continue;
+                    }
+                    catch (Autodesk.Revit.Exceptions.ArgumentException) { }
+                    catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
+                }
+                rollBack = true;
+            }
+            Message = errors.Count > 0 ? string.Join("; ", errors) : null;
+            if (rollBack) return FailureProcessingResult.ProceedWithRollBack;
+            return resolved ? FailureProcessingResult.ProceedWithCommit : FailureProcessingResult.Continue;
         }
     }
 }
