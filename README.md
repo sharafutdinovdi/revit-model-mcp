@@ -32,7 +32,9 @@ What happens in the recording, in order:
 3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
 4. "Reset the view and delete that chair." The temporary isolate is cleared and the chair is deleted.
 
-The header image is the same server driven from a terminal client against Revit 2023 over SSH. The view export it ends with is the file `revit_export_view` saved, untouched:
+The header shows a read-only terminal demo against Revit 2023 over SSH.
+Its `--demo` wrapper is not shipped in this package; use [Quick start](#quick-start) for supported commands.
+The export below is the PNG saved by `revit_export_view`:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_export-view_dark.png">
@@ -279,7 +281,8 @@ The token is never logged.
 All HTTP routes except `/health` require it; health exposes the active document name and process information.
 There is no built-in TLS: put remote access behind a tunnel or a TLS proxy.
 Set `REVIT_MCP_HTTP_ENABLED=0` in Revit's environment or `httpEnabled=false` in settings to disable the listener entirely.
-Actions require both gates over every transport.
+MCP action calls require both gates over every transport.
+Direct HTTP action jobs require the bearer token and workstation gate; the Python registration flag does not apply to direct callers.
 
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
