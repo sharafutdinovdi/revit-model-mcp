@@ -262,7 +262,8 @@ class SshPowerShellHost:
         ]
         if os.environ.get("REVIT_MCP_SSH_MUX") != "0":
             runtime = os.environ.get("XDG_RUNTIME_DIR")
-            directory = Path(runtime) if runtime else Path.home() / ".cache" / "revit-model-mcp"
+            # Unix sockets cap the path at about 100 bytes and ssh appends a random suffix, so keep this short.
+            directory = Path(runtime) if runtime else Path("/tmp") / f"revit-model-mcp-{getattr(os, 'getuid', lambda: 'user')()}"
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             directory.chmod(0o700)
             command.extend([
