@@ -4,6 +4,7 @@ import asyncio
 import base64
 import json
 import os
+from pathlib import Path
 import stat
 import unittest
 from unittest.mock import AsyncMock, patch
@@ -658,7 +659,7 @@ def test_ssh_command_falls_back_to_user_cache(tmp_path, monkeypatch):
     monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
     with patch("revit_model_mcp.ssh_host.Path.home", return_value=tmp_path):
         command = SshPowerShellHost()._build_command("'ok'")
-    directory = tmp_path / ".cache" / "revit-model-mcp"
+    directory = Path("/tmp") / f"revit-model-mcp-{getattr(os, 'getuid', lambda: 'user')()}"
     assert f"ControlPath={directory}/mux-%C" in command
     assert directory.is_dir()
     if os.name != "nt":
