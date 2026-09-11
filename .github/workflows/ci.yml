@@ -20,7 +20,7 @@ jobs:
       - name: Build Revit 2022
         run: dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
       - name: Test core
-        run: dotnet test tests/RevitModelMcp.Core.Tests
+        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

@@ -30,29 +30,46 @@ The session above ran from a Mac against Revit 2023 on a Windows workstation ove
 ## Quick start
 
 This checkout is unreleased.
-Windows build and live Revit validation are still required.
 The add-in requires Windows and Revit 2022-2026.
 The server requires Python 3.11 or later and uv.
 
-On Windows with Revit closed, build the matching add-in from the repository root:
+On Windows, build from the repository root and install the Revit 2026 output:
 
 ```powershell
-dotnet build src/RevitModelMcp.Addin -c Release.R26
+dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
+if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+$addins = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2026'
+$install = Join-Path $addins 'RevitModelMcp'
+New-Item -ItemType Directory -Force -Path $install | Out-Null
+Copy-Item 'src\RevitModelMcp.Addin\bin\Release.R26\*' $install -Recurse -Force
+[xml]$manifest = Get-Content 'src\RevitModelMcp.Addin\RevitModelMcp.addin'
+$manifest.SelectSingleNode('/RevitAddIns/AddIn/Assembly').InnerText = [string](Join-Path $install 'RevitModelMcp.dll')
+$manifest.Save((Join-Path $addins 'RevitModelMcp.addin'))
 ```
 
-`DeployAddin` defaults to `true` in the add-in project.
-Use `Release.R22` through `Release.R26` to match the installed Revit year.
-Start Revit and open a model after deployment.
+`DeployAddin=false` disables automatic deployment during the build.
+The install uses only `RevitModelMcp\` and `RevitModelMcp.addin` under the Revit 2026 add-ins directory.
+For another installed Revit year, change both `Release.R26` paths and the add-ins year.
+Start Revit and open a model after installation, or restart it if it was already running.
+The add-in creates `%LOCALAPPDATA%\RevitModelMcp\instance_<processId>.json` and updates it every five seconds.
+It adds no ribbon tab or button.
 
 Register the server with Claude Code on that Windows machine:
 
-```sh
-claude mcp add revit-model-mcp -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
+```powershell
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory C:/Projects/revit-model-mcp/server revit-model-mcp
 ```
 
-Replace the directory with the local checkout path.
-For a macOS or Linux client, append `--host ssh:revit-host` with an existing Windows SSH alias.
-See [server setup](server/README.md) for configuration.
+For a macOS or Linux client with an existing Windows SSH alias:
+
+```sh
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
+```
+
+Replace the checkout path and `revit-host` alias with the client's values.
+The SSH account must be the Windows account running Revit.
+`uv run --directory server revit-model-mcp --help` prints environment transport settings without opening a connection.
+See [server setup](server/README.md) for channel overrides and SSH multiplexing.
 
 Ask the MCP client to call `revit_ping`.
 The expected successful response has `command: "ping"` and `success: true`.
@@ -95,6 +112,24 @@ See [architecture](docs/architecture.md) and [transport](docs/transport.md).
 | `revit_list_relations` | Read model object membership or dependencies. |
 | `revit_list_instances` | List Revit processes with active documents, versions and processId. |
 
+## Security
+
+The model API is read-only by construction.
+The exposed surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations and PNG view export.
+The [command executor](src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
+View export calls `Document.ExportImage` and writes an image file.
+Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
+
+`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` fields to file names.
+This covers nested results and instance listings.
+Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
+
+SSH mode stores no credentials.
+Authentication and routing use the local OpenSSH configuration and agent.
+The default multiplexing socket directory has mode `0700` on macOS and Linux.
+The Windows file channel relies on the account's filesystem permissions.
+See [transport](docs/transport.md) and [security reporting](SECURITY.md).
+
 ## Testing
 
 The Python tests cover job construction, transport failures, downloads and MCP stdio registration.
@@ -106,7 +141,7 @@ On Windows:
 ```powershell
 dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
 dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
-dotnet test tests/RevitModelMcp.Core.Tests
+dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
 ```
 
 On the MCP client:
