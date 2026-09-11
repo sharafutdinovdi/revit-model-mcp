@@ -63,6 +63,6 @@ The snapshot and view dump use the following generic defaults:
 | View counts | Non-template views with the case-sensitive prefixes `Coordination_` and `Construction_` |
 | Section prefix labels | Case-sensitive leading text `Coordination` or `Construction`; all other names receive `other` |
 
-The named parameter defaults are optional; absent values are omitted.
+Missing annotation, curtain panel, and profile parameter values are omitted; missing region comments are null.
 The snapshot exposes `regions`, `regionCount`, region `comment1` and `comment2`, model counts `totalRegions`, `coordinationViews` and `constructionViews`, and panel statistics `panelsWithSegment` and `panelsWithNumber`.
 Model names and localized category labels are returned as stored in Revit.
