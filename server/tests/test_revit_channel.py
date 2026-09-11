@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
+import stat
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -626,6 +628,71 @@ class HostConfigurationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(_ps_directory(), "'C:\\User''s channel'")
         with patch("revit_model_mcp.ssh_host.ACTIVATION_TASK", "User's task"):
             self.assertIn("'User''s task'", SshPowerShellHost()._activation_script())
+
+
+def test_ssh_command_reuses_private_runtime_directory(tmp_path, monkeypatch):
+    directory = tmp_path / "runtime"
+    directory.mkdir(mode=0o755)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
+    host = SshPowerShellHost("revit-host")
+
+    command = host._build_command("'ok'")
+
+    assert command == [
+        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=45",
+        "-o", "ControlMaster=auto", "-o", f"ControlPath={directory}/mux-%C",
+        "-o", "ControlPersist=600", "revit-host", "powershell.exe",
+        "-NoProfile", "-NonInteractive", "-EncodedCommand",
+        base64.b64encode("'ok'".encode("utf-16le")).decode("ascii"),
+    ]
+    assert host._build_command("'ok'") == command
+    if os.name != "nt":
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+
+
+def test_ssh_command_falls_back_to_user_cache(tmp_path, monkeypatch):
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
+    with patch("revit_model_mcp.ssh_host.Path.home", return_value=tmp_path):
+        command = SshPowerShellHost()._build_command("'ok'")
+    directory = tmp_path / ".cache" / "revit-model-mcp"
+    assert f"ControlPath={directory}/mux-%C" in command
+    assert directory.is_dir()
+    if os.name != "nt":
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+
+
+def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_SSH_MUX", "0")
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", '-p 2222 -o "IdentityFile=/keys/revit key"')
+    with patch("revit_model_mcp.ssh_host.Path.mkdir") as mkdir:
+        command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    mkdir.assert_not_called()
+    assert not any(option.startswith("Control") for option in command)
+    assert command[5:11] == [
+        "-p", "2222", "-o", "IdentityFile=/keys/revit key", "revit-host", "powershell.exe",
+    ]
+
+
+def test_ssh_extra_options_follow_mux_options(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
+    command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    assert command[10:14] == [
+        "ControlPersist=600", "-o", "ServerAliveInterval=30", "revit-host",
+    ]
+
+
+def test_local_command_ignores_ssh_settings(monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "'invalid shell quoting")
+    with patch("revit_model_mcp.ssh_host.Path.mkdir") as mkdir:
+        command = SshPowerShellHost(local=True)._build_command("'ok'")
+    mkdir.assert_not_called()
+    assert command[:4] == ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand"]
 
 
 if __name__ == "__main__":

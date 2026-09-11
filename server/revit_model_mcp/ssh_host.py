@@ -5,9 +5,11 @@ import json
 import logging
 import os
 import re
+import shlex
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from revit_model_mcp.artifact_download import save_artifact
 from revit_model_mcp.revit_channel import (
     ACTIVATION_TASK,
@@ -243,22 +245,36 @@ class SshPowerShellHost:
             f"$directory = {_ps_directory()}; @({paths}) | ForEach-Object {{ "
             "$path = Join-Path $directory $_; Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }"
         )
-    async def _run(self, script: str, timeout_seconds: float = 60) -> str:
+    def _build_command(self, script: str) -> list[str]:
         encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        powershell = [
+            "powershell.exe", "-NoProfile", "-NonInteractive",
+            "-EncodedCommand", encoded_script,
+        ]
+        if self.local:
+            return powershell
         command = [
             "ssh",
             "-o",
             "BatchMode=yes",
             "-o",
             f"ConnectTimeout={self.connect_timeout_seconds}",
-            self.host,
-            "powershell.exe",
-            "-NoProfile",
-            "-NonInteractive",
-            "-EncodedCommand",
-            encoded_script]
-        if self.local:
-            command = command[6:]
+        ]
+        if os.environ.get("REVIT_MCP_SSH_MUX") != "0":
+            runtime = os.environ.get("XDG_RUNTIME_DIR")
+            directory = Path(runtime) if runtime else Path.home() / ".cache" / "revit-model-mcp"
+            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+            directory.chmod(0o700)
+            command.extend([
+                "-o", "ControlMaster=auto",
+                "-o", f"ControlPath={directory}/mux-%C",
+                "-o", "ControlPersist=600",
+            ])
+        command.extend(shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", "")))
+        return command + [self.host] + powershell
+
+    async def _run(self, script: str, timeout_seconds: float = 60) -> str:
+        command = self._build_command(script)
         process: asyncio.subprocess.Process | None = None
         try:
             if not self.local:

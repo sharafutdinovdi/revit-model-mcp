@@ -10,6 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
 from revit_model_mcp.revit_channel import (
+    CHANNEL_DIRECTORY,
     DEFAULT_HOST,
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
@@ -402,8 +403,19 @@ async def revit_list_instances(document: Document = None) -> list[dict[str, obje
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Read a live Revit model through MCP.")
-    parser.add_argument("--host", default=os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
+    default_host = os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST)
+    channel_dir = os.environ.get("REVIT_MCP_CHANNEL_DIR") or rf"%LOCALAPPDATA%\{CHANNEL_DIRECTORY}"
+    parser = argparse.ArgumentParser(
+        description="Read a live Revit model through MCP.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Transport settings from the environment (no connection is opened):\n"
+            f"  host mode: {default_host}\n"
+            f"  channel dir (Windows): {channel_dir}\n"
+            f"  redact paths: {os.environ.get('REVIT_MCP_REDACT_PATHS') == '1'}"
+        ),
+    )
+    parser.add_argument("--host", default=default_host, help="local or ssh:<alias>; overrides REVIT_MCP_HOST.")
     parser.add_argument("--redact-paths", action="store_true", help="Return model file names without directory paths.")
     args = parser.parse_args()
     global host, channel

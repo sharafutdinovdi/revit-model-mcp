@@ -270,6 +270,31 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(os.environ["REVIT_MCP_REDACT_PATHS"], "1")
             run.assert_called_once_with(transport="stdio")
 
+    def test_cli_help_reports_environment_without_starting_transport(self) -> None:
+        import contextlib
+        import io
+
+        output = io.StringIO()
+        with (
+            patch("sys.argv", ["revit-model-mcp", "--help"]),
+            patch.dict(os.environ, {
+                "REVIT_MCP_HOST": "ssh:revit-host",
+                "REVIT_MCP_CHANNEL_DIR": r"C:\RevitChannel",
+                "REVIT_MCP_REDACT_PATHS": "1",
+            }),
+            patch.object(revit_server, "create_host") as create_host,
+            patch.object(revit_server.mcp, "run") as run,
+            contextlib.redirect_stdout(output),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            revit_server.main()
+        self.assertEqual(raised.exception.code, 0)
+        self.assertIn("host mode: ssh:revit-host", output.getvalue())
+        self.assertIn(r"channel dir (Windows): C:\RevitChannel", output.getvalue())
+        self.assertIn("redact paths: True", output.getvalue())
+        create_host.assert_not_called()
+        run.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

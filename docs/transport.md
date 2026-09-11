@@ -43,7 +43,21 @@ The server decodes the image into `save_to` or a new temporary directory.
 An existing destination file produces an error.
 The MCP result contains the image path and metadata without base64.
 
-SSH starts share a limit of five connections per rolling 30 seconds within one host object.
+Each SSH invocation includes `-o ControlMaster=auto -o ControlPath=<dir>/mux-%C -o ControlPersist=600` by default.
+Commands for the same connection reuse the master instead of opening a new TCP connection for each PowerShell call.
+The master persists for 600 idle seconds.
+`<dir>` is `$XDG_RUNTIME_DIR` when nonempty, otherwise `~/.cache/revit-model-mcp/`.
+The directory is created or restricted to mode `0700` on macOS and Linux.
+Keep the directory path short; `%C` provides a hashed connection identifier within the Unix socket path limit.
+
+`REVIT_MCP_SSH_MUX=0` disables these built-in multiplexing options.
+Use it on clients without multiplexing support, such as native Windows OpenSSH.
+`REVIT_MCP_SSH_OPTIONS` appends shell-quoted arguments after built-in options and before the host, for example `-o ServerAliveInterval=30 -p 2222`.
+OpenSSH uses the first value for an option.
+A custom socket path or lifetime requires `REVIT_MCP_SSH_MUX=0` plus all three `Control*` options in `REVIT_MCP_SSH_OPTIONS`.
+Local mode ignores both variables and creates no multiplexing directory.
+
+SSH command starts retain a limit of five per rolling 30 seconds within one host object.
 Polling waits ten seconds between attempts.
 Job preparation and final response retrieval each use one command.
 Transient failures during polling can be retried within the remaining timeout.

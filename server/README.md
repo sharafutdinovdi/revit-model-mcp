@@ -14,13 +14,13 @@ uv run --directory server revit-model-mcp
 Register a local Windows server with Claude Code:
 
 ```sh
-claude mcp add revit-model-mcp -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory C:/Projects/revit-model-mcp/server revit-model-mcp
 ```
 
 For a client on macOS or Linux:
 
 ```sh
-claude mcp add revit-model-mcp -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp --host ssh:revit-host
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
 ```
 
 Replace the directory with the checkout path on the MCP client.
@@ -32,9 +32,22 @@ The Windows SSH session must use the same account as Revit or an explicitly shar
 | Variable | Default | Behavior |
 |---|---|---|
 | `REVIT_MCP_HOST` | `local` | Runs Windows PowerShell locally. `ssh:<alias>` runs it through the local SSH client. `--host` overrides this variable. |
+| `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
+| `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
 | `REVIT_MCP_ACTIVATE_TASK` | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
 | `REVIT_MCP_CHANNEL_DIR` | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the Python server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. |
 | `REVIT_MCP_REDACT_PATHS` | Unset | `1` replaces every response `documentPath` value with its file name. `--redact-paths` enables the same behavior. |
+
+SSH mode passes `ControlMaster=auto`, `ControlPath=<dir>/mux-%C` and `ControlPersist=600` on every invocation.
+The socket directory is `$XDG_RUNTIME_DIR` when nonempty, otherwise `~/.cache/revit-model-mcp/`.
+The directory is created or restricted to mode `0700` on macOS and Linux.
+Keep its absolute path short for Unix socket limits; `%C` hashes the connection identity.
+The master connection remains available for 600 seconds after its last client disconnects.
+Extra options follow OpenSSH's first-value-wins behavior.
+To supply a custom multiplexing path or lifetime, set `REVIT_MCP_SSH_MUX=0` and provide all three `Control*` options through `REVIT_MCP_SSH_OPTIONS`.
+Clients whose OpenSSH lacks multiplexing support, such as native Windows OpenSSH, use `REVIT_MCP_SSH_MUX=0`.
+
+`uv run --directory server revit-model-mcp --help` prints the environment host mode, Windows channel directory and path redaction flag without contacting Revit.
 
 The server reads activation configuration at process startup.
 A configured task may restore and focus the Revit window.
