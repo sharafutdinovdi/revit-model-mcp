@@ -25,7 +25,7 @@ internal static class ReadCommandReader
 
     public static DocumentInfoData ReadDocumentInfo(UIApplication application)
     {
-        var uiDocument = application.ActiveUIDocument ?? throw new InvalidOperationException("Нет активного документа Revit.");
+        var uiDocument = application.ActiveUIDocument ?? throw new InvalidOperationException("No active Revit document.");
         var document = uiDocument.Document;
         var roomCounts = new Dictionary<long, int>();
         foreach (var room in new FilteredElementCollector(document)
@@ -168,7 +168,7 @@ internal static class ReadCommandReader
                      .WhereElementIsNotElementType())
         {
             count++;
-            var name = element.Category?.Name ?? "<без категории>";
+            var name = element.Category?.Name ?? "<no category>";
             if (!categories.TryGetValue(name, out var category))
             {
                 category = new CategoryAccumulator(name);
@@ -232,7 +232,7 @@ internal static class ReadCommandReader
         return new ViewWarningsData
         {
             View = view.Name,
-            MatchingNote = "Предупреждения документа отфильтрованы по участвующим элементам, присутствующим на виде.",
+            MatchingNote = "Document warnings are filtered by involved elements present in the view.",
             Warnings = warnings.Where(warning => warning.HasElementsOnView).ToList()
         };
     }

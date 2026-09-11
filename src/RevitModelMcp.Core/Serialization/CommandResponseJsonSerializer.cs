@@ -44,7 +44,7 @@ public static class CommandResponseJsonFile
                 path,
                 CommandResponse<object>.Fail(
                     command,
-                    $"Не удалось выполнить команду: {exception}",
+                    $"Failed to execute the command: {exception}",
                     stopwatch.ElapsedMilliseconds));
         }
     }
@@ -52,7 +52,7 @@ public static class CommandResponseJsonFile
     public static void Write<T>(string path, CommandResponse<T> response)
     {
         var directory = Path.GetDirectoryName(path)
-                        ?? throw new InvalidOperationException("Для файла ответа не указан каталог.");
+                        ?? throw new InvalidOperationException("No directory was specified for the response file.");
         Directory.CreateDirectory(directory);
         File.WriteAllText(path, CommandResponseJsonSerializer.Serialize(response), Utf8WithoutBom);
     }

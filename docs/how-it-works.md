@@ -46,3 +46,23 @@ Timeouts do not cancel accepted jobs, especially actions.
 
 The [architecture](architecture.md) describes scheduling and failure behavior.
 The [server reference](../server/README.md) lists environment settings.
+
+## Model naming defaults
+
+Queries and catalog lookups accept names from the active document.
+The snapshot and view dump use the following generic defaults:
+
+| Data | Default |
+| --- | --- |
+| View dump profile parameters | Names starting with `Project_`, matched without case sensitivity; instance values take precedence over type values |
+| View dump measurements | `Length`, `Thickness`, `Area`, and `Volume`, matched without case sensitivity; lengths are reported in millimeters, areas in square meters, and volumes in cubic meters |
+| Snapshot regions | Family instances whose family name contains `Region`, matched without case sensitivity |
+| Region comments | Named parameters `Comment 1` and `Comment 2` |
+| Annotation parameters | Built-in `Mark`, plus named parameters `Segment`, `Number`, and `Zone Code` |
+| Curtain panel parameters | The annotation parameters plus `NameOverride` |
+| View counts | Non-template views with the case-sensitive prefixes `Coordination_` and `Construction_` |
+| Section prefix labels | Case-sensitive leading text `Coordination` or `Construction`; all other names receive `other` |
+
+The named parameter defaults are optional; absent values are omitted.
+The snapshot exposes `regions`, `regionCount`, region `comment1` and `comment2`, model counts `totalRegions`, `coordinationViews` and `constructionViews`, and panel statistics `panelsWithSegment` and `panelsWithNumber`.
+Model names and localized category labels are returned as stored in Revit.

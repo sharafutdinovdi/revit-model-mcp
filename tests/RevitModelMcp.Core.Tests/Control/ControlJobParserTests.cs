@@ -21,7 +21,7 @@ public sealed class ControlJobParserTests
         const string json = """
                             {
                               "command": "views-dump",
-                              "views": ["СПП в ГНС 1-й этаж", "  СПП в ГНС 2-й этаж  "]
+                              "views": ["Level 1 Plan", "  Level 2 Plan  "]
                             }
                             """;
 
@@ -30,8 +30,8 @@ public sealed class ControlJobParserTests
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ViewsDump);
         await Assert.That(result.Views).IsEquivalentTo(new[]
         {
-            "СПП в ГНС 1-й этаж",
-            "СПП в ГНС 2-й этаж"
+            "Level 1 Plan",
+            "Level 2 Plan"
         });
     }
 
@@ -41,7 +41,7 @@ public sealed class ControlJobParserTests
         var result = ControlJobParser.Parse("{\"command\":\"explode\",\"views\":[]}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(result.Error).Contains("Неизвестная команда: explode");
+        await Assert.That(result.Error).Contains("Unknown command: explode");
 
         var response = ViewDumpTextFormatter.Format(new ViewDumpReport
         {
@@ -49,8 +49,8 @@ public sealed class ControlJobParserTests
             Status = "error",
             Message = result.Error
         });
-        await Assert.That(response).Contains("статус: error");
-        await Assert.That(response).Contains("Неизвестная команда: explode");
+        await Assert.That(response).Contains("status: error");
+        await Assert.That(response).Contains("Unknown command: explode");
     }
 
     [Test]
@@ -59,7 +59,7 @@ public sealed class ControlJobParserTests
         var result = ControlJobParser.Parse("{\"command\":\"views-dump\",\"views\":[]}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(result.Error).Contains("непустой список views");
+        await Assert.That(result.Error).Contains("non-empty views list");
     }
 
     [Test]
@@ -75,9 +75,9 @@ public sealed class ControlJobParserTests
     public async Task Parse_Address_ReturnsNormalizedTargets()
     {
         var result = ControlJobParser.Parse(
-            "{\"command\":\"document-info\",\"targetDocument\":\" QC 0091 \",\"targetProcessId\":4242}");
+            "{\"command\":\"document-info\",\"targetDocument\":\" Sample Model \",\"targetProcessId\":4242}");
 
-        await Assert.That(result.TargetDocument).IsEqualTo("QC 0091");
+        await Assert.That(result.TargetDocument).IsEqualTo("Sample Model");
         await Assert.That(result.TargetProcessId).IsEqualTo(4242);
     }
 
@@ -85,7 +85,7 @@ public sealed class ControlJobParserTests
     public async Task JobTargetMatcher_RejectsForeignDocumentAndAcceptsUnaddressedJob()
     {
         var foreign = ControlJobParser.Parse(
-            "{\"command\":\"document-info\",\"targetDocument\":\"Customer\"}");
+            "{\"command\":\"document-info\",\"targetDocument\":\"Sample Model\"}");
         var unaddressed = ControlJobParser.Parse("{\"command\":\"document-info\"}");
 
         await Assert.That(JobTargetMatcher.Matches(foreign, "Test Model", @"C:\\Models\\Test Model.rvt", 42)).IsFalse();
@@ -100,7 +100,7 @@ public sealed class ControlJobParserTests
         Directory.CreateDirectory(directory);
         try
         {
-            File.WriteAllText(triggerPath, "{\"command\":\"document-info\",\"targetDocument\":\"Customer\"}");
+            File.WriteAllText(triggerPath, "{\"command\":\"document-info\",\"targetDocument\":\"Sample Model\"}");
             var job = ControlJobParser.Parse(File.ReadAllText(triggerPath));
 
             var claimed = JobTargetMatcher.TryClaim(
@@ -131,7 +131,7 @@ public sealed class ControlJobParserTests
                             {
                               "command": "list-views",
                               "viewType": " FloorPlan ",
-                              "nameContains": " ГНС "
+                              "nameContains": " Plan "
                             }
                             """;
 
@@ -139,16 +139,16 @@ public sealed class ControlJobParserTests
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ListViews);
         await Assert.That(result.ViewType).IsEqualTo("FloorPlan");
-        await Assert.That(result.NameContains).IsEqualTo("ГНС");
+        await Assert.That(result.NameContains).IsEqualTo("Plan");
     }
 
     [Test]
     public async Task Parse_ViewSummary_ReturnsViewName()
     {
-        var result = ControlJobParser.Parse("{\"command\":\"view-summary\",\"view\":\"План 1\"}");
+        var result = ControlJobParser.Parse("{\"command\":\"view-summary\",\"view\":\"Level 1 Plan\"}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ViewSummary);
-        await Assert.That(result.View).IsEqualTo("План 1");
+        await Assert.That(result.View).IsEqualTo("Level 1 Plan");
     }
 
     [Test]
@@ -157,8 +157,8 @@ public sealed class ControlJobParserTests
         const string json = """
                             {
                               "command": "view-elements",
-                              "view": "План 1",
-                              "categories": ["Стены", " Двери ", "стены"],
+                              "view": "Level 1 Plan",
+                              "categories": ["Walls", " Doors ", "walls"],
                               "offset": 25,
                               "limit": 10
                             }
@@ -167,8 +167,8 @@ public sealed class ControlJobParserTests
         var result = ControlJobParser.Parse(json);
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ViewElements);
-        await Assert.That(result.View).IsEqualTo("План 1");
-        await Assert.That(result.Categories).IsEquivalentTo(new[] { "Стены", "Двери" });
+        await Assert.That(result.View).IsEqualTo("Level 1 Plan");
+        await Assert.That(result.Categories).IsEquivalentTo(new[] { "Walls", "Doors" });
         await Assert.That(result.Offset).IsEqualTo(25);
         await Assert.That(result.Limit).IsEqualTo(10);
     }
@@ -185,19 +185,19 @@ public sealed class ControlJobParserTests
     [Test]
     public async Task Parse_ViewWarnings_ReturnsViewName()
     {
-        var result = ControlJobParser.Parse("{\"command\":\"view-warnings\",\"view\":\"План 1\"}");
+        var result = ControlJobParser.Parse("{\"command\":\"view-warnings\",\"view\":\"Level 1 Plan\"}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ViewWarnings);
-        await Assert.That(result.View).IsEqualTo("План 1");
+        await Assert.That(result.View).IsEqualTo("Level 1 Plan");
     }
 
     [Test]
     public async Task Parse_ExportView_ReturnsDefaults()
     {
-        var result = ControlJobParser.Parse("{\"command\":\"export-view\",\"view\":\"План 1\"}");
+        var result = ControlJobParser.Parse("{\"command\":\"export-view\",\"view\":\"Level 1 Plan\"}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ExportView);
-        await Assert.That(result.View).IsEqualTo("План 1");
+        await Assert.That(result.View).IsEqualTo("Level 1 Plan");
         await Assert.That(result.PixelSize).IsEqualTo(1600);
         await Assert.That(result.ZoomToFit).IsTrue();
     }
@@ -219,12 +219,12 @@ public sealed class ControlJobParserTests
     {
         var missingView = ControlJobParser.Parse("{\"command\":\"export-view\",\"pixelSize\":1600}");
         var oversized = ControlJobParser.Parse(
-            "{\"command\":\"export-view\",\"view\":\"План 1\",\"pixelSize\":4001}");
+            "{\"command\":\"export-view\",\"view\":\"Level 1 Plan\",\"pixelSize\":4001}");
 
         await Assert.That(missingView.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(missingView.Error).Contains("поле view обязательно");
+        await Assert.That(missingView.Error).Contains("requires the view field");
         await Assert.That(oversized.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(oversized.Error).Contains("от 1 до 4000");
+        await Assert.That(oversized.Error).Contains("between 1 and 4000");
     }
 
     [Test]
@@ -232,27 +232,27 @@ public sealed class ControlJobParserTests
     {
         var views = new[]
         {
-            new TestView(42, "План 1"),
-            new TestView(84, "План 2"),
+            new TestView(42, "Level 1 Plan"),
+            new TestView(84, "Level 2 Plan"),
             new TestView(100, "84")
         };
 
-        var missing = ViewReferenceMatcher.Find(views, "Нет такого вида", view => view.Id, view => view.Name);
+        var missing = ViewReferenceMatcher.Find(views, "Missing View", view => view.Id, view => view.Name);
         var byId = ViewReferenceMatcher.Find(views, "42", view => view.Id, view => view.Name);
         var numericName = ViewReferenceMatcher.Find(views, "84", view => view.Id, view => view.Name);
 
         await Assert.That(missing).IsNull();
-        await Assert.That(byId?.Name).IsEqualTo("План 1");
+        await Assert.That(byId?.Name).IsEqualTo("Level 1 Plan");
         await Assert.That(numericName?.Id).IsEqualTo(100);
     }
 
     [Test]
     public async Task ViewNotFound_ReturnsListViewsHint()
     {
-        var response = CommandResponse<object>.ViewNotFound("export-view", "Нет такого вида", 12);
+        var response = CommandResponse<object>.ViewNotFound("export-view", "Missing View", 12);
 
         await Assert.That(response.Success).IsFalse();
-        await Assert.That(response.Message).Contains("Вид «Нет такого вида» не найден");
+        await Assert.That(response.Message).Contains("View 'Missing View' was not found");
         await Assert.That(response.Message).Contains("list-views");
     }
 
@@ -260,7 +260,7 @@ public sealed class ControlJobParserTests
     public async Task Parse_ViewElementsWithInvalidPage_ReturnsReadableError()
     {
         var result = ControlJobParser.Parse(
-            "{\"command\":\"view-elements\",\"view\":\"План 1\",\"offset\":-1,\"limit\":0}");
+            "{\"command\":\"view-elements\",\"view\":\"Level 1 Plan\",\"offset\":-1,\"limit\":0}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(result.Error).Contains("offset");
@@ -272,7 +272,7 @@ public sealed class ControlJobParserTests
         var result = ControlJobParser.Parse("{\"command\":\"element-details\",\"id\":0}");
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(result.Error).Contains("положительный id");
+        await Assert.That(result.Error).Contains("positive id");
     }
 
     [Test]

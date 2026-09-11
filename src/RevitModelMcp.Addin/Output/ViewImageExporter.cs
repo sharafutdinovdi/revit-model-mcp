@@ -24,7 +24,7 @@ internal static class ViewImageExporter
         var targetPath = Path.Combine(directory, fileName);
         if (File.Exists(targetPath))
         {
-            throw new IOException($"Файл экспорта уже существует: {fileName}.");
+            throw new IOException($"The export file already exists: {fileName}.");
         }
 
         var prefix = Path.GetFileNameWithoutExtension(targetPath);
@@ -33,12 +33,12 @@ internal static class ViewImageExporter
         using var options = CreateOptions(view, targetPath, pixelSize, zoomToFit);
         document.ExportImage(options);
 
-        // Revit добавляет к префиксу имя вида, поэтому итоговый файл находим после экспорта.
+        // Revit appends the view name to the prefix; the output file is located after export.
         var exportedPath = Directory.GetFiles(directory, $"{prefix}*.png")
             .Where(path => !existingFiles.Contains(path))
             .OrderByDescending(File.GetLastWriteTimeUtc)
             .FirstOrDefault()
-            ?? throw new IOException("Revit завершил экспорт, но PNG-файл не найден.");
+            ?? throw new IOException("Revit completed the export, but no PNG file was found.");
         if (!string.Equals(exportedPath, targetPath, StringComparison.OrdinalIgnoreCase))
         {
             File.Move(exportedPath, targetPath);
@@ -97,7 +97,7 @@ internal static class ViewImageExporter
         }
         catch (Autodesk.Revit.Exceptions.InvalidOperationException)
         {
-            // Для редких видов без Outline горизонталь даёт предсказуемый размер.
+            // Horizontal fitting gives a predictable size for views without an Outline.
             return true;
         }
     }
@@ -107,7 +107,7 @@ internal static class ViewImageExporter
         if (view.ViewType is ViewType.Schedule or ViewType.Legend || !view.CanBePrinted)
         {
             throw new InvalidOperationException(
-                $"Вид «{view.Name}» имеет тип {view.ViewType}, который нельзя экспортировать в изображение.");
+                $"View '{view.Name}' has type {view.ViewType}, which cannot be exported as an image.");
         }
     }
 
@@ -130,7 +130,7 @@ internal static class ViewImageExporter
         if (read != header.Length ||
             !header.Take(8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }))
         {
-            throw new InvalidDataException("Revit создал файл с неверным заголовком PNG.");
+            throw new InvalidDataException("Revit created a file with an invalid PNG header.");
         }
 
         return (

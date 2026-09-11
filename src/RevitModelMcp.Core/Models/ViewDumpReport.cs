@@ -81,7 +81,7 @@ public sealed class ViewDumpView
         {
             RequestedName = requestedName,
             Status = "not-found",
-            Error = $"Вид «{requestedName}» не найден."
+            Error = $"View '{requestedName}' was not found."
         };
     }
 }

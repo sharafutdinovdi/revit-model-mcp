@@ -37,7 +37,7 @@ SUCCESS_RESPONSE = json.dumps(
     {
         "command": "document-info",
         "success": True,
-        "data": {"fileName": "Customer.rvt", "viewCount": 84},
+        "data": {"fileName": "Sample Model.rvt", "viewCount": 84},
         "elapsedMs": 251,
     },
     ensure_ascii=False,
@@ -134,26 +134,26 @@ class ReadJobTests(unittest.TestCase):
 
     def test_forms_list_views_job_with_optional_filters(self) -> None:
         self.assertEqual(
-            ReadJob.list_views(" FloorPlan ", " ГНС ").payload,
-            {"command": "list-views", "viewType": "FloorPlan", "nameContains": "ГНС"},
+            ReadJob.list_views(" FloorPlan ", " Plan ").payload,
+            {"command": "list-views", "viewType": "FloorPlan", "nameContains": "Plan"},
         )
         self.assertEqual(ReadJob.list_views().payload, {"command": "list-views"})
 
     def test_forms_view_summary_job(self) -> None:
         self.assertEqual(
-            ReadJob.view_summary(" План 1 ").payload,
-            {"command": "view-summary", "view": "План 1"},
+            ReadJob.view_summary(" Level 1 Plan ").payload,
+            {"command": "view-summary", "view": "Level 1 Plan"},
         )
 
     def test_forms_view_elements_job(self) -> None:
         self.assertEqual(
             ReadJob.view_elements(
-                "План 1", ["Стены", " Двери ", "стены", ""], 25, 10
+                "Level 1 Plan", ["Walls", " Doors ", "walls", ""], 25, 10
             ).payload,
             {
                 "command": "view-elements",
-                "view": "План 1",
-                "categories": ["Стены", "Двери"],
+                "view": "Level 1 Plan",
+                "categories": ["Walls", "Doors"],
                 "offset": 25,
                 "limit": 10,
             },
@@ -167,14 +167,15 @@ class ReadJobTests(unittest.TestCase):
 
     def test_forms_view_warnings_job(self) -> None:
         self.assertEqual(
-            ReadJob.view_warnings("План 1").payload,
-            {"command": "view-warnings", "view": "План 1"},
+            ReadJob.view_warnings("Level 1 Plan").payload,
+            {"command": "view-warnings", "view": "Level 1 Plan"},
         )
 
-    def test_serializes_job_as_compact_utf8_json(self) -> None:
+    def test_round_trips_non_ascii_mixed_scripts_as_compact_utf8_json(self) -> None:
+        self.assertEqual(json.loads(ReadJob.view_summary("Plan 東京 Δ").to_json())["view"], "Plan 東京 Δ")
         self.assertEqual(
-            ReadJob.view_summary("План 1").to_json(),
-            '{"command":"view-summary","view":"План 1"}',
+            ReadJob.view_summary("Plan 東京 Δ").to_json(),
+            '{"command":"view-summary","view":"Plan 東京 Δ"}',
         )
 
     def test_adds_optional_document_address_without_mutating_job(self) -> None:
@@ -186,9 +187,9 @@ class ReadJobTests(unittest.TestCase):
 
     def test_rejects_invalid_paging_and_id_before_ssh(self) -> None:
         with self.assertRaisesRegex(Exception, "offset"):
-            ReadJob.view_elements("План", offset=-1)
+            ReadJob.view_elements("Plan", offset=-1)
         with self.assertRaisesRegex(Exception, "limit"):
-            ReadJob.view_elements("План", limit=0)
+            ReadJob.view_elements("Plan", limit=0)
         with self.assertRaisesRegex(Exception, "positive"):
             ReadJob.element_details(0)
 
@@ -196,7 +197,7 @@ class ReadJobTests(unittest.TestCase):
 class ResponseTests(unittest.TestCase):
     def test_parses_successful_response_without_changing_envelope(self) -> None:
         parsed = parse_response(SUCCESS_RESPONSE, "document-info")
-        self.assertEqual(parsed["data"]["fileName"], "Customer.rvt")
+        self.assertEqual(parsed["data"]["fileName"], "Sample Model.rvt")
         self.assertEqual(parsed["elapsedMs"], 251)
 
     def test_returns_plugin_error_message_as_is(self) -> None:
@@ -204,13 +205,13 @@ class ResponseTests(unittest.TestCase):
             {
                 "command": "document-info",
                 "success": False,
-                "message": "Нет активного документа Revit.",
+                "message": "No active Revit document.",
                 "elapsedMs": 0,
             }
         )
         with self.assertRaises(PluginResponseError) as raised:
             parse_response(content, "document-info")
-        self.assertEqual(str(raised.exception), "Нет активного документа Revit.")
+        self.assertEqual(str(raised.exception), "No active Revit document.")
     def test_reports_malformed_json(self) -> None:
         with self.assertRaisesRegex(ResponseParseError, "could not be parsed as JSON"):
             parse_response("not-json", "document-info")
@@ -427,7 +428,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         host._run = AsyncMock(
             side_effect=[
-                SshUnavailableError("ssh завершился с ошибкой"),
+                SshUnavailableError("SSH command failed"),
                 "gone",
             ]
         )
@@ -443,7 +444,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         host._run = AsyncMock(
             side_effect=[
-                RemoteCommandTimeoutError("короткая проверка зависла"),
+                RemoteCommandTimeoutError("The quick check timed out"),
                 "response_new_ping.json",
             ]
         )
@@ -458,16 +459,16 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
     async def test_reports_ssh_unavailable(self) -> None:
         remote = FakeRemoteHost()
         remote.prepare_error = SshUnavailableError(
-            "Машина revit-host недоступна по SSH."
+            "Host revit-host is unreachable over SSH."
         )
 
-        with self.assertRaisesRegex(SshUnavailableError, "недоступна по SSH"):
+        with self.assertRaisesRegex(SshUnavailableError, "unreachable over SSH"):
             await RevitReadChannel(remote).execute(ReadJob.document_info())
 
     async def test_reports_revit_not_running(self) -> None:
         remote = FakeRemoteHost()
         remote.prepare_error = RevitNotRunningError(
-            "Revit is not running на машине revit-host."
+            "Revit is not running on host revit-host."
         )
 
         with self.assertRaisesRegex(RevitNotRunningError, "Revit is not running"):
@@ -476,7 +477,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
     async def test_reports_activation_failure(self) -> None:
         remote = FakeRemoteHost()
         remote.activation_error = ActivationError(
-            "Не удалось активировать окно Revit через задачу ActivateRevit."
+            "Failed to activate the Revit window through the ActivateRevit task."
         )
 
         with self.assertRaisesRegex(ActivationError, "ActivateRevit"):
@@ -510,7 +511,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(ResponseTimeoutError) as raised:
             await RevitReadChannel(remote).execute(
-                ReadJob.view_elements("План 1", limit=100), timeout_seconds=9
+                ReadJob.view_elements("Level 1 Plan", limit=100), timeout_seconds=9
             )
 
         self.assertIn("The add-in picked up the job", str(raised.exception))
@@ -522,7 +523,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             {
                 "command": "document-info",
                 "success": False,
-                "message": "Плагин занят.",
+                "message": "The add-in is busy.",
                 "elapsedMs": 2,
             }
         )
@@ -530,7 +531,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(PluginResponseError) as raised:
             await RevitReadChannel(remote).execute(ReadJob.document_info())
 
-        self.assertEqual(str(raised.exception), "Плагин занят.")
+        self.assertEqual(str(raised.exception), "The add-in is busy.")
         self.assertIn(remote.response_name, remote.deleted_names)
 
     async def test_reports_unparseable_response(self) -> None:

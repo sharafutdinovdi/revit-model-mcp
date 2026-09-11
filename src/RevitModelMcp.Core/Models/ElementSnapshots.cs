@@ -3,7 +3,7 @@ using System.Runtime.Serialization;
 namespace RevitModelMcp.Core.Models;
 
 [DataContract]
-public sealed class WsRegionSnapshot
+public sealed class RegionSnapshot
 {
     [DataMember(Name = "id")]
     public long Id { get; set; }
@@ -17,11 +17,11 @@ public sealed class WsRegionSnapshot
     [DataMember(Name = "mark")]
     public string? Mark { get; set; }
 
-    [DataMember(Name = "wsComment1")]
-    public string? WsComment1 { get; set; }
+    [DataMember(Name = "comment1")]
+    public string? Comment1 { get; set; }
 
-    [DataMember(Name = "wsComment2")]
-    public string? WsComment2 { get; set; }
+    [DataMember(Name = "comment2")]
+    public string? Comment2 { get; set; }
 
     [DataMember(Name = "ownerViewName")]
     public string? OwnerViewName { get; set; }
@@ -71,11 +71,11 @@ public sealed class PanelStatsSnapshot
     [DataMember(Name = "panelsOnView")]
     public int PanelsOnView { get; set; }
 
-    [DataMember(Name = "panelsWithQicSegment")]
-    public int PanelsWithQicSegment { get; set; }
+    [DataMember(Name = "panelsWithSegment")]
+    public int PanelsWithSegment { get; set; }
 
-    [DataMember(Name = "panelsWithQicNumber")]
-    public int PanelsWithQicNumber { get; set; }
+    [DataMember(Name = "panelsWithNumber")]
+    public int PanelsWithNumber { get; set; }
 
     [DataMember(Name = "panelsWithMark")]
     public int PanelsWithMark { get; set; }
@@ -125,14 +125,14 @@ public sealed class BoundingBoxOnViewSnapshot
 [DataContract]
 public sealed class ModelCountsSnapshot
 {
-    [DataMember(Name = "totalWSRegion")]
-    public int TotalWsRegion { get; set; }
+    [DataMember(Name = "totalRegions")]
+    public int TotalRegions { get; set; }
 
-    [DataMember(Name = "acpViews")]
-    public int AcpViews { get; set; }
+    [DataMember(Name = "coordinationViews")]
+    public int CoordinationViews { get; set; }
 
-    [DataMember(Name = "conViews")]
-    public int ConViews { get; set; }
+    [DataMember(Name = "constructionViews")]
+    public int ConstructionViews { get; set; }
 
     [DataMember(Name = "sheets")]
     public int Sheets { get; set; }

@@ -26,7 +26,7 @@ public static class QueryParameterValidator
         if (match is null)
         {
             throw new ArgumentException(
-                $"Параметр «{requested}» не найден. Посмотрите доступные имена через list-catalog с section=parameters.",
+                $"Parameter '{requested}' was not found. Use list-catalog with section=parameters to see available names.",
                 nameof(requested));
         }
 
@@ -51,7 +51,7 @@ public static class CategoryNameResolver
         }
 
         throw new ArgumentException(
-            $"Категория «{requested}» не найдена. Посмотрите доступные имена через list-catalog с section=categories.",
+            $"Category '{requested}' was not found. Use list-catalog with section=categories to see available names.",
             nameof(requested));
     }
 

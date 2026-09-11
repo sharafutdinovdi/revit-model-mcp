@@ -11,7 +11,7 @@ public sealed class ViewDumpJsonSerializerTests
     public async Task Serialize_PreparedReport_PreservesMachineReadableShape()
     {
         var report = ViewDumpTextFormatterTests.CreatePreparedReport();
-        report.Responder = new ResponderInfo { DocumentName = "Customer.rvt", ProcessId = 4242 };
+        report.Responder = new ResponderInfo { DocumentName = "Sample Model.rvt", ProcessId = 4242 };
 
         var json = ViewDumpJsonSerializer.Serialize(report);
         using var document = JsonDocument.Parse(json);
@@ -21,11 +21,11 @@ public sealed class ViewDumpJsonSerializerTests
 
         await Assert.That(root.GetProperty("command").GetString()).IsEqualTo("views-dump");
         await Assert.That(root.GetProperty("status").GetString()).IsEqualTo("completed");
-        await Assert.That(root.GetProperty("responder").GetProperty("documentName").GetString()).IsEqualTo("Customer.rvt");
+        await Assert.That(root.GetProperty("responder").GetProperty("documentName").GetString()).IsEqualTo("Sample Model.rvt");
         await Assert.That(view.GetProperty("header").GetProperty("elementCount").GetInt32()).IsEqualTo(1);
         await Assert.That(element.GetProperty("id").GetInt64()).IsEqualTo(11327511);
         await Assert.That(element.GetProperty("areaM2").GetDouble()).IsEqualTo(48.2);
-        await Assert.That(element.GetProperty("profileParameters").GetProperty("RUS_Area").GetString())
+        await Assert.That(element.GetProperty("profileParameters").GetProperty("Project_Area").GetString())
             .IsEqualTo("48.200");
         await Assert.That(element.TryGetProperty("lengthMm", out _)).IsFalse();
         await Assert.That(element.TryGetProperty("thicknessMm", out _)).IsFalse();

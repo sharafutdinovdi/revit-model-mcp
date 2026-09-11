@@ -10,20 +10,20 @@ internal sealed partial class SnapshotCollector
 
     private static readonly string[] AnnotationParameterNames =
     {
-        "QIC_SEGMENT",
-        "QIC_NUMBER",
-        "(03)QIC_ABS_L2_ZONE_CODE"
+        "Segment",
+        "Number",
+        "Zone Code"
     };
 
     private static readonly string[] CurtainPanelParameterNames =
     {
-        "QIC_SEGMENT",
-        "QIC_NUMBER",
-        "(03)QIC_ABS_L2_ZONE_CODE",
+        "Segment",
+        "Number",
+        "Zone Code",
         "NameOverride"
     };
 
-    private void CaptureWsRegions()
+    private void CaptureRegions()
     {
         if (_document is null || _view is null)
         {
@@ -39,19 +39,19 @@ internal sealed partial class SnapshotCollector
             try
             {
                 var familyName = RevitValueReader.GetFamilyName(element);
-                if (!IsWsRegion(familyName))
+                if (!IsRegion(familyName))
                 {
                     continue;
                 }
 
-                _snapshot.WsRegions.Add(new WsRegionSnapshot
+                _snapshot.Regions.Add(new RegionSnapshot
                 {
                     Id = RevitValueReader.GetId(element.Id),
                     FamilyName = familyName,
                     TypeName = RevitValueReader.GetTypeName(_document, element),
                     Mark = RevitValueReader.GetMark(element),
-                    WsComment1 = RevitValueReader.GetNamedParameter(element, "WS_Comment1"),
-                    WsComment2 = RevitValueReader.GetNamedParameter(element, "WS_Comment2"),
+                    Comment1 = RevitValueReader.GetNamedParameter(element, "Comment 1"),
+                    Comment2 = RevitValueReader.GetNamedParameter(element, "Comment 2"),
                     OwnerViewName = GetOwnerViewName(element),
                     BboxOnViewMm = RevitValueReader.GetBoundingBoxOnView(element, _view)
                 });
@@ -62,8 +62,8 @@ internal sealed partial class SnapshotCollector
             }
         }
 
-        _snapshot.WsRegions = _snapshot.WsRegions.OrderBy(region => region.Id).ToList();
-        _snapshot.WsRegionCount = _snapshot.WsRegions.Count;
+        _snapshot.Regions = _snapshot.Regions.OrderBy(region => region.Id).ToList();
+        _snapshot.RegionCount = _snapshot.Regions.Count;
     }
 
     private void CaptureElementsOnView()
@@ -193,8 +193,8 @@ internal sealed partial class SnapshotCollector
             try
             {
                 var parameters = ReadCurtainPanelParameters(element);
-                stats.PanelsWithQicSegment += parameters.ContainsKey("QIC_SEGMENT") ? 1 : 0;
-                stats.PanelsWithQicNumber += parameters.ContainsKey("QIC_NUMBER") ? 1 : 0;
+                stats.PanelsWithSegment += parameters.ContainsKey("Segment") ? 1 : 0;
+                stats.PanelsWithNumber += parameters.ContainsKey("Number") ? 1 : 0;
                 stats.PanelsWithMark += parameters.ContainsKey("Mark") ? 1 : 0;
 
                 if (_snapshot.CurtainPanels.Count < CurtainPanelLimit)
@@ -255,9 +255,9 @@ internal sealed partial class SnapshotCollector
             : null;
     }
 
-    private static bool IsWsRegion(string? familyName)
+    private static bool IsRegion(string? familyName)
     {
-        return familyName?.IndexOf("WS_Region", StringComparison.OrdinalIgnoreCase) >= 0;
+        return familyName?.IndexOf("Region", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static void AddIfPresent(Dictionary<string, string> values, string name, string? value)

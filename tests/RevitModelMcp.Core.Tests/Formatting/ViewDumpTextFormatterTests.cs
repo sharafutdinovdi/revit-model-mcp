@@ -12,28 +12,28 @@ public sealed class ViewDumpTextFormatterTests
 
         var text = ViewDumpTextFormatter.Format(report);
 
-        await Assert.That(text).Contains("ВИД: «СПП в ГНС 1-й этаж»");
-        await Assert.That(text).Contains("тип: FloorPlan   уровень: 00_1_этаж_основной");
-        await Assert.That(text).Contains("Помещения");
-        await Assert.That(text).Contains("id=11327511 | Помещения | — | Коридор");
-        await Assert.That(text).Contains("площадь=48.2 м²");
-        await Assert.That(text).Contains("ADSK_Номер корпуса=1");
-        await Assert.That(text).Contains("RUS_Area=48.200");
-        await Assert.That(text).Contains("предупреждение Revit=да");
-        await Assert.That(text).Contains("виды, открытые пользователем до запуска, не закрывались");
+        await Assert.That(text).Contains("VIEW: 'Level 1 Plan'");
+        await Assert.That(text).Contains("type: FloorPlan   level: Level 1");
+        await Assert.That(text).Contains("Rooms");
+        await Assert.That(text).Contains("id=11327511 | Rooms | — | Corridor");
+        await Assert.That(text).Contains("area=48.2 m²");
+        await Assert.That(text).Contains("Project_Building Number=1");
+        await Assert.That(text).Contains("Project_Area=48.200");
+        await Assert.That(text).Contains("Revit warning=yes");
+        await Assert.That(text).Contains("views opened by the user before the dump were left open");
     }
 
     [Test]
     public async Task Format_MissingView_ReportsErrorAndContinuesWithNextView()
     {
         var report = CreatePreparedReport();
-        report.Views.Insert(0, ViewDumpView.Missing("Несуществующий вид"));
+        report.Views.Insert(0, ViewDumpView.Missing("Missing View"));
 
         var text = ViewDumpTextFormatter.Format(report);
 
-        await Assert.That(text).Contains("ВИД: «Несуществующий вид»");
-        await Assert.That(text).Contains("Вид «Несуществующий вид» не найден.");
-        await Assert.That(text).Contains("ВИД: «СПП в ГНС 1-й этаж»");
+        await Assert.That(text).Contains("VIEW: 'Missing View'");
+        await Assert.That(text).Contains("View 'Missing View' was not found.");
+        await Assert.That(text).Contains("VIEW: 'Level 1 Plan'");
     }
 
     internal static ViewDumpReport CreatePreparedReport()
@@ -44,21 +44,21 @@ public sealed class ViewDumpTextFormatterTests
             ProcessedElements = 1,
             TotalElements = 1,
             OriginalViewRestored = true,
-            OpenedViews = { "СПП в ГНС 1-й этаж" },
-            ClosedViews = { "СПП в ГНС 1-й этаж" },
+            OpenedViews = { "Level 1 Plan" },
+            ClosedViews = { "Level 1 Plan" },
             Views =
             {
                 new ViewDumpView
                 {
-                    RequestedName = "СПП в ГНС 1-й этаж",
+                    RequestedName = "Level 1 Plan",
                     Status = "completed",
                     Header = new ViewDumpHeader
                     {
-                        Name = "СПП в ГНС 1-й этаж",
+                        Name = "Level 1 Plan",
                         Type = "FloorPlan",
-                        Level = "00_1_этаж_основной",
+                        Level = "Level 1",
                         Scale = 100,
-                        Template = "СПП в ГНС",
+                        Template = "Gross Building",
                         Discipline = "Architecture",
                         FilterCount = 2,
                         GraphicOverrideCount = 1,
@@ -68,7 +68,7 @@ public sealed class ViewDumpTextFormatterTests
                     {
                         new ViewCategorySummary
                         {
-                            Category = "Помещения",
+                            Category = "Rooms",
                             Count = 1,
                             DifferentTypes = 1
                         }
@@ -78,17 +78,17 @@ public sealed class ViewDumpTextFormatterTests
                         new ViewElementDump
                         {
                             Id = 11327511,
-                            Category = "Помещения",
-                            Name = "Коридор",
-                            Level = "00_1_этаж",
+                            Category = "Rooms",
+                            Name = "Corridor",
+                            Level = "Level 1",
                             AreaM2 = 48.2,
-                            Workset = "АР_Помещения",
-                            Phase = "Новая",
+                            Workset = "Rooms",
+                            Phase = "New Construction",
                             HasWarnings = true,
                             ProfileParameters =
                             {
-                                ["ADSK_Номер корпуса"] = "1",
-                                ["RUS_Area"] = "48.200"
+                                ["Project_Building Number"] = "1",
+                                ["Project_Area"] = "48.200"
                             }
                         }
                     }

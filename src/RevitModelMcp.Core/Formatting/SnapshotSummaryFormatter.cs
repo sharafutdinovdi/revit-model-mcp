@@ -12,9 +12,9 @@ public static class SnapshotSummaryFormatter
     private static readonly string[] PanelParameterNames =
     {
         "Mark",
-        "QIC_SEGMENT",
-        "QIC_NUMBER",
-        "(03)QIC_ABS_L2_ZONE_CODE",
+        "Segment",
+        "Number",
+        "Zone Code",
         "NameOverride"
     };
 
@@ -34,20 +34,20 @@ public static class SnapshotSummaryFormatter
         builder.AppendLine($"View: {snapshot.ActiveView.Name ?? "n/a"} ({snapshot.ActiveView.Id?.ToString() ?? "n/a"})");
         builder.AppendLine();
         builder.AppendLine("Counts");
-        builder.AppendLine($"WS_Region on view: {snapshot.WsRegionCount}");
-        builder.AppendLine($"WS_Region in model: {snapshot.ModelCounts.TotalWsRegion}");
+        builder.AppendLine($"Regions on view: {snapshot.RegionCount}");
+        builder.AppendLine($"Regions in model: {snapshot.ModelCounts.TotalRegions}");
         builder.AppendLine($"Selected: {snapshot.Selection.Count}");
         builder.AppendLine($"Annotations: {snapshot.Annotations.Count}");
-        builder.AppendLine($"ACP views: {snapshot.ModelCounts.AcpViews}");
-        builder.AppendLine($"CON views: {snapshot.ModelCounts.ConViews}");
+        builder.AppendLine($"Coordination views: {snapshot.ModelCounts.CoordinationViews}");
+        builder.AppendLine($"Construction views: {snapshot.ModelCounts.ConstructionViews}");
         builder.AppendLine($"Sheets: {snapshot.ModelCounts.Sheets}");
         builder.AppendLine($"Sections: {snapshot.ModelCounts.SectionViews}");
         builder.AppendLine($"Section inventory: {snapshot.AllSectionViews.Count}");
         builder.AppendLine($"Duplicate base view names: {snapshot.DuplicateBaseNames.Count}");
         builder.AppendLine();
-        builder.AppendLine($"WS_Regions (first {RegionLimit})");
+        builder.AppendLine($"Regions (first {RegionLimit})");
 
-        foreach (var region in snapshot.WsRegions.Take(RegionLimit))
+        foreach (var region in snapshot.Regions.Take(RegionLimit))
         {
             builder.AppendLine(
                 $"- {region.Id}: {region.FamilyName ?? "n/a"} / {region.TypeName ?? "n/a"}; mark={region.Mark ?? "n/a"}");
@@ -56,7 +56,7 @@ public static class SnapshotSummaryFormatter
         builder.AppendLine();
         builder.AppendLine("Curtain panels");
         builder.AppendLine(
-            $"panels: {snapshot.PanelStats.PanelsOnView} | QIC_SEGMENT: {snapshot.PanelStats.PanelsWithQicSegment} | QIC_NUMBER: {snapshot.PanelStats.PanelsWithQicNumber} | Mark: {snapshot.PanelStats.PanelsWithMark} | tags: {snapshot.PanelStats.PanelTagsOnView}");
+            $"panels: {snapshot.PanelStats.PanelsOnView} | Segment: {snapshot.PanelStats.PanelsWithSegment} | Number: {snapshot.PanelStats.PanelsWithNumber} | Mark: {snapshot.PanelStats.PanelsWithMark} | tags: {snapshot.PanelStats.PanelTagsOnView}");
         if (snapshot.CurtainPanelsCapped)
         {
             builder.AppendLine($"capture capped at {PanelCaptureLimit} panels");

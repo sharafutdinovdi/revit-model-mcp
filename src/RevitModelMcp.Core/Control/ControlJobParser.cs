@@ -164,7 +164,7 @@ public sealed class ControlJobParseResult
         var command = Normalize(job.Command);
         if (command is null)
         {
-            return Invalid("invalid", "Поле command обязательно.");
+            return Invalid("invalid", "The command field is required.");
         }
 
         var views = NormalizeMany(job.Views);
@@ -172,7 +172,7 @@ public sealed class ControlJobParseResult
         var categories = NormalizeMany(job.Categories);
         var result = command switch
         {
-            "views-dump" when views.Count == 0 => Invalid(command, "Для команды views-dump нужен непустой список views."),
+            "views-dump" when views.Count == 0 => Invalid(command, "The views-dump command requires a non-empty views list."),
             "views-dump" => ViewsDump(views),
             "ping" => Create(ControlJobKind.Ping, command),
             "document-info" => Create(ControlJobKind.DocumentInfo, command),
@@ -188,7 +188,7 @@ public sealed class ControlJobParseResult
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
-            _ => Invalid(command, $"Неизвестная команда: {command}.")
+            _ => Invalid(command, $"Unknown command: {command}.")
         };
         result.TargetDocument = Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
@@ -198,7 +198,7 @@ public sealed class ControlJobParseResult
     private static ControlJobParseResult RequireView(ControlJobKind kind, string command, string? view)
     {
         return view is null
-            ? Invalid(command, $"Для команды {command} поле view обязательно.")
+            ? Invalid(command, $"The {command} command requires the view field.")
             : ViewCommand(kind, command, view);
     }
 
@@ -211,25 +211,25 @@ public sealed class ControlJobParseResult
     {
         if (view is null)
         {
-            return Invalid(command, "Для команды view-elements поле view обязательно.");
+            return Invalid(command, "The view-elements command requires the view field.");
         }
 
         var resolvedOffset = offset ?? 0;
         var resolvedLimit = limit ?? 100;
         if (resolvedOffset < 0)
         {
-            return Invalid(command, "Смещение offset не может быть отрицательным.");
+            return Invalid(command, "The offset must not be negative.");
         }
 
         return resolvedLimit <= 0
-            ? Invalid(command, "Размер порции limit должен быть больше нуля.")
+            ? Invalid(command, "The limit must be greater than zero.")
             : ViewElements(view, categories, resolvedOffset, resolvedLimit);
     }
 
     private static ControlJobParseResult ParseElementDetails(string command, long? id)
     {
         return !id.HasValue || id.Value <= 0
-            ? Invalid(command, "Для команды element-details нужен положительный id.")
+            ? Invalid(command, "The element-details command requires a positive id.")
             : ElementDetails(id.Value);
     }
 
@@ -241,12 +241,12 @@ public sealed class ControlJobParseResult
     {
         if (view is null)
         {
-            return Invalid(command, "Для команды export-view поле view обязательно.");
+            return Invalid(command, "The export-view command requires the view field.");
         }
 
         var resolvedPixelSize = pixelSize ?? 1600;
         return resolvedPixelSize is < 1 or > 4000
-            ? Invalid(command, "Размер pixelSize должен быть от 1 до 4000 пикселей.")
+            ? Invalid(command, "The pixelSize must be between 1 and 4000 pixels.")
             : ExportView(view, resolvedPixelSize, zoomToFit ?? true);
     }
 
@@ -276,14 +276,14 @@ public static class ControlJobParser
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
             var job = serializer.ReadObject(stream) as ControlJobContract;
             return job is null
-                ? ControlJobParseResult.Invalid("invalid", "JSON задания пуст.")
+                ? ControlJobParseResult.Invalid("invalid", "The job JSON is empty.")
                 : ControlJobParseResult.FromContract(job);
         }
         catch (Exception exception)
         {
             return ControlJobParseResult.Invalid(
                 "invalid",
-                $"Не удалось разобрать JSON задания: {exception.Message}",
+                $"Failed to parse the job JSON: {exception.Message}",
                 exception);
         }
     }

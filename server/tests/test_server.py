@@ -131,36 +131,36 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(revit_server, "channel", channel):
             await revit_server.mcp.call_tool(
                 "revit_aggregate_elements",
-                {"groupBy": ["level"], "sumField": "Площадь", "areaScheme": "АР"},
+                {"groupBy": ["level"], "sumField": "Area", "areaScheme": "Architecture"},
             )
             await revit_server.mcp.call_tool(
                 "revit_aggregate_elements",
-                {"group_by": ["level"], "sum_field": "Площадь", "area_scheme": "АР"},
+                {"group_by": ["level"], "sum_field": "Area", "area_scheme": "Architecture"},
             )
             await revit_server.mcp.call_tool(
-                "revit_view_summary", {"viewName": "План 1", "document": "QC 0091"}
+                "revit_view_summary", {"viewName": "Level 1 Plan", "document": "Sample Model"}
             )
             await revit_server.mcp.call_tool(
-                "revit_export_view", {"view": "План 1", "pixelSize": 2400, "saveTo": "/tmp/plan.png"}
+                "revit_export_view", {"view": "Level 1 Plan", "pixelSize": 2400, "saveTo": "/tmp/plan.png"}
             )
             await revit_server.mcp.call_tool(
-                "revit_list_relations", {"relation": "level-rooms", "sourceName": "01"}
+                "revit_list_relations", {"relation": "level-rooms", "sourceName": "Level 1"}
             )
             await revit_server.mcp.call_tool(
-                "revit_list_relations", {"relation": "level-rooms", "source_name": "01"}
+                "revit_list_relations", {"relation": "level-rooms", "source_name": "Level 1"}
             )
 
         camel_aggregate, snake_aggregate, view_summary, export_view, camel_relation, snake_relation = [
             call[0] for call in channel.calls
         ]
         self.assertEqual(camel_aggregate.payload, snake_aggregate.payload)
-        self.assertEqual(camel_aggregate.payload["numericField"], "Площадь")
-        self.assertEqual(view_summary.payload["view"], "План 1")
-        self.assertEqual(view_summary.payload["targetDocument"], "QC 0091")
+        self.assertEqual(camel_aggregate.payload["numericField"], "Area")
+        self.assertEqual(view_summary.payload["view"], "Level 1 Plan")
+        self.assertEqual(view_summary.payload["targetDocument"], "Sample Model")
         self.assertEqual(export_view.payload["pixelSize"], 2400)
         self.assertEqual(export_view.save_to, "/tmp/plan.png")
         self.assertEqual(camel_relation.payload, snake_relation.payload)
-        self.assertEqual(camel_relation.payload["sourceName"], "01")
+        self.assertEqual(camel_relation.payload["sourceName"], "Level 1")
 
     async def test_query_geometry_flag_reaches_channel_with_both_aliases(self) -> None:
         channel = RecordingChannel()
@@ -180,10 +180,10 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         host = RecordingHost()
         with patch.object(revit_server, "host", host):
             result = await revit_server.mcp.call_tool(
-                "revit_list_instances", {"document": "QC 0091"}
+                "revit_list_instances", {"document": "Sample Model"}
             )
 
-        self.assertEqual(host.document, "QC 0091")
+        self.assertEqual(host.document, "Sample Model")
         self.assertIn("42", str(result))
 
     async def test_list_instances_ignores_stale_instance_file(self) -> None:

@@ -9,16 +9,16 @@ from revit_model_mcp.revit_channel import ReadJob, parse_response
 class UniversalReadJobTests(unittest.TestCase):
     def test_forms_query_elements_job_with_combined_filters(self) -> None:
         job = ReadJob.query_elements(
-            categories=["Помещения", " помещения "],
-            level=" 03 ",
-            view="План 3",
+            categories=["Rooms", " rooms "],
+            level=" Level 3 ",
+            view="Level 3 Plan",
             parameter_filters=[
                 {
-                    "parameter": " ADSK_Номер корпуса ",
+                    "parameter": " Building Number ",
                     "operator": " EMPTY ",
                 }
             ],
-            fields=["id", "ADSK_Номер корпуса"],
+            fields=["id", "Building Number"],
             offset=10,
             limit=20,
             sort_field="level",
@@ -27,7 +27,7 @@ class UniversalReadJobTests(unittest.TestCase):
 
         numeric = ReadJob.query_elements(
             parameter_filters=[
-                {"parameter": "Толщина", "operator": "greater", "value": 200}
+                {"parameter": "Thickness", "operator": "greater", "value": 200}
             ]
         )
         self.assertEqual(numeric.payload["parameterFilters"][0]["value"], "200")
@@ -36,13 +36,13 @@ class UniversalReadJobTests(unittest.TestCase):
             job.payload,
             {
                 "command": "query-elements",
-                "categories": ["Помещения"],
-                "level": "03",
-                "view": "План 3",
+                "categories": ["Rooms"],
+                "level": "Level 3",
+                "view": "Level 3 Plan",
                 "parameterFilters": [
-                    {"parameter": "ADSK_Номер корпуса", "operator": "empty"}
+                    {"parameter": "Building Number", "operator": "empty"}
                 ],
-                "fields": ["id", "ADSK_Номер корпуса"],
+                "fields": ["id", "Building Number"],
                 "offset": 10,
                 "limit": 20,
                 "sort": {"field": "level", "direction": "desc"},
@@ -68,14 +68,14 @@ class UniversalReadJobTests(unittest.TestCase):
     def test_forms_aggregate_elements_job(self) -> None:
         job = ReadJob.aggregate_elements(
             ["level"],
-            "Площадь",
-            categories=["Зоны"],
-            area_scheme="СПП в ГНС",
+            "Area",
+            categories=["Areas"],
+            area_scheme="Gross Building",
         )
 
         self.assertEqual(job.payload["groupBy"], ["level"])
-        self.assertEqual(job.payload["numericField"], "Площадь")
-        self.assertEqual(job.payload["areaScheme"], "СПП в ГНС")
+        self.assertEqual(job.payload["numericField"], "Area")
+        self.assertEqual(job.payload["areaScheme"], "Gross Building")
 
     def test_forms_catalog_warnings_and_relations_jobs(self) -> None:
         self.assertEqual(
@@ -83,10 +83,10 @@ class UniversalReadJobTests(unittest.TestCase):
             {"command": "list-catalog", "section": "parameters"},
         )
         self.assertEqual(
-            ReadJob.list_warnings(" Стены пересекаются ", True).payload,
+            ReadJob.list_warnings(" Walls overlap ", True).payload,
             {
                 "command": "list-warnings",
-                "warningText": "Стены пересекаются",
+                "warningText": "Walls overlap",
                 "includeElements": True,
             },
         )
@@ -99,11 +99,11 @@ class UniversalReadJobTests(unittest.TestCase):
             },
         )
         cases = (
-            ("level-rooms", None, "01", "sourceName", "01"),
+            ("level-rooms", None, "Level 1", "sourceName", "Level 1"),
             ("group-elements", 42, None, "sourceId", 42),
             ("nested-family", 43, None, "sourceId", 43),
-            ("area-scheme-elements", None, "АР", "sourceName", "АР"),
-            ("view-template-dependents", None, "АР шаблон", "sourceName", "АР шаблон"),
+            ("area-scheme-elements", None, "Architecture", "sourceName", "Architecture"),
+            ("view-template-dependents", None, "Floor Plan Template", "sourceName", "Floor Plan Template"),
         )
         for relation, source_id, source_name, key, expected in cases:
             with self.subTest(relation=relation):

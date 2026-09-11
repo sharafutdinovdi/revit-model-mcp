@@ -85,7 +85,7 @@ internal static class QueryParameterResolver
             }
             catch
             {
-                // Не у каждого служебного built-in parameter есть отображаемая метка.
+                // Some internal built-in parameters have no display label.
             }
 
             var requestedName = requested.FirstOrDefault(name =>

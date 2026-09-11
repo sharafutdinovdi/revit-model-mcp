@@ -20,7 +20,7 @@ EXPORT_RESPONSE = json.dumps(
             "width": 1600,
             "height": 900,
             "sizeBytes": 7,
-            "viewName": "План 1",
+            "viewName": "Level 1 Plan",
             "viewType": "FloorPlan",
         },
         "elapsedMs": 812,
@@ -101,7 +101,7 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 return None
 
         response = await RevitReadChannel(Remote()).execute(
-            ReadJob.export_view("План 1")
+            ReadJob.export_view("Level 1 Plan")
         )
 
         self.assertEqual(response["data"]["localPath"], "/tmp/view.png")

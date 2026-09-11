@@ -10,7 +10,7 @@ namespace RevitModelMcp.Control;
 
 internal sealed class ViewDumpSession : IControlSession
 {
-    // 100 элементов дают 40–100 коротких вызовов для типового вида на 4–10 тыс. элементов.
+    // Batches of 100 elements require 40–100 short calls for a typical view with 4,000–10,000 elements.
     private const int ElementsPerExecution = 100;
     private const int ProgressWriteIntervalElements = 500;
     private const int MaximumExecutions = 1_200;
@@ -36,9 +36,9 @@ internal sealed class ViewDumpSession : IControlSession
 
     public ViewDumpSession(UIApplication application, IReadOnlyList<string> requestedViews, DateTimeOffset startedAt)
     {
-        _uiDocument = application.ActiveUIDocument ?? throw new InvalidOperationException("Нет активного документа Revit.");
+        _uiDocument = application.ActiveUIDocument ?? throw new InvalidOperationException("No active Revit document.");
         _document = _uiDocument.Document;
-        var originalView = _document.ActiveView ?? throw new InvalidOperationException("Нет активного вида Revit.");
+        var originalView = _document.ActiveView ?? throw new InvalidOperationException("No active Revit view.");
         _originalViewId = originalView.Id;
         _requestedViews = requestedViews;
         _initialOpenViewIds = _uiDocument.GetOpenUIViews()
@@ -53,7 +53,7 @@ internal sealed class ViewDumpSession : IControlSession
             DocumentTitle = _document.Title,
             Responder = ReadCommandReader.ReadResponder(application),
             OriginalViewName = originalView.Name,
-            Message = "Задание выполняется."
+            Message = "Job is running."
         };
         WriteReport();
     }
@@ -73,14 +73,14 @@ internal sealed class ViewDumpSession : IControlSession
             if (_executions > MaximumExecutions || _stopwatch.ElapsedMilliseconds >= MaximumDurationMs)
             {
                 Fail(
-                    $"Достигнут предел обработки: {_executions} вызовов ExternalEvent или 120 секунд. " +
-                    $"Обработано элементов: {_report.ProcessedElements} из {_report.TotalElements}.");
+                    $"Processing limit reached: {_executions} ExternalEvent calls or 120 seconds. " +
+                    $"Processed {_report.ProcessedElements} of {_report.TotalElements} elements.");
                 return;
             }
 
             if (application.ActiveUIDocument?.Document != _document)
             {
-                Fail("Активный документ изменился во время выгрузки.");
+                Fail("The active document changed during the dump.");
                 return;
             }
 
@@ -95,21 +95,21 @@ internal sealed class ViewDumpSession : IControlSession
         catch (Exception exception)
         {
             PluginLog.Error("Views-dump processing failed.", exception);
-            Fail($"Выгрузка остановлена: {exception}");
+            Fail($"Dump stopped: {exception}");
         }
     }
 
     public void RejectJobWhileBusy()
     {
         _report.RejectedJobsWhileBusy++;
-        _report.Message = "Новое задание отклонено: RevitModelMcp занят текущей выгрузкой.";
+        _report.Message = "New job rejected: RevitModelMcp is busy with the current dump.";
         WriteReport();
     }
 
     public void Abort(Exception exception)
     {
         PluginLog.Error("Views-dump session aborted.", exception);
-        Fail($"Выгрузка аварийно остановлена: {exception}");
+        Fail($"Dump aborted: {exception}");
     }
 
     private bool StartNextView()
@@ -155,7 +155,7 @@ internal sealed class ViewDumpSession : IControlSession
                 {
                     RequestedName = requestedName,
                     Status = "error",
-                    Error = $"Не удалось открыть или прочитать вид: {exception.Message}"
+                    Error = $"Failed to open or read the view: {exception.Message}"
                 });
                 WriteReport();
             }
@@ -219,8 +219,8 @@ internal sealed class ViewDumpSession : IControlSession
         RestoreOriginalViewAndCloseOwnedViews();
         _report.Status = "completed";
         _report.Message = _report.Views.Any(view => view.Status is "error" or "not-found")
-            ? "Выгрузка завершена с замечаниями по отдельным видам."
-            : "Выгрузка завершена.";
+            ? "Dump completed with issues in some views."
+            : "Dump completed.";
         var now = DateTimeOffset.Now;
         _report.CompletedAt = FormatTime(now);
         _report.UpdatedAt = FormatTime(now);
@@ -296,7 +296,7 @@ internal sealed class ViewDumpSession : IControlSession
             }
             catch (Exception exception)
             {
-                // Невозможность закрыть свой вид не должна мешать сохранить отчёт.
+                // Failure to close a view opened by the dump must not prevent saving the report.
                 PluginLog.Error($"Views-dump could not close an owned view. View='{name}'.", exception);
             }
         }
@@ -357,7 +357,7 @@ internal sealed class ViewDumpSession : IControlSession
 
     private void AccumulateCategory(Element element, ViewElementDump dump, ViewElementReader reader)
     {
-        var name = dump.Category ?? "<без категории>";
+        var name = dump.Category ?? "<no category>";
         if (!_categories.TryGetValue(name, out var category))
         {
             category = new CategoryAccumulator(name);

@@ -30,7 +30,7 @@ internal sealed partial class SnapshotCollector
         }
         collector.TryCapture(() => collector.CaptureMetadata(localNow));
         collector.TryCapture(collector.CaptureActiveView);
-        collector.TryCapture(collector.CaptureWsRegions);
+        collector.TryCapture(collector.CaptureRegions);
         collector.TryCapture(collector.CaptureElementsOnView);
         collector.TryCapture(collector.CaptureAnnotations);
         collector.TryCapture(collector.CaptureCurtainPanels);

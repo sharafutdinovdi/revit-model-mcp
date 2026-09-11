@@ -41,7 +41,7 @@ internal static class UniversalJobParser
         var groupBy = NormalizeMany(job.GroupBy);
         if (groupBy.Count is < 1 or > 2)
         {
-            return ControlJobParseResult.Invalid("aggregate-elements", "Для aggregate-elements нужно указать одно или два поля groupBy.");
+            return ControlJobParseResult.Invalid("aggregate-elements", "The aggregate-elements command requires one or two groupBy fields.");
         }
 
         var result = ControlJobParseResult.Create(ControlJobKind.AggregateElements, "aggregate-elements");
@@ -57,7 +57,7 @@ internal static class UniversalJobParser
         return section is null || !CatalogSections.Contains(section)
             ? ControlJobParseResult.Invalid(
                 "list-catalog",
-                $"Неизвестный раздел catalog: {section ?? "<пусто>"}. Доступны: {string.Join(", ", CatalogSections)}.")
+                $"Unknown catalog section: {section ?? "<empty>"}. Available sections: {string.Join(", ", CatalogSections)}.")
             : WithCatalog(section);
     }
 
@@ -76,19 +76,19 @@ internal static class UniversalJobParser
         {
             return ControlJobParseResult.Invalid(
                 "list-relations",
-                $"Неизвестная relation: {relation ?? "<пусто>"}. Доступны: {string.Join(", ", Relations)}.");
+                $"Unknown relation: {relation ?? "<empty>"}. Available relations: {string.Join(", ", Relations)}.");
         }
 
         var sourceName = Normalize(job.SourceName);
         var needsId = relation is "group-elements" or "nested-family";
         if (needsId && (!job.SourceId.HasValue || job.SourceId <= 0))
         {
-            return ControlJobParseResult.Invalid("list-relations", $"Для relation={relation} нужен положительный sourceId.");
+            return ControlJobParseResult.Invalid("list-relations", $"Relation {relation} requires a positive sourceId.");
         }
 
         if (!needsId && sourceName is null)
         {
-            return ControlJobParseResult.Invalid("list-relations", $"Для relation={relation} нужен sourceName.");
+            return ControlJobParseResult.Invalid("list-relations", $"Relation {relation} requires sourceName.");
         }
 
         var result = ControlJobParseResult.Create(ControlJobKind.ListRelations, "list-relations");
@@ -106,7 +106,7 @@ internal static class UniversalJobParser
         {
             return CommonParseResult.Fail(ControlJobParseResult.Invalid(
                 command,
-                offset < 0 ? "Смещение offset не может быть отрицательным." : "Размер порции limit должен быть больше нуля."));
+                offset < 0 ? "The offset must not be negative." : "The limit must be greater than zero."));
         }
 
         var parameters = new List<ParameterFilterSpec>();
@@ -148,13 +148,13 @@ internal static class UniversalJobParser
         {
             return ParameterParseResult.Fail(ControlJobParseResult.Invalid(
                 command,
-                $"Некорректный parameter filter: parameter={name ?? "<пусто>"}, operator={operation ?? "<пусто>"}."));
+                $"Invalid parameter filter: parameter={name ?? "<empty>"}, operator={operation ?? "<empty>"}."));
         }
 
         var value = Normalize(contract.Value);
         if (parsed is ParameterOperator.Equals or ParameterOperator.Contains or ParameterOperator.Greater or ParameterOperator.Less && value is null)
         {
-            return ParameterParseResult.Fail(ControlJobParseResult.Invalid(command, $"Для operator={operation} параметра {name} нужно value."));
+            return ParameterParseResult.Fail(ControlJobParseResult.Invalid(command, $"Operator {operation} for parameter {name} requires value."));
         }
 
         return new ParameterParseResult { Filter = new ParameterFilterSpec { Parameter = name, Operator = parsed, Value = value } };
@@ -180,7 +180,7 @@ internal static class UniversalJobParser
     private static QuerySortSpec ParseSort(QuerySortContract? sort, out string? error)
     {
         var direction = Normalize(sort?.Direction)?.ToLowerInvariant() ?? "asc";
-        error = direction is "asc" or "desc" ? null : "sort.direction должен быть asc или desc.";
+        error = direction is "asc" or "desc" ? null : "The sort.direction must be asc or desc.";
         return new QuerySortSpec { Field = Normalize(sort?.Field) ?? "id", Descending = direction == "desc" };
     }
 
@@ -228,7 +228,7 @@ public sealed class ExternalEventRequestQueue
     private readonly object _sync = new();
     private readonly Action _raise;
     private bool _executing;
-    private bool _requested; // Один бит не даёт потерять запрос, пришедший во время Execute.
+    private bool _requested; // A single flag preserves requests received during Execute.
     public ExternalEventRequestQueue(Action raise)
     {
         _raise = raise ?? throw new ArgumentNullException(nameof(raise));
@@ -323,7 +323,7 @@ public sealed class TriggerFileWatcher : IDisposable
         {
             throw new ArgumentOutOfRangeException(
                 nameof(fallbackInterval),
-                "Резервная проверка trigger.txt не может выполняться чаще раза в 10 секунд.");
+                "The fallback check for trigger.txt must not run more than once every 10 seconds.");
         }
         _triggerFilePath = Path.GetFullPath(triggerFilePath);
         _request = request ?? throw new ArgumentNullException(nameof(request));
@@ -337,7 +337,7 @@ public sealed class TriggerFileWatcher : IDisposable
             return;
         }
         var directory = Path.GetDirectoryName(_triggerFilePath)
-                        ?? throw new InvalidOperationException("У trigger.txt нет родительского каталога.");
+                        ?? throw new InvalidOperationException("The trigger.txt file has no parent directory.");
         Directory.CreateDirectory(directory);
         _watcher = new FileSystemWatcher(directory, Path.GetFileName(_triggerFilePath))
         {

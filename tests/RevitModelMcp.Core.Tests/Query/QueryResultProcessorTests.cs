@@ -31,16 +31,16 @@ public sealed class QueryResultProcessorTests
     {
         var records = new[]
         {
-            Record(1, ("level", "01", null, null), ("Area", "10", 10d, "m2")),
-            Record(2, ("level", "01", null, null), ("Area", "20", 20d, "m2")),
-            Record(3, ("level", "02", null, null), ("Area", "9", 9d, "m2"))
+            Record(1, ("level", "Level 1", null, null), ("Area", "10", 10d, "m2")),
+            Record(2, ("level", "Level 1", null, null), ("Area", "20", 20d, "m2")),
+            Record(3, ("level", "Level 2", null, null), ("Area", "9", 9d, "m2"))
         };
 
         var result = QueryResultProcessor.Aggregate(records, new[] { "level" }, "Area");
 
         await Assert.That(result.MatchedElements).IsEqualTo(3);
         await Assert.That(result.Groups).Count().IsEqualTo(2);
-        var first = result.Groups.Single(group => group.Keys["level"] == "01");
+        var first = result.Groups.Single(group => group.Keys["level"] == "Level 1");
         await Assert.That(first.Count).IsEqualTo(2);
         await Assert.That(first.NumericCount).IsEqualTo(2);
         await Assert.That(first.Sum).IsEqualTo(30d);
@@ -52,10 +52,10 @@ public sealed class QueryResultProcessorTests
     public async Task Resolve_UnknownParameter_ReturnsCatalogHint()
     {
         var exception = Assert.Throws<ArgumentException>(() =>
-            QueryParameterValidator.Resolve("ADSK_Нет", new[] { "ADSK_Номер корпуса", "Марка" }));
+            QueryParameterValidator.Resolve("Missing Parameter", new[] { "Building Number", "Mark" }));
 
         await Assert.That(exception.Message).Contains("list-catalog");
-        await Assert.That(exception.Message).Contains("ADSK_Нет");
+        await Assert.That(exception.Message).Contains("Missing Parameter");
     }
 
     [Test]
@@ -64,11 +64,11 @@ public sealed class QueryResultProcessorTests
         var exception = Assert.Throws<ArgumentException>(() =>
             QueryParameterValidator.ValidateAggregateFields(
                 new[] { "level" },
-                "Площадь",
+                "Missing Area",
                 new[] { "level", "Area" }));
 
-        await Assert.That(exception.Message).Contains("Параметр «Площадь» не найден");
-        await Assert.That(exception.Message).Contains("list-catalog с section=parameters");
+        await Assert.That(exception.Message).Contains("Parameter 'Missing Area' was not found");
+        await Assert.That(exception.Message).Contains("list-catalog with section=parameters");
     }
 
     [Test]
@@ -81,7 +81,7 @@ public sealed class QueryResultProcessorTests
             new[] { "level", numericField });
         var records = new[]
         {
-            Record(1, ("level", "01", null, null), (numericField, null, null, null))
+            Record(1, ("level", "Level 1", null, null), (numericField, null, null, null))
         };
 
         var result = QueryResultProcessor.Aggregate(records, new[] { "level" }, numericField);
@@ -100,24 +100,24 @@ public sealed class QueryResultProcessorTests
                 null,
                 new[] { "level", "Area" }));
 
-        await Assert.That(exception.Message).Contains("Параметр «unknown-level» не найден");
-        await Assert.That(exception.Message).Contains("list-catalog с section=parameters");
+        await Assert.That(exception.Message).Contains("Parameter 'unknown-level' was not found");
+        await Assert.That(exception.Message).Contains("list-catalog with section=parameters");
     }
 
     [Test]
-    public async Task ResolveCategory_LocalizedAndEnglishNames_ReturnSameCategory()
+    public async Task ResolveCategory_DisplayNameAliases_ReturnSameCategory()
     {
         var categories = new[]
         {
-            new CategoryCandidate("rooms", new[] { "Rooms", "Помещения" }, "OST_Rooms"),
-            new CategoryCandidate("walls", new[] { "Walls", "Стены" }, "OST_Walls")
+            new CategoryCandidate("rooms", new[] { "Rooms", "Room Spaces" }, "OST_Rooms"),
+            new CategoryCandidate("walls", new[] { "Walls", "Wall Elements" }, "OST_Walls")
         };
 
-        var localized = ResolveCategory("Помещения", categories);
-        var english = ResolveCategory("Rooms", categories);
+        var displayName = ResolveCategory("Room Spaces", categories);
+        var alias = ResolveCategory("Rooms", categories);
 
-        await Assert.That(localized.Id).IsEqualTo("rooms");
-        await Assert.That(english.Id).IsEqualTo(localized.Id);
+        await Assert.That(displayName.Id).IsEqualTo("rooms");
+        await Assert.That(alias.Id).IsEqualTo(displayName.Id);
     }
 
     [Test]
@@ -125,10 +125,10 @@ public sealed class QueryResultProcessorTests
     {
         var exception = Assert.Throws<ArgumentException>(() =>
             ResolveCategory(
-                "Неизвестная",
-                new[] { new CategoryCandidate("rooms", new[] { "Rooms", "Помещения" }, "OST_Rooms") }));
+                "Unknown",
+                new[] { new CategoryCandidate("rooms", new[] { "Rooms", "Room Spaces" }, "OST_Rooms") }));
 
-        await Assert.That(exception.Message).Contains("Категория «Неизвестная» не найдена");
+        await Assert.That(exception.Message).Contains("Category 'Unknown' was not found");
         await Assert.That(exception.Message).Contains("list-catalog");
         await Assert.That(exception.Message).Contains("section=categories");
     }
