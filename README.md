@@ -116,7 +116,7 @@ cd server
 uv run --with pytest pytest -q
 ```
 
-<!-- screenshot: tests -->
+The CI workflow builds the add-in for Revit 2022 and 2026 on `windows-latest`, runs the core tests and the server tests on every push: [latest run](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml). First run on 2026-09-11: both builds succeeded, core tests passed, 55 server tests passed.
 
 ## Compatibility
 
