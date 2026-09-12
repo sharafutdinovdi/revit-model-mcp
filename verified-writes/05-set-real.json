@@ -1,0 +1,40 @@
+{
+ "command": "set-parameter",
+ "success": true,
+ "partial": false,
+ "data": {
+  "dryRun": false,
+  "failedStep": null,
+  "newValue": "MCP verified write",
+  "oldValue": "",
+  "parameterScope": "instance",
+  "verification": {
+   "after": {
+    "id": 631418,
+    "owner": "instance",
+    "parameter": "Comments",
+    "storageType": "String",
+    "value": "MCP verified write"
+   },
+   "before": {
+    "id": 631418,
+    "owner": "instance",
+    "parameter": "Comments",
+    "storageType": "String",
+    "value": ""
+   },
+   "changed": [
+    631418
+   ]
+  }
+ },
+ "elapsedMs": 32,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 15100,
+  "revitVersion": "2026"
+ },
+ "activeView": "Cover",
+ "dialogsSuppressed": []
+}

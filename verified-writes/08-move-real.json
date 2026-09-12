@@ -1,0 +1,60 @@
+{
+ "command": "move",
+ "success": true,
+ "partial": false,
+ "data": {
+  "count": 1,
+  "dryRun": false,
+  "failedStep": null,
+  "verification": {
+   "after": {
+    "elements": [
+     {
+      "boundingBoxMaxMm": [
+       -23183.1,
+       4523.6,
+       -996.9
+      ],
+      "boundingBoxMinMm": [
+       -24584.9,
+       3121.8,
+       -1803.4
+      ],
+      "category": "Furniture",
+      "id": 738550
+     }
+    ]
+   },
+   "before": {
+    "elements": [
+     {
+      "boundingBoxMaxMm": [
+       -23683.1,
+       4523.6,
+       -996.9
+      ],
+      "boundingBoxMinMm": [
+       -25084.9,
+       3121.8,
+       -1803.4
+      ],
+      "category": "Furniture",
+      "id": 738550
+     }
+    ]
+   },
+   "changed": [
+    738550
+   ]
+  }
+ },
+ "elapsedMs": 22,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 15100,
+  "revitVersion": "2026"
+ },
+ "activeView": "Cover",
+ "dialogsSuppressed": []
+}

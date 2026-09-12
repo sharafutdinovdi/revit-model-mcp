@@ -1,0 +1,39 @@
+{
+ "command": "create-wall",
+ "success": true,
+ "partial": false,
+ "data": {
+  "dryRun": false,
+  "failedStep": null,
+  "id": 2661049,
+  "lengthMm": 3000.0000000000023,
+  "verification": {
+   "after": {
+    "boundingBoxMaxMm": [
+     -27000,
+     176.2,
+     3000
+    ],
+    "boundingBoxMinMm": [
+     -30000,
+     -176.2,
+     0
+    ],
+    "category": "Walls",
+    "family": "Basic Wall",
+    "id": 2661049,
+    "level": "L1 - Block 43",
+    "type": "Exterior - Brick on Mtl. Stud"
+   }
+  }
+ },
+ "elapsedMs": 273,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 15100,
+  "revitVersion": "2026"
+ },
+ "activeView": "L1_SD",
+ "dialogsSuppressed": []
+}

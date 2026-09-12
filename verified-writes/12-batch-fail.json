@@ -1,0 +1,65 @@
+{
+ "command": "batch",
+ "success": false,
+ "partial": false,
+ "data": {
+  "committed": false,
+  "dryRun": false,
+  "failedStep": 1,
+  "rolledBack": true,
+  "steps": [
+   {
+    "command": "set-parameter",
+    "data": {
+     "dryRun": false,
+     "failedStep": null,
+     "newValue": "SHOULD ROLL BACK",
+     "oldValue": "",
+     "parameterScope": "instance",
+     "rolledBack": true,
+     "verification": {
+      "after": {
+       "id": 631418,
+       "owner": "instance",
+       "parameter": "Comments",
+       "storageType": "String",
+       "value": "SHOULD ROLL BACK"
+      },
+      "before": {
+       "id": 631418,
+       "owner": "instance",
+       "parameter": "Comments",
+       "storageType": "String",
+       "value": ""
+      },
+      "changed": [
+       631418
+      ]
+     }
+    },
+    "index": 0,
+    "rolledBack": true,
+    "success": true
+   },
+   {
+    "command": "delete",
+    "error": "Element 1 was not found.",
+    "index": 1,
+    "rolledBack": true,
+    "success": false
+   }
+  ],
+  "undoName": "revit_batch"
+ },
+ "message": "Element 1 was not found.",
+ "elapsedMs": 59,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 15100,
+  "revitVersion": "2026"
+ },
+ "error": "Element 1 was not found.",
+ "activeView": "L1_SD",
+ "dialogsSuppressed": []
+}

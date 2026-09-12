@@ -1,0 +1,109 @@
+{
+ "command": "batch",
+ "success": true,
+ "partial": false,
+ "data": {
+  "committed": false,
+  "dryRun": true,
+  "failedStep": null,
+  "rolledBack": true,
+  "steps": [
+   {
+    "command": "set-parameter",
+    "data": {
+     "dryRun": true,
+     "failedStep": null,
+     "newValue": "",
+     "oldValue": "MCP verified write",
+     "parameterScope": "instance",
+     "rolledBack": true,
+     "verification": {
+      "after": {
+       "id": 631418,
+       "owner": "instance",
+       "parameter": "Comments",
+       "storageType": "String",
+       "value": ""
+      },
+      "before": {
+       "id": 631418,
+       "owner": "instance",
+       "parameter": "Comments",
+       "storageType": "String",
+       "value": "MCP verified write"
+      },
+      "changed": [
+       631418
+      ]
+     }
+    },
+    "index": 0,
+    "rolledBack": true,
+    "success": true
+   },
+   {
+    "command": "move",
+    "data": {
+     "count": 1,
+     "dryRun": true,
+     "failedStep": null,
+     "rolledBack": true,
+     "verification": {
+      "after": {
+       "elements": [
+        {
+         "boundingBoxMaxMm": [
+          -23683.1,
+          4523.6,
+          -996.9
+         ],
+         "boundingBoxMinMm": [
+          -25084.9,
+          3121.8,
+          -1803.4
+         ],
+         "category": "Furniture",
+         "id": 738550
+        }
+       ]
+      },
+      "before": {
+       "elements": [
+        {
+         "boundingBoxMaxMm": [
+          -23183.1,
+          4523.6,
+          -996.9
+         ],
+         "boundingBoxMinMm": [
+          -24584.9,
+          3121.8,
+          -1803.4
+         ],
+         "category": "Furniture",
+         "id": 738550
+        }
+       ]
+      },
+      "changed": [
+       738550
+      ]
+     }
+    },
+    "index": 1,
+    "rolledBack": true,
+    "success": true
+   }
+  ],
+  "undoName": "revit_batch"
+ },
+ "elapsedMs": 91,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 15100,
+  "revitVersion": "2026"
+ },
+ "activeView": "L1_SD",
+ "dialogsSuppressed": []
+}
