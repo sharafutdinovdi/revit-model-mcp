@@ -156,11 +156,11 @@ internal static class CatalogReader
         }
 
         return parameters.Values.Select(parameter => new CatalogItem
-            {
-                Name = parameter.Name,
-                ValueType = string.Join(", ", parameter.ValueTypes.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)),
-                Categories = parameter.Categories.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList()
-            })
+        {
+            Name = parameter.Name,
+            ValueType = string.Join(", ", parameter.ValueTypes.OrderBy(value => value, StringComparer.OrdinalIgnoreCase)),
+            Categories = parameter.Categories.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToList()
+        })
             .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }

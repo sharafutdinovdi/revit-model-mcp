@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock
 from revit_model_mcp.revit_channel import JobPickupStatus, ReadJob, RevitReadChannel
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
-
 EXPORT_RESPONSE = json.dumps(
     {
         "command": "export-view",
@@ -90,9 +89,7 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 events.append("response")
                 return "response_export-view.json"
 
-            async def finish_job(
-                self, response_name, cleanup_names, download_artifact, save_to
-            ):
+            async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
                 events.append("finish")
                 return EXPORT_RESPONSE, "/tmp/view.png"
 
@@ -100,9 +97,7 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 events.append("delete")
                 return None
 
-        response = await RevitReadChannel(Remote()).execute(
-            ReadJob.export_view("Level 1 Plan")
-        )
+        response = await RevitReadChannel(Remote()).execute(ReadJob.export_view("Level 1 Plan"))
 
         self.assertEqual(response["data"]["localPath"], "/tmp/view.png")
         self.assertEqual(response["data"]["width"], 1600)

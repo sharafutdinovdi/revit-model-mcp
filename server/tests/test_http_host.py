@@ -9,7 +9,10 @@ import pytest
 
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
-    ReadJob, RevitChannelError, RevitReadChannel, ResponseTimeoutError,
+    ReadJob,
+    ResponseTimeoutError,
+    RevitChannelError,
+    RevitReadChannel,
 )
 from revit_model_mcp.server import create_host
 
@@ -38,8 +41,16 @@ def endpoint():
             route = urlsplit(self.path)
             state["requests"].append((self.command, self.path, self.headers.get("Authorization")))
             if route.path == "/health":
-                return self.reply(200, {"ok": True, "revitVersion": "2026", "documentName": "Model",
-                                        "processId": 42, "readOnly": True})
+                return self.reply(
+                    200,
+                    {
+                        "ok": True,
+                        "revitVersion": "2026",
+                        "documentName": "Model",
+                        "processId": 42,
+                        "readOnly": True,
+                    },
+                )
             if self.headers.get("Authorization") != "Bearer test-token":
                 return self.reply(401, {"error": "unauthorized"})
             if state["status"] == 302:
@@ -59,10 +70,18 @@ def endpoint():
                     return self.reply(202, {"jobId": "job-1"})
             if route.path.startswith("/views/"):
                 assert unquote(route.path) == "/views/Plan 東京 Δ / A #1/image"
-                assert parse_qs(route.query) == {"pixel": ["1600"], "jobId": ["job-1"], "document": ["Model"]}
+                assert parse_qs(route.query) == {
+                    "pixel": ["1600"],
+                    "jobId": ["job-1"],
+                    "document": ["Model"],
+                }
                 return self.reply(200, PNG, "image/png")
             command = state["payload"]["command"]
-            data = {"fileName": "view.png", "width": 1600, "height": 900} if command == "export-view" else "pong"
+            data = (
+                {"fileName": "view.png", "width": 1600, "height": 900}
+                if command == "export-view"
+                else "pong"
+            )
             return self.reply(200, {"command": command, "success": True, "data": data})
 
         do_GET = handle_request
@@ -97,7 +116,9 @@ def test_job_round_trip(endpoint):
     assert state["requests"] == [("POST", "/jobs?timeout=0", "Bearer test-token")]
 
 
-@pytest.mark.parametrize("status, message", [(401, "bearer token"), (409, "busy"), (403, "allow-write")])
+@pytest.mark.parametrize(
+    "status, message", [(401, "bearer token"), (409, "busy"), (403, "allow-write")]
+)
 def test_http_errors(endpoint, status, message):
     host, state = endpoint
     state["status"] = status
@@ -130,7 +151,9 @@ def test_timeout_keeps_late_job_id(endpoint):
     assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
 
 
-def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metadata(endpoint, tmp_path):
+def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metadata(
+    endpoint, tmp_path
+):
     host, state = endpoint
     target = tmp_path / "image.png"
     job = ReadJob.export_view("Plan 東京 Δ / A #1", save_to=str(target)).for_document("Model")
@@ -148,7 +171,10 @@ def test_connection_refused():
     server = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
     port = server.server_port
     server.server_close()
-    with pytest.raises(RevitChannelError, match="Revit endpoint not reachable at .*is Revit running with the add-in"):
+    with pytest.raises(
+        RevitChannelError,
+        match="Revit endpoint not reachable at .*is Revit running with the add-in",
+    ):
         asyncio.run(HttpHost(f"http://127.0.0.1:{port}").health())
 
 
@@ -160,7 +186,9 @@ def test_host_selection_and_token_override(monkeypatch):
     assert create_host("ssh:revit-host").host == "revit-host"
 
 
-@pytest.mark.parametrize("url", ["http://user:secret@host", "http://host?token=secret", "http://host#secret"])
+@pytest.mark.parametrize(
+    "url", ["http://user:secret@host", "http://host?token=secret", "http://host#secret"]
+)
 def test_credentials_are_not_allowed_in_urls(url):
     with pytest.raises(ValueError, match="without credentials"):
         HttpHost(url)

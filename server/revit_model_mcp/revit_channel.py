@@ -17,7 +17,9 @@ DEFAULT_PICKUP_TIMEOUT_SECONDS = 300
 ACTIVATION_TASK = os.environ.get("REVIT_MCP_ACTIVATE_TASK", "")
 CHANNEL_DIRECTORY = "RevitModelMcp"
 TRIGGER_FILE = "trigger.txt"
-ACTION_COMMANDS = frozenset({"select", "show", "isolate", "move", "place-family", "create-wall", "set-parameter", "delete"})
+ACTION_COMMANDS = frozenset(
+    {"select", "show", "isolate", "move", "place-family", "create-wall", "set-parameter", "delete"}
+)
 
 
 class RevitChannelError(RuntimeError):
@@ -67,9 +69,7 @@ class ReadJob:
         return cls("document-info", {"command": "document-info"})
 
     @classmethod
-    def list_views(
-        cls, view_type: str | None = None, name_contains: str | None = None
-    ) -> ReadJob:
+    def list_views(cls, view_type: str | None = None, name_contains: str | None = None) -> ReadJob:
         payload: dict[str, Any] = {"command": "list-views"}
         if normalized := _optional_text(view_type):
             payload["viewType"] = normalized
@@ -85,13 +85,15 @@ class ReadJob:
         )
 
     @classmethod
-    def export_view(
-        cls, view: str, pixel_size: int = 1600, save_to: str | None = None
-    ) -> ReadJob:
+    def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> ReadJob:
         if pixel_size < 1 or pixel_size > 4000:
             raise RevitChannelError("pixel_size must be between 1 and 4000.")
-        payload = {"command": "export-view", "view": _required_text(view, "view"),
-                   "pixelSize": pixel_size, "zoomToFit": True}
+        payload = {
+            "command": "export-view",
+            "view": _required_text(view, "view"),
+            "pixelSize": pixel_size,
+            "zoomToFit": True,
+        }
         return cls("export-view", payload, save_to)
 
     @classmethod
@@ -120,9 +122,7 @@ class ReadJob:
     @classmethod
     def element_details(cls, element_id: int) -> ReadJob:
         if element_id <= 0:
-            raise RevitChannelError(
-                "element-details requires a positive element id."
-            )
+            raise RevitChannelError("element-details requires a positive element id.")
         return cls("element-details", {"command": "element-details", "id": element_id})
 
     @classmethod
@@ -153,9 +153,22 @@ class ReadJob:
     ) -> ReadJob:
         try:
             payload = query_payload(
-                categories, family, type_name, level, view, workset, phase,
-                area_scheme, parameter_filters, fields, offset, limit,
-                sort_field, sort_direction, _optional_text, _unique_texts,
+                categories,
+                family,
+                type_name,
+                level,
+                view,
+                workset,
+                phase,
+                area_scheme,
+                parameter_filters,
+                fields,
+                offset,
+                limit,
+                sort_field,
+                sort_direction,
+                _optional_text,
+                _unique_texts,
             )
         except ValueError as error:
             raise RevitChannelError(str(error)) from error
@@ -180,9 +193,19 @@ class ReadJob:
     ) -> ReadJob:
         try:
             payload = aggregate_payload(
-                categories, family, type_name, level, view, workset, phase,
-                area_scheme, parameter_filters, group_by, numeric_field,
-                _optional_text, _unique_texts,
+                categories,
+                family,
+                type_name,
+                level,
+                view,
+                workset,
+                phase,
+                area_scheme,
+                parameter_filters,
+                group_by,
+                numeric_field,
+                _optional_text,
+                _unique_texts,
             )
         except ValueError as error:
             raise RevitChannelError(str(error)) from error
@@ -190,7 +213,10 @@ class ReadJob:
 
     @classmethod
     def list_catalog(cls, section: str) -> ReadJob:
-        return cls("list-catalog", {"command": "list-catalog", "section": _required_text(section, "section")})
+        return cls(
+            "list-catalog",
+            {"command": "list-catalog", "section": _required_text(section, "section")},
+        )
 
     @classmethod
     def list_warnings(
@@ -205,7 +231,10 @@ class ReadJob:
     def list_relations(
         cls, relation: str, source_id: int | None = None, source_name: str | None = None
     ) -> ReadJob:
-        payload: dict[str, Any] = {"command": "list-relations", "relation": _required_text(relation, "relation")}
+        payload: dict[str, Any] = {
+            "command": "list-relations",
+            "relation": _required_text(relation, "relation"),
+        }
         if source_id is not None:
             if source_id <= 0:
                 raise RevitChannelError("source_id must be positive.")
@@ -259,20 +288,21 @@ def _unique_texts(values: list[str]) -> list[str]:
 
 
 class RemoteHost(Protocol):
-    async def prepare_job(
-        self, name: str, content: str, command: str
-    ) -> set[str]: ...
+    async def prepare_job(self, name: str, content: str, command: str) -> set[str]: ...
 
-    async def wait_until_trigger_is_gone(
-        self, timeout_seconds: float
-    ) -> JobPickupStatus: ...
+    async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus: ...
 
     async def wait_for_new_response(
         self, command: str, known_names: set[str], timeout_seconds: float
     ) -> str | None: ...
 
-    async def finish_job(self, response_name: str, cleanup_names: list[str],
-                         download_artifact: bool, save_to: str | None) -> tuple[str, str | None]: ...
+    async def finish_job(
+        self,
+        response_name: str,
+        cleanup_names: list[str],
+        download_artifact: bool,
+        save_to: str | None,
+    ) -> tuple[str, str | None]: ...
 
     async def delete_files(self, names: list[str]) -> None: ...
 
@@ -294,9 +324,7 @@ class RevitReadChannel:
             raise RevitChannelError("pickup_timeout_seconds must be greater than zero.")
 
         async with self._lock:
-            return await self._execute_serial(
-                job, timeout_seconds, pickup_timeout_seconds
-            )
+            return await self._execute_serial(job, timeout_seconds, pickup_timeout_seconds)
 
     async def _execute_serial(
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
@@ -315,9 +343,7 @@ class RevitReadChannel:
             )
             job_prepared = True
 
-            pickup = await self.remote.wait_until_trigger_is_gone(
-                pickup_timeout_seconds
-            )
+            pickup = await self.remote.wait_until_trigger_is_gone(pickup_timeout_seconds)
             trigger_taken = pickup.taken
             if not trigger_taken:
                 trigger_state = "is still present" if pickup.trigger_present else "is absent"
@@ -333,9 +359,11 @@ class RevitReadChannel:
             if response_name is None:
                 raise ResponseTimeoutError(
                     f"The add-in picked up the job, but no response to {job.command} appeared within {timeout_seconds} s. "
-                    + ("The action may have executed. Inspect the model before retrying."
-                     if job.command in ACTION_COMMANDS else
-                     "The command may need more time; increase timeout_seconds and retry.")
+                    + (
+                        "The action may have executed. Inspect the model before retrying."
+                        if job.command in ACTION_COMMANDS
+                        else "The command may need more time; increase timeout_seconds and retry."
+                    )
                 )
 
             finish_attempted = True
@@ -375,6 +403,7 @@ class RevitReadChannel:
             raise RevitChannelError("Channel completed without a response.")
         return result
 
+
 def parse_response(content: str, expected_command: str) -> dict[str, Any]:
     try:
         response = json.loads(content)
@@ -401,7 +430,5 @@ def parse_response(content: str, expected_command: str) -> dict[str, Any]:
             else "The add-in returned an error without a message."
         )
     if "data" not in response:
-        raise ResponseParseError(
-            "Invalid response: a successful response must contain data."
-        )
+        raise ResponseParseError("Invalid response: a successful response must contain data.")
     return response

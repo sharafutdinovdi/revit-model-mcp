@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import asyncio
 import base64
 import json
@@ -10,6 +11,7 @@ from collections import deque
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 from revit_model_mcp.artifact_download import save_artifact
 from revit_model_mcp.revit_channel import (
     ACTIVATION_TASK,
@@ -22,6 +24,7 @@ from revit_model_mcp.revit_channel import (
     RevitNotRunningError,
     SshUnavailableError,
 )
+
 RELAY_CONNECTION_LIMIT = 5
 RELAY_WINDOW_SECONDS = 30.0
 POLL_INTERVAL_SECONDS = 10.0
@@ -30,15 +33,22 @@ PICKUP_COMMAND_TIMEOUT_SECONDS = 10.0
 ACTIVATION_DELAY_SECONDS = 60.0
 INSTANCE_STALE_SECONDS = 60.0
 LOGGER = logging.getLogger(__name__)
-class RemoteCommandTimeoutError(RevitChannelError): pass
+
+
+class RemoteCommandTimeoutError(RevitChannelError):
+    pass
+
+
 class RemoteCommandError(RevitChannelError):
     def __init__(self, returncode: int, detail: str) -> None:
         super().__init__(detail)
         self.returncode = returncode
+
+
 class SshPowerShellHost:
     def __init__(
-        self, host: str = "localhost", connect_timeout_seconds: int = 45,
-        *, local: bool = False) -> None:
+        self, host: str = "localhost", connect_timeout_seconds: int = 45, *, local: bool = False
+    ) -> None:
         if not re.fullmatch(r"[A-Za-z0-9_.@:-]+", host) or host.startswith("-"):
             raise ValueError("REVIT_MCP_HOST contains an invalid SSH host name.")
         self.host = host
@@ -46,6 +56,7 @@ class SshPowerShellHost:
         self.connect_timeout_seconds = connect_timeout_seconds
         self._connection_starts: deque[float] = deque()
         self._connection_lock = asyncio.Lock()
+
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
         filter_text = document.strip() if document else ""
         script = (
@@ -59,8 +70,11 @@ class SshPowerShellHost:
         try:
             package = json.loads(await self._run(script))
         except (json.JSONDecodeError, TypeError) as error:
-            raise ResponseParseError(f"Revit instance list could not be parsed as JSON: {error}") from error
+            raise ResponseParseError(
+                f"Revit instance list could not be parsed as JSON: {error}"
+            ) from error
         return _parse_instance_package(package, filter_text, datetime.now(timezone.utc))
+
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
         pattern = f"response_*_{_ps_quote(command)}*.json"
@@ -103,14 +117,20 @@ class SshPowerShellHost:
         if not isinstance(responses, list) or not all(isinstance(x, str) for x in responses):
             raise ResponseParseError("Preparation result contains an invalid response list.")
         return set(responses)
+
     async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus:
         trigger_assignment = f"$trigger = Join-Path ({_ps_directory()}) '{TRIGGER_FILE}'; "
         trigger_check = "if (Test-Path -LiteralPath $trigger) { 'present' } else { 'gone' }"
         check_script = trigger_assignment + trigger_check
         activation_attempts = 0
+
         def pickup_script(elapsed_seconds: float) -> str:
             nonlocal activation_attempts
-            if ACTIVATION_TASK and activation_attempts == 0 and elapsed_seconds >= ACTIVATION_DELAY_SECONDS:
+            if (
+                ACTIVATION_TASK
+                and activation_attempts == 0
+                and elapsed_seconds >= ACTIVATION_DELAY_SECONDS
+            ):
                 activation_attempts = 1
                 LOGGER.warning(
                     "Job was not picked up within a minute; if trigger.txt is still "
@@ -127,6 +147,7 @@ class SshPowerShellHost:
                     + " } else { 'gone' }"
                 )
             return check_script
+
         try:
             result, _, elapsed = await self._poll_for_change(
                 pickup_script,
@@ -146,7 +167,10 @@ class SshPowerShellHost:
             trigger_present=result != "gone",
             elapsed_seconds=elapsed,
         )
-    async def wait_for_new_response(self, command: str, known_names: set[str], timeout_seconds: float) -> str | None:
+
+    async def wait_for_new_response(
+        self, command: str, known_names: set[str], timeout_seconds: float
+    ) -> str | None:
         known = ",".join(f"'{_ps_quote(name)}'" for name in sorted(known_names))
         pattern = f"response_*_{command}*.json"
         script = (
@@ -157,9 +181,13 @@ class SshPowerShellHost:
         )
         result, _, _ = await self._poll_for_change(script, "", timeout_seconds)
         return result
+
     async def _poll_for_change(
-        self, script: str | Callable[[float], str], pending_output: str,
-        timeout_seconds: float, command_timeout_seconds: float = POLL_COMMAND_TIMEOUT_SECONDS,
+        self,
+        script: str | Callable[[float], str],
+        pending_output: str,
+        timeout_seconds: float,
+        command_timeout_seconds: float = POLL_COMMAND_TIMEOUT_SECONDS,
     ) -> tuple[str | None, int, float]:
         loop = asyncio.get_running_loop()
         started = loop.time()
@@ -192,6 +220,7 @@ class SshPowerShellHost:
                     raise last_error
                 return None, attempts, loop.time() - started
             await asyncio.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+
     def _activation_script(self) -> str:
         task_name = _ps_quote(ACTIVATION_TASK)
         return (
@@ -204,9 +233,13 @@ class SshPowerShellHost:
             f"$info = Get-ScheduledTaskInfo -TaskName '{task_name}' -ErrorAction Stop; "
             "if ($task.State -eq 'Running' -or $info.LastTaskResult -ne 0) { exit 32 }"
         )
+
     async def finish_job(
-        self, response_name: str, cleanup_names: list[str],
-        download_artifact: bool, save_to: str | None,
+        self,
+        response_name: str,
+        cleanup_names: list[str],
+        download_artifact: bool,
+        save_to: str | None,
     ) -> tuple[str, str | None]:
         paths = ",".join(f"'{_ps_quote(name)}'" for name in cleanup_names)
         output = await self._run(
@@ -237,6 +270,7 @@ class SshPowerShellHost:
             raise ResponseParseError(
                 f"Could not parse response and image after remote read: {error}"
             ) from error
+
     async def delete_files(self, names: list[str]) -> None:
         if not names:
             return
@@ -245,11 +279,15 @@ class SshPowerShellHost:
             f"$directory = {_ps_directory()}; @({paths}) | ForEach-Object {{ "
             "$path = Join-Path $directory $_; Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }"
         )
+
     def _build_command(self, script: str) -> list[str]:
         encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
         powershell = [
-            "powershell.exe", "-NoProfile", "-NonInteractive",
-            "-EncodedCommand", encoded_script,
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            encoded_script,
         ]
         if self.local:
             return powershell
@@ -263,14 +301,23 @@ class SshPowerShellHost:
         if os.environ.get("REVIT_MCP_SSH_MUX") != "0":
             runtime = os.environ.get("XDG_RUNTIME_DIR")
             # Unix sockets cap the path at about 100 bytes and ssh appends a random suffix, so keep this short.
-            directory = Path(runtime) if runtime else Path("/tmp") / f"revit-model-mcp-{getattr(os, 'getuid', lambda: 'user')()}"
+            directory = (
+                Path(runtime)
+                if runtime
+                else Path("/tmp") / f"revit-model-mcp-{getattr(os, 'getuid', lambda: 'user')()}"
+            )
             directory.mkdir(mode=0o700, parents=True, exist_ok=True)
             directory.chmod(0o700)
-            command.extend([
-                "-o", "ControlMaster=auto",
-                "-o", f"ControlPath={directory}/mux-%C",
-                "-o", "ControlPersist=600",
-            ])
+            command.extend(
+                [
+                    "-o",
+                    "ControlMaster=auto",
+                    "-o",
+                    f"ControlPath={directory}/mux-%C",
+                    "-o",
+                    "ControlPersist=600",
+                ]
+            )
         command.extend(shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", "")))
         return command + [self.host] + powershell
 
@@ -281,7 +328,8 @@ class SshPowerShellHost:
             if not self.local:
                 await self._reserve_connection()
             process = await asyncio.create_subprocess_exec(
-                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
             stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
         except asyncio.CancelledError:
             if process is not None and process.returncode is None:
@@ -326,6 +374,7 @@ class SshPowerShellHost:
                 f"{detail or output or 'no reason given.'}",
             )
         return output
+
     async def _reserve_connection(self) -> None:
         async with self._connection_lock:
             loop = asyncio.get_running_loop()
@@ -340,6 +389,8 @@ class SshPowerShellHost:
                 await asyncio.sleep(
                     RELAY_WINDOW_SECONDS - (now - self._connection_starts[0]) + 0.01
                 )
+
+
 def _parse_instance_package(
     package: object, filter_text: str, now: datetime
 ) -> list[dict[str, object]]:
@@ -367,34 +418,55 @@ def _parse_instance_package(
                 continue
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             continue
-        instances.append({
-            "processId": process_id, "revitVersion": version,
-            "documentName": title, "documentTitle": title, "documentPath": path,
-            "windowTitle": "", "pluginResponding": True,
-        })
+        instances.append(
+            {
+                "processId": process_id,
+                "revitVersion": version,
+                "documentName": title,
+                "documentTitle": title,
+                "documentPath": path,
+                "windowTitle": "",
+                "pluginResponding": True,
+            }
+        )
     if instances:
         needle = filter_text.casefold()
         return sorted(
-            (item for item in instances if not needle or needle in str(item["documentName"]).casefold()),
+            (
+                item
+                for item in instances
+                if not needle or needle in str(item["documentName"]).casefold()
+            ),
             key=lambda item: int(item["processId"]),
         )
     fallback: list[dict[str, object]] = []
     for process in processes:
         if not isinstance(process, dict) or not isinstance(process.get("processId"), int):
             continue
-        fallback.append({
-            "processId": process["processId"],
-            "revitVersion": process.get("revitVersion", ""),
-            "documentName": "", "documentTitle": "", "documentPath": "",
-            "windowTitle": "", "pluginResponding": False,
-        })
+        fallback.append(
+            {
+                "processId": process["processId"],
+                "revitVersion": process.get("revitVersion", ""),
+                "documentName": "",
+                "documentTitle": "",
+                "documentPath": "",
+                "windowTitle": "",
+                "pluginResponding": False,
+            }
+        )
     return sorted(fallback, key=lambda item: int(item["processId"]))
+
+
 def _ps_directory() -> str:
     if override := os.environ.get("REVIT_MCP_CHANNEL_DIR"):
         return f"'{_ps_quote(override)}'"
     return f"(Join-Path $env:LOCALAPPDATA '{CHANNEL_DIRECTORY}')"
+
+
 def _ps_quote(value: str) -> str:
     return value.replace("'", "''")
+
+
 def _looks_like_connection_failure(detail: str) -> bool:
     normalized = detail.casefold()
     return any(

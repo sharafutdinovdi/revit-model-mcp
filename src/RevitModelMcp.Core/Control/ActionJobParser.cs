@@ -16,12 +16,22 @@ public static class ActionJobParser
                 ElementIds = (job.ElementIds ?? []).Distinct().ToList(),
                 Select = job.Select ?? true,
                 Reset = job.Reset ?? false,
-                DxMm = job.DxMm ?? 0, DyMm = job.DyMm ?? 0, DzMm = job.DzMm ?? 0,
-                Family = job.Family, TypeName = job.TypeName, Level = job.Level,
-                XMm = job.XMm ?? 0, YMm = job.YMm ?? 0, RotationDeg = job.RotationDeg ?? 0,
-                StartMm = job.StartMm ?? [], EndMm = job.EndMm ?? [],
-                WallType = job.WallType, HeightMm = job.HeightMm ?? 3000,
-                ElementId = job.ActionElementId ?? 0, Parameter = job.Parameter, Value = job.Value
+                DxMm = job.DxMm ?? 0,
+                DyMm = job.DyMm ?? 0,
+                DzMm = job.DzMm ?? 0,
+                Family = job.Family,
+                TypeName = job.TypeName,
+                Level = job.Level,
+                XMm = job.XMm ?? 0,
+                YMm = job.YMm ?? 0,
+                RotationDeg = job.RotationDeg ?? 0,
+                StartMm = job.StartMm ?? [],
+                EndMm = job.EndMm ?? [],
+                WallType = job.WallType,
+                HeightMm = job.HeightMm ?? 3000,
+                ElementId = job.ActionElementId ?? 0,
+                Parameter = job.Parameter,
+                Value = job.Value
             };
             if (command is "select" or "show" or "isolate" or "move" or "delete")
             {

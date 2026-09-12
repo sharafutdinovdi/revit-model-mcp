@@ -121,9 +121,7 @@ def common_payload(
     ):
         if normalized := optional_text(value):
             payload[key] = normalized
-    if normalized_filters := normalize_parameter_filters(
-        parameter_filters or [], optional_text
-    ):
+    if normalized_filters := normalize_parameter_filters(parameter_filters or [], optional_text):
         payload["parameterFilters"] = normalized_filters
     return payload
 
@@ -137,9 +135,7 @@ def normalize_parameter_filters(
         raw_name = item.get("parameter")
         raw_operation = item.get("operator")
         name = optional_text(raw_name) if isinstance(raw_name, str) else None
-        operation = (
-            optional_text(raw_operation) if isinstance(raw_operation, str) else None
-        )
+        operation = optional_text(raw_operation) if isinstance(raw_operation, str) else None
         if not name or not operation:
             raise ValueError("Each parameter_filter requires parameter and operator.")
         normalized = {"parameter": name, "operator": operation.lower()}

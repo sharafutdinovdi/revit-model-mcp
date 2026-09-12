@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import argparse
+import os
 from pathlib import PureWindowsPath
 from typing import Annotated, Any
 
@@ -9,6 +9,9 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
+
+from revit_model_mcp.actions import register_actions
+from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     DEFAULT_HOST,
@@ -19,7 +22,7 @@ from revit_model_mcp.revit_channel import (
     RevitReadChannel,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
-from revit_model_mcp.http_host import HttpHost
+
 
 def create_host(value: str, token: str | None = None) -> SshPowerShellHost | HttpHost:
     if value.startswith(("http://", "https://")):
@@ -28,7 +31,9 @@ def create_host(value: str, token: str | None = None) -> SshPowerShellHost | Htt
         return SshPowerShellHost("local", local=True)
     if value.startswith("ssh:") and value[4:]:
         return SshPowerShellHost(value[4:])
-    raise ValueError("REVIT_MCP_HOST must be local, ssh:<alias>, http://host:port or https://host:port.")
+    raise ValueError(
+        "REVIT_MCP_HOST must be local, ssh:<alias>, http://host:port or https://host:port."
+    )
 
 
 host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
@@ -48,31 +53,60 @@ def redact_model_paths(value: Any) -> Any:
     if isinstance(value, list):
         return [redact_model_paths(item) for item in value]
     return value
+
+
 READ_ONLY_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
-TimeoutSeconds = Annotated[int, Field(validation_alias=AliasChoices("timeout_seconds", "timeoutSeconds"))]
-PickupTimeoutSeconds = Annotated[int, Field(validation_alias=AliasChoices("pickup_timeout_seconds", "pickupTimeoutSeconds"))]
+TimeoutSeconds = Annotated[
+    int, Field(validation_alias=AliasChoices("timeout_seconds", "timeoutSeconds"))
+]
+PickupTimeoutSeconds = Annotated[
+    int, Field(validation_alias=AliasChoices("pickup_timeout_seconds", "pickupTimeoutSeconds"))
+]
 GroupBy = Annotated[list[str], Field(validation_alias=AliasChoices("group_by", "groupBy"))]
-SumField = Annotated[str | None, Field(validation_alias=AliasChoices("sum_field", "sumField", "numeric_field", "numericField"))]
-TypeName = Annotated[str | None, Field(validation_alias=AliasChoices("type_name", "typeName", "type"))]
-AreaScheme = Annotated[str | None, Field(validation_alias=AliasChoices("area_scheme", "areaScheme"))]
+SumField = Annotated[
+    str | None,
+    Field(validation_alias=AliasChoices("sum_field", "sumField", "numeric_field", "numericField")),
+]
+TypeName = Annotated[
+    str | None, Field(validation_alias=AliasChoices("type_name", "typeName", "type"))
+]
+AreaScheme = Annotated[
+    str | None, Field(validation_alias=AliasChoices("area_scheme", "areaScheme"))
+]
 ParameterFilters = Annotated[
     list[dict[str, Any]] | None,
     Field(validation_alias=AliasChoices("parameter_filters", "parameterFilters")),
 ]
 SortField = Annotated[str, Field(validation_alias=AliasChoices("sort_field", "sortField"))]
-SortDirection = Annotated[str, Field(validation_alias=AliasChoices("sort_direction", "sortDirection"))]
+SortDirection = Annotated[
+    str, Field(validation_alias=AliasChoices("sort_direction", "sortDirection"))
+]
 ViewType = Annotated[str | None, Field(validation_alias=AliasChoices("view_type", "viewType"))]
-NameContains = Annotated[str | None, Field(validation_alias=AliasChoices("name_contains", "nameContains"))]
+NameContains = Annotated[
+    str | None, Field(validation_alias=AliasChoices("name_contains", "nameContains"))
+]
 ViewName = Annotated[str, Field(validation_alias=AliasChoices("view", "view_name", "viewName"))]
-PixelSize = Annotated[int, Field(validation_alias=AliasChoices("pixel_size", "pixelSize"), ge=1, le=4000)]
+PixelSize = Annotated[
+    int, Field(validation_alias=AliasChoices("pixel_size", "pixelSize"), ge=1, le=4000)
+]
 SaveTo = Annotated[str | None, Field(validation_alias=AliasChoices("save_to", "saveTo"))]
-OptionalViewName = Annotated[str | None, Field(validation_alias=AliasChoices("view", "view_name", "viewName"))]
+OptionalViewName = Annotated[
+    str | None, Field(validation_alias=AliasChoices("view", "view_name", "viewName"))
+]
 ElementId = Annotated[int, Field(validation_alias=AliasChoices("element_id", "elementId", "id"))]
-WarningText = Annotated[str | None, Field(validation_alias=AliasChoices("warning_text", "warningText"))]
-IncludeGeometry = Annotated[bool, Field(validation_alias=AliasChoices("include_geometry", "includeGeometry"))]
-IncludeElements = Annotated[bool, Field(validation_alias=AliasChoices("include_elements", "includeElements"))]
+WarningText = Annotated[
+    str | None, Field(validation_alias=AliasChoices("warning_text", "warningText"))
+]
+IncludeGeometry = Annotated[
+    bool, Field(validation_alias=AliasChoices("include_geometry", "includeGeometry"))
+]
+IncludeElements = Annotated[
+    bool, Field(validation_alias=AliasChoices("include_elements", "includeElements"))
+]
 SourceId = Annotated[int | None, Field(validation_alias=AliasChoices("source_id", "sourceId"))]
-SourceName = Annotated[str | None, Field(validation_alias=AliasChoices("source_name", "sourceName"))]
+SourceName = Annotated[
+    str | None, Field(validation_alias=AliasChoices("source_name", "sourceName"))
+]
 Document = Annotated[str | None, Field(validation_alias=AliasChoices("document", "targetDocument"))]
 
 mcp = MCPServer(
@@ -116,7 +150,7 @@ async def revit_ping(
     document: Document = None,
 ) -> dict[str, Any]:
     """Check the RevitModelMcp connection without reading the model.
-    
+
     Returns pong even when no document is active.
     Parameters: timeout_seconds, pickup_timeout_seconds, document.
     """
@@ -130,12 +164,14 @@ async def revit_document_info(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read general information about the active Revit model.
-    
+
     Returns the file name, Revit version, levels, area schemes, worksets and view count.
     Call revit_list_views next for view analysis.
     Parameters: timeout_seconds, pickup_timeout_seconds, document.
     """
-    return await _execute(ReadJob.document_info(), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(
+        ReadJob.document_info(), timeout_seconds, pickup_timeout_seconds, document
+    )
 
 
 @addressed_tool
@@ -146,13 +182,15 @@ async def revit_list_catalog(
     document: Document = None,
 ) -> dict[str, Any]:
     """Discover valid model names before filtering.
-    
+
     Start universal queries here. section accepts categories, family-types, levels,
     area-schemes, views, worksets, phases or parameters. The parameters section lists
     names, categories and value types. Prefer aggregation before requesting rows.
     Parameters: section, timeout_seconds, pickup_timeout_seconds, document.
     """
-    return await _execute(ReadJob.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(
+        ReadJob.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document
+    )
 
 
 @addressed_tool
@@ -173,7 +211,7 @@ async def revit_aggregate_elements(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read a compact element summary after revit_list_catalog.
-    
+
     group_by accepts one or two system fields or exact parameter names. count is
     always included. sum_field adds sum and average. Use an exact localized Revit
     parameter name from the parameters catalog. parameter_filters accepts objects
@@ -183,8 +221,17 @@ async def revit_aggregate_elements(
     """
     return await _execute(
         ReadJob.aggregate_elements(
-            group_by, sum_field, categories, family, type_name, level, view,
-            workset, phase, area_scheme, parameter_filters,
+            group_by,
+            sum_field,
+            categories,
+            family,
+            type_name,
+            level,
+            view,
+            workset,
+            phase,
+            area_scheme,
+            parameter_filters,
         ),
         timeout_seconds,
         pickup_timeout_seconds,
@@ -214,7 +261,7 @@ async def revit_query_elements(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read a page of elements after revit_list_catalog.
-    
+
     Use aggregation first when a summary is sufficient. Model filters combine.
     parameter_filters accepts equals, contains, greater, less, empty, not-empty,
     exists. fields accepts system fields or exact localized parameter names.
@@ -226,8 +273,21 @@ async def revit_query_elements(
     """
     return await _execute(
         ReadJob.query_elements(
-            categories, family, type_name, level, view, workset, phase, area_scheme,
-            parameter_filters, fields, offset, limit, sort_field, sort_direction, include_geometry,
+            categories,
+            family,
+            type_name,
+            level,
+            view,
+            workset,
+            phase,
+            area_scheme,
+            parameter_filters,
+            fields,
+            offset,
+            limit,
+            sort_field,
+            sort_direction,
+            include_geometry,
         ),
         timeout_seconds,
         pickup_timeout_seconds,
@@ -244,14 +304,17 @@ async def revit_list_views(
     document: Document = None,
 ) -> dict[str, Any]:
     """Find views in the active model before analyzing a view.
-    
+
     view_type accepts an English Revit ViewType such as FloorPlan. name_contains
     matches a substring. Both filters are optional. Use an exact returned name
     with revit_view_summary before requesting element pages.
     Parameters: view_type, name_contains, timeout_seconds, pickup_timeout_seconds, document.
     """
     return await _execute(
-        ReadJob.list_views(view_type, name_contains), timeout_seconds, pickup_timeout_seconds, document
+        ReadJob.list_views(view_type, name_contains),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
     )
 
 
@@ -263,12 +326,14 @@ async def revit_view_summary(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read element categories and counts for a selected view.
-    
+
     Use an exact name from revit_list_views. Select relevant categories from this
     summary before calling revit_view_elements.
     Parameters: view, timeout_seconds, pickup_timeout_seconds, document.
     """
-    return await _execute(ReadJob.view_summary(view), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(
+        ReadJob.view_summary(view), timeout_seconds, pickup_timeout_seconds, document
+    )
 
 
 @addressed_tool
@@ -279,7 +344,7 @@ async def revit_export_view(
     document: Document = None,
 ) -> dict[str, Any]:
     """Export a selected view to PNG when numbers do not explain geometry.
-    
+
     Use for visual checks of outlines, zones and room boundaries. The tool does not
     change the active view or write to the model. The image is copied from the Revit
     host to save_to or a local temporary directory. The response contains a local
@@ -305,14 +370,15 @@ async def revit_view_elements(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read one page of elements in a selected view.
-    
+
     Call revit_view_summary first. Supply relevant categories, offset and limit.
     Advance offset while hasMore=true. Use revit_element_details for all parameters
     of a selected element.
     Parameters: view, categories, offset, limit, timeout_seconds, pickup_timeout_seconds, document.
     """
     return await _execute(
-        ReadJob.view_elements(view, categories, offset, limit), timeout_seconds,
+        ReadJob.view_elements(view, categories, offset, limit),
+        timeout_seconds,
         pickup_timeout_seconds,
         document,
     )
@@ -326,7 +392,7 @@ async def revit_element_details(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read parameters and geometry of an element by Revit id.
-    
+
     Use an id from revit_query_elements or revit_view_elements. Returns instance
     and type parameters and related warnings. Rooms also include level, area,
     volume and boundaries. location and boundingBox use model millimetres rounded
@@ -335,7 +401,9 @@ async def revit_element_details(
     may lie outside a nonrectangular room.
     Parameters: element_id, timeout_seconds, pickup_timeout_seconds, document.
     """
-    return await _execute(ReadJob.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(
+        ReadJob.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document
+    )
 
 
 @addressed_tool
@@ -346,12 +414,14 @@ async def revit_view_warnings(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read Revit warnings related to elements in a selected view.
-    
+
     Use an exact name from revit_list_views. Use revit_view_summary first to inspect
     the contents of the view.
     Parameters: view, timeout_seconds, pickup_timeout_seconds, document.
     """
-    return await _execute(ReadJob.view_warnings(view), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(
+        ReadJob.view_warnings(view), timeout_seconds, pickup_timeout_seconds, document
+    )
 
 
 @addressed_tool
@@ -363,13 +433,14 @@ async def revit_list_warnings(
     document: Document = None,
 ) -> dict[str, Any]:
     """Group model warnings by text.
-    
+
     Start without warning_text or elements. Repeat with an exact warning_text
     and include_elements=true to inspect elements in a warning group.
     Parameters: warning_text, include_elements, timeout_seconds, pickup_timeout_seconds, document.
     """
     return await _execute(
-        ReadJob.list_warnings(warning_text, include_elements), timeout_seconds,
+        ReadJob.list_warnings(warning_text, include_elements),
+        timeout_seconds,
         pickup_timeout_seconds,
         document,
     )
@@ -385,14 +456,15 @@ async def revit_list_relations(
     document: Document = None,
 ) -> dict[str, Any]:
     """Read model object membership or dependencies.
-    
+
     relation accepts level-rooms with source_name, group-elements or nested-family
     with source_id, area-scheme-elements with source_name, or
     view-template-dependents with source_name. Obtain names from the catalog.
     Parameters: relation, source_id, source_name, timeout_seconds, pickup_timeout_seconds, document.
     """
     return await _execute(
-        ReadJob.list_relations(relation, source_id, source_name), timeout_seconds,
+        ReadJob.list_relations(relation, source_id, source_name),
+        timeout_seconds,
         pickup_timeout_seconds,
         document,
     )
@@ -401,7 +473,7 @@ async def revit_list_relations(
 @mcp.tool(annotations=READ_ONLY_TOOL)
 async def revit_list_instances(document: Document = None) -> list[dict[str, object]]:
     """List Revit processes with active documents, versions and processId.
-    
+
     The add-in reports the document through a heartbeat file. Fallback processes
     have an empty document and pluginResponding=false. Optional document filters
     by a substring of the model name.
@@ -412,8 +484,6 @@ async def revit_list_instances(document: Document = None) -> list[dict[str, obje
     except RevitChannelError as error:
         raise ToolError(str(error)) from error
 
-
-from revit_model_mcp.actions import register_actions
 
 register_actions(mcp, _execute, lambda: host)
 
@@ -431,9 +501,21 @@ def main() -> None:
             f"  redact paths: {os.environ.get('REVIT_MCP_REDACT_PATHS') == '1'}"
         ),
     )
-    parser.add_argument("--host", default=default_host, help="local, ssh:<alias>, http://host:port or https://host:port; overrides REVIT_MCP_HOST.")
-    parser.add_argument("--redact-paths", action="store_true", help="Return model file names without directory paths.")
-    parser.add_argument("--token", default=None, help="HTTP bearer token; overrides REVIT_MCP_TOKEN. Prefer the environment to keep tokens out of shell history.")
+    parser.add_argument(
+        "--host",
+        default=default_host,
+        help="local, ssh:<alias>, http://host:port or https://host:port; overrides REVIT_MCP_HOST.",
+    )
+    parser.add_argument(
+        "--redact-paths",
+        action="store_true",
+        help="Return model file names without directory paths.",
+    )
+    parser.add_argument(
+        "--token",
+        default=None,
+        help="HTTP bearer token; overrides REVIT_MCP_TOKEN. Prefer the environment to keep tokens out of shell history.",
+    )
     args = parser.parse_args()
     global host, channel
     host = create_host(args.host, args.token)
