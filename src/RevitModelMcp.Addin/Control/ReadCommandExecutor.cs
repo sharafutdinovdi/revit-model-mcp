@@ -39,6 +39,18 @@ internal static class ReadCommandExecutor
                            ?? throw new InvalidOperationException("No active Revit document.");
             switch (job.Kind)
             {
+                case ControlJobKind.ModelHealth:
+                    WriteSuccess(output, job.Command, ModelHealthReader.Read(document, job.CoordinatorJob), stopwatch);
+                    break;
+                case ControlJobKind.LinksStatus:
+                    WriteSuccess(output, job.Command, LinksStatusReader.Read(document, job.CoordinatorJob), stopwatch);
+                    break;
+                case ControlJobKind.SharedCoordinates:
+                    WriteSuccess(output, job.Command, SharedCoordinatesReader.Read(document, job.CoordinatorJob), stopwatch);
+                    break;
+                case ControlJobKind.ParameterFillCheck:
+                    WriteSuccess(output, job.Command, ParameterFillReader.Read(document, job.CoordinatorJob), stopwatch);
+                    break;
                 case ControlJobKind.DocumentInfo:
                     WriteSuccess(output, job.Command, ReadCommandReader.ReadDocumentInfo(application), stopwatch);
                     break;

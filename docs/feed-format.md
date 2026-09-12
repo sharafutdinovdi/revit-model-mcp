@@ -54,6 +54,125 @@ Aggregation uses these numeric values; inspect the returned unit before interpre
 See the [tool tables](../README.md#tools) for argument defaults and units.
 The [job builders](../server/revit_model_mcp/universal_jobs.py) and [parser](../src/RevitModelMcp.Core/Control/ControlJobParser.cs) define the request contract.
 
+### Coordinator checks
+
+These jobs use the read response envelope and require no action gate.
+All accept optional `targetDocument`; timeout options stay on the Python client.
+The following examples show `data` independently of that envelope.
+
+`model-health` job:
+
+```json
+{"command":"model-health"}
+```
+
+Response data shape:
+
+```json
+{
+  "revitVersion":"2026", "revitBuild":"build", "fileName":"Model.rvt",
+  "isWorkshared":false, "fileSizeBytes":null,
+  "projectInfo":{"name":"Model","number":"01","client":"","address":"","buildingName":"","status":"","author":""},
+  "counts":{"elements":0,"warnings":0,"warningGroups":0,"levels":0,"grids":0,"views":0,
+    "viewsNotOnSheets":0,"viewTemplates":0,"sheets":0,"rooms":0,"roomsUnplaced":0,
+    "roomsNotEnclosed":0,"families":0,"familiesInPlace":0,"familyTypesUnused":0,
+    "groupsModel":0,"groupsDetail":0,"groupTypes":0,"designOptions":0,"worksets":0,
+    "linksRvt":0,"linksCad":0,"cadImports":0,"images":0},
+  "topWarnings":[{"text":"Warning description","count":1}],
+  "units":{"length":"unit type id","area":"unit type id","volume":"unit type id"},
+  "skipped":[]
+}
+```
+
+`elements` counts all non-type elements, including views and sheets.
+`familyTypesUnused` counts element types unreferenced by any non-type element's type ID.
+`linksRvt` counts RVT types; `linksCad` counts CAD types with external file references; `cadImports` and `images` count instances.
+`viewsNotOnSheets` excludes templates and includes plan, section, elevation, 3D, drafting and legend views absent from sheets.
+Unplaced rooms have nonpositive area and no location; not-enclosed rooms have nonpositive area and a location.
+`topWarnings` contains at most ten groups sorted by descending count.
+A failed metric is null and adds `{"metric":"counts.rooms","error":"description"}` to `skipped`.
+`fileSizeBytes` is null without a saved path; an inaccessible file also records a skipped metric.
+
+`links-status` job:
+
+```json
+{"command":"links-status"}
+```
+
+Response data shape:
+
+```json
+{
+  "rvtLinks":[{"name":"A.rvt","typeId":10,"status":"Loaded","pathType":"Absolute","path":"C:\\Models\\A.rvt","instances":1,"pinned":true,"nested":false}],
+  "cadLinks":[{"name":"Plan.dwg","typeId":20,"isLinked":true,"status":"Loaded","path":"C:\\Models\\Plan.dwg","instances":1,"viewSpecific":true}],
+  "images":[{"name":"Logo.png","typeId":30,"status":"Loaded","path":"C:\\Models\\Logo.png","instances":1}],
+  "summary":{"rvt":1,"rvtLoaded":1,"cad":1,"cadImports":0,"images":1},
+  "listLimit":100
+}
+```
+
+Each list contains at most 100 types, ordered by type ID; summary counts cover all types, while `cadImports` counts imported instances.
+RVT/CAD status is `Loaded`, `Unloaded`, `NotFound`, `LocallyUnloaded`, `InClosedWorkset` or `Other`.
+Images preserve Revit's `ImageTypeStatus`: `Loaded`, `Unloaded`, `FailedToLoad`, `Imported`, `Generated` or `Unknown`.
+Per-type read failures return `status:"Other"` and `error`; unavailable paths are omitted.
+RVT `pathType` is `Absolute`, `Relative`, `Cloud`, `Server` or `Unknown`.
+The add-in supplies paths; the Python server reduces nested `path` fields to file names when `REVIT_MCP_REDACT_PATHS=1`.
+
+`shared-coordinates` job:
+
+```json
+{"command":"shared-coordinates"}
+```
+
+Response data shape:
+
+```json
+{
+  "activeProjectLocation":"Internal", "projectLocations":["Internal"],
+  "projectBasePoint":{"eastWestMm":0.0,"northSouthMm":0.0,"elevationMm":0.0,"angleToTrueNorthDeg":0.0,"clipped":false},
+  "surveyPoint":{"eastWestMm":0.0,"northSouthMm":0.0,"elevationMm":0.0,"clipped":null},
+  "internalOriginToBasePointMm":{"x":0.0,"y":0.0,"z":0.0},
+  "trueNorthAngleDeg":0.0, "siteName":"Internal",
+  "sharedSiteFromLinks":[{"linkName":"A.rvt","sharedSiteName":null,"hasOffset":true,"offsetMm":{"x":100.0,"y":0.0,"z":0.0},"rotationDeg":0.0}],
+  "listLimit":100, "projectLocationsTotal":1, "linkInstancesTotal":1
+}
+```
+
+Coordinates use mm and angles use degrees, rounded to one decimal place.
+True north is the active location's project position angle at the internal origin.
+`clipped` reports the project base point API value, or null when unavailable.
+Link data describes the total transform; `hasOffset` compares that transform with identity before rounding, and `sharedSiteName` is null.
+Locations and link instances are capped at 100; total fields report uncapped counts.
+
+`parameter-fill-check` job:
+
+```json
+{"command":"parameter-fill-check","categories":["Walls","Doors"],"parameters":["Mark","Comments"],"level":"Level 1","workset":"Shell","view":"Plan","sampleLimit":20,"includeTypes":true}
+```
+
+`categories` requires 1–20 names and `parameters` requires 1–30 names.
+Optional `level`, `workset` and `view` use the universal query filter semantics, including localized category resolution and unknown-name errors.
+`sampleLimit` defaults to 20 and rejects values outside 1–100; `includeTypes` defaults to true.
+Python arguments `sample_limit` and `include_types` map to `sampleLimit` and `includeTypes`.
+Response data shape:
+
+```json
+{
+  "scope":{"categories":["Walls","Doors"],"elements":3,"level":"Level 1","workset":"Shell","view":"Plan"},
+  "parameters":[{"name":"Mark","elements":3,"filled":1,"empty":1,"missing":1,
+    "storageTypes":{"String":2},"owner":{"instance":1,"type":1},
+    "emptySampleIds":[101],"missingSampleIds":[102],
+    "byCategory":[{"category":"Walls","elements":3,"filled":1,"empty":1,"missing":1}]}]
+}
+```
+
+Scope counts cover all matching non-type elements without pagination.
+Each parameter's `filled + empty + missing` equals `elements`; storage and owner counts include existing parameters only.
+Type fallback occurs only when the instance has no parameter with that name.
+A filled parameter has `HasValue`; strings also require non-whitespace text and element IDs must differ from `InvalidElementId`.
+Double and integer zero values count as filled when `HasValue` is true.
+Each sample list is capped independently at `sampleLimit`; `byCategory` contains only categories with matching elements.
+
 ## Command responses
 
 ```json
