@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
@@ -36,23 +37,81 @@ EXPECTED_PARAMETERS = {
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_list_catalog": ["section", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_aggregate_elements": [
-        "group_by", "sum_field", "categories", "family", "type_name", "level",
-        "view", "workset", "phase", "area_scheme", "parameter_filters",
-        "timeout_seconds", "pickup_timeout_seconds", "document",
+        "group_by",
+        "sum_field",
+        "categories",
+        "family",
+        "type_name",
+        "level",
+        "view",
+        "workset",
+        "phase",
+        "area_scheme",
+        "parameter_filters",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
     ],
     "revit_query_elements": [
-        "categories", "family", "type_name", "level", "view", "workset", "phase",
-        "area_scheme", "parameter_filters", "fields", "offset", "limit",
-        "sort_field", "sort_direction", "include_geometry", "timeout_seconds", "pickup_timeout_seconds", "document",
+        "categories",
+        "family",
+        "type_name",
+        "level",
+        "view",
+        "workset",
+        "phase",
+        "area_scheme",
+        "parameter_filters",
+        "fields",
+        "offset",
+        "limit",
+        "sort_field",
+        "sort_direction",
+        "include_geometry",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
     ],
-    "revit_list_views": ["view_type", "name_contains", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_list_views": [
+        "view_type",
+        "name_contains",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_export_view": ["view", "pixel_size", "save_to", "document"],
-    "revit_view_elements": ["view", "categories", "offset", "limit", "timeout_seconds", "pickup_timeout_seconds", "document"],
-    "revit_element_details": ["element_id", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_view_elements": [
+        "view",
+        "categories",
+        "offset",
+        "limit",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
+    "revit_element_details": [
+        "element_id",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_view_warnings": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
-    "revit_list_warnings": ["warning_text", "include_elements", "timeout_seconds", "pickup_timeout_seconds", "document"],
-    "revit_list_relations": ["relation", "source_id", "source_name", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_list_warnings": [
+        "warning_text",
+        "include_elements",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
+    "revit_list_relations": [
+        "relation",
+        "source_id",
+        "source_name",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_list_instances": ["document"],
 }
 
@@ -81,18 +140,13 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         tools = {tool.name: tool for tool in result.tools}
         self.assertEqual(set(tools), EXPECTED_TOOLS)
         self.assertTrue(
-            all(
-                tool.annotations and tool.annotations.read_only_hint
-                for tool in tools.values()
-            )
+            all(tool.annotations and tool.annotations.read_only_hint for tool in tools.values())
         )
         self.assertIn(
             "Call revit_list_views next",
             tools["revit_document_info"].description,
         )
-        self.assertIn(
-            "with revit_view_summary", tools["revit_list_views"].description
-        )
+        self.assertIn("with revit_view_summary", tools["revit_list_views"].description)
         self.assertIn(
             "before calling revit_view_elements",
             tools["revit_view_summary"].description,
@@ -102,19 +156,19 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Start universal queries here", tools["revit_list_catalog"].description)
         self.assertIn("after revit_list_catalog", tools["revit_aggregate_elements"].description)
         self.assertIn("after revit_list_catalog", tools["revit_query_elements"].description)
-        self.assertFalse(tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"])
+        self.assertFalse(
+            tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"]
+        )
         self.assertIn("roomCenterMm", tools["revit_query_elements"].description)
         self.assertIn("roomCenterMm", tools["revit_element_details"].description)
         self.assertEqual(
-            tools["revit_view_elements"].input_schema["properties"]["timeout_seconds"][
-                "default"
-            ],
+            tools["revit_view_elements"].input_schema["properties"]["timeout_seconds"]["default"],
             120,
         )
         self.assertEqual(
-            tools["revit_view_elements"].input_schema["properties"][
-                "pickup_timeout_seconds"
-            ]["default"],
+            tools["revit_view_elements"].input_schema["properties"]["pickup_timeout_seconds"][
+                "default"
+            ],
             300,
         )
         for name, parameters in EXPECTED_PARAMETERS.items():
@@ -141,7 +195,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 "revit_view_summary", {"viewName": "Level 1 Plan", "document": "Sample Model"}
             )
             await revit_server.mcp.call_tool(
-                "revit_export_view", {"view": "Level 1 Plan", "pixelSize": 2400, "saveTo": "/tmp/plan.png"}
+                "revit_export_view",
+                {"view": "Level 1 Plan", "pixelSize": 2400, "saveTo": "/tmp/plan.png"},
             )
             await revit_server.mcp.call_tool(
                 "revit_list_relations", {"relation": "level-rooms", "sourceName": "Level 1"}
@@ -150,9 +205,14 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 "revit_list_relations", {"relation": "level-rooms", "source_name": "Level 1"}
             )
 
-        camel_aggregate, snake_aggregate, view_summary, export_view, camel_relation, snake_relation = [
-            call[0] for call in channel.calls
-        ]
+        (
+            camel_aggregate,
+            snake_aggregate,
+            view_summary,
+            export_view,
+            camel_relation,
+            snake_relation,
+        ) = [call[0] for call in channel.calls]
         self.assertEqual(camel_aggregate.payload, snake_aggregate.payload)
         self.assertEqual(camel_aggregate.payload["numericField"], "Area")
         self.assertEqual(view_summary.payload["view"], "Level 1 Plan")
@@ -188,31 +248,53 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_list_instances_ignores_stale_instance_file(self) -> None:
         host = SshPowerShellHost()
-        host._run = AsyncMock(return_value=json.dumps({
-            "processes": [],
-            "files": [{"name": "instance_42.json", "content": json.dumps({
-                "processId": 42,
-                "revitVersion": "2023",
-                "documentTitle": "Stale model",
-                "documentPath": r"C:\Models\Stale.rvt",
-                "updatedUtc": "2000-01-01T00:00:00Z",
-            })}],
-        }))
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "processes": [],
+                    "files": [
+                        {
+                            "name": "instance_42.json",
+                            "content": json.dumps(
+                                {
+                                    "processId": 42,
+                                    "revitVersion": "2023",
+                                    "documentTitle": "Stale model",
+                                    "documentPath": r"C:\Models\Stale.rvt",
+                                    "updatedUtc": "2000-01-01T00:00:00Z",
+                                }
+                            ),
+                        }
+                    ],
+                }
+            )
+        )
 
         self.assertEqual(await host.list_revit_instances(), [])
 
     async def test_list_instances_reads_files_without_window_titles(self) -> None:
         host = SshPowerShellHost()
-        host._run = AsyncMock(return_value=json.dumps({
-            "processes": [{"processId": 42, "revitVersion": "2023.1"}],
-            "files": [{"name": "instance_42.json", "content": json.dumps({
-                "processId": 42,
-                "revitVersion": "2023",
-                "documentTitle": "SampleModel",
-                "documentPath": r"C:\Models\SampleModel.rvt",
-                "updatedUtc": datetime.now(timezone.utc).isoformat(),
-            })}],
-        }))
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "processes": [{"processId": 42, "revitVersion": "2023.1"}],
+                    "files": [
+                        {
+                            "name": "instance_42.json",
+                            "content": json.dumps(
+                                {
+                                    "processId": 42,
+                                    "revitVersion": "2023",
+                                    "documentTitle": "SampleModel",
+                                    "documentPath": r"C:\Models\SampleModel.rvt",
+                                    "updatedUtc": datetime.now(timezone.utc).isoformat(),
+                                }
+                            ),
+                        }
+                    ],
+                }
+            )
+        )
 
         result = await host.list_revit_instances("Sample")
 
@@ -224,10 +306,14 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_list_instances_marks_process_when_plugin_does_not_respond(self) -> None:
         host = SshPowerShellHost()
-        host._run = AsyncMock(return_value=json.dumps({
-            "processes": [{"processId": 84, "revitVersion": "2024.2"}],
-            "files": [],
-        }))
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "processes": [{"processId": 84, "revitVersion": "2024.2"}],
+                    "files": [],
+                }
+            )
+        )
 
         result = await host.list_revit_instances()
 
@@ -236,7 +322,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_package_registers_console_entry_point(self) -> None:
         config = tomllib.loads((MCP_DIRECTORY / "pyproject.toml").read_text())
-        self.assertEqual(config["project"]["scripts"]["revit-model-mcp"], "revit_model_mcp.server:main")
+        self.assertEqual(
+            config["project"]["scripts"]["revit-model-mcp"], "revit_model_mcp.server:main"
+        )
 
     def test_host_configuration(self) -> None:
         self.assertTrue(revit_server.create_host("local").local)
@@ -249,7 +337,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_redaction_covers_tool_and_instance_responses(self) -> None:
         response = {
-            "command": "document-info", "success": True,
+            "command": "document-info",
+            "success": True,
             "responder": {"documentPath": r"C:\Models\Sample.rvt"},
             "data": [{"documentPath": r"\\host\share\Linked.rvt", "localPath": "/tmp/view.png"}],
         }
@@ -257,7 +346,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}),
             patch.object(revit_server.channel, "execute", AsyncMock(return_value=response)),
-            patch.object(revit_server.host, "list_revit_instances", AsyncMock(return_value=instances)),
+            patch.object(
+                revit_server.host, "list_revit_instances", AsyncMock(return_value=instances)
+            ),
         ):
             result = await revit_server.revit_document_info()
             listed = await revit_server.revit_list_instances()
@@ -289,11 +380,14 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         output = io.StringIO()
         with (
             patch("sys.argv", ["revit-model-mcp", "--help"]),
-            patch.dict(os.environ, {
-                "REVIT_MCP_HOST": "ssh:revit-host",
-                "REVIT_MCP_CHANNEL_DIR": r"C:\RevitChannel",
-                "REVIT_MCP_REDACT_PATHS": "1",
-            }),
+            patch.dict(
+                os.environ,
+                {
+                    "REVIT_MCP_HOST": "ssh:revit-host",
+                    "REVIT_MCP_CHANNEL_DIR": r"C:\RevitChannel",
+                    "REVIT_MCP_REDACT_PATHS": "1",
+                },
+            ),
             patch.object(revit_server, "create_host") as create_host,
             patch.object(revit_server.mcp, "run") as run,
             contextlib.redirect_stdout(output),

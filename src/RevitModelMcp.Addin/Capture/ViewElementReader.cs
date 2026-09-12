@@ -89,7 +89,10 @@ internal sealed class ViewElementReader
             var coordinates = CoordinatesMm(point.Point);
             result.Location = new ElementLocationData
             {
-                Type = "point", XMm = coordinates[0], YMm = coordinates[1], ZMm = coordinates[2]
+                Type = "point",
+                XMm = coordinates[0],
+                YMm = coordinates[1],
+                ZMm = coordinates[2]
             };
             if (element is Room room && room.Area > 0)
                 result.RoomCenterMm = coordinates;

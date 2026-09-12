@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Build.Options;
 using Microsoft.Extensions.Options;
 using ModularPipelines.Attributes;
@@ -10,7 +11,6 @@ using ModularPipelines.Modules;
 using ModularPipelines.Options;
 using Shouldly;
 using Sourcy.DotNet;
-using System.Diagnostics;
 using File = ModularPipelines.FileSystem.File;
 
 namespace Build.Modules;
@@ -54,7 +54,7 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
         await context.Shell.Command.ExecuteCommandLineTool(
             new GenericCommandLineToolOptions(builderFile.Path)
             {
-                Arguments = [versioning.Version, ..targetDirectories]
+                Arguments = [versioning.Version, .. targetDirectories]
             },
             new CommandExecutionOptions
             {

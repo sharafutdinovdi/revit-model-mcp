@@ -238,7 +238,8 @@ internal static class ActionCommandExecutor
             throw new InvalidOperationException($"Revit could not set parameter '{action.Parameter}'.");
         return new ActionResultData
         {
-            OldValue = oldValue, NewValue = ParameterValue(parameter),
+            OldValue = oldValue,
+            NewValue = ParameterValue(parameter),
             ParameterScope = parameter.Element.Id == element.Id ? "instance" : "type"
         };
     }

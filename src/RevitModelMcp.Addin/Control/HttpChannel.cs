@@ -101,8 +101,11 @@ internal sealed class HttpChannel : IDisposable
             {
                 await JsonAsync(context, 200, new()
                 {
-                    ["ok"] = true, ["revitVersion"] = _version, ["documentName"] = _documentName,
-                    ["processId"] = _processId, ["readOnly"] = !ActionCommandExecutor.ActionsEnabled
+                    ["ok"] = true,
+                    ["revitVersion"] = _version,
+                    ["documentName"] = _documentName,
+                    ["processId"] = _processId,
+                    ["readOnly"] = !ActionCommandExecutor.ActionsEnabled
                 }).ConfigureAwait(false);
                 return;
             }
@@ -155,7 +158,10 @@ internal sealed class HttpChannel : IDisposable
                 var name = Uri.UnescapeDataString(path.Substring(7, path.Length - 13));
                 var payload = new Dictionary<string, object>
                 {
-                    ["command"] = "export-view", ["view"] = name, ["pixelSize"] = pixel, ["zoomToFit"] = true
+                    ["command"] = "export-view",
+                    ["view"] = name,
+                    ["pixelSize"] = pixel,
+                    ["zoomToFit"] = true
                 };
                 if (context.Request.QueryString["document"] is { } document) payload["targetDocument"] = document;
                 HttpJob? job;

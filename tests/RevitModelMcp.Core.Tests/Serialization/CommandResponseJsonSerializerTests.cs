@@ -407,7 +407,9 @@ public sealed class CommandResponseJsonSerializerTests
             Location = new ElementLocationData { Type = "point", XMm = 0, YMm = -123.4, ZMm = 5000 },
             BoundingBox = new ElementBoundingBoxData
             {
-                MinMm = [-1000, -500, 5000], MaxMm = [1000, 500, 8000], CenterMm = [0, 0, 6500]
+                MinMm = [-1000, -500, 5000],
+                MaxMm = [1000, 500, 8000],
+                CenterMm = [0, 0, 6500]
             },
             RoomCenterMm = [0, -123.4, 5000]
         };
