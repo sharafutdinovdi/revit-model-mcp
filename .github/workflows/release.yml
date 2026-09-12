@@ -57,7 +57,7 @@ jobs:
       - name: Stage wheel
         shell: pwsh
         run: Copy-Item server/dist/*.whl artifacts/release/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-assets
           path: artifacts/release/
