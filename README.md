@@ -183,8 +183,49 @@ All IDs are unitless Revit element IDs.
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
+| `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions with a single undo entry named `revit_batch`. |
 
 `type_name` and `wall_type` are required arguments that accept `null`.
+
+`revit_move`, `revit_place_family`, `revit_create_wall`, `revit_set_parameter` and `revit_delete` accept a final `dry_run=false` argument.
+A dry run executes the mutation, reads its prospective result, and rolls back the transaction.
+Its response includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
+Created IDs in a dry run are provisional and do not identify persisted elements.
+
+Real writes return `data.dryRun:false` and re-read the affected elements after commit.
+The `verification` block contains model facts: bounding boxes for moves, parameter values and ownership for parameter edits, element metadata for creation, and deleted/dependent IDs with a survival check for deletion.
+Bounding boxes use model XYZ in mm rounded to one decimal; unavailable bounding boxes are omitted.
+For example, setting Comments on element 123 returns:
+
+```json
+{
+  "dryRun": false,
+  "verification": {
+    "before": {"id": 123, "parameter": "Comments", "value": "", "storageType": "String", "owner": "instance"},
+    "after": {"id": 123, "parameter": "Comments", "value": "Reviewed", "storageType": "String", "owner": "instance"},
+    "changed": [123]
+  }
+}
+```
+
+`revit_batch` takes action names and their normal snake_case arguments:
+
+```json
+{
+  "steps": [
+    {"action": "move", "args": {"element_ids": [123], "dx_mm": 100, "dy_mm": 0}},
+    {"action": "set_parameter", "args": {"element_id": 123, "parameter": "Comments", "value": "Reviewed"}}
+  ],
+  "dry_run": false
+}
+```
+
+A successful batch assimilates its transactions into one undo entry named `revit_batch`.
+The first failed step rolls back the entire batch; earlier successful steps remain in the report with `rolledBack:true`.
+Results include zero-based `index`, `command`, `success` and `data` or `error` per attempted step, plus `undoName`, `committed` and `failedStep` (null on success).
+A batch dry run executes every step against preceding steps' changes, then rolls back the group and restores the original selection.
+Verification describes each step's immediate result; subsequent steps may change those elements again.
+Batches accept 1–50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
 
 `revit_show` checks the open UI views before calling `ShowElements`.
 If none contains a requested element, it opens a non-template plan for an element's level.

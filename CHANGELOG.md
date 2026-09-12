@@ -11,10 +11,16 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Revit 2027 build configuration and CI/release packaging.
 - `install.ps1` with build/release sources, optional assembly signing and Claude Code registration.
 - Default read-only coordinator tools: `revit_model_health`, `revit_links_status`, `revit_shared_coordinates` and `revit_parameter_fill_check`.
+- `dry_run` on every mutating action: the action executes inside a transaction that is always rolled back and returns the same verification block.
+- `verification` on mutating actions with `before` and `after` facts re-read from the model after commit.
+- `revit_batch`: up to 50 actions in one `TransactionGroup` assimilated into a single undo step, rolled back on the first failed step.
 
 ### Changed
 
 - README quick start uses the install script.
+
+### Changed
+
 
 ## [0.1.0] - 2026-09-11
 
