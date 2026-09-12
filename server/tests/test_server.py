@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
@@ -130,6 +131,9 @@ class RecordingChannel:
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    def test_server_version_matches_package_metadata(self) -> None:
+        self.assertEqual(revit_server.mcp.version, package_version())
+
     async def test_stdio_server_starts_and_lists_tools_without_revit(self) -> None:
         parameters = StdioServerParameters(
             command="revit-model-mcp",

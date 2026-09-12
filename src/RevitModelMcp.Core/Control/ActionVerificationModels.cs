@@ -7,6 +7,7 @@ public sealed class ActionVerification
 {
     [DataMember(Name = "before", EmitDefaultValue = false)] public ActionFacts? Before { get; set; }
     [DataMember(Name = "after", EmitDefaultValue = false)] public ActionFacts? After { get; set; }
+    [DataMember(Name = "error", EmitDefaultValue = false)] public string? Error { get; set; }
     [DataMember(Name = "changed", EmitDefaultValue = false)] public List<long>? Changed { get; set; }
     [DataMember(Name = "wouldCreate", EmitDefaultValue = false)] public bool? WouldCreate { get; set; }
 }

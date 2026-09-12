@@ -10,6 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
 
+from revit_model_mcp import package_version
 from revit_model_mcp.actions import register_actions
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
@@ -111,7 +112,7 @@ Document = Annotated[str | None, Field(validation_alias=AliasChoices("document",
 
 mcp = MCPServer(
     "Revit Model Reader",
-    version="0.1.0",
+    version=package_version(),
     instructions=(
         "Read-only by default. Actions are a separate tool set you enable on purpose. "
         "For universal model analysis, call revit_list_catalog first, "
