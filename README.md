@@ -30,7 +30,7 @@ What happens in the recording, in order:
 2. "Which level has the most room area? Find the largest room and show it to me." The client aggregates room areas by level and queries the largest room.
    `revit_show` opens a matching plan and selects the room.
 3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
-4. "Reset the view and delete that chair." The temporary isolate is cleared and the chair is deleted.
+4. Cleanup afterwards is one more sentence: reset the view, delete the chair.
 
 The header image is the same server driven from a small terminal client against Revit 2023 over SSH. The export below is the PNG saved by `revit_export_view`:
 
