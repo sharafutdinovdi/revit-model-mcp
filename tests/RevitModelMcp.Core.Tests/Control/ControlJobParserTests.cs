@@ -44,7 +44,7 @@ public sealed class ControlJobParserTests
         await Assert.That(result.CoordinatorJob.Workset).IsEqualTo("Shell");
         await Assert.That(result.CoordinatorJob.View).IsEqualTo("Plan");
         await Assert.That(result.CoordinatorJob.SampleLimit).IsEqualTo(20);
-        await Assert.That(result.CoordinatorJob.IncludeTypes).IsEqualTo(true);
+        await Assert.That(result.CoordinatorJob.IncludeTypes).IsTrue();
     }
 
     [Test]
@@ -66,11 +66,14 @@ public sealed class ControlJobParserTests
         }
         var valid = ControlJobParseResult.FromContract(new ControlJobContract
         {
-            Command = "parameter-fill-check", Categories = ["Walls"], Parameters = ["Mark"],
-            SampleLimit = 100, IncludeTypes = false
+            Command = "parameter-fill-check",
+            Categories = ["Walls"],
+            Parameters = ["Mark"],
+            SampleLimit = 100,
+            IncludeTypes = false
         });
         await Assert.That(valid.CoordinatorJob.SampleLimit).IsEqualTo(100);
-        await Assert.That(valid.CoordinatorJob.IncludeTypes).IsEqualTo(false);
+        await Assert.That(valid.CoordinatorJob.IncludeTypes).IsFalse();
     }
 
     [Test]

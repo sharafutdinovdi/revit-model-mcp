@@ -22,9 +22,12 @@ internal static class ModelHealthReader
             string.IsNullOrEmpty(document.PathName) ? null : new FileInfo(document.PathName).Length);
         foreach (var metric in new Dictionary<string, Func<string>>
         {
-            ["name"] = () => document.ProjectInformation.Name, ["number"] = () => document.ProjectInformation.Number,
-            ["client"] = () => document.ProjectInformation.ClientName, ["address"] = () => document.ProjectInformation.Address,
-            ["buildingName"] = () => document.ProjectInformation.BuildingName, ["status"] = () => document.ProjectInformation.Status,
+            ["name"] = () => document.ProjectInformation.Name,
+            ["number"] = () => document.ProjectInformation.Number,
+            ["client"] = () => document.ProjectInformation.ClientName,
+            ["address"] = () => document.ProjectInformation.Address,
+            ["buildingName"] = () => document.ProjectInformation.BuildingName,
+            ["status"] = () => document.ProjectInformation.Status,
             ["author"] = () => document.ProjectInformation.Author
         }) result.ProjectInfo[metric.Key] = Try(result, "projectInfo." + metric.Key, metric.Value);
 
@@ -64,7 +67,9 @@ internal static class ModelHealthReader
             .Groups.Take(10).Select(group => new HealthWarning { Text = group.Text, Count = group.Count }).ToList())!;
         foreach (var unit in new Dictionary<string, ForgeTypeId>
         {
-            ["length"] = SpecTypeId.Length, ["area"] = SpecTypeId.Area, ["volume"] = SpecTypeId.Volume
+            ["length"] = SpecTypeId.Length,
+            ["area"] = SpecTypeId.Area,
+            ["volume"] = SpecTypeId.Volume
         }) result.Units[unit.Key] = Try(result, "units." + unit.Key,
             () => document.GetUnits().GetFormatOptions(unit.Value).GetUnitTypeId().TypeId);
         return result;

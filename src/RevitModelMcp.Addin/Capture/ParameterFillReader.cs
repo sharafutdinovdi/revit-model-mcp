@@ -10,13 +10,19 @@ internal static class ParameterFillReader
     {
         var context = QueryFilterBuilder.Build(document, new ElementFilterSpec
         {
-            Categories = job.Categories!, Level = job.Level, Workset = job.Workset, View = job.View
+            Categories = job.Categories!,
+            Level = job.Level,
+            Workset = job.Workset,
+            View = job.View
         }, Array.Empty<string>());
         var result = new ParameterFillData
         {
             Scope = new ParameterFillScope
             {
-                Categories = job.Categories!, Level = job.Level, Workset = job.Workset, View = job.View
+                Categories = job.Categories!,
+                Level = job.Level,
+                Workset = job.Workset,
+                View = job.View
             },
             Parameters = job.Parameters!.Select(name => new ParameterFillItem { Name = name }).ToList()
         };

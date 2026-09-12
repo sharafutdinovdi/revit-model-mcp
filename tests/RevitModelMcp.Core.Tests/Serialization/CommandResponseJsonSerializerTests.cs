@@ -53,7 +53,8 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var data = RoundTripCoordinator("shared-coordinates", new SharedCoordinatesData
         {
-            ProjectLocations = ["Site"], TrueNorthAngleDeg = 30.1,
+            ProjectLocations = ["Site"],
+            TrueNorthAngleDeg = 30.1,
             ProjectBasePoint = new CoordinatePoint { EastWestMm = 12.3 },
             SharedSiteFromLinks = [new LinkSharedSite { HasOffset = true, OffsetMm = new CoordinateOffset { X = 100 } }]
         });

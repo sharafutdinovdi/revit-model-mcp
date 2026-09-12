@@ -193,9 +193,14 @@ public sealed class ControlJobParseResult
         var result = Create(ControlJobKind.ParameterFillCheck, command);
         result.CoordinatorJob = new ControlJobContract
         {
-            Command = command, Categories = categories.ToList(), Parameters = parameters.ToList(),
-            Level = query.Filters.Level, Workset = query.Filters.Workset, View = query.Filters.View,
-            SampleLimit = job.SampleLimit ?? 20, IncludeTypes = job.IncludeTypes ?? true
+            Command = command,
+            Categories = categories.ToList(),
+            Parameters = parameters.ToList(),
+            Level = query.Filters.Level,
+            Workset = query.Filters.Workset,
+            View = query.Filters.View,
+            SampleLimit = job.SampleLimit ?? 20,
+            IncludeTypes = job.IncludeTypes ?? true
         };
         return result;
     }

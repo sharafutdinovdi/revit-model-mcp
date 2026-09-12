@@ -63,7 +63,9 @@ internal static class SharedCoordinatesReader
 
     private static CoordinateOffset Offset(XYZ point) => new()
     {
-        X = Millimeters(point.X), Y = Millimeters(point.Y), Z = Millimeters(point.Z)
+        X = Millimeters(point.X),
+        Y = Millimeters(point.Y),
+        Z = Millimeters(point.Z)
     };
 
     private static double Millimeters(double value) =>
