@@ -1,6 +1,6 @@
-using System.Text.Json;
 using System.Runtime.Serialization.Json;
 using System.Text;
+using System.Text.Json;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -20,7 +20,11 @@ public sealed class CommandResponseJsonSerializerTests
         };
         var data = new ActionResultData
         {
-            DryRun = false, Committed = false, FailedStep = 1, UndoName = "revit_batch", RolledBack = true,
+            DryRun = false,
+            Committed = false,
+            FailedStep = 1,
+            UndoName = "revit_batch",
+            RolledBack = true,
             Steps = [
                 new BatchStepResult { Index = 0, Command = "set-parameter", Success = true, RolledBack = true,
                     Data = new ActionResultData { DryRun = false, Verification = verification, RolledBack = true } },

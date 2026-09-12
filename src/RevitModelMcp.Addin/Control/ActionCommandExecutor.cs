@@ -187,8 +187,11 @@ internal static class ActionCommandExecutor
                 return new ActionResultData { Count = ids.Count };
             case "delete":
                 var deleted = document.Delete(ids).Select(RevitValueReader.GetId).OrderBy(value => value).ToList();
-                return new ActionResultData { Count = deleted.Count,
-                    Verification = new ActionVerification { Changed = deleted } };
+                return new ActionResultData
+                {
+                    Count = deleted.Count,
+                    Verification = new ActionVerification { Changed = deleted }
+                };
             case "place-family":
                 return ActionMutations.PlaceFamily(document, action);
             case "create-wall":

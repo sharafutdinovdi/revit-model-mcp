@@ -13,7 +13,10 @@ internal static class BatchActionExecutor
         var selection = uiDocument.Selection.GetElementIds();
         var result = new ActionResultData
         {
-            DryRun = action.DryRun, Steps = [], UndoName = "revit_batch", Committed = false
+            DryRun = action.DryRun,
+            Steps = [],
+            UndoName = "revit_batch",
+            Committed = false
         };
         using var group = new TransactionGroup(document, "revit_batch");
         if (group.Start() != TransactionStatus.Started)
