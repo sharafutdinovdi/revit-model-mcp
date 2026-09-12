@@ -19,6 +19,8 @@ jobs:
         run: dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
       - name: Build Revit 2022
         run: dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
+      - name: Build Revit 2027
+        run: dotnet build src/RevitModelMcp.Addin -c Release.R27 -p:DeployAddin=false
       - name: Test core
         run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
       - uses: actions/setup-python@v7
@@ -32,7 +34,7 @@ jobs:
       - name: Stage add-in artifacts
         shell: pwsh
         run: |
-          foreach ($year in '22', '26') {
+          foreach ($year in '22', '26', '27') {
             $stage = "artifacts/addin-R$year"
             New-Item -ItemType Directory -Force "$stage/RevitModelMcp" | Out-Null
             Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
@@ -51,6 +53,12 @@ jobs:
           name: revit-model-mcp-addin-R26
           retention-days: 90
           path: artifacts/addin-R26/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: revit-model-mcp-addin-R27
+          retention-days: 90
+          path: artifacts/addin-R27/
           if-no-files-found: error
       - name: Build Python package
         working-directory: server

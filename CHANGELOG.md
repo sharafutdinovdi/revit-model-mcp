@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Revit 2027 build configuration and CI/release packaging.
+- `install.ps1` with build/release sources, optional assembly signing and Claude Code registration.
+
+### Changed
+
+- README quick start uses the install script.
+
 ## [0.1.0] - 2026-09-11
 
 ### Added

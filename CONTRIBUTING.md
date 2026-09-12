@@ -21,7 +21,7 @@ Use English for code and public API descriptions.
 
 `main` requires a PR, one approving review, and passing CI, PR checks and CodeQL for contributors.
 Administrators can bypass these rules; force pushes remain disabled.
-CI builds the Revit 2022 and 2026 add-ins, runs Core and Python tests, and builds the Python package.
+CI builds the Revit 2022, 2026 and 2027 add-ins, runs Core and Python tests, and builds the Python package.
 PR checks validate the Conventional Commit title, all workflow files with `actionlint`, C# formatting from `.editorconfig`, and Python lint and formatting with Ruff.
 CodeQL analyzes C# and Python on PRs, pushes to `main` and a weekly schedule.
 Successful PR checks publish one updated comment with add-in artifact links and the Revit years built.
@@ -33,7 +33,7 @@ Path labels are applied automatically; `enhancement`, `bug`, `docs` and `depende
 Run from a fresh clone's repository root on Windows with the .NET SDK selected by `global.json`:
 
 ```powershell
-foreach ($year in '22', '23', '24', '25', '26') {
+foreach ($year in '22', '23', '24', '25', '26', '27') {
     dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false
     if ($LASTEXITCODE -ne 0) { throw "R$year build failed" }
 }
@@ -46,7 +46,7 @@ dotnet format RevitModelMcp.sln --verify-no-changes --verbosity minimal
 `DeployAddin=false` prevents deployment to the local Revit installation.
 Core tests need no running Revit instance.
 The test runner is Microsoft.Testing.Platform; use `--project` as shown.
-Release builds cover `Release.R22` through `Release.R26`.
+Release builds cover `Release.R22` through `Release.R27`.
 Run `dotnet format RevitModelMcp.sln` with the same environment variables to apply formatting.
 
 Run Python tests and package builds on Windows, macOS or Linux with Python 3.11+ and uv:
@@ -67,10 +67,10 @@ Run `actionlint` 1.7.12 from the repository root after changing a workflow.
 
 ## Release assets
 
-CI uploads installable R22 and R26 folder layouts after its tests pass.
-A `v<version>` tag triggers all five add-in builds, Core/server tests and the Python wheel build.
+CI uploads installable R22, R26 and R27 folder layouts after its tests pass.
+A `v<version>` tag triggers all six add-in builds, Core/server tests and the Python wheel build.
 The tag version must match `server/pyproject.toml`.
-The release workflow attaches five ZIP files and the wheel to a GitHub Release with generated notes.
+The release workflow attaches six ZIP files and the wheel to a GitHub Release with generated notes.
 Extract each year's ZIP into `%APPDATA%\Autodesk\Revit\Addins\20<yy>` while that Revit instance is closed.
 The archive root contains `RevitModelMcp.addin` and the `RevitModelMcp` assembly directory.
 The workflow does not invoke the optional WiX installer pipeline.
