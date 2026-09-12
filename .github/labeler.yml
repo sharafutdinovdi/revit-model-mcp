@@ -1,0 +1,18 @@
+addin:
+  - changed-files:
+      - any-glob-to-any-file: ['src/**/*']
+server:
+  - changed-files:
+      - any-glob-to-any-file: ['server/**/*']
+docs:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.md', 'docs/**/*']
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**/*']
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ['tests/**/*', 'server/tests/**/*']
+build:
+  - changed-files:
+      - any-glob-to-any-file: ['build/**/*', '**/*.csproj', '*.sln', 'global.json', '.editorconfig', 'server/pyproject.toml']

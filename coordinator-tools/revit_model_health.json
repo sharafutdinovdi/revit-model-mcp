@@ -1,0 +1,102 @@
+{
+ "command": "model-health",
+ "success": true,
+ "partial": false,
+ "data": {
+  "counts": {
+   "elements": 37867,
+   "warnings": 49,
+   "warningGroups": 25,
+   "levels": 18,
+   "grids": 28,
+   "views": 404,
+   "viewsNotOnSheets": 91,
+   "viewTemplates": 45,
+   "sheets": 55,
+   "rooms": 54,
+   "roomsUnplaced": 0,
+   "roomsNotEnclosed": 0,
+   "families": 286,
+   "familiesInPlace": 2,
+   "familyTypesUnused": 1296,
+   "groupsModel": 49,
+   "groupsDetail": 61,
+   "groupTypes": 14,
+   "designOptions": 6,
+   "worksets": 0,
+   "linksRvt": 6,
+   "linksCad": 0,
+   "cadImports": 0,
+   "images": 17
+  },
+  "fileName": "Snowdon Towers Sample Architectural.rvt",
+  "fileSizeBytes": 97615872,
+  "isWorkshared": false,
+  "projectInfo": {
+   "name": "Snowdon Towers",
+   "number": "7765328-33-A",
+   "client": "Autodesk",
+   "address": "43 Market ST\r\nBrownsville, PA 15417",
+   "buildingName": "Snowdon Towers",
+   "status": "Construction Documents",
+   "author": "Autodesk"
+  },
+  "revitBuild": "26.4.0.32",
+  "revitVersion": "2026",
+  "skipped": [],
+  "topWarnings": [
+   {
+    "count": 8,
+    "text": "Highlighted walls overlap. One of them may be ignored when Revit finds room boundaries. Use Cut Geometry to embed one wall within the other."
+   },
+   {
+    "count": 7,
+    "text": "There are identical instances in the same place. This will result in double counting in schedules."
+   },
+   {
+    "count": 4,
+    "text": "Could not create Wall Sweep. Two wall sweeps are overlapping."
+   },
+   {
+    "count": 4,
+    "text": "Ref Plane is slightly off axis and may cause inaccuracies."
+   },
+   {
+    "count": 3,
+    "text": "Highlighted elements are joined but do not intersect."
+   },
+   {
+    "count": 3,
+    "text": "Stair top end exceeds or cannot reach the top elevation of the stair. Add/remove risers at the top end by control or change the stair run's \"Relative Top Height\" parameter in the properties palette."
+   },
+   {
+    "count": 2,
+    "text": "Some panels in this curtain system are slightly malformed.  The problem is most likely ignorable. This problem usually occurs when a panel or parts of a panel have been divided so that they are very narrow.  To better see the malformed panels, temporarily hide the mullion category and set display of lines to \"thin lines\" (using the command on the view menu)."
+   },
+   {
+    "count": 1,
+    "text": "A wall and a space separation line overlap. One of them may be ignored when Revit finds space boundaries. Shorten or delete the space separation line to remove the overlap."
+   },
+   {
+    "count": 1,
+    "text": "Bandstand R101 is not upper bounded by a roof, ceiling or floor element. This can result in incorrect adjacencies and voids in the analytical model. Please ensure that Upper Limit and Limit Offset for Bandstand R101 is set correctly."
+   },
+   {
+    "count": 1,
+    "text": "Green Roof R100 is not upper bounded by a roof, ceiling or floor element. This can result in incorrect adjacencies and voids in the analytical model. Please ensure that Upper Limit and Limit Offset for Green Roof R100 is set correctly."
+   }
+  ],
+  "units": {
+   "length": "autodesk.unit.unit:feetFractionalInches-1.0.0",
+   "area": "autodesk.unit.unit:squareFeet-1.0.1",
+   "volume": "autodesk.unit.unit:cubicFeet-1.0.1"
+  }
+ },
+ "elapsedMs": 1666,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 4784,
+  "revitVersion": "2026"
+ }
+}

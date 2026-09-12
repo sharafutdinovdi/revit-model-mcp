@@ -1,0 +1,10 @@
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Revit Model MCP</Name>
+    <Assembly>RevitModelMcp\RevitModelMcp.dll</Assembly>
+    <AddInId>e211feb7-ff0c-4bb0-92ee-f546daead189</AddInId>
+    <FullClassName>RevitModelMcp.Application</FullClassName>
+    <VendorId>DSHA</VendorId>
+    <VendorDescription>Dinar Sharafutdinov, https://github.com/sharafutdinovdi/revit-model-mcp</VendorDescription>
+  </AddIn>
+</RevitAddIns>

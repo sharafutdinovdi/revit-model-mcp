@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /src/RevitModelMcp.Addin
+      - /src/RevitModelMcp.Core
+      - /tests/RevitModelMcp.Core.Tests
+      - /build
+      - /build/install
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      all:
+        patterns: ["*"]
+    labels: [dependencies, build]
+    commit-message:
+      prefix: chore(deps)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      all:
+        patterns: ["*"]
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: chore(deps)
+  - package-ecosystem: pip
+    directory: /server
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      all:
+        patterns: ["*"]
+    labels: [dependencies, server]
+    commit-message:
+      prefix: chore(deps)
