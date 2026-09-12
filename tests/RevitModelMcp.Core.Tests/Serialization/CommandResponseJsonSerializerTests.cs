@@ -6,6 +6,83 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 
 public sealed class CommandResponseJsonSerializerTests
 {
+    private static T RoundTripCoordinator<T>(string command, T data)
+    {
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<T>.Ok(command, data, 1));
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
+        var serializer = new System.Runtime.Serialization.Json.DataContractJsonSerializer(
+            typeof(CommandResponse<T>), new System.Runtime.Serialization.Json.DataContractJsonSerializerSettings
+            { UseSimpleDictionaryFormat = true });
+        return ((CommandResponse<T>)serializer.ReadObject(stream)!).Data!;
+    }
+
+    [Test]
+    public async Task CoordinatorHealth_RoundTrip_PreservesNullMetrics()
+    {
+        var data = RoundTripCoordinator("model-health", new ModelHealthData
+        {
+            Counts = { ["elements"] = 12, ["rooms"] = null },
+            TopWarnings = [new HealthWarning { Text = "Warning", Count = 2 }],
+            Skipped = [new SkippedMetric { Metric = "counts.rooms", Error = "Unavailable" }]
+        });
+        await Assert.That(data.Counts["elements"]).IsEqualTo(12);
+        await Assert.That(data.Counts["rooms"]).IsNull();
+        await Assert.That(data.FileSizeBytes).IsNull();
+        await Assert.That(data.TopWarnings[0].Count).IsEqualTo(2);
+        await Assert.That(data.Skipped[0].Metric).IsEqualTo("counts.rooms");
+    }
+
+    [Test]
+    public async Task CoordinatorLinks_RoundTrip_PreservesStatusAndPath()
+    {
+        var data = RoundTripCoordinator("links-status", new LinksStatusData
+        {
+            RvtLinks = [new RvtLinkStatus { Name = "A", TypeId = 1, Status = "Unloaded", Path = @"C:\Models\A.rvt" }],
+            CadLinks = [new CadLinkStatus { IsLinked = false, Instances = 2 }],
+            Images = [new ImageLinkStatus { Status = "Other", Error = "Unavailable" }],
+            Summary = new LinkSummary { Rvt = 1, CadImports = 2 }
+        });
+        await Assert.That(data.RvtLinks[0].Path).IsEqualTo(@"C:\Models\A.rvt");
+        await Assert.That(data.CadLinks[0].IsLinked).IsFalse();
+        await Assert.That(data.Images[0].Error).IsEqualTo("Unavailable");
+        await Assert.That(data.Summary.CadImports).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task CoordinatorCoordinates_RoundTrip_PreservesOffsets()
+    {
+        var data = RoundTripCoordinator("shared-coordinates", new SharedCoordinatesData
+        {
+            ProjectLocations = ["Site"], TrueNorthAngleDeg = 30.1,
+            ProjectBasePoint = new CoordinatePoint { EastWestMm = 12.3 },
+            SharedSiteFromLinks = [new LinkSharedSite { HasOffset = true, OffsetMm = new CoordinateOffset { X = 100 } }]
+        });
+        await Assert.That(data.TrueNorthAngleDeg).IsEqualTo(30.1);
+        await Assert.That(data.ProjectBasePoint.Clipped).IsNull();
+        await Assert.That(data.SharedSiteFromLinks[0].OffsetMm.X).IsEqualTo(100);
+        await Assert.That(data.SharedSiteFromLinks[0].SharedSiteName).IsNull();
+    }
+
+    [Test]
+    public async Task CoordinatorFill_RoundTrip_PreservesCountersAndSamples()
+    {
+        var data = RoundTripCoordinator("parameter-fill-check", new ParameterFillData
+        {
+            Scope = new ParameterFillScope { Categories = ["Walls"], Elements = 3 },
+            Parameters = [new ParameterFillItem
+            {
+                Name = "Mark", Elements = 3, Filled = 1, Empty = 1, Missing = 1,
+                StorageTypes = { ["String"] = 2 }, Owner = new ParameterOwnerCounts { Instance = 1, Type = 1 },
+                EmptySampleIds = [12], MissingSampleIds = [13],
+                ByCategory = [new ParameterCategoryFill { Category = "Walls", Elements = 3, Filled = 1, Empty = 1, Missing = 1 }]
+            }]
+        });
+        await Assert.That(data.Parameters[0].StorageTypes["String"]).IsEqualTo(2);
+        await Assert.That(data.Parameters[0].Owner.Type).IsEqualTo(1);
+        await Assert.That(data.Parameters[0].MissingSampleIds[0]).IsEqualTo(13);
+        await Assert.That(data.Parameters[0].ByCategory[0].Empty).IsEqualTo(1);
+    }
+
     [Test]
     public async Task Serialize_DocumentInfo_PreservesEnvelopeAndData()
     {

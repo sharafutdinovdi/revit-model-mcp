@@ -11,6 +11,10 @@ public enum ControlJobKind
     ViewsDump,
     Ping,
     DocumentInfo,
+    ModelHealth,
+    LinksStatus,
+    SharedCoordinates,
+    ParameterFillCheck,
     ListViews,
     ViewSummary,
     ViewElements,
@@ -35,65 +39,40 @@ public sealed class ControlJobParseResult
         Error = error;
         Cause = cause;
     }
-
+    public ControlJobContract CoordinatorJob { get; internal set; } = new();
     public ControlJobKind Kind { get; }
-
     public string Command { get; }
-
     public IReadOnlyList<string> Views { get; internal set; } = Array.Empty<string>();
-
     public string? View { get; internal set; }
-
     public string? ViewType { get; internal set; }
-
     public string? NameContains { get; internal set; }
-
     public IReadOnlyList<string> Categories { get; internal set; } = Array.Empty<string>();
-
     public int Offset { get; internal set; }
-
     public int Limit { get; internal set; } = 100;
-
     public long? ElementId { get; internal set; }
-
     public ElementFilterSpec Filters { get; internal set; } = new();
-
     public IReadOnlyList<string> Fields { get; internal set; } = Array.Empty<string>();
-
     public QuerySortSpec Sort { get; internal set; } = new();
-
     public IReadOnlyList<string> GroupBy { get; internal set; } = Array.Empty<string>();
-
     public string? NumericField { get; internal set; }
-
     public string? CatalogSection { get; internal set; }
-
     public string? WarningText { get; internal set; }
-
     public bool IncludeGeometry { get; internal set; }
-
     public bool IncludeElements { get; internal set; }
-
     public string? Relation { get; internal set; }
-
     public long? SourceId { get; internal set; }
-
     public string? SourceName { get; internal set; }
-
     public int PixelSize { get; internal set; } = 1600;
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
     public int? TargetProcessId { get; internal set; }
     public ActionJobContract? Action { get; internal set; }
     public string? Error { get; }
-
     public Exception? Cause { get; }
-
     public static ControlJobParseResult LegacySnapshot()
     {
         return new ControlJobParseResult(ControlJobKind.LegacySnapshot, "legacy-snapshot", null);
     }
-
     public static ControlJobParseResult Invalid(string command, string error, Exception? cause = null)
     {
         return new ControlJobParseResult(ControlJobKind.Invalid, command, error, cause);
@@ -158,7 +137,6 @@ public sealed class ControlJobParseResult
     {
         return string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
     }
-
     public static ControlJobParseResult FromContract(ControlJobContract job)
     {
         var command = Normalize(job.Command);
@@ -175,6 +153,10 @@ public sealed class ControlJobParseResult
             "views-dump" when views.Count == 0 => Invalid(command, "The views-dump command requires a non-empty views list."),
             "views-dump" => ViewsDump(views),
             "ping" => Create(ControlJobKind.Ping, command),
+            "model-health" => Create(ControlJobKind.ModelHealth, command),
+            "links-status" => Create(ControlJobKind.LinksStatus, command),
+            "shared-coordinates" => Create(ControlJobKind.SharedCoordinates, command),
+            "parameter-fill-check" => ParseParameterFill(job),
             "document-info" => Create(ControlJobKind.DocumentInfo, command),
             "list-views" => ListViews(job.ViewType, job.NameContains),
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
@@ -192,6 +174,29 @@ public sealed class ControlJobParseResult
         };
         result.TargetDocument = Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
+        return result;
+    }
+
+    private static ControlJobParseResult ParseParameterFill(ControlJobContract job)
+    {
+        const string command = "parameter-fill-check";
+        var categories = NormalizeMany(job.Categories);
+        var parameters = NormalizeMany(job.Parameters);
+        if (categories.Count is < 1 or > 20 || job.Categories?.Count > 20)
+            return Invalid(command, "The categories list requires 1–20 names.");
+        if (parameters.Count is < 1 or > 30 || job.Parameters?.Count > 30)
+            return Invalid(command, "The parameters list requires 1–30 names.");
+        if (job.SampleLimit is < 1 or > 100)
+            return Invalid(command, "The sampleLimit must be between 1 and 100.");
+        var query = UniversalJobParser.ParseQuery(job);
+        if (query.Kind == ControlJobKind.Invalid) return Invalid(command, query.Error!);
+        var result = Create(ControlJobKind.ParameterFillCheck, command);
+        result.CoordinatorJob = new ControlJobContract
+        {
+            Command = command, Categories = categories.ToList(), Parameters = parameters.ToList(),
+            Level = query.Filters.Level, Workset = query.Filters.Workset, View = query.Filters.View,
+            SampleLimit = job.SampleLimit ?? 20, IncludeTypes = job.IncludeTypes ?? true
+        };
         return result;
     }
 
@@ -292,90 +297,68 @@ public static class ControlJobParser
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "parameters", EmitDefaultValue = false)]
+    public List<string>? Parameters { get; set; }
+    [DataMember(Name = "sampleLimit", EmitDefaultValue = false)]
+    public int? SampleLimit { get; set; }
+    [DataMember(Name = "includeTypes", EmitDefaultValue = false)]
+    public bool? IncludeTypes { get; set; }
     [DataMember(Name = "command")]
     public string? Command { get; set; }
-
     [DataMember(Name = "views")]
     public List<string>? Views { get; set; }
-
     [DataMember(Name = "view")]
     public string? View { get; set; }
-
     [DataMember(Name = "viewType")]
     public string? ViewType { get; set; }
-
     [DataMember(Name = "nameContains")]
     public string? NameContains { get; set; }
-
     [DataMember(Name = "categories")]
     public List<string>? Categories { get; set; }
-
     [DataMember(Name = "offset")]
     public int? Offset { get; set; }
-
     [DataMember(Name = "limit")]
     public int? Limit { get; set; }
-
     [DataMember(Name = "id")]
     public long? Id { get; set; }
-
     [DataMember(Name = "family")]
     public string? Family { get; set; }
-
     [DataMember(Name = "type")]
     public string? Type { get; set; }
-
     [DataMember(Name = "level")]
     public string? Level { get; set; }
-
     [DataMember(Name = "workset")]
     public string? Workset { get; set; }
-
     [DataMember(Name = "phase")]
     public string? Phase { get; set; }
-
     [DataMember(Name = "areaScheme")]
     public string? AreaScheme { get; set; }
-
     [DataMember(Name = "parameterFilters")]
     public List<ParameterFilterContract>? ParameterFilters { get; set; }
-
     [DataMember(Name = "fields")]
     public List<string>? Fields { get; set; }
-
     [DataMember(Name = "sort")]
     public QuerySortContract? Sort { get; set; }
-
     [DataMember(Name = "groupBy")]
     public List<string>? GroupBy { get; set; }
-
     [DataMember(Name = "numericField")]
     public string? NumericField { get; set; }
-
     [DataMember(Name = "section")]
     public string? Section { get; set; }
-
     [DataMember(Name = "warningText")]
     public string? WarningText { get; set; }
-
     [DataMember(Name = "includeGeometry")]
     public bool? IncludeGeometry { get; set; }
-
     [DataMember(Name = "includeElements")]
     public bool? IncludeElements { get; set; }
-
     [DataMember(Name = "relation")]
     public string? Relation { get; set; }
-
     [DataMember(Name = "sourceId")]
     public long? SourceId { get; set; }
-
     [DataMember(Name = "sourceName")]
     public string? SourceName { get; set; }
-
     [DataMember(Name = "pixelSize")]
     public int? PixelSize { get; set; }
-
     [DataMember(Name = "zoomToFit")]
     public bool? ZoomToFit { get; set; }
     [DataMember(Name = "targetDocument")]
@@ -389,10 +372,8 @@ public sealed class ParameterFilterContract
 {
     [DataMember(Name = "parameter")]
     public string? Parameter { get; set; }
-
     [DataMember(Name = "operator")]
     public string? Operator { get; set; }
-
     [DataMember(Name = "value")]
     public string? Value { get; set; }
 }
@@ -402,7 +383,6 @@ public sealed class QuerySortContract
 {
     [DataMember(Name = "field")]
     public string? Field { get; set; }
-
     [DataMember(Name = "direction")]
     public string? Direction { get; set; }
 }
