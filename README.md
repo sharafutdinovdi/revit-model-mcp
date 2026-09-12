@@ -6,7 +6,8 @@ An MCP server that lets an AI agent read a live Autodesk Revit model and, when y
 
 ## What it does
 
-The server reads a live Autodesk Revit model by default: elements, views, parameters, warnings and PNG view exports.
+The server reads a live Autodesk Revit model by default: elements, views, parameters, warnings, PNG view exports and coordinator checks for model health, links, shared coordinates and parameter fill.
+Model-changing actions return a `verification` block and accept `dry_run` for previews that roll back.
 Actions are opt-in and require two gates: `REVIT_MCP_ALLOW_WRITE=1` in the server and an `allow-write` file on the Revit workstation.
 The client can run locally or reach a remote Windows workstation over LAN, Tailscale or an SSH tunnel using HTTP with a bearer token.
 
@@ -51,6 +52,7 @@ cd revit-model-mcp
 ```
 
 The commands below start from the repository root.
+For a downloaded script, use `Unblock-File .\install.ps1` to remove its downloaded-file block or `Set-ExecutionPolicy -Scope Process Bypass` for the current PowerShell session.
 On Windows, close Revit and build and install for Revit 2026:
 
 ```powershell
@@ -60,12 +62,13 @@ On Windows, close Revit and build and install for Revit 2026:
 Or install the latest GitHub release for every detected Revit year (2022-2027):
 
 ```powershell
-.\install.ps1
+.\install.ps1 -Source Release
 ```
 
 The inline build, copy and manifest-patching commands live in [`install.ps1`](install.ps1).
 Installation uses `RevitModelMcp\` and `RevitModelMcp.addin` under `%APPDATA%\Autodesk\Revit\Addins\<year>`.
-Use `-Year 2024,2026` to select years and `-Version 0.1.0` to select a release.
+Use `-Year 2024,2026` to select years and `-Version 0.2.0` to pin a release.
+`-Source Release` requires a release with an asset for each requested year: v0.1.0 ships R22–R26; v0.2.0 adds R27.
 Add `-SignThumbprint <thumbprint>` to sign installed DLLs with a local code-signing certificate on workstations where Revit shows the unsigned add-in dialog on every rebuild.
 Add `-RegisterClaude` to register the local server with Claude Code; both `claude` and `uv` must be on PATH.
 Use `-Uninstall -Year 2026` to remove that year's add-in; local settings remain intact.
@@ -142,6 +145,10 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 
 **Coordinator checks.** Call `revit_model_health` → `revit_links_status` → `revit_shared_coordinates` → `revit_parameter_fill_check(categories=["Walls","Doors"], parameters=["Mark","Comments"])` before an export or hand-over.
 Category and parameter names use the model language; the fill check accepts 1–20 categories, 1–30 parameters and a sample limit of 1–100.
+Coordinator location and link lists are capped at 100 without pagination; locations are sorted by name and links by ID.
+`pinned` and `viewSpecific` are true when any instance of the reported type qualifies.
+Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
+Reads that exceed 60 seconds inside Revit return `partial:true` regardless of the client timeout.
 
 Offsets are zero-based row counts; limits are positive row counts.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
@@ -172,11 +179,12 @@ Action tools have no `document` or timeout arguments.
 They use the default timeouts and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
 All IDs are unitless Revit element IDs.
+Revit 2022–2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
 
 | Tool | Arguments | Action and units |
 |---|---|---|
-| `revit_select` | `element_ids` | Select IDs; `[]` clears selection. |
-| `revit_show` | `element_ids`, `select=true` | Show nonempty IDs; return `activeView` and `viewOpened`. |
+| `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
+| `revit_show` | `element_ids`, `select=true` | Show nonempty IDs; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
 | `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
 | `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
@@ -189,10 +197,15 @@ All IDs are unitless Revit element IDs.
 
 `revit_move`, `revit_place_family`, `revit_create_wall`, `revit_set_parameter` and `revit_delete` accept a final `dry_run=false` argument.
 A dry run executes the mutation, reads its prospective result, and rolls back the transaction.
-Its response includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
+A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
+An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.
+`revit_isolate` has no `dry_run` argument; it uses temporary isolation only.
 Created IDs in a dry run are provisional and do not identify persisted elements.
 
-Real writes return `data.dryRun:false` and re-read the affected elements after commit.
+Successful real writes return `data.dryRun:false` and re-read the affected elements after commit.
+`verification.before` is captured before the change; `verification.after` is re-read after commit or before rollback on a dry run.
+`verification.error` reports a failed post-commit re-read; the change is committed.
+Single-action responses include `failedStep:null`.
 The `verification` block contains model facts: bounding boxes for moves, parameter values and ownership for parameter edits, element metadata for creation, and deleted/dependent IDs with a survival check for deletion.
 Bounding boxes use model XYZ in mm rounded to one decimal; unavailable bounding boxes are omitted.
 For example, setting Comments on element 123 returns:
@@ -221,9 +234,12 @@ For example, setting Comments on element 123 returns:
 ```
 
 A successful batch assimilates its transactions into one undo entry named `revit_batch`.
-The first failed step rolls back the entire batch; earlier successful steps remain in the report with `rolledBack:true`.
+The first failed step rolls back the entire batch; every attempted step, including the failing one, carries `rolledBack:true`.
+An `Assimilate` failure is reported on the last step with `failedStep` pointing at it.
+All steps are validated before execution; an invalid later step rejects the whole batch without executing anything and without `failedStep`.
 Results include zero-based `index`, `command`, `success` and `data` or `error` per attempted step, plus `undoName`, `committed` and `failedStep` (null on success).
 A batch dry run executes every step against preceding steps' changes, then rolls back the group and restores the original selection.
+A per-step `dry_run:true` inside a real batch is accepted and previews only that step.
 Verification describes each step's immediate result; subsequent steps may change those elements again.
 Batches accept 1–50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
 
@@ -238,7 +254,8 @@ The response includes `activeView` and `viewOpened`, which reports whether the h
 During action execution, the handler attempts to dismiss TaskDialog prompts with OK and then Yes.
 Messages from successful overrides appear in `dialogsSuppressed`.
 The dialog handler is removed in `finally`, including on errors.
-Missing families return up to five similar names with their family categories in `closestFamilies`; unrelated names are omitted.
+For the single-action `revit_place_family` tool, missing families return up to five similar names with their family categories in `closestFamilies`; unrelated names are omitted.
+Inside `revit_batch`, a missing family surfaces only as `steps[].error` text; `closestFamilies` is unavailable.
 For `Family: Type`, `type_name=null` uses the embedded type; a conflicting `type_name` is rejected.
 For a family name alone, `type_name=null` selects the first loaded type.
 
@@ -262,14 +279,15 @@ Actions address the process ID reported by the transport.
 Coordinates use model axes and the named level's project elevation.
 Pass `null` for `type_name` to choose the family's first type, or for `wall_type` to choose the first basic wall type.
 Family placement uses the level-based, nonstructural overload; hosted, face-based and adaptive families may require another placement API and return an error.
-An unloaded family returns up to five closest loaded names.
+The single-action family placement tool returns up to five closest loaded names for an unloaded family.
 Parameter values use invariant numeric notation; other Double parameters use Revit internal units.
 Type parameter edits affect all instances of that type and return `parameterScope:"type"`.
 ElementId and read-only parameters cannot be set.
 
 Responses from the action executor include `activeView`, including action errors.
 Transport rejection and target-mismatch responses may omit action metadata.
-Model changes and temporary isolation use one transaction named after the tool.
+Model changes and temporary isolation use individual transactions named after the tool.
+`revit_batch` wraps the per-step transactions in a `TransactionGroup` named `revit_batch` and assimilates them into one undo entry.
 Warnings at commit are dismissed and reported on successful actions.
 Errors permit one `FixElements` or `SetValue` resolution when Revit allows it; unresolved or repeated errors roll back the transaction.
 Selection and navigation use UI calls without model transactions.
@@ -310,12 +328,12 @@ HTTP has no built-in TLS; use an encrypted tunnel for remote access.
 
 The model API is read-only by default.
 Action tools are absent unless `REVIT_MCP_ALLOW_WRITE=1`; action execution also requires the workstation gate file described above.
-The default surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations and PNG view export.
+The default surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
 
-`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` and link `path` fields to file names.
+`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` and every `path` field, including link and image paths, to file names.
 This covers nested results and instance listings.
 Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
 
@@ -346,6 +364,7 @@ On Windows:
 ```powershell
 dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
 dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
+dotnet build src/RevitModelMcp.Addin -c Release.R27 -p:DeployAddin=false
 dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
 ```
 
@@ -360,6 +379,29 @@ CI builds Revit 2022, 2026 and 2027 on Windows and uploads all three outputs as 
 It runs the Core and server tests on every push and pull request: [latest run](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml).
 Release tags build all six Revit configurations and the Python wheel before publishing assets.
 The recordings above show live sessions; automated tests do not validate live Revit behavior.
+
+## Validation evidence
+
+Validation status as of 2026-09-12; ✅ denotes a completed check and — denotes no validation evidence for that check.
+CI evidence includes the v0.1.0 release builds for R22–R26 and the R22/R26/R27 CI builds.
+Local build evidence includes `Release.R26` and `Release.R27`, plus the Revit 2024 build through `install.ps1 -Source Build`.
+
+| Revit year | Build in CI | Local build | Live reads | Live actions | Install script |
+|---|---|---|---|---|---|
+| 2022 | ✅ | — | — | — | — |
+| 2023 | ✅ | — | — | — | — |
+| 2024 | ✅ | ✅ | — | — | ✅ |
+| 2025 | ✅ | — | — | — | — |
+| 2026 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 2027 | ✅ | ✅ | — | — | — |
+
+Live checks use Revit 2026.4 with Autodesk's `Snowdon Towers Sample Architectural.rvt`, called from macOS over the SSH transport.
+All 18 read tools, including the four coordinator tools, are live-validated.
+Live action checks cover `select`, `show`, `isolate`, `move`, `create_wall`, `set_parameter`, `delete` and `batch`, with dry runs and real writes for actions that support them.
+Installer checks cover `-Source Build` for 2024 and 2026 with `-SignThumbprint`, `-Source Release` for 2024 from v0.1.0, and `-Uninstall`.
+Revit 2022–2025 and 2027 have build evidence only for add-in behavior; no live reads or actions are validated on those years in this validation pass.
+Screenshots and JSON evidence are on the [`validation-assets` branch](https://github.com/sharafutdinovdi/revit-model-mcp/tree/validation-assets).
+The Revit undo menu label for a batch (`revit_batch`) cannot be verified through the API.
 
 ## Compatibility
 
