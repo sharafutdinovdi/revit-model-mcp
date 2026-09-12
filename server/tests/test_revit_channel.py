@@ -216,6 +216,22 @@ class ResponseTests(unittest.TestCase):
             parse_response(content, "document-info")
         self.assertEqual(str(raised.exception), "No active Revit document.")
 
+    def test_returns_unsuccessful_batch_response_with_data_intact(self) -> None:
+        content = json.dumps(
+            {
+                "command": "batch",
+                "success": False,
+                "data": {"steps": [{"success": True}, {"success": False}], "failedStep": 1},
+            }
+        )
+
+        parsed = parse_response(content, "batch")
+
+        self.assertEqual(
+            parsed["data"],
+            {"steps": [{"success": True}, {"success": False}], "failedStep": 1},
+        )
+
     def test_reports_malformed_json(self) -> None:
         with self.assertRaisesRegex(ResponseParseError, "could not be parsed as JSON"):
             parse_response("not-json", "document-info")
