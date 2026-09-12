@@ -36,7 +36,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'actionlint download failed' }
           Expand-Archive "$env:RUNNER_TEMP/actionlint/actionlint_1.7.12_windows_amd64.zip" "$env:RUNNER_TEMP/actionlint/bin"
           & "$env:RUNNER_TEMP/actionlint/bin/actionlint.exe"
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
       - name: Verify C# formatting
