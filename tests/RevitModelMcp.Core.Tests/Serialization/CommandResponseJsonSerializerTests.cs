@@ -88,6 +88,28 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    public async Task Serialize_PostCommitVerificationError_RoundTripsErrorAndOmitsAfter()
+    {
+        var error = "Post-commit verification failed: Element is unavailable.";
+        var response = CommandResponse<ActionResultData>.Ok("move", new ActionResultData
+        {
+            Verification = new ActionVerification { Error = error, After = null }
+        }, 1);
+        var serialized = CommandResponseJsonSerializer.Serialize(response);
+        using var json = JsonDocument.Parse(serialized);
+        var verification = json.RootElement.GetProperty("data").GetProperty("verification");
+        await Assert.That(json.RootElement.GetProperty("success").GetBoolean()).IsTrue();
+        await Assert.That(verification.GetProperty("error").GetString()).IsEqualTo(error);
+        await Assert.That(verification.TryGetProperty("after", out _)).IsFalse();
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serialized));
+        var serializer = new DataContractJsonSerializer(typeof(CommandResponse<ActionResultData>));
+        var restored = (CommandResponse<ActionResultData>)serializer.ReadObject(stream)!;
+        await Assert.That(restored.Success).IsTrue();
+        await Assert.That(restored.Data!.Verification!.Error).IsEqualTo(error);
+        await Assert.That(restored.Data.Verification.After).IsNull();
+    }
+
+    [Test]
     public async Task Serialize_VerifiedBatch_RoundTripsFactsAndFalseFlags()
     {
         var verification = new ActionVerification

@@ -220,7 +220,7 @@ Successful dry runs return `data.rolledBack:true`; their prospective facts are r
 An action that throws returns an error without a verification block.
 `verification.before` is captured before the change.
 Real writes re-read `verification.after` after commit.
-`verification.error` reports a failed post-commit re-read; the change is committed.
+`verification.error` reports a failed post-commit re-read; the change itself is committed.
 Unavailable bounding boxes are omitted; available bounds are XYZ arrays in model mm rounded to one decimal.
 Parameter values are invariant strings with lengths in mm, areas in m2 and other doubles in internal units.
 `owner` is `instance` or `type`.

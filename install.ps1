@@ -1,5 +1,6 @@
 <#
 Installs or removes Revit Model MCP for selected or detected Revit 2022-2027 years.
+Release installs check available assets and report missing Revit year packages.
 Keep this script ASCII-only for BOM-less Windows PowerShell 5.1 compatibility.
 Examples (run on Windows from a repository checkout):
   .\install.ps1
@@ -23,6 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
 $tempRoot = $null
+$script:releaseAssets = @()
 $headers = @{ 'User-Agent' = 'revit-model-mcp-install' }
 if ($env:GITHUB_TOKEN) { $headers.Authorization = "Bearer $env:GITHUB_TOKEN" }
 
@@ -52,6 +54,9 @@ function Get-Payload([string] $SelectedYear) {
     }
     else {
         $asset = "revit-model-mcp-addin-$releaseVersion-R$yy.zip"
+        if ($asset -notin $script:releaseAssets) {
+            throw "Release $releaseTag has no add-in package for Revit $SelectedYear (expected $asset). Install from a local build with -Source Build, or choose a release that includes R$yy."
+        }
         $url = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/download/$releaseTag/$asset"
         $zip = Join-Path $tempRoot $asset
         Invoke-WebRequest -Uri $url -Headers $headers -OutFile $zip -UseBasicParsing
@@ -154,6 +159,10 @@ try {
             if ($releaseTag -notmatch '^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
                 throw 'Expected a release version without v, such as 0.1.0, or latest.'
             }
+            if ($Version -ne 'latest') {
+                $release = Invoke-RestMethod -Uri "https://api.github.com/repos/sharafutdinovdi/revit-model-mcp/releases/tags/$releaseTag" -Headers $headers
+            }
+            $script:releaseAssets = @($release.assets | ForEach-Object { $_.name })
             $releaseVersion = $releaseTag.Substring(1)
         }
         $tempRoot = Join-Path $env:TEMP ("revit-model-mcp-" + [guid]::NewGuid().ToString('N'))
