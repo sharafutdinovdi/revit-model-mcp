@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-  pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -43,11 +43,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: revit-model-mcp-addin-R22
+          retention-days: 90
           path: artifacts/addin-R22/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: revit-model-mcp-addin-R26
+          retention-days: 90
           path: artifacts/addin-R26/
           if-no-files-found: error
       - name: Build Python package

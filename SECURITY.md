@@ -1,9 +1,10 @@
 # Security policy
 
-Report vulnerabilities to [sharafutdinov.di.dev@outlook.com](mailto:sharafutdinov.di.dev@outlook.com).
+Private vulnerability reporting is enabled for this repository.
+Report vulnerabilities through [GitHub's private report form](https://github.com/sharafutdinovdi/revit-model-mcp/security/advisories/new) or email [sharafutdinov.di.dev@outlook.com](mailto:sharafutdinov.di.dev@outlook.com).
 Include the affected version and steps to reproduce.
 Do not include credentials or confidential model data.
-Use email for undisclosed vulnerabilities.
+Keep undisclosed vulnerabilities out of public issues and Discussions.
 
 The file channel uses operating system permissions.
 Limit channel directory access to trusted users.
