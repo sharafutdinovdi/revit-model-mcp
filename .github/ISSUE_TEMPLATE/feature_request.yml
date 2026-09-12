@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a change to model access, actions or the add-in.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Describe the task that is difficult or unavailable today.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed behavior
+      description: Describe the expected result and affected Revit years or server transport, if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include current workarounds and their limitations.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Attach examples or screenshots with private model data removed.

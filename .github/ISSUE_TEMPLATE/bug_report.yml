@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a reproducible add-in or server problem.
+labels: [bug]
+body:
+  - type: dropdown
+    id: revit-year
+    attributes:
+      label: Revit year
+      options:
+        - '2022'
+        - '2023'
+        - '2024'
+        - '2025'
+        - '2026'
+        - Not applicable (server only)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Add-in version
+      description: Include the release tag or commit and the Python package version if relevant.
+      placeholder: v0.1.0, or commit SHA; server-only if no add-in is involved
+    validations:
+      required: true
+  - type: textarea
+    id: installation
+    attributes:
+      label: How installed
+      description: State whether the add-in came from a release ZIP, CI artifact or source build, and how the Python server was installed.
+    validations:
+      required: true
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport mode
+      options:
+        - HTTP (loopback or LAN)
+        - HTTP through an SSH tunnel
+        - SSH file channel
+        - Not applicable or unknown
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the command or ribbon button and whether write actions were enabled.
+      placeholder: |
+        1. Open ...
+        2. Run ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log excerpt
+      description: Paste the relevant error text; remove tokens, private model names and paths. State if no log is available.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshot or recording
+      description: Please attach a screenshot of the dialog or ribbon for a visible issue. Drag and drop, paste, or select a screenshot or recording in this field; redact private model data.
+      placeholder: Drop a screenshot or recording here.
