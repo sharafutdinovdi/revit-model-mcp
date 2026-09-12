@@ -1,4 +1,7 @@
+using System.Runtime.Serialization.Json;
+using System.Text;
 using System.Text.Json;
+using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -82,6 +85,48 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(data.Parameters[0].Owner.Type).IsEqualTo(1);
         await Assert.That(data.Parameters[0].MissingSampleIds[0]).IsEqualTo(13);
         await Assert.That(data.Parameters[0].ByCategory[0].Empty).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Serialize_VerifiedBatch_RoundTripsFactsAndFalseFlags()
+    {
+        var verification = new ActionVerification
+        {
+            Before = new ActionFacts { Id = 1, Parameter = "Comments", Value = "", StorageType = "String", Owner = "instance" },
+            After = new ActionFacts { Id = 1, Parameter = "Comments", Value = "Reviewed", StorageType = "String", Owner = "instance" },
+            Changed = [1]
+        };
+        var data = new ActionResultData
+        {
+            DryRun = false,
+            Committed = false,
+            FailedStep = 1,
+            UndoName = "revit_batch",
+            RolledBack = true,
+            Steps = [
+                new BatchStepResult { Index = 0, Command = "set-parameter", Success = true, RolledBack = true,
+                    Data = new ActionResultData { DryRun = false, Verification = verification, RolledBack = true } },
+                new BatchStepResult { Index = 1, Command = "delete", Success = false, Error = "Element not found." }
+            ]
+        };
+        var response = CommandResponse<ActionResultData>.Ok("batch", data, 1);
+        var serialized = CommandResponseJsonSerializer.Serialize(response);
+        using var json = JsonDocument.Parse(serialized);
+        var payload = json.RootElement.GetProperty("data");
+        await Assert.That(payload.GetProperty("dryRun").GetBoolean()).IsFalse();
+        await Assert.That(payload.GetProperty("committed").GetBoolean()).IsFalse();
+        await Assert.That(payload.GetProperty("steps")[0].GetProperty("index").GetInt32()).IsEqualTo(0);
+        await Assert.That(payload.GetProperty("steps")[1].GetProperty("success").GetBoolean()).IsFalse();
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serialized));
+        var serializer = new DataContractJsonSerializer(typeof(CommandResponse<ActionResultData>));
+        var restored = (CommandResponse<ActionResultData>)serializer.ReadObject(stream)!;
+        await Assert.That(restored.Data!.Steps![0].Data!.Verification!.Before!.Value).IsEqualTo("");
+        await Assert.That(restored.Data.Steps[0].Data!.Verification!.After!.Owner).IsEqualTo("instance");
+        await Assert.That(restored.Data.Steps[0].Data!.Verification!.Changed!).IsEquivalentTo(new long[] { 1 });
+        await Assert.That(restored.Data.Steps[1].Error).IsEqualTo("Element not found.");
+        data.FailedStep = null;
+        using var successJson = Parse(response);
+        await Assert.That(successJson.RootElement.GetProperty("data").GetProperty("failedStep").ValueKind).IsEqualTo(JsonValueKind.Null);
     }
 
     [Test]

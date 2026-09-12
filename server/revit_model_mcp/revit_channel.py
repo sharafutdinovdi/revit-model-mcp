@@ -18,7 +18,17 @@ ACTIVATION_TASK = os.environ.get("REVIT_MCP_ACTIVATE_TASK", "")
 CHANNEL_DIRECTORY = "RevitModelMcp"
 TRIGGER_FILE = "trigger.txt"
 ACTION_COMMANDS = frozenset(
-    {"select", "show", "isolate", "move", "place-family", "create-wall", "set-parameter", "delete"}
+    {
+        "select",
+        "show",
+        "isolate",
+        "move",
+        "place-family",
+        "create-wall",
+        "set-parameter",
+        "delete",
+        "batch",
+    }
 )
 
 
