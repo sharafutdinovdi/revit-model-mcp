@@ -9,12 +9,12 @@ internal static class ActionVerifier
 {
     internal static ActionFacts? CaptureBefore(Document document, string command,
         ActionJobContract action, List<ElementId> ids) => command switch
-    {
-        "move" => new ActionFacts { Elements = ids.Select(id => Bounds(RequiredElement(document, RevitValueReader.GetId(id)))).ToList() },
-        "set-parameter" => ParameterFacts(document, action),
-        "delete" => new ActionFacts { Requested = ids.Select(RevitValueReader.GetId).ToList() },
-        _ => null
-    };
+        {
+            "move" => new ActionFacts { Elements = ids.Select(id => Bounds(RequiredElement(document, RevitValueReader.GetId(id)))).ToList() },
+            "set-parameter" => ParameterFacts(document, action),
+            "delete" => new ActionFacts { Requested = ids.Select(RevitValueReader.GetId).ToList() },
+            _ => null
+        };
 
     internal static void CaptureAfter(Document document, string command, ActionJobContract action, ActionResultData result)
     {
