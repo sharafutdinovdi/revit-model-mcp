@@ -135,6 +135,13 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
 | `revit_list_instances` | `document=null`; no timeout arguments | List endpoint or heartbeat information. |
+| `revit_model_health` | None | Read model quality counts and top warnings before hand-over. |
+| `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
+| `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
+| `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
+
+**Coordinator checks.** Call `revit_model_health` → `revit_links_status` → `revit_shared_coordinates` → `revit_parameter_fill_check(categories=["Walls","Doors"], parameters=["Mark","Comments"])` before an export or hand-over.
+Category and parameter names use the model language; the fill check accepts 1–20 categories, 1–30 parameters and a sample limit of 1–100.
 
 Offsets are zero-based row counts; limits are positive row counts.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
@@ -267,7 +274,7 @@ The [command executor](src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) a
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
 
-`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` fields to file names.
+`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` and link `path` fields to file names.
 This covers nested results and instance listings.
 Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
 

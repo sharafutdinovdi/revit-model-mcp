@@ -17,6 +17,10 @@ from revit_model_mcp.ssh_host import SshPowerShellHost
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
+    "revit_model_health",
+    "revit_links_status",
+    "revit_shared_coordinates",
+    "revit_parameter_fill_check",
     "revit_ping",
     "revit_document_info",
     "revit_list_views",

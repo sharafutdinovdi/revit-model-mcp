@@ -7,6 +7,76 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_ModelHealth_ReturnsReadCommand()
+    {
+        var result = ControlJobParser.Parse("""{"command":"model-health"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ModelHealth);
+        await Assert.That(result.Command).IsEqualTo("model-health");
+    }
+
+    [Test]
+    public async Task Parse_LinksStatus_ReturnsReadCommand()
+    {
+        var result = ControlJobParser.Parse("""{"command":"links-status"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.LinksStatus);
+        await Assert.That(result.Command).IsEqualTo("links-status");
+    }
+
+    [Test]
+    public async Task Parse_SharedCoordinates_ReturnsReadCommand()
+    {
+        var result = ControlJobParser.Parse("""{"command":"shared-coordinates"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.SharedCoordinates);
+        await Assert.That(result.Command).IsEqualTo("shared-coordinates");
+    }
+
+    [Test]
+    public async Task Parse_ParameterFill_PreservesScopeAndDefaults()
+    {
+        var result = ControlJobParser.Parse("""
+            {"command":"parameter-fill-check","categories":[" Walls "],"parameters":[" Mark "],
+             "level":" Level 1 ","workset":" Shell ","view":" Plan "}
+            """);
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ParameterFillCheck);
+        await Assert.That(result.CoordinatorJob.Categories![0]).IsEqualTo("Walls");
+        await Assert.That(result.CoordinatorJob.Parameters![0]).IsEqualTo("Mark");
+        await Assert.That(result.CoordinatorJob.Level).IsEqualTo("Level 1");
+        await Assert.That(result.CoordinatorJob.Workset).IsEqualTo("Shell");
+        await Assert.That(result.CoordinatorJob.View).IsEqualTo("Plan");
+        await Assert.That(result.CoordinatorJob.SampleLimit).IsEqualTo(20);
+        await Assert.That(result.CoordinatorJob.IncludeTypes).IsTrue();
+    }
+
+    [Test]
+    public async Task Parse_ParameterFill_RejectsInvalidBounds()
+    {
+        foreach (var job in new[]
+        {
+            new ControlJobContract { Parameters = ["Mark"] },
+            new ControlJobContract { Categories = ["Walls"] },
+            new ControlJobContract { Categories = [" "], Parameters = ["Mark"] },
+            new ControlJobContract { Categories = Enumerable.Range(0, 21).Select(index => index.ToString()).ToList(), Parameters = ["Mark"] },
+            new ControlJobContract { Categories = ["Walls"], Parameters = Enumerable.Range(0, 31).Select(index => index.ToString()).ToList() },
+            new ControlJobContract { Categories = ["Walls"], Parameters = ["Mark"], SampleLimit = 0 },
+            new ControlJobContract { Categories = ["Walls"], Parameters = ["Mark"], SampleLimit = 101 }
+        })
+        {
+            job.Command = "parameter-fill-check";
+            await Assert.That(ControlJobParseResult.FromContract(job).Kind).IsEqualTo(ControlJobKind.Invalid);
+        }
+        var valid = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "parameter-fill-check",
+            Categories = ["Walls"],
+            Parameters = ["Mark"],
+            SampleLimit = 100,
+            IncludeTypes = false
+        });
+        await Assert.That(valid.CoordinatorJob.SampleLimit).IsEqualTo(100);
+        await Assert.That(valid.CoordinatorJob.IncludeTypes).IsFalse();
+    }
+
+    [Test]
     public async Task Parse_EmptyTrigger_ReturnsLegacySnapshot()
     {
         var result = ControlJobParser.Parse(string.Empty);
