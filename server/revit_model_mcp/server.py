@@ -46,7 +46,7 @@ def redact_model_paths(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: PureWindowsPath(item).name
-            if key == "documentPath" and isinstance(item, str)
+            if key in {"documentPath", "path"} and isinstance(item, str)
             else redact_model_paths(item)
             for key, item in value.items()
         }
@@ -171,6 +171,89 @@ async def revit_document_info(
     """
     return await _execute(
         ReadJob.document_info(), timeout_seconds, pickup_timeout_seconds, document
+    )
+
+
+@addressed_tool
+async def revit_model_health(
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Read model quality counts; call before an export or hand-over."""
+    return await _execute(
+        ReadJob("model-health", {"command": "model-health"}),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
+
+
+@addressed_tool
+async def revit_links_status(
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Read RVT, CAD and image link status; call before an export or hand-over."""
+    return await _execute(
+        ReadJob("links-status", {"command": "links-status"}),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
+
+
+@addressed_tool
+async def revit_shared_coordinates(
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Read project and survey coordinates; call before an export or hand-over."""
+    return await _execute(
+        ReadJob("shared-coordinates", {"command": "shared-coordinates"}),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
+
+
+@addressed_tool
+async def revit_parameter_fill_check(
+    categories: Annotated[list[str], Field(min_length=1, max_length=20)],
+    parameters: Annotated[list[str], Field(min_length=1, max_length=30)],
+    level: str | None = None,
+    workset: str | None = None,
+    view: OptionalViewName = None,
+    sample_limit: Annotated[int, Field(ge=1, le=100)] = 20,
+    include_types: bool = True,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Count filled, empty and missing parameters; call before an export or hand-over."""
+    payload = dict(
+        ReadJob.query_elements(
+            categories=categories,
+            level=level,
+            workset=workset,
+            view=view,
+        ).payload
+    )
+    for key in ("fields", "offset", "limit", "sort"):
+        payload.pop(key, None)
+    payload.update(
+        command="parameter-fill-check",
+        parameters=parameters,
+        sampleLimit=sample_limit,
+        includeTypes=include_types,
+    )
+    return await _execute(
+        ReadJob("parameter-fill-check", payload),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
     )
 
 

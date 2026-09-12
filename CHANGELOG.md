@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - Revit 2027 build configuration and CI/release packaging.
 - `install.ps1` with build/release sources, optional assembly signing and Claude Code registration.
+- Default read-only coordinator tools: `revit_model_health`, `revit_links_status`, `revit_shared_coordinates` and `revit_parameter_fill_check`.
 
 ### Changed
 
