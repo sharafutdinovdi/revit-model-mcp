@@ -32,9 +32,7 @@ What happens in the recording, in order:
 3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
 4. "Reset the view and delete that chair." The temporary isolate is cleared and the chair is deleted.
 
-The header shows a read-only terminal demo against Revit 2023 over SSH.
-Its `--demo` wrapper is not shipped in this package; use [Quick start](#quick-start) for supported commands.
-The export below is the PNG saved by `revit_export_view`:
+The header image is the same server driven from a small terminal client against Revit 2023 over SSH. The export below is the PNG saved by `revit_export_view`:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_export-view_dark.png">
