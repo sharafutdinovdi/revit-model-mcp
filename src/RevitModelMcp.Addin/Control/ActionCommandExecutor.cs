@@ -110,7 +110,16 @@ internal static class ActionCommandExecutor
             {
                 if (transaction.Commit() != TransactionStatus.Committed)
                     throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
-                ActionVerifier.CaptureAfter(document, command, action, data);
+                data.Verification.After = null;
+                try
+                {
+                    ActionVerifier.CaptureAfter(document, command, action, data);
+                }
+                catch (Exception exception)
+                {
+                    data.Verification.Error = "Post-commit verification failed: " + exception.Message;
+                    PluginLog.Error(data.Verification.Error, exception);
+                }
             }
             return data;
         }
