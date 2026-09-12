@@ -27,6 +27,7 @@ The MCP environment gate controls tool registration; direct HTTP callers are che
 
 Selection and navigation use UI calls.
 Model changes and temporary isolation run in individual transactions.
+`revit_batch` groups the per-step transactions in a `TransactionGroup` with one undo entry on success and one rollback of the group on failure or a batch dry run.
 Warnings are dismissed and reported on success; unresolved errors roll back the action.
 Action handling attempts TaskDialog overrides and reports their messages.
 The tools do not save the model.

@@ -252,7 +252,7 @@ The default pickup timeout is 300 seconds, followed by a separate 120-second res
 
 ## Path redaction
 
-`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` strips directories from response `documentPath` fields.
+`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` strips directories from response `documentPath` and all nested `path` fields, including RVT/CAD/image link paths.
 This applies to responder metadata and instance listings.
 Image `localPath` remains available to the MCP client.
 The option does not sanitize channel files or arbitrary strings in model data and errors.
