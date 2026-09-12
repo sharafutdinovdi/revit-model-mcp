@@ -35,6 +35,7 @@ An HTTP endpoint also rejects jobs addressed to another process.
 | `document` | `targetDocument` |
 | `element_id` | `id` for `element-details`; `elementId` for `set-parameter` |
 | `element_ids` | `elementIds` |
+| `dry_run` | `dryRun` (optional boolean, defaults to false) |
 | `view_type`, `name_contains` | `viewType`, `nameContains` |
 | `pixel_size` | `pixelSize`; the server also sets `zoomToFit:true` |
 | `group_by`, `sum_field` | `groupBy`, `numericField` |
@@ -209,6 +210,51 @@ Action failures retain the response object and add `error`.
 
 Transport errors and target mismatches can occur before the action executor and omit these fields.
 See [response models](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs) and [action models](../src/RevitModelMcp.Core/Control/ActionJobParser.cs).
+
+## Action writes and batches
+
+The file channel and HTTP accept `dryRun` on `move`, `place-family`, `create-wall`, `set-parameter`, `delete` and `batch`.
+Successful mutations always return `data.dryRun`.
+Dry runs return `data.rolledBack:true`; their prospective facts are read before rollback.
+Real writes re-read `verification.after` after commit.
+Unavailable bounding boxes are omitted; available bounds are XYZ arrays in model mm rounded to one decimal.
+Parameter values are invariant strings with lengths in mm, areas in m2 and other doubles in internal units.
+`owner` is `instance` or `type`.
+
+| Command | `data.verification` shape |
+|---|---|
+| `move` | `{"before":{"elements":[{"id":1,"category":"Walls","boundingBoxMinMm":[0,0,0],"boundingBoxMaxMm":[100,100,3000]}]},"after":{"elements":[{"id":1,"category":"Walls","boundingBoxMinMm":[10,0,0],"boundingBoxMaxMm":[110,100,3000]}]},"changed":[1]}` |
+| `set-parameter` | `{"before":{"id":1,"parameter":"Comments","value":"","storageType":"String","owner":"instance"},"after":{"id":1,"parameter":"Comments","value":"Reviewed","storageType":"String","owner":"instance"},"changed":[1]}` |
+| `place-family`, `create-wall` | `{"after":{"id":2,"category":"Walls","family":"Basic Wall","type":"Generic","level":"01","boundingBoxMinMm":[0,0,0],"boundingBoxMaxMm":[1000,200,3000]}}`; dry runs add `"wouldCreate":true` inside `verification`. |
+| `delete` | `{"before":{"requested":[1],"dependents":[2]},"after":{"stillPresent":[]},"changed":[1,2]}` |
+
+`changed` contains IDs whose rounded bounds or parameter values differ, or all IDs returned by `Document.Delete`.
+`dependents` excludes explicitly requested IDs.
+Creation IDs from a dry run are provisional.
+Creation metadata comes from the created element and its type and level.
+
+A batch job contains a nonempty `steps` array of at most 50 command objects:
+
+```json
+{"command":"batch","dryRun":false,"steps":[
+  {"command":"move","elementIds":[1],"dxMm":10,"dyMm":0},
+  {"command":"set-parameter","elementId":1,"parameter":"Comments","value":"Reviewed"}
+]}
+```
+
+Steps use each command's normal channel fields.
+Allowed commands are `move`, `place-family`, `create-wall`, `set-parameter`, `delete`, `select` and `isolate`.
+Each model step uses its own transaction; the group is assimilated into the single undo entry `revit_batch`.
+A batch dry run retains each step's changes for subsequent steps and rolls back the group at the end.
+An individual channel step with `dryRun:true` in a real batch previews only that step.
+Selection is restored on batch rollback.
+
+`data.steps[]` contains `index` (zero-based), `command`, `success`, and `data` or `error`.
+Each successful mutation's `data` carries the single-action verification shape.
+The first failed step stops execution; earlier successful steps and their data carry `rolledBack:true`.
+`data.undoName` is `"revit_batch"`, `data.committed` reports group assimilation, and `data.failedStep` is the failed index or null.
+Dry-run success has `committed:false`, `failedStep:null` and `rolledBack:true`.
+Verification records each step immediately; later steps can supersede those facts.
 
 ## Geometry and image exports
 

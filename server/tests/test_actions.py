@@ -20,6 +20,7 @@ ACTION_TOOLS = {
     "revit_create_wall",
     "revit_set_parameter",
     "revit_delete",
+    "revit_batch",
 }
 
 
@@ -96,10 +97,15 @@ def action_server():
         ("revit_delete", {"element_ids": [1, 2]}, {"elementIds": [1, 2]}),
     ],
 )
-def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload):
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload, dry_run):
     import asyncio
 
     server, execute, _ = action_server()
+    if name not in {"revit_select", "revit_show", "revit_isolate"}:
+        if dry_run:
+            arguments = {**arguments, "dry_run": True}
+        payload = {**payload, "dryRun": dry_run}
     asyncio.run(server.call_tool(name, arguments))
     execute.assert_awaited_once()
     job = execute.await_args.args[0]
@@ -209,3 +215,83 @@ def test_show_response_preserves_view_opened_and_dialogs(view_opened, success):
     if not success:
         response["error"] = "Show failed after opening view"
     assert parse_response(json.dumps(response), "show") == response
+
+
+@pytest.mark.parametrize(
+    "steps",
+    [
+        [],
+        [{"action": "select", "args": {"element_ids": []}}] * 51,
+        [{"action": "unknown", "args": {}}],
+        [{"action": "show", "args": {"element_ids": [1]}}],
+        [{"action": "batch", "args": {"steps": []}}],
+        [{"action": "move", "args": {"element_ids": [1], "dx_mm": 1, "dy_mm": 0, "typo": 2}}],
+        [{"action": "move", "args": {"element_ids": [True], "dx_mm": 1, "dy_mm": 0}}],
+        [{"action": "move", "args": {"element_ids": [1], "dx_mm": math.inf, "dy_mm": 0}}],
+        [{"action": "move", "args": {"element_ids": [1], "dx_mm": 1}}],
+        [{"action": "isolate", "args": {"element_ids": []}}],
+        [
+            {
+                "action": "create_wall",
+                "args": {"start_mm": [0, 0], "end_mm": [0, 0], "level": "01", "wall_type": None},
+            }
+        ],
+    ],
+)
+def test_batch_invalid_steps_never_reach_channel(steps):
+    import asyncio
+
+    server, execute, host = action_server()
+    with pytest.raises(Exception):
+        asyncio.run(server.call_tool("revit_batch", {"steps": steps}))
+    execute.assert_not_awaited()
+    host.list_revit_instances.assert_not_awaited()
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_batch_payload_and_annotations(dry_run):
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {"action": "move", "args": {"element_ids": [1], "dx_mm": 10, "dy_mm": 0}},
+                    {
+                        "action": "set_parameter",
+                        "args": {"element_id": 1, "parameter": "Comments", "value": "Reviewed"},
+                    },
+                ],
+                "dry_run": dry_run,
+            },
+        )
+    )
+    assert execute.await_args.args[0].payload == {
+        "command": "batch",
+        "targetProcessId": 42,
+        "dryRun": dry_run,
+        "steps": [
+            {
+                "command": "move",
+                "elementIds": [1],
+                "dxMm": 10,
+                "dyMm": 0,
+                "dzMm": 0,
+                "dryRun": False,
+            },
+            {
+                "command": "set-parameter",
+                "elementId": 1,
+                "parameter": "Comments",
+                "value": "Reviewed",
+                "dryRun": False,
+            },
+        ],
+    }
+    tools = asyncio.run(server.list_tools())
+    tool = next(tool for tool in tools if tool.name == "revit_batch")
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.destructive_hint is True
+    assert tool.annotations.idempotent_hint is False

@@ -204,4 +204,48 @@ public sealed class ActionJobParserTests
         await Assert.That(json.RootElement.TryGetProperty("warningsDismissed", out _)).IsFalse();
     }
 
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task Parse_DryRun_PreservesFlag(bool dryRun)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"move","elementIds":[1],"dxMm":1,"dyMm":0,"dryRun":{{dryRun.ToString().ToLowerInvariant()}}}""");
+        await Assert.That(result.Action!.DryRun).IsEqualTo(dryRun);
+    }
+
+    [Test]
+    public async Task Parse_Batch_ValidatesEachStep()
+    {
+        var result = ControlJobParser.Parse("""{"command":"batch","dryRun":true,"steps":[{"command":"move","elementIds":[1],"dxMm":10,"dyMm":0},{"command":"set-parameter","elementId":1,"parameter":"Comments","value":"Reviewed"}]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.DryRun).IsTrue();
+        await Assert.That(result.Action.Steps.Count).IsEqualTo(2);
+        await Assert.That(result.Action.Steps[0].Command).IsEqualTo("move");
+        await Assert.That(result.Action.Steps[0].Action!.DxMm).IsEqualTo(10);
+        await Assert.That(result.Action.Steps[1].Action!.Value).IsEqualTo("Reviewed");
+    }
+
+    [Test]
+    [Arguments("""{"command":"batch","steps":[]}""")]
+    [Arguments("""{"command":"batch"}""")]
+    [Arguments("""{"command":"batch","steps":[null]}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"show","elementIds":[1]}]}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"batch","steps":[]}]}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"move","elementIds":[1]}]}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"unknown"}]}""")]
+    public async Task Parse_InvalidBatch_IsRejected(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    [Arguments(50, ControlJobKind.Action)]
+    [Arguments(51, ControlJobKind.Invalid)]
+    public async Task Parse_Batch_EnforcesStepLimit(int count, ControlJobKind expected)
+    {
+        var steps = string.Join(",", Enumerable.Repeat("""{"command":"select","elementIds":[]}""", count));
+        var result = ControlJobParser.Parse($$"""{"command":"batch","steps":[{{steps}}]}""");
+        await Assert.That(result.Kind).IsEqualTo(expected);
+    }
 }
