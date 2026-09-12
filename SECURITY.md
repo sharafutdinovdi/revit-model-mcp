@@ -18,4 +18,4 @@ The listener has no built-in TLS.
 Actions require the workstation gate; the Python server also requires an explicit registration flag.
 See [transport](docs/transport.md) for bind settings and [actions](README.md#actions-opt-in) for the gates.
 
-The v0.1 series is a preview; report security issues against the current main branch or latest release.
+0.x releases are previews; report against the latest release or main.
