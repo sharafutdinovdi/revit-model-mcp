@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] Builds for the supported Revit years (2022–2026); affected configurations and local results are listed below.
+- [ ] Builds for the supported Revit years (2022–2027); affected configurations and local results are listed below.
 - [ ] Tests are added or updated, or the reason no test change is needed is stated.
 - [ ] Documentation is updated where behavior or setup changes.
 - [ ] A screenshot or recording is attached for any UI or ribbon change.

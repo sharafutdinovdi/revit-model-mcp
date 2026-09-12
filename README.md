@@ -2,7 +2,7 @@
 
 An MCP server that lets an AI agent read a live Autodesk Revit model and, when you allow it, act in it.
 
-![Status: preview](https://img.shields.io/badge/status-preview-grey?style=flat-square) [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?include_prereleases&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases) ![Revit 2022-2026](https://img.shields.io/badge/Revit-2022--2026-005FB8?style=flat-square) [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE) [![CodeQL](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/codeql.yml?branch=main&label=CodeQL&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/codeql.yml)
+![Status: preview](https://img.shields.io/badge/status-preview-grey?style=flat-square) [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?include_prereleases&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases) ![Revit 2022-2027](https://img.shields.io/badge/Revit-2022--2027-005FB8?style=flat-square) [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE) [![CodeQL](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/codeql.yml?branch=main&label=CodeQL&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/codeql.yml)
 
 ## What it does
 
@@ -40,7 +40,7 @@ The picture below is the PNG saved by `revit_export_view` during an earlier sess
 
 ## Quick start
 
-The add-in requires Windows and Revit 2022-2026.
+The add-in requires Windows and Revit 2022-2027.
 Build with the .NET SDK selected by [`global.json`](global.json).
 The server requires Python 3.11 or later, [uv](https://docs.astral.sh/uv/getting-started/installation/) and an MCP client.
 Clone on each machine that will build or run a component:
@@ -51,26 +51,25 @@ cd revit-model-mcp
 ```
 
 The commands below start from the repository root.
-Installation uses inline PowerShell commands; this repository has no install `.ps1` script.
-
-On Windows, build from the repository root and install the Revit 2026 output:
+On Windows, close Revit and build and install for Revit 2026:
 
 ```powershell
-$ErrorActionPreference = 'Stop'
-dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
-if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
-$addins = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2026'
-$install = Join-Path $addins 'RevitModelMcp'
-New-Item -ItemType Directory -Force -Path $install | Out-Null
-Copy-Item 'src\RevitModelMcp.Addin\bin\Release.R26\*' $install -Recurse -Force
-[xml]$manifest = Get-Content 'src\RevitModelMcp.Addin\RevitModelMcp.addin'
-$manifest.SelectSingleNode('/RevitAddIns/AddIn/Assembly').InnerText = [string](Join-Path $install 'RevitModelMcp.dll')
-$manifest.Save((Join-Path $addins 'RevitModelMcp.addin'))
+.\install.ps1 -Year 2026 -Source Build
 ```
 
-`DeployAddin=false` disables automatic deployment during the build.
-The install uses only `RevitModelMcp\` and `RevitModelMcp.addin` under the Revit 2026 add-ins directory.
-For another installed Revit year, change both `Release.R26` paths and the add-ins year.
+Or install the latest GitHub release for every detected Revit year (2022-2027):
+
+```powershell
+.\install.ps1
+```
+
+The inline build, copy and manifest-patching commands live in [`install.ps1`](install.ps1).
+Installation uses `RevitModelMcp\` and `RevitModelMcp.addin` under `%APPDATA%\Autodesk\Revit\Addins\<year>`.
+Use `-Year 2024,2026` to select years and `-Version 0.1.0` to select a release.
+Add `-SignThumbprint <thumbprint>` to sign installed DLLs with a local code-signing certificate on workstations where Revit shows the unsigned add-in dialog on every rebuild.
+Add `-RegisterClaude` to register the local server with Claude Code; both `claude` and `uv` must be on PATH.
+Use `-Uninstall -Year 2026` to remove that year's add-in; local settings remain intact.
+The script refuses to run while Revit is open unless `-Force` is supplied.
 Start Revit and open a model after installation, or restart it if it was already running.
 The add-in creates `%LOCALAPPDATA%\RevitModelMcp\instance_<processId>.json` and updates it every five seconds.
 It adds no ribbon tab or button.
@@ -309,26 +308,27 @@ cd server
 uv run --with pytest pytest -q
 ```
 
-CI builds Revit 2022 and 2026 on Windows and uploads both outputs as artifacts.
+CI builds Revit 2022, 2026 and 2027 on Windows and uploads all three outputs as artifacts.
 It runs the Core and server tests on every push and pull request: [latest run](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml).
-Release tags build all five Revit configurations and the Python wheel before publishing assets.
+Release tags build all six Revit configurations and the Python wheel before publishing assets.
 The recordings above show live sessions; automated tests do not validate live Revit behavior.
 
 ## Compatibility
 
 | Component | Configured support |
 |---|---|
-| Revit add-in | Revit 2022-2026 on Windows |
-| Add-in configurations | `Debug.R22` through `Debug.R26`, `Release.R22` through `Release.R26` |
-| .NET targets | .NET Framework 4.8 for Revit 2022-2024, .NET 8 for Revit 2025-2026 |
+| Revit add-in | Revit 2022-2027 on Windows |
+| Add-in configurations | `Debug.R22` through `Debug.R27`, `Release.R22` through `Release.R27` |
+| .NET targets | .NET Framework 4.8 for Revit 2022-2024, .NET 8 for Revit 2025-2026, .NET 10 for Revit 2027 |
 | Build SDK | Selected by `global.json` |
 | Python server | Python 3.11+, MCP Python SDK 2+ |
 | Local transport | Windows PowerShell under the Revit user's account |
-| HTTP transport | Standard-library HTTP/HTTPS client; Windows HttpListener on .NET 4.8 and 8 |
+| HTTP transport | Standard-library HTTP/HTTPS client; Windows HttpListener on .NET 4.8, 8 and 10 |
 | SSH transport | SSH client on Windows, macOS or Linux; Windows SSH host with PowerShell |
 
-The CI workflow targets Revit 2022 and 2026 builds on Windows.
-The tag workflow packages Revit 2022-2026; installing each year still requires validation in that Revit version.
+The CI workflow targets Revit 2022, 2026 and 2027 builds on Windows.
+The tag workflow packages Revit 2022-2027; installing each year still requires validation in that Revit version.
+Revit 2027 is compiled in CI but has not yet been validated against a live Revit 2027 instance.
 See [known gaps](docs/roadmap.md#known-gaps).
 
 ## Author and license
