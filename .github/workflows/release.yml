@@ -36,11 +36,11 @@ jobs:
       - name: Test server
         working-directory: server
         run: uv run --with pytest pytest -q
-      - name: Build and zip Revit 2022-2026
+      - name: Build and zip Revit 2022-2027
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts/release | Out-Null
-          foreach ($year in '22', '23', '24', '25', '26') {
+          foreach ($year in '22', '23', '24', '25', '26', '27') {
             dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
             if ($LASTEXITCODE -ne 0) { throw "R$year build failed" }
             $stage = "artifacts/addin-R$year"
