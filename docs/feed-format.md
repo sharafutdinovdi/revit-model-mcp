@@ -1,6 +1,6 @@
 # Feed format
 
-The v0.1.0 protocol uses UTF-8 JSON and case-sensitive field names.
+The v0.2.0 protocol uses UTF-8 JSON and case-sensitive field names.
 It has no `schemaVersion` field; the package version identifies the documented contract.
 The standalone add-in does not write a feed under `%LOCALAPPDATA%\RevitDevLoader`.
 Its default channel is `%LOCALAPPDATA%\RevitModelMcp`.
@@ -205,7 +205,8 @@ Action failures retain the response object and add `error`.
 | `viewOpened` | Present for `show`; whether its explicit view-opening step opened a previously closed view |
 | `dialogsSuppressed` | Messages from successful TaskDialog overrides; an empty list is emitted for actions without overrides |
 | `warningsDismissed` | Warning descriptions from a successful transaction; omitted when empty and on failed actions |
-| `data.closestFamilies` | Similar loaded family names with categories when a family is missing |
+| `failedStep` | Present and null on single actions |
+| `data.closestFamilies` | Similar loaded family names with categories when a family is missing in the single-action tool; batches return only `steps[].error` text |
 | `data.parameterScope` | `instance` or `type` after `set-parameter`; type edits affect every instance using that type |
 
 Transport errors and target mismatches can occur before the action executor and omit these fields.
@@ -215,7 +216,9 @@ See [response models](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs) and
 
 The file channel and HTTP accept `dryRun` on `move`, `place-family`, `create-wall`, `set-parameter`, `delete` and `batch`.
 Successful mutations always return `data.dryRun`.
-Dry runs return `data.rolledBack:true`; their prospective facts are read before rollback.
+Successful dry runs return `data.rolledBack:true`; their prospective facts are read before rollback.
+An action that throws returns an error without a verification block.
+`verification.before` is captured before the change.
 Real writes re-read `verification.after` after commit.
 `verification.error` reports a failed post-commit re-read; the change itself is committed.
 Unavailable bounding boxes are omitted; available bounds are XYZ arrays in model mm rounded to one decimal.
@@ -244,15 +247,17 @@ A batch job contains a nonempty `steps` array of at most 50 command objects:
 ```
 
 Steps use each command's normal channel fields.
+All steps are validated at parse time before execution; an invalid later step rejects the entire batch without executing any step and without `failedStep`.
 Allowed commands are `move`, `place-family`, `create-wall`, `set-parameter`, `delete`, `select` and `isolate`.
 Each model step uses its own transaction; the group is assimilated into the single undo entry `revit_batch`.
 A batch dry run retains each step's changes for subsequent steps and rolls back the group at the end.
-An individual channel step with `dryRun:true` in a real batch previews only that step.
+An individual channel step with `dryRun:true` (MCP `dry_run:true`) in a real batch is accepted and previews only that step.
 Selection is restored on batch rollback.
 
 `data.steps[]` contains `index` (zero-based), `command`, `success`, and `data` or `error`.
 Each successful mutation's `data` carries the single-action verification shape.
-The first failed step stops execution; earlier successful steps and their data carry `rolledBack:true`.
+The first failed step stops execution; all attempted steps, including the failing one, carry `rolledBack:true`, as does any retained step data.
+An `Assimilate` failure is reported on the last step with `failedStep` pointing at that step.
 `data.undoName` is `"revit_batch"`, `data.committed` reports group assimilation, and `data.failedStep` is the failed index or null.
 Dry-run success has `committed:false`, `failedStep:null` and `rolledBack:true`.
 Verification records each step immediately; later steps can supersede those facts.

@@ -70,7 +70,7 @@ Run `actionlint` 1.7.12 from the repository root after changing a workflow.
 CI uploads installable R22, R26 and R27 folder layouts after its tests pass.
 A `v<version>` tag triggers all six add-in builds, Core/server tests and the Python wheel build.
 The tag version must match `server/pyproject.toml`.
-The release workflow attaches six ZIP files and the wheel to a GitHub Release with generated notes.
+The release workflow attaches six ZIP files (R22–R27) and the wheel to a GitHub Release with generated notes.
 Extract each year's ZIP into `%APPDATA%\Autodesk\Revit\Addins\20<yy>` while that Revit instance is closed.
 The archive root contains `RevitModelMcp.addin` and the `RevitModelMcp` assembly directory.
 The workflow does not invoke the optional WiX installer pipeline.
