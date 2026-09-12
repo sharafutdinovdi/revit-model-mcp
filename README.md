@@ -1,7 +1,6 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_hero_dark.png">
-  <img alt="revit-model-mcp: a terminal session where an MCP client reads a live Revit 2023 model" src="docs/screenshots/revit-model-mcp_hero_light.png" width="100%">
-</picture>
+# Revit Model MCP
+
+An MCP server that lets an AI agent read a live Autodesk Revit model and, when you allow it, act in it.
 
 ![Status: preview](https://img.shields.io/badge/status-preview-grey?style=flat-square) [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?include_prereleases&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases) ![Revit 2022-2026](https://img.shields.io/badge/Revit-2022--2026-005FB8?style=flat-square) [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE) [![CodeQL](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/codeql.yml?branch=main&label=CodeQL&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/codeql.yml)
 
@@ -32,7 +31,7 @@ What happens in the recording, in order:
 3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
 4. Cleanup afterwards is one more sentence: reset the view, delete the chair.
 
-The header image is the same server driven from a small terminal client against Revit 2023 over SSH. The export below is the PNG saved by `revit_export_view`:
+The picture below is the PNG saved by `revit_export_view` during an earlier session against Revit 2023 over SSH, untouched:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_export-view_dark.png">
