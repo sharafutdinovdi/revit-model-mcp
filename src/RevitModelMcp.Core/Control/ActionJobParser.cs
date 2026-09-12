@@ -5,7 +5,7 @@ namespace RevitModelMcp.Core.Control;
 public static class ActionJobParser
 {
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -13,6 +13,7 @@ public static class ActionJobParser
         {
             var action = new ActionJobContract
             {
+                DryRun = job.DryRun ?? false,
                 ElementIds = (job.ElementIds ?? []).Distinct().ToList(),
                 Select = job.Select ?? true,
                 Reset = job.Reset ?? false,
@@ -33,6 +34,19 @@ public static class ActionJobParser
                 Parameter = job.Parameter,
                 Value = job.Value
             };
+            if (command == "batch")
+            {
+                Require(job.Steps is { Count: > 0 and <= 50 }, "batch requires 1 to 50 steps.");
+                foreach (var step in job.Steps!)
+                {
+                    var stepCommand = step?.Command ?? string.Empty;
+                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch"),
+                        "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
+                    var parsed = Parse(stepCommand, step!);
+                    Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
+                    action.Steps.Add(parsed);
+                }
+            }
             if (command is "select" or "show" or "isolate" or "move" or "delete")
             {
                 Require(job.ElementIds is not null, "elementIds is required.");
@@ -131,6 +145,8 @@ public static class ActionJobParser
 
 public sealed class ActionJobContract
 {
+    public bool DryRun { get; set; }
+    public List<ControlJobParseResult> Steps { get; set; } = [];
     public List<long> ElementIds { get; set; } = [];
     public bool Select { get; set; }
     public bool Reset { get; set; }
@@ -154,6 +170,8 @@ public sealed class ActionJobContract
 
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "dryRun")] public bool? DryRun { get; set; }
+    [DataMember(Name = "steps")] public List<ControlJobContract>? Steps { get; set; }
     [DataMember(Name = "elementIds")] public List<long>? ElementIds { get; set; }
     [DataMember(Name = "select")] public bool? Select { get; set; }
     [DataMember(Name = "reset")] public bool? Reset { get; set; }
@@ -176,6 +194,14 @@ public sealed partial class ControlJobContract
 [DataContract]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "dryRun", EmitDefaultValue = false)] public bool? DryRun { get; set; }
+    [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool? RolledBack { get; set; }
+    [DataMember(Name = "verification", EmitDefaultValue = false)] public ActionVerification? Verification { get; set; }
+    [DataMember(Name = "steps", EmitDefaultValue = false)] public List<BatchStepResult>? Steps { get; set; }
+    [DataMember(Name = "undoName", EmitDefaultValue = false)] public string? UndoName { get; set; }
+    [DataMember(Name = "committed", EmitDefaultValue = false)] public bool? Committed { get; set; }
+    [DataMember(Name = "failedStep")] public int? FailedStep { get; set; }
+
     [DataMember(Name = "count", EmitDefaultValue = false)] public int? Count { get; set; }
     [DataMember(Name = "id", EmitDefaultValue = false)] public long? Id { get; set; }
     [DataMember(Name = "category", EmitDefaultValue = false)] public string? Category { get; set; }

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import os
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
@@ -21,6 +21,72 @@ Number = Annotated[float, Field(allow_inf_nan=False)]
 PositiveLength = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Name = Annotated[str, Field(min_length=1, pattern=r"\S")]
 Point = Annotated[list[Number], Field(min_length=2, max_length=2)]
+
+
+_BATCH_FIELDS = {
+    "select": {"element_ids": (ElementIds, ...)},
+    "isolate": {"element_ids": (ElementIds, ...), "reset": (bool, False)},
+    "move": {
+        "element_ids": (NonEmptyIds, ...),
+        "dx_mm": (Number, ...),
+        "dy_mm": (Number, ...),
+        "dz_mm": (Number, 0),
+    },
+    "place_family": {
+        "family": (Name, ...),
+        "type_name": (Name | None, ...),
+        "x_mm": (Number, ...),
+        "y_mm": (Number, ...),
+        "level": (Name, ...),
+        "rotation_deg": (Number, 0),
+    },
+    "create_wall": {
+        "start_mm": (Point, ...),
+        "end_mm": (Point, ...),
+        "level": (Name, ...),
+        "wall_type": (Name | None, ...),
+        "height_mm": (PositiveLength, 3000),
+    },
+    "set_parameter": {
+        "element_id": (ElementId, ...),
+        "parameter": (Name, ...),
+        "value": (str, ...),
+    },
+    "delete": {"element_ids": (NonEmptyIds, ...)},
+}
+for _action in ("move", "place_family", "create_wall", "set_parameter", "delete"):
+    _BATCH_FIELDS[_action]["dry_run"] = (bool, False)
+_BATCH_MODELS = {
+    action: create_model(action, __config__=ConfigDict(extra="forbid"), **fields)
+    for action, fields in _BATCH_FIELDS.items()
+}
+
+
+class BatchStep(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal[
+        "move", "place_family", "create_wall", "set_parameter", "delete", "select", "isolate"
+    ]
+    args: dict
+
+    @model_validator(mode="after")
+    def validate_args(self):
+        self.args = _BATCH_MODELS[self.action].model_validate(self.args).model_dump()
+        if self.action == "isolate" and not self.args["reset"] and not self.args["element_ids"]:
+            raise ValueError("element_ids must not be empty unless reset is true.")
+        if self.action == "create_wall" and self.args["start_mm"] == self.args["end_mm"]:
+            raise ValueError("Wall endpoints must differ.")
+        return self
+
+    def payload(self) -> dict:
+        def camel(key):
+            first, *rest = key.split("_")
+            return first + "".join(part.title() for part in rest)
+
+        return {
+            "command": self.action.replace("_", "-"),
+            **{camel(key): value for key, value in self.args.items()},
+        }
 
 
 def millimeters_to_feet(value: float) -> float:
@@ -83,10 +149,18 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_move(
-        element_ids: NonEmptyIds, dx_mm: Number, dy_mm: Number, dz_mm: Number = 0
+        element_ids: NonEmptyIds,
+        dx_mm: Number,
+        dy_mm: Number,
+        dz_mm: Number = 0,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
-        """Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes."""
-        return await send("move", elementIds=element_ids, dxMm=dx_mm, dyMm=dy_mm, dzMm=dz_mm)
+        """Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
+        dry_run executes and rolls back, returning the same verification block without changing the model.
+        """
+        return await send(
+            "move", elementIds=element_ids, dxMm=dx_mm, dyMm=dy_mm, dzMm=dz_mm, dryRun=dry_run
+        )
 
     @action
     async def revit_place_family(
@@ -96,6 +170,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         y_mm: Number,
         level: Name,
         rotation_deg: Number = 0,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
         """Place a loaded unhosted family on a named level for layout.
 
@@ -104,6 +179,8 @@ def register_actions(mcp, execute, host_provider) -> None:
         are rejected. Missing families return similar names with categories.
         Model XY is in millimetres and Z rotation in degrees.
         Use roomCenterMm when placing something inside a room.
+
+        dry_run executes and rolls back, returning the same verification block without changing the model.
         """
         return await send(
             "place-family",
@@ -113,6 +190,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             yMm=y_mm,
             level=level,
             rotationDeg=rotation_deg,
+            dryRun=dry_run,
         )
 
     @action
@@ -122,8 +200,11 @@ def register_actions(mcp, execute, host_provider) -> None:
         level: Name,
         wall_type: Name | None,
         height_mm: PositiveLength = 3000,
+        dry_run: bool = False,
     ) -> dict[str, Any]:
-        """Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type."""
+        """Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.
+        dry_run executes and rolls back, returning the same verification block without changing the model.
+        """
         if start_mm == end_mm:
             raise ToolError("Wall endpoints must differ.")
         return await send(
@@ -133,16 +214,34 @@ def register_actions(mcp, execute, host_provider) -> None:
             level=level,
             wallType=wall_type,
             heightMm=height_mm,
+            dryRun=dry_run,
         )
 
     @action
     async def revit_set_parameter(
-        element_id: ElementId, parameter: Name, value: str
+        element_id: ElementId, parameter: Name, value: str, dry_run: bool = False
     ) -> dict[str, Any]:
-        """Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units."""
-        return await send("set-parameter", elementId=element_id, parameter=parameter, value=value)
+        """Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.
+        dry_run executes and rolls back, returning the same verification block without changing the model.
+        """
+        return await send(
+            "set-parameter", elementId=element_id, parameter=parameter, value=value, dryRun=dry_run
+        )
 
     @action
-    async def revit_delete(element_ids: NonEmptyIds) -> dict[str, Any]:
-        """Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents."""
-        return await send("delete", elementIds=element_ids)
+    async def revit_delete(element_ids: NonEmptyIds, dry_run: bool = False) -> dict[str, Any]:
+        """Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.
+        dry_run executes and rolls back, returning the same verification block without changing the model.
+        """
+        return await send("delete", elementIds=element_ids, dryRun=dry_run)
+
+    @action
+    async def revit_batch(
+        steps: Annotated[list[BatchStep], Field(min_length=1, max_length=50)],
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Execute up to 50 actions with one undo step; roll back the batch on its first failure.
+
+        dry_run executes and rolls back, returning the same verification block without changing the model.
+        """
+        return await send("batch", steps=[step.payload() for step in steps], dryRun=dry_run)
