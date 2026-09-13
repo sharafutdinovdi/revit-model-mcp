@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Build.Options;
 using Microsoft.Extensions.Options;
 using ModularPipelines.Attributes;
@@ -19,7 +20,7 @@ namespace Build.Modules;
 ///     Create the .msi installer.
 /// </summary>
 [DependsOn<ResolveVersioningModule>]
-[DependsOn<CompileProjectModule>]
+[DependsOn<CompileProjectModule>(Optional = true)]
 public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) : Module
 {
     protected override async Task ExecuteModuleAsync(IModuleContext context, CancellationToken cancellationToken)
@@ -43,13 +44,40 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
 
         builderFile.ShouldNotBeNull($"No installer builder was found for the project: {wixInstaller.NameWithoutExtension}");
 
-        var targetDirectories = wixTarget.Folder!
+        var outputFolder = SolutionRoot.Directory.GetFolder(buildOptions.Value.OutputDirectory);
+        var contentFolder = outputFolder.CreateFolder("installer-content");
+        contentFolder.Clean();
+        var targetDirectories = new List<string>();
+        var buildDirectories = wixTarget.Folder!
             .GetFolder("bin")
-            .GetFolders(folder => folder.Name == "publish")
-            .Select(folder => folder.Path)
-            .ToArray();
+            .GetFolders(folder => Regex.IsMatch(folder.Name, @"^Release\.R\d{2}$"));
 
-        targetDirectories.ShouldNotBeEmpty("No content were found to create an installer");
+        foreach (var buildDirectory in buildDirectories)
+        {
+            var yearFolder = contentFolder.CreateFolder(buildDirectory.Name);
+            var assemblyFolder = yearFolder.CreateFolder("RevitModelMcp");
+            foreach (var source in buildDirectory.GetFiles(file => file.Exists))
+            {
+                var relativePath = Path.GetRelativePath(buildDirectory.Path, source.Path);
+                if (relativePath.Split(Path.DirectorySeparatorChar)[0] == "publish") continue;
+                source.Name.StartsWith("RevitAPI", StringComparison.OrdinalIgnoreCase)
+                    .ShouldBeFalse($"Revit API binaries must not be distributed: {source.Path}");
+                var destination = assemblyFolder.GetFile(relativePath);
+                destination.Folder!.Create();
+                source.CopyTo(destination.Path);
+            }
+
+            assemblyFolder.GetFile("RevitModelMcp.dll").Exists.ShouldBeTrue($"Missing add-in: {buildDirectory.Path}");
+            wixTarget.Folder.GetFile("RevitModelMcp.addin").CopyTo(yearFolder.GetFile("RevitModelMcp.addin").Path);
+            foreach (var name in new[] { "LICENSE", "THIRD-PARTY-NOTICES.md" })
+            {
+                SolutionRoot.Directory.GetFile(name).CopyTo(yearFolder.GetFile(name).Path);
+            }
+
+            targetDirectories.Add(yearFolder.Path);
+        }
+
+        targetDirectories.ShouldNotBeEmpty("No Release.R* builds were found to create an installer");
 
         await context.Shell.Command.ExecuteCommandLineTool(
             new GenericCommandLineToolOptions(builderFile.Path)
@@ -65,9 +93,8 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
                 }
             }, cancellationToken: cancellationToken);
 
-        var outputFolder = SolutionRoot.Directory.GetFolder(buildOptions.Value.OutputDirectory);
         var outputFiles = outputFolder.GetFiles(file => file.Extension == ".msi").ToArray();
-        outputFiles.ShouldNotBeEmpty("Failed to create an installer");
+        outputFiles.Length.ShouldBe(2, "Exactly two installers must be produced");
 
         foreach (var outputFile in outputFiles)
         {

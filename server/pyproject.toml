@@ -9,7 +9,8 @@ description = "MCP access to live Autodesk Revit models, read-only by default wi
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-license-files = ["README.md"]
+license-files = ["LICENSE"]
+keywords = ["revit", "bim", "mcp", "mcp-server", "autodesk", "claude"]
 authors = [{name = "Dinar Sharafutdinov"}]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -18,12 +19,15 @@ classifiers = [
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Topic :: Scientific/Engineering",
 ]
 dependencies = ["mcp>=2.0.0"]
 
 [project.urls]
+Homepage = "https://github.com/sharafutdinovdi/revit-model-mcp"
+Changelog = "https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/CHANGELOG.md"
 Repository = "https://github.com/sharafutdinovdi/revit-model-mcp"
 Documentation = "https://github.com/sharafutdinovdi/revit-model-mcp#readme"
 Issues = "https://github.com/sharafutdinovdi/revit-model-mcp/issues"

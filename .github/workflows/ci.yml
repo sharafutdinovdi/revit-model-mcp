@@ -31,6 +31,114 @@ jobs:
       - name: Test server
         working-directory: server
         run: uv run --with pytest pytest -q
+      - name: Build installers
+        shell: pwsh
+        env:
+          Build__Version: 0.0.0-ci
+        run: |
+          dotnet run --project build -- pack --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          $installers = @(Get-ChildItem output/*.msi)
+          if ($installers.Count -ne 2) { throw "Expected two MSIs, found $($installers.Count)" }
+          $installers | ForEach-Object { Write-Host "MSI: $($_.Name) ($($_.Length) bytes)" }
+      - name: Verify MSI contents
+        shell: pwsh
+        run: |
+          foreach ($msi in Get-ChildItem output/*.msi) {
+            $target = Join-Path $env:RUNNER_TEMP "extract-$($msi.BaseName)"
+            $log = Join-Path $env:RUNNER_TEMP "$($msi.BaseName)-extract.log"
+            $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn /norestart TARGETDIR=`"$target`" /l*v `"$log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "MSI extraction failed: $($process.ExitCode)" }
+            $files = @(Get-ChildItem $target -Recurse -File)
+            if ($files | Where-Object Name -Like 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
+            $manifests = @($files | Where-Object Name -EQ 'RevitModelMcp.addin')
+            if ($manifests.Count -ne 3) { throw 'Unexpected Revit year count in MSI' }
+            foreach ($year in '22', '26', '27') {
+              $manifest = @($manifests | Where-Object { $_.Directory.Name -eq "20$year" })
+              if ($manifest.Count -ne 1) { throw "Missing or duplicate R$year manifest in MSI" }
+              if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year assembly in MSI" }
+              Write-Host "ASSERT: $($msi.Name) contains R$year manifest and assembly"
+            }
+            Write-Host "ASSERT: $($msi.Name) contains no RevitAPI DLLs"
+          }
+      - name: Smoke test single-user MSI
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem output/*-SingleUser.msi).FullName
+          $roots = @("$env:APPDATA/Autodesk/Revit/Addins/2022", "$env:APPDATA/Autodesk/Revit/Addins/2026", "$env:APPDATA/Autodesk/Revit/Addins/2027")
+          $log = "$env:RUNNER_TEMP/mcp-single-install.log"
+          try {
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "SingleUser install failed: $($process.ExitCode)" }
+            Write-Host 'ASSERT: SingleUser install exit code 0'
+            foreach ($root in $roots) {
+              foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll') {
+                if (!(Test-Path "$root/$relative")) { throw "Missing installed file: $root/$relative" }
+                Write-Host "ASSERT: installed $root/$relative"
+              }
+            }
+          } finally {
+            $process = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-single-uninstall.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "SingleUser uninstall failed: $($process.ExitCode)" }
+            Write-Host 'ASSERT: SingleUser uninstall exit code 0'
+          }
+          foreach ($root in $roots) {
+            foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll') {
+              if (Test-Path "$root/$relative") { throw "File remains after uninstall: $root/$relative" }
+              Write-Host "ASSERT: removed $root/$relative"
+            }
+          }
+      - name: Smoke test multi-user MSI
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem output/*-MultiUser.msi).FullName
+          $roots = @("$env:ProgramData/Autodesk/Revit/Addins/2022", "$env:ProgramData/Autodesk/Revit/Addins/2026", "$env:ProgramFiles/Autodesk/Revit/Addins/2027")
+          $log = "$env:RUNNER_TEMP/mcp-multi-install.log"
+          try {
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "MultiUser install failed: $($process.ExitCode)" }
+            Write-Host 'ASSERT: MultiUser install exit code 0'
+            foreach ($root in $roots) {
+              foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll') {
+                if (!(Test-Path "$root/$relative")) { throw "Missing installed file: $root/$relative" }
+                Write-Host "ASSERT: installed $root/$relative"
+              }
+            }
+          } finally {
+            $process = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-multi-uninstall.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "MultiUser uninstall failed: $($process.ExitCode)" }
+            Write-Host 'ASSERT: MultiUser uninstall exit code 0'
+          }
+          foreach ($root in $roots) {
+            foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll') {
+              if (Test-Path "$root/$relative") { throw "File remains after uninstall: $root/$relative" }
+              Write-Host "ASSERT: removed $root/$relative"
+            }
+          }
+      - name: Upload MSI logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-logs
+          path: |
+            ${{ runner.temp }}/mcp-*.log
+            ${{ runner.temp }}/*-extract.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers
+          path: output/*.msi
+          if-no-files-found: error
+      - name: Verify WinGet manifest generation
+        shell: pwsh
+        run: |
+          ./build/winget/New-WingetManifests.ps1 -Version 0.0.0-ci -ReleaseTag v0.0.0-ci -OutputDir artifacts/winget -SkipDownload
+          winget --version
+          $output = winget validate --manifest artifacts/winget --disable-interactivity 2>&1 | Out-String
+          Write-Host $output
+          # winget exits non-zero for "succeeded with warnings"; only a hard failure must fail the job.
+          if ($output -notmatch 'Manifest validation succeeded') { throw 'WinGet validation failed' }
+          # The pwsh shell wrapper exits with the last native exit code; reset it after the check above.
+          $global:LASTEXITCODE = 0
       - name: Stage add-in artifacts
         shell: pwsh
         run: |
@@ -62,4 +170,7 @@ jobs:
           if-no-files-found: error
       - name: Build Python package
         working-directory: server
-        run: uv build
+        run: |
+          uv build
+          if ($LASTEXITCODE -ne 0) { throw 'Python build failed' }
+          uvx twine check dist/*
