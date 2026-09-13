@@ -1,0 +1,39 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sharafutdinovdi/revit-model-mcp",
+  "description": "The Python package exposes Revit tools over MCP stdio, read-only by default.",
+  "repository": {
+    "url": "https://github.com/sharafutdinovdi/revit-model-mcp",
+    "source": "github"
+  },
+  "version": "0.2.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "revit-model-mcp",
+      "version": "0.2.0",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "REVIT_MCP_HOST",
+          "description": "Revit host: local PowerShell, ssh:<alias>, or an http://host:port or https://host:port endpoint.",
+          "isRequired": true,
+          "default": "local"
+        },
+        {
+          "name": "REVIT_MCP_REDACT_PATHS",
+          "description": "Set to 1 to replace document and nested model paths with file names. Disabled by default.",
+          "default": "0"
+        },
+        {
+          "name": "REVIT_MCP_ALLOW_WRITE",
+          "description": "Dangerous opt-in: set to 1 to enable actions that modify or delete model elements. Also requires the workstation allow-write gate. Disabled by default.",
+          "default": "0"
+        }
+      ]
+    }
+  ]
+}
