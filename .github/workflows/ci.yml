@@ -132,8 +132,11 @@ jobs:
         shell: pwsh
         run: |
           ./build/winget/New-WingetManifests.ps1 -Version 0.0.0-ci -ReleaseTag v0.0.0-ci -OutputDir artifacts/winget -SkipDownload
-          winget validate --manifest artifacts/winget --disable-interactivity
-          if ($LASTEXITCODE -ne 0) { throw 'WinGet validation failed' }
+          winget --version
+          $output = winget validate --manifest artifacts/winget --disable-interactivity 2>&1 | Out-String
+          Write-Host $output
+          # winget exits non-zero for "succeeded with warnings"; only a hard failure must fail the job.
+          if ($output -notmatch 'Manifest validation succeeded') { throw 'WinGet validation failed' }
       - name: Stage add-in artifacts
         shell: pwsh
         run: |
