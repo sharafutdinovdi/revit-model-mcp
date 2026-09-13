@@ -137,6 +137,8 @@ jobs:
           Write-Host $output
           # winget exits non-zero for "succeeded with warnings"; only a hard failure must fail the job.
           if ($output -notmatch 'Manifest validation succeeded') { throw 'WinGet validation failed' }
+          # The pwsh shell wrapper exits with the last native exit code; reset it after the check above.
+          $global:LASTEXITCODE = 0
       - name: Stage add-in artifacts
         shell: pwsh
         run: |
