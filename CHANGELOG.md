@@ -6,6 +6,18 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Single-user and multi-user MSI release assets with CI extraction, installation and removal smoke tests.
+- SHA256 checksums for the per-year ZIPs, MSIs, Python wheel and source distribution.
+- PyPI trusted publishing and best-effort MCP Registry publishing through GitHub OIDC for stable releases.
+- MCP Registry manifest and uvx configuration for Claude Code and Claude Desktop.
+- WinGet manifest templates, generation, validation and optional submission with `WINGET_TOKEN`.
+
+### Fixed
+
+- Python distributions include the MIT license file and advertise tested Python 3.13 support.
+
 ## [0.2.0] - 2026-09-12
 
 ### Added

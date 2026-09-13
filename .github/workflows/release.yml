@@ -51,12 +51,74 @@ jobs:
             if (Get-ChildItem $stage -Recurse -Filter 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
             Compress-Archive -Path "$stage/*" -DestinationPath "artifacts/release/revit-model-mcp-addin-$env:RELEASE_VERSION-R$year.zip"
           }
-      - name: Build Python package
-        working-directory: server
-        run: uv build
-      - name: Stage wheel
+      - name: Build installers
         shell: pwsh
-        run: Copy-Item server/dist/*.whl artifacts/release/
+        env:
+          Build__Version: ${{ env.RELEASE_VERSION }}
+        run: |
+          dotnet run --project build -- pack --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          $installers = @(Get-ChildItem output/*.msi)
+          if ($installers.Count -ne 2) { throw "Expected two MSIs, found $($installers.Count)" }
+          $installers | ForEach-Object { Write-Host "MSI: $($_.Name) ($($_.Length) bytes)" }
+      - name: Verify MSI contents
+        shell: pwsh
+        run: |
+          foreach ($msi in Get-ChildItem output/*.msi) {
+            $target = Join-Path $env:RUNNER_TEMP "extract-$($msi.BaseName)"
+            $log = Join-Path $env:RUNNER_TEMP "$($msi.BaseName)-extract.log"
+            $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn /norestart TARGETDIR=`"$target`" /l*v `"$log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "MSI extraction failed: $($process.ExitCode)" }
+            $files = @(Get-ChildItem $target -Recurse -File)
+            if ($files | Where-Object Name -Like 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
+            $manifests = @($files | Where-Object Name -EQ 'RevitModelMcp.addin')
+            if ($manifests.Count -ne 6) { throw 'Unexpected Revit year count in MSI' }
+            foreach ($year in '22', '23', '24', '25', '26', '27') {
+              $manifest = @($manifests | Where-Object { $_.Directory.Name -eq "20$year" })
+              if ($manifest.Count -ne 1) { throw "Missing or duplicate R$year manifest in MSI" }
+              if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year assembly in MSI" }
+              Write-Host "ASSERT: $($msi.Name) contains R$year manifest and assembly"
+            }
+            Write-Host "ASSERT: $($msi.Name) contains no RevitAPI DLLs"
+          }
+      - name: Upload MSI logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-logs
+          path: |
+            ${{ runner.temp }}/mcp-*.log
+            ${{ runner.temp }}/*-extract.log
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers
+          path: output/*.msi
+          if-no-files-found: error
+      - name: Validate package
+        shell: pwsh
+        run: |
+          uv build server
+          if ($LASTEXITCODE -ne 0) { throw 'Python build failed' }
+          uvx twine check server/dist/*
+          if ($LASTEXITCODE -ne 0) { throw 'Package validation failed' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: python-dist
+          path: server/dist/*
+          if-no-files-found: error
+      - name: Stage release assets and checksums
+        shell: pwsh
+        run: |
+          Copy-Item output/*.msi, server/dist/*.whl, server/dist/*.tar.gz artifacts/release/
+          $expected = @{ '*.zip' = 6; '*.msi' = 2; '*.whl' = 1; '*.tar.gz' = 1 }
+          foreach ($pattern in $expected.Keys) {
+            $count = @(Get-ChildItem "artifacts/release/$pattern").Count
+            if ($count -ne $expected[$pattern]) { throw "Unexpected $pattern count: $count" }
+            Write-Host "ASSERT: $pattern count = $count"
+          }
+          Get-ChildItem artifacts/release -File | Sort-Object Name | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content artifacts/release/SHA256SUMS.txt -Encoding utf8
       - uses: actions/upload-artifact@v7
         with:
           name: release-assets
@@ -78,4 +140,90 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --generate-notes
+        run: |
+          options=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then options+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --generate-notes "${options[@]}"
+
+
+  # PyPI pending publisher:
+  # Project: revit-model-mcp
+  # Owner: sharafutdinovdi
+  # Repository: revit-model-mcp
+  # Workflow: release.yml
+  # Environment: pypi
+  # Prerelease tags skip PyPI and MCP Registry publishing.
+  pypi:
+    needs: build
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: python-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set registry package version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python - <<'PYTHON'
+          import json
+          import os
+          import pathlib
+          import tomllib
+
+          version = tomllib.loads(pathlib.Path('server/pyproject.toml').read_text())['project']['version']
+          assert version == os.environ['RELEASE_TAG'][1:], 'Tag and package version differ'
+          path = pathlib.Path('server/server.json')
+          manifest = json.loads(path.read_text())
+          manifest['version'] = version
+          manifest['packages'][0]['version'] = version
+          path.write_text(json.dumps(manifest, indent=2) + '\n')
+          PYTHON
+      - name: Install mcp-publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh api repos/modelcontextprotocol/registry/releases/latest)
+          tag=$(jq -r .tag_name <<< "$release")
+          archive=mcp-publisher_linux_amd64.tar.gz
+          gh release download "$tag" --repo modelcontextprotocol/registry --pattern "$archive"
+          checksums=$(jq -r '.assets[].name | select(endswith("_checksums.txt"))' <<< "$release")
+          if [[ -n "$checksums" ]]; then
+            gh release download "$tag" --repo modelcontextprotocol/registry --pattern "$checksums"
+            awk -v archive="$archive" '$2 == archive { print }' "$checksums" > publisher.sha256
+            test -s publisher.sha256
+            sha256sum --check publisher.sha256
+          else
+            echo "Release $tag provides no checksum file"
+          fi
+          tar -xzf "$archive" mcp-publisher
+      - name: Publish to MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish server/server.json 2>&1 | tee mcp-publish-response.txt
+
+  # Releases created with GITHUB_TOKEN do not trigger release workflows.
+  winget:
+    needs: publish
+    if: ${{ !contains(github.ref_name, '-') }}
+    uses: ./.github/workflows/winget.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

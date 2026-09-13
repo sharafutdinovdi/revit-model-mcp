@@ -1,0 +1,68 @@
+# WINGET_TOKEN is a classic GitHub PAT with public_repo scope.
+# Without it, manifests are generated and uploaded without submission.
+name: WinGet
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Stable release tag, for example v0.2.0
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+    secrets:
+      WINGET_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  manifests:
+    if: >-
+      !github.event.release.prerelease &&
+      !contains(inputs.release_tag || github.event.release.tag_name, '-')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Generate manifests
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.event.release.tag_name }}
+        run: |
+          $releaseJson = gh release view $env:RELEASE_TAG --repo '${{ github.repository }}' --json isPrerelease,isDraft,tagName
+          if ($LASTEXITCODE -ne 0) { throw 'Release lookup failed' }
+          $release = $releaseJson | ConvertFrom-Json
+          if ($release.isPrerelease -or $release.isDraft) { throw 'A published stable release is required' }
+          ./build/winget/New-WingetManifests.ps1 -Version $env:RELEASE_TAG.Substring(1) -ReleaseTag $env:RELEASE_TAG -OutputDir artifacts/winget
+      - name: Validate manifests
+        shell: pwsh
+        run: |
+          winget validate --manifest artifacts/winget --disable-interactivity
+          if ($LASTEXITCODE -ne 0) { throw 'WinGet validation failed' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: winget-manifests
+          path: artifacts/winget/*.yaml
+          if-no-files-found: error
+      - name: Submit manifests
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (!$env:WINGET_TOKEN) {
+            Write-Host 'WINGET_TOKEN is not set. Manifests are available in the artifact.'
+            exit 0
+          }
+          gh release download --repo microsoft/winget-create --pattern wingetcreate.exe --dir "$env:RUNNER_TEMP/wingetcreate"
+          if ($LASTEXITCODE -ne 0) { throw 'wingetcreate download failed' }
+          & "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" submit artifacts/winget --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE -ne 0) { throw 'WinGet submission failed' }

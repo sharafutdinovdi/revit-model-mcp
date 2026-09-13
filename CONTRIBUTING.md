@@ -21,7 +21,7 @@ Use English for code and public API descriptions.
 
 `main` requires a PR, one approving review, and passing CI, PR checks and CodeQL for contributors.
 Administrators can bypass these rules; force pushes remain disabled.
-CI builds the Revit 2022, 2026 and 2027 add-ins, runs Core and Python tests, and builds the Python package.
+CI builds the Revit 2022, 2026 and 2027 add-ins, runs Core and Python tests, builds and smoke-tests both MSI scopes, and validates the Python package.
 PR checks validate the Conventional Commit title, all workflow files with `actionlint`, C# formatting from `.editorconfig`, and Python lint and formatting with Ruff.
 CodeQL analyzes C# and Python on PRs, pushes to `main` and a weekly schedule.
 Successful PR checks publish one updated comment with add-in artifact links and the Revit years built.
@@ -57,6 +57,7 @@ uv run --with pytest pytest -q
 uvx ruff==0.16.7 check .
 uvx ruff==0.16.7 format --check .
 uv build
+uvx twine check dist/*
 ```
 
 Transport tests use mocked operations and a local fake HTTP server.
@@ -67,12 +68,42 @@ Run `actionlint` 1.7.12 from the repository root after changing a workflow.
 
 ## Release assets
 
-CI uploads installable R22, R26 and R27 folder layouts after its tests pass.
-A `v<version>` tag triggers all six add-in builds, Core/server tests and the Python wheel build.
+CI uploads installable R22, R26 and R27 folder layouts and an `installers` artifact.
+It extracts both MSIs, rejects Revit API assemblies, and checks installation and removal for each built year.
+A `v<version>` tag triggers all six add-in builds and Core/server tests.
 The tag version must match `server/pyproject.toml`.
-The release workflow attaches six ZIP files (R22–R27) and the wheel to a GitHub Release with generated notes.
+The GitHub Release contains six per-year ZIPs, single-user and multi-user MSIs, the Python wheel and source distribution, and `SHA256SUMS.txt` covering every asset.
 Extract each year's ZIP into `%APPDATA%\Autodesk\Revit\Addins\20<yy>` while that Revit instance is closed.
 The archive root contains `RevitModelMcp.addin` and the `RevitModelMcp` assembly directory.
-The workflow does not invoke the optional WiX installer pipeline.
+
+The release workflow invokes the WixSharp pipeline with `Build__Version` set to the tag version.
+CI uses `0.0.0-ci`.
+After building the required years on Windows, the same packaging command is available locally:
+
+```powershell
+$env:Build__Version = '0.2.0'
+dotnet run --project build -- pack --no-build
+```
+
+`pack --no-build` packages existing `src/RevitModelMcp.Addin/bin/Release.R*` directories without cleaning or recompiling them.
+Use a fresh checkout for release packaging to exclude stale configurations.
+The module installs WiX 7, accepts its EULA, installs the matching UI extension, and writes the MSIs to `output/`.
+Single-user installation uses `%APPDATA%\Autodesk\Revit\Addins\<year>`.
+Multi-user installation uses `%ProgramData%\Autodesk\Revit\Addins\<year>` through 2026 and `%ProgramFiles%\Autodesk\Revit\Addins\2027` for 2027.
+
+Stable releases publish the wheel and source distribution to PyPI through GitHub OIDC in the `pypi` environment.
+The pending publisher configuration is listed above the `pypi` job in `.github/workflows/release.yml`.
+PyPI failure does not block the GitHub Release.
+After PyPI succeeds, the workflow updates both versions in `server/server.json` and publishes to the official MCP Registry through GitHub OIDC.
+Registry publishing is best-effort and its response appears in the job log.
+Prerelease tags containing `-` skip PyPI, MCP Registry and WinGet publishing.
+
+The release workflow calls `.github/workflows/winget.yml` after publishing the GitHub Release.
+WinGet also supports manually published releases and `workflow_dispatch` with a stable release tag.
+It generates and validates manifests for `Sharafutdinov.RevitModelMcp` and uploads a `winget-manifests` artifact.
+Submission requires the optional `WINGET_TOKEN` repository secret, a classic PAT with `public_repo` scope.
+Without the token, generation and artifact upload still run.
+On Windows, `build/winget/New-WingetManifests.ps1 -Version 0.2.0 -ReleaseTag v0.2.0 -OutputDir artifacts/winget` downloads the MSIs and reads their hashes and product codes.
+`-SkipDownload` uses matching MSIs already in `output/`.
 
 Contributions are licensed under the [MIT license](LICENSE).

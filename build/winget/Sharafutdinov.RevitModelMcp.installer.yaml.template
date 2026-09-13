@@ -1,0 +1,21 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
+PackageIdentifier: Sharafutdinov.RevitModelMcp
+PackageVersion: '{{VERSION}}'
+InstallerType: wix
+InstallerSwitches:
+  Silent: /qn /norestart
+  SilentWithProgress: /qb /norestart
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    Scope: user
+    InstallerUrl: '{{SINGLE_USER_URL}}'
+    InstallerSha256: '{{SINGLE_USER_SHA256}}'
+    ProductCode: '{{SINGLE_USER_PRODUCT_CODE}}'
+  - Architecture: x64
+    Scope: machine
+    InstallerUrl: '{{MULTI_USER_URL}}'
+    InstallerSha256: '{{MULTI_USER_SHA256}}'
+    ProductCode: '{{MULTI_USER_PRODUCT_CODE}}'
+ManifestType: installer
+ManifestVersion: 1.12.0
