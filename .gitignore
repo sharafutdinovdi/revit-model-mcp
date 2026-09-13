@@ -38,3 +38,6 @@ uv.lock
 *.rfa
 *.log
 docs/screenshots/raw/
+
+# Documentation site
+site/
