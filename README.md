@@ -90,26 +90,26 @@ The picture below is the PNG saved by `revit_export_view` during an earlier sess
 | Views and export | `revit_list_views`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_export_view` |
 | Coordinator checks | `revit_model_health`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check` |
 
-See the [full tool reference](docs/tools.md) for arguments, units and limits.
+See the [full tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/tools/) for arguments, units and limits.
 
 <a id="actions-opt-in"></a>
 
 Actions are opt-in: both `REVIT_MCP_ALLOW_WRITE=1` in the server and the workstation `allow-write` file are required.
 Model mutations support `dry_run` previews and return `verification`; `revit_batch` groups actions into one undo entry.
-See [actions](docs/actions.md) for gates, exceptions and verification failures.
+See [actions](https://sharafutdinovdi.github.io/revit-model-mcp/actions/) for gates, exceptions and verification failures.
 
 ## Remote workstations
 
 Local Windows clients use `REVIT_MCP_HOST=local` under the Revit user's account.
 Remote clients can use an SSH tunnel to the workstation's loopback endpoint.
-HTTP requires a bearer token except for `/health` and binds to loopback by default; see [transport setup](docs/transport.md).
+HTTP requires a bearer token except for `/health` and binds to loopback by default; see [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/).
 
 ## Security
 
 The default tools read the model without model-changing transactions; exports and channel operations write files outside it.
 MCP actions require both gates, while direct HTTP callers require the bearer token and workstation gate.
 `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields, but names, parameter values, errors, channel files and exported image `localPath` values remain visible.
-See [security details](docs/security.md) for authentication and privacy boundaries, and [SECURITY.md](SECURITY.md) to report a vulnerability.
+See [security details](https://sharafutdinovdi.github.io/revit-model-mcp/security/) for authentication and privacy boundaries, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ## Compatibility
 
@@ -122,9 +122,11 @@ See [security details](docs/security.md) for authentication and privacy boundari
 | 2026 | .NET 8 | Builds, live reads/actions and install script |
 | 2027 | .NET 10 | Build evidence |
 
-See [validation evidence](docs/validation.md) for dates and limits, and [known gaps](docs/roadmap.md#known-gaps).
+See [validation evidence](https://sharafutdinovdi.github.io/revit-model-mcp/validation/) for dates and limits, and [known gaps](https://sharafutdinovdi.github.io/revit-model-mcp/roadmap/#known-gaps).
 
 ## Contributing and support
+
+[Documentation](https://sharafutdinovdi.github.io/revit-model-mcp/) covers setup, tools and transport.
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), ask questions in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions), or report bugs and request features through the [issue forms](https://github.com/sharafutdinovdi/revit-model-mcp/issues/new/choose).
 The suite contains 149 C# tests and 148 Python tests; CI runs both languages and builds the supported CI Revit configurations.

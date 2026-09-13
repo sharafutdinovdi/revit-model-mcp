@@ -8,6 +8,8 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- GitHub Pages documentation with MkDocs Material, server reference, search, and llms.txt and llms-full.txt exports.
+
 - Contributor Covenant 2.1 and repository instructions for coding agents.
 - Release highlights from the tagged changelog section and direct installation links.
 
