@@ -1,0 +1,108 @@
+site_name: Revit Model MCP
+site_url: https://sharafutdinovdi.github.io/revit-model-mcp/
+repo_url: https://github.com/sharafutdinovdi/revit-model-mcp
+repo_name: sharafutdinovdi/revit-model-mcp
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: '(prefers-color-scheme: light)'
+      scheme: default
+      primary: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: '(prefers-color-scheme: dark)'
+      scheme: slate
+      primary: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+hooks:
+  - docs/hooks.py
+watch:
+  - README.md
+  - server/README.md
+  - CONTRIBUTING.md
+  - CHANGELOG.md
+  - SECURITY.md
+exclude_docs: |
+  requirements.txt
+  hooks.py
+  __pycache__/
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
+    unrecognized_links: warn
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - pymdownx.snippets:
+      base_path: ['.']
+      check_paths: true
+
+plugins:
+  - search
+  - llmstxt:
+      full_output: llms-full.txt
+      sections:
+        Getting started:
+          - index.md
+          - server.md
+          - contributing.md
+        Concepts:
+          - how-it-works.md
+          - transport.md
+          - security.md
+          - architecture.md
+        Reference:
+          - tools.md
+          - actions.md
+          - validation.md
+          - feed-format.md
+          - roadmap.md
+          - changelog.md
+          - security-policy.md
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install: https://sharafutdinovdi.github.io/revit-model-mcp/#install
+      - Server: server.md
+  - How it works: how-it-works.md
+  - Tools: tools.md
+  - Actions: actions.md
+  - Transport: transport.md
+  - Security: security.md
+  - Architecture: architecture.md
+  - Validation: validation.md
+  - Feed format: feed-format.md
+  - Roadmap: roadmap.md
+  - Contributing: contributing.md
+  - Changelog: changelog.md
+  - Security policy: security-policy.md

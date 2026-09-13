@@ -68,6 +68,21 @@ Keep credentials and model files out of commits and use sanitized fixtures.
 Run `uvx ruff==0.16.7 check --fix .` and `uvx ruff==0.16.7 format .` to apply Python lint fixes and formatting.
 Run `actionlint` 1.7.12 from the repository root after changing a workflow.
 
+## Documentation site
+
+The documentation site uses MkDocs Material and includes the repository and server READMEs.
+Preview it from the repository root:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r docs/requirements.txt
+.venv/bin/mkdocs serve
+```
+
+On Windows, use `.venv\Scripts\python.exe` and `.venv\Scripts\mkdocs.exe`.
+Open `http://127.0.0.1:8000/revit-model-mcp/`.
+Run `mkdocs build --strict` in the activated environment before submitting a PR.
+
 ## Test coverage
 
 The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
