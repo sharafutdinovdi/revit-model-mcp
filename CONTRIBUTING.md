@@ -5,6 +5,8 @@ Bug reports include the Revit year, add-in version, installation method, transpo
 For visible failures, attach a screenshot of the dialog or ribbon in the form's screenshot field.
 Usage and installation questions belong in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions).
 
+Contributors follow the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Pull requests
 
 1. Open an issue before a large change and agree on the expected behavior.
@@ -65,6 +67,27 @@ They do not require a Windows workstation.
 Keep credentials and model files out of commits and use sanitized fixtures.
 Run `uvx ruff==0.16.7 check --fix .` and `uvx ruff==0.16.7 format .` to apply Python lint fixes and formatting.
 Run `actionlint` 1.7.12 from the repository root after changing a workflow.
+
+## Test coverage
+
+The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
+A threaded fake HTTP server covers health, authentication, busy responses, job polling and PNG download.
+Core tests cover parsing, serialization, formatting, units and query processing.
+These tests do not require a live Revit model.
+
+Automated tests do not validate live Revit behavior; see [validation evidence](docs/validation.md).
+
+## Release ritual
+
+1. Move Unreleased entries in [CHANGELOG.md](CHANGELOG.md) into `## [X.Y.Z] - YYYY-MM-DD`; leave an empty Unreleased section.
+2. Set `server/pyproject.toml` to the same version and merge the release preparation PR after CI passes.
+3. Tag that commit with `git tag vX.Y.Z` and push it with `git push origin vX.Y.Z`.
+4. Check the Release workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
+5. Check PyPI, MCP Registry and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
+
+The tag version must equal `server/pyproject.toml`.
+Release notes contain Highlights extracted from the matching changelog section, direct Install links and GitHub-generated PR notes.
+A missing or empty version section fails publication.
 
 ## Release assets
 
