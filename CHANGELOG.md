@@ -8,11 +8,19 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Contributor Covenant 2.1 and repository instructions for coding agents.
+- Release highlights from the tagged changelog section and direct installation links.
+
 - Single-user and multi-user MSI release assets with CI extraction, installation and removal smoke tests.
 - SHA256 checksums for the per-year ZIPs, MSIs, Python wheel and source distribution.
 - PyPI trusted publishing and best-effort MCP Registry publishing through GitHub OIDC for stable releases.
 - MCP Registry manifest and uvx configuration for Claude Code and Claude Desktop.
 - WinGet manifest templates, generation, validation and optional submission with `WINGET_TOKEN`.
+
+### Changed
+
+- README presents installation and grouped tools; detailed actions, security and validation references live in `docs/`.
+- Contributor guide includes test coverage and the release ritual.
 
 ### Fixed
 

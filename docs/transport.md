@@ -47,7 +47,7 @@ Redirects are rejected to prevent forwarding the bearer token to another endpoin
 All other routes require `Authorization: Bearer <token>`.
 
 | Request | Result |
-|---|---|
+| --- | --- |
 | `GET /health` | `ok`, `revitVersion`, `documentName`, `processId`, `readOnly` |
 | `POST /jobs?timeout=120` | File-channel job JSON in the body; final response JSON with HTTP 200 |
 | `GET /jobs/{id}` | HTTP 202 while pending; final response with HTTP 200; HTTP 404 after expiry |
@@ -186,7 +186,7 @@ The server and Revit must use the same directory.
 The Revit environment must contain the override before Revit starts.
 
 | File | Role |
-|---|---|
+| --- | --- |
 | `mcp_<uuid>.tmp` | JSON job before publication |
 | `trigger.txt` | Published job awaiting pickup |
 | `response_<timestamp>_<command>.json` | Add-in response |
@@ -257,3 +257,71 @@ This applies to responder metadata and instance listings.
 Image `localPath` remains available to the MCP client.
 The option does not sanitize channel files or arbitrary strings in model data and errors.
 See [server configuration](../server/README.md#configuration).
+
+## Client registration
+
+With the loopback SSH tunnel above running, register the endpoint from the clone root:
+
+```sh
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=http://127.0.0.1:53110 -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$PWD/server" revit-model-mcp
+```
+
+The server process must inherit `REVIT_MCP_TOKEN` from the client's environment or secret configuration.
+For the SSH file channel, use `-e REVIT_MCP_HOST=ssh:revit-host` instead; no HTTP token is needed.
+
+## Request architecture
+
+```mermaid
+flowchart LR
+    Client[MCP client] <-->|stdio| Server[Python server]
+    Server <-->|local PowerShell or SSH| Channel[Windows file channel]
+    Channel <-->|ExternalEvent| Revit[Revit add-in]
+    Server <-->|HTTP + bearer token| Endpoint[Add-in HTTP listener]
+    Endpoint <-->|ExternalEvent| Revit
+```
+
+The server submits jobs over HTTP or writes them to the Windows file channel.
+The add-in processes both through the same ExternalEvent and accepts one job at a time.
+HTTP returns JSON and PNG directly; local and SSH modes keep their file-based responses.
+A heartbeat identifies each Revit instance and its active document.
+The default tools read model data and export images.
+Opt-in actions use the same channel and execute in the Revit API context.
+See [how it works](how-it-works.md), [architecture](architecture.md) and the [feed format](feed-format.md).
+
+## Installation from a clone
+
+The add-in requires Windows and Revit 2022-2027.
+Build with the .NET SDK selected by [`global.json`](../global.json).
+The server requires Python 3.11 or later, [uv](https://docs.astral.sh/uv/getting-started/installation/) and an MCP client.
+Clone on each machine that will build or run a component:
+
+```sh
+git clone https://github.com/sharafutdinovdi/revit-model-mcp.git
+cd revit-model-mcp
+```
+
+The commands below start from the repository root.
+For a downloaded script, use `Unblock-File .\install.ps1` to remove its downloaded-file block or `Set-ExecutionPolicy -Scope Process Bypass` for the current PowerShell session.
+On Windows, close Revit and build and install for Revit 2026:
+
+```powershell
+.\install.ps1 -Year 2026 -Source Build
+```
+
+Or install the latest GitHub release for every detected Revit year (2022-2027):
+
+```powershell
+.\install.ps1 -Source Release
+```
+
+The inline build, copy and manifest-patching commands live in [`install.ps1`](../install.ps1).
+Installation uses `RevitModelMcp\` and `RevitModelMcp.addin` under `%APPDATA%\Autodesk\Revit\Addins\<year>`.
+Use `-Year 2024,2026` to select years and `-Version 0.2.0` to pin a release.
+`-Source Release` requires a release with an asset for each requested year: v0.1.0 ships R22–R26; v0.2.0 adds R27.
+Add `-SignThumbprint <thumbprint>` to sign installed DLLs with a local code-signing certificate on workstations where Revit shows the unsigned add-in dialog on every rebuild.
+Add `-RegisterClaude` to register the local server with Claude Code; both `claude` and `uv` must be on PATH.
+Use `-Uninstall -Year 2026` to remove that year's add-in; local settings remain intact.
+The script refuses to run while Revit is open unless `-Force` is supplied.
+Start Revit and open a model after installation, or restart it if it was already running.
+The add-in creates `%LOCALAPPDATA%\RevitModelMcp\instance_<processId>.json` and updates it every five seconds.
+It adds no ribbon tab or button.
