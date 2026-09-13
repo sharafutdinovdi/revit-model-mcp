@@ -1,0 +1,31 @@
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #005FB8;
+  --md-primary-fg-color--light: #005FB8;
+  --md-primary-fg-color--dark: #005FB8;
+}
+
+.md-typeset code {
+  font-size: 0.85em;
+}
+
+.md-typeset img[src$=".gif"] {
+  aspect-ratio: 1500 / 520;
+}
+
+.md-typeset picture img {
+  aspect-ratio: 2100 / 806;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+
+  .md-typeset img[src$=".gif"] {
+    display: none;
+  }
+}
