@@ -6,28 +6,55 @@ It requires Python 3.11 or later and the matching add-in loaded in Revit on Wind
 
 ## Install and run
 
-Run from the repository root:
+After the first PyPI release, run the published package with uv:
 
 ```sh
-uv run --directory server revit-model-mcp
+uvx revit-model-mcp
 ```
 
-Register a local Windows server with Claude Code:
+Register the local Windows server with Claude Code:
 
-```powershell
-$server = (Resolve-Path ./server).Path
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$server" revit-model-mcp
+```sh
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -- uvx revit-model-mcp
 ```
 
 For a client on macOS or Linux:
 
 ```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$PWD/server" revit-model-mcp
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=ssh:revit-host -e REVIT_MCP_REDACT_PATHS=1 -- uvx revit-model-mcp
 ```
 
-Run the registration commands from the clone root on the MCP client.
 Replace `revit-host` with an alias from the client's SSH configuration.
 The Windows SSH session must use the same account as Revit or an explicitly shared channel directory.
+
+Claude Desktop uses this entry in `claude_desktop_config.json` on Windows:
+
+```json
+{
+  "mcpServers": {
+    "revit-model-mcp": {
+      "command": "uvx",
+      "args": ["revit-model-mcp"],
+      "env": {
+        "REVIT_MCP_HOST": "local",
+        "REVIT_MCP_REDACT_PATHS": "1"
+      }
+    }
+  }
+}
+```
+
+`uvx` must be available on the client's PATH; an absolute executable path is also supported.
+A remote Desktop client uses `REVIT_MCP_HOST=ssh:revit-host`.
+
+For development or before the first PyPI publication, run from the repository root:
+
+```sh
+uv run --directory server revit-model-mcp
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -- uv run --directory /absolute/path/to/revit-model-mcp/server revit-model-mcp
+```
+
+mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 
 ## Configuration
 
@@ -100,24 +127,4 @@ See the [tool arguments](../README.md#tools), [action arguments](../README.md#ac
 
 ## License
 
-MIT License
-
-Copyright (c) 2026 Dinar Sharafutdinov
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+[MIT](LICENSE), copyright (c) 2026 Dinar Sharafutdinov.
