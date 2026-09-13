@@ -6,29 +6,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-
-- GitHub Pages documentation with MkDocs Material, server reference, search, and llms.txt and llms-full.txt exports.
-
-- Contributor Covenant 2.1 and repository instructions for coding agents.
-- Release highlights from the tagged changelog section and direct installation links.
-
-- Single-user and multi-user MSI release assets with CI extraction, installation and removal smoke tests.
-- SHA256 checksums for the per-year ZIPs, MSIs, Python wheel and source distribution.
-- PyPI trusted publishing and best-effort MCP Registry publishing through GitHub OIDC for stable releases.
-- MCP Registry manifest and uvx configuration for Claude Code and Claude Desktop.
-- WinGet manifest templates, generation, validation and optional submission with `WINGET_TOKEN`.
-
-### Changed
-
-- README presents installation and grouped tools; detailed actions, security and validation references live in `docs/`.
-- Contributor guide includes test coverage and the release ritual.
-
-### Fixed
-
-- Python distributions include the MIT license file and advertise tested Python 3.13 support.
-
-## [0.2.0] - 2026-09-12
+## [0.2.0] - 2026-09-13
 
 ### Added
 
@@ -39,12 +17,26 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `verification` with `before` captured before the change and `after` re-read after commit (or before rollback on a dry run).
 - `verification.error` when the post-commit re-read fails.
 - `revit_batch`: up to 50 actions in one `TransactionGroup` assimilated into a single undo step, rolled back on the first failed step.
+- GitHub Pages documentation with MkDocs Material, server reference, search, and llms.txt and llms-full.txt exports.
+- Contributor Covenant 2.1 and repository instructions for coding agents.
+- Release highlights from the tagged changelog section and direct installation links.
+- Single-user and multi-user MSI release assets with CI extraction, installation and removal smoke tests.
+- SHA256 checksums for the per-year ZIPs, MSIs, Python wheel and source distribution.
+- PyPI trusted publishing and best-effort MCP Registry publishing through GitHub OIDC for stable releases.
+- MCP Registry manifest and uvx configuration for Claude Code and Claude Desktop.
+- WinGet manifest templates, generation, validation and optional submission with `WINGET_TOKEN`.
 
 ### Changed
 
 - README quick start uses the install script.
 - MCP handshake version comes from package metadata.
 - `install.ps1` reports a missing release asset for a Revit year with a clear message.
+- README presents installation and grouped tools; detailed actions, security and validation references live in `docs/`.
+- Contributor guide includes test coverage and the release ritual.
+
+### Fixed
+
+- Python distributions include the MIT license file and advertise tested Python 3.13 support.
 
 ## [0.1.0] - 2026-09-11
 
