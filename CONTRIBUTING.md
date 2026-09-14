@@ -5,7 +5,7 @@ Bug reports include the Revit year, add-in version, installation method, transpo
 For visible failures, attach a screenshot of the dialog or ribbon in the form's screenshot field.
 Usage and installation questions belong in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions).
 
-Contributors follow the [code of conduct](CODE_OF_CONDUCT.md).
+Contributors follow the [code of conduct](https://github.com/sharafutdinovdi/.github/blob/main/CODE_OF_CONDUCT.md).
 
 ## Pull requests
 
@@ -36,12 +36,34 @@ Dependabot patch and minor updates enable squash auto-merge; required checks and
 Major updates receive a `needs-review` label and wait for a maintainer.
 NuGet manifests under `build/install/` and publishing workflow updates still require owner review.
 All merges use squash with the PR title and body, and history remains linear.
+## Automated checks
+
 CI builds the Revit 2022, 2026 and 2027 add-ins, runs Core and Python tests, builds and smoke-tests both MSI scopes, and validates the Python package.
 PR checks validate the Conventional Commit title, all workflow files with `actionlint`, C# formatting from `.editorconfig`, and Python lint and formatting with Ruff.
 CodeQL analyzes C# and Python on PRs, pushes to `main` and a weekly schedule.
 Successful PR checks publish one updated comment with add-in artifact links and the Revit years built.
 Artifact downloads require a GitHub login and expire after 90 days.
+The shared `community.yml` workflow applies path labels, welcomes contributors and handles stale issues and PRs.
+The shared `dependabot-auto-merge.yml` workflow handles dependency update review and auto-merge.
+PR checks call the shared `check-failure-comment.yml` workflow to maintain one failure comment with reproduction commands for same-repository PRs other than Dependabot.
+These workflows are maintained in [sharafutdinovdi/.github](https://github.com/sharafutdinovdi/.github#caller-workflows).
 Path labels are applied automatically; `enhancement`, `bug`, `docs` and `dependencies` group generated release notes.
+
+## Local checks
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.11+, the .NET SDK selected by `global.json`, and actionlint 1.7.12 on PATH.
+Run from the repository root:
+
+```sh
+uv tool install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+The hooks apply Ruff 0.16.7 fixes and formatting, verify C# formatting, lint workflows, and check file endings, whitespace, YAML and JSON.
+The C# hook sets `Configuration=Debug.R26` and `DeployAddin=false` and runs once when C# files change.
+Full solution formatting requires Windows; macOS and Linux contributors can run `SKIP=dotnet-format pre-commit run --all-files` and use the Windows PR check for C# formatting.
+Review hook edits and stage them before committing again.
 
 ## Build and test
 

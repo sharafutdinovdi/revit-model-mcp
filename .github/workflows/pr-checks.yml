@@ -59,3 +59,27 @@ jobs:
       - name: Verify Python formatting
         working-directory: server
         run: ruff format --check .
+
+  explain-failure:
+    needs: [ci, quality]
+    if: >-
+      failure() && github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    permissions:
+      actions: read
+      pull-requests: write
+    uses: sharafutdinovdi/.github/.github/workflows/check-failure-comment.yml@main
+    with:
+      step-commands: >-
+        {
+          "Check Conventional Commit title": "gh pr edit --title 'ci: adopt shared workflows and pre-commit'",
+          "Check workflows with actionlint": "actionlint",
+          "Verify C# formatting": "$env:Configuration = 'Debug.R26'; $env:DeployAddin = 'false'; dotnet format RevitModelMcp.sln --verify-no-changes --verbosity minimal",
+          "Install documentation dependencies": "pip install -r docs/requirements.txt",
+          "Build documentation": "mkdocs build --strict",
+          "Install Ruff": "pip install ruff==0.16.7",
+          "Check Python": "cd server; uvx ruff==0.16.7 check .",
+          "Verify Python formatting": "cd server; uvx ruff==0.16.7 format --check ."
+        }
+    secrets: inherit

@@ -1,0 +1,27 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+  - repo: local
+    hooks:
+      - id: dotnet-format
+        name: dotnet format
+        language: system
+        entry: python3 -c 'import os, subprocess; os.environ.update(Configuration="Debug.R26", DeployAddin="false"); raise SystemExit(subprocess.call(["dotnet", "format", "RevitModelMcp.sln", "--verify-no-changes", "--verbosity", "minimal"]))'
+        files: '\.cs$'
+        pass_filenames: false
+      - id: actionlint
+        name: actionlint
+        language: system
+        entry: actionlint
+        files: '^\.github/workflows/.*\.ya?ml$'
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
