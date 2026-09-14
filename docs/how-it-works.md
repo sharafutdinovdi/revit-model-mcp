@@ -4,6 +4,10 @@ The Python server runs beside the MCP client and communicates over stdio.
 The add-in runs inside Revit on Windows and reads the active document through an ExternalEvent.
 A remote client can use HTTP with a bearer token or the SSH file channel.
 
+## Compatibility
+
+The add-in targets the lowest stable Revit API build of each supported year for compatibility with every patch of that year.
+
 ## First call
 
 1. Revit loads `RevitModelMcp.addin` and starts a file watcher, heartbeat and optional HTTP listener.
