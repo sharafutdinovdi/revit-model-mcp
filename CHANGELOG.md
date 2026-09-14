@@ -6,6 +6,19 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.3.0...v0.4.0) (2026-09-14)
+
+
+### Features
+
+* add Claude Desktop bundle, release attestations and Scorecard ([#34](https://github.com/sharafutdinovdi/revit-model-mcp/issues/34)) ([15f1ff4](https://github.com/sharafutdinovdi/revit-model-mcp/commit/15f1ff4710b971d2f29f5b8558050207c2f9f05b))
+
+
+### Documentation
+
+* add brand mark, group the docs navigation and drop stale install notes ([#21](https://github.com/sharafutdinovdi/revit-model-mcp/issues/21)) ([5f5e67b](https://github.com/sharafutdinovdi/revit-model-mcp/commit/5f5e67b69638b8279e44ad1161e2a9aa38453816))
+* **brand:** switch the mark to stacked floor plates ([#22](https://github.com/sharafutdinovdi/revit-model-mcp/issues/22)) ([5003907](https://github.com/sharafutdinovdi/revit-model-mcp/commit/5003907a165cb3cf7d72b77e590f899d099323ad))
+
 ## [0.3.0] - 2026-09-13
 
 ### Added
