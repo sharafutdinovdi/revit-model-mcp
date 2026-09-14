@@ -126,8 +126,9 @@ The pipeline appends an Install section and replaces only that section on retrie
 A manually pushed tag also runs the pipeline and uses GitHub-generated notes if no release exists.
 The tag version must equal `server/pyproject.toml`.
 
-Release PRs created or updated with `GITHUB_TOKEN` do not trigger pull request checks.
-The maintainer closes and reopens the release PR after its latest update to start those checks before merging.
+Release PRs created or updated with `GITHUB_TOKEN` require approval to run pull request workflows.
+The maintainer selects **Approve workflows to run** in the release PR before waiting for required checks.
+See [GitHub workflow trigger rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
 Repository Actions settings must allow GitHub Actions to create pull requests.
 
 ## Release assets
