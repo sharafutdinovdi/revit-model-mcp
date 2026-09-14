@@ -8,6 +8,7 @@ For people reviewing or automating Revit models with an AI client: read a live R
 
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sharafutdinovdi/revit-model-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/sharafutdinovdi/revit-model-mcp)
 [![Latest release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest)
 [![PyPI](https://img.shields.io/pypi/v/revit-model-mcp?style=flat-square)](https://pypi.org/project/revit-model-mcp/)
 [![Downloads](https://img.shields.io/github/downloads/sharafutdinovdi/revit-model-mcp/total?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases)
@@ -16,6 +17,17 @@ For people reviewing or automating Revit models with an AI client: read a live R
 [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 ## Install
+
+### Claude Desktop bundle
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on the client's PATH, download `revit-model-mcp-<version>.mcpb` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest), and open it in Claude Desktop.
+The settings form configures the workstation host, path redaction, optional actions and the HTTP bearer token without editing JSON.
+Use `local` on the Windows Revit workstation, or [configure a remote workstation](#remote-workstations) for macOS and Linux clients.
+Path redaction starts enabled and actions start disabled.
+The Windows workstation still needs the add-in below.
+See the [bundle guide](bundle/README.md) for build details and prerequisites.
+
+**Verify downloads.** Release assets include GitHub build provenance attestations; follow [download verification](https://sharafutdinovdi.github.io/revit-model-mcp/security/#verify-downloads) before installing.
 
 ### On the Revit workstation
 
@@ -36,7 +48,7 @@ For Claude Code on the same Windows workstation:
 claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uvx revit-model-mcp
 ```
 
-For Claude Desktop, add to its MCP configuration:
+For manual Claude Desktop registration, add to its MCP configuration:
 
 ```json
 {

@@ -8,6 +8,63 @@ permissions:
   contents: read
 
 jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Install MCPB CLI
+        run: npm install --prefix "$RUNNER_TEMP/mcpb" --no-save @anthropic-ai/mcpb@2.1.2
+      - name: Validate and pack Claude Desktop bundle
+        run: |
+          "$RUNNER_TEMP/mcpb/node_modules/.bin/mcpb" validate bundle/manifest.json
+          "$RUNNER_TEMP/mcpb/node_modules/.bin/mcpb" pack bundle "$RUNNER_TEMP/revit-model-mcp.mcpb"
+      - name: Verify bundle configuration
+        run: |
+          node --input-type=module <<'JAVASCRIPT'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          import { pathToFileURL } from 'node:url';
+
+          const { getMcpConfigForManifest } = await import(pathToFileURL(`${process.env.RUNNER_TEMP}/mcpb/node_modules/@anthropic-ai/mcpb/dist/shared/config.js`));
+          const manifest = JSON.parse(readFileSync('bundle/manifest.json', 'utf8'));
+          const documentedTools = [...readFileSync('docs/tools.md', 'utf8').matchAll(/^\| `(revit_\w+)`/gm)].map(match => match[1]).sort();
+          assert.deepEqual(manifest.tools.map(tool => tool.name).sort(), documentedTools);
+          assert.equal(manifest.version, '0.0.0');
+          assert.equal(manifest.user_config.REVIT_MCP_REDACT_PATHS.default, true);
+          assert.equal(manifest.user_config.REVIT_MCP_ALLOW_WRITE.default, false);
+          assert.equal(manifest.user_config.REVIT_MCP_TOKEN.sensitive, true);
+          for (const userConfig of [{}, ...[true, false].flatMap(redact => [true, false].map(write => ({
+            REVIT_MCP_REDACT_PATHS: redact, REVIT_MCP_ALLOW_WRITE: write,
+            REVIT_MCP_HOST: 'ssh:test-workstation', REVIT_MCP_TOKEN: 'test-token',
+          })))]) {
+            const config = await getMcpConfigForManifest({manifest, userConfig, extensionPath: '/tmp/bundle', systemDirs: {}, pathSeparator: '/'});
+            assert.equal(config.command, 'uvx');
+            assert.deepEqual(config.args.slice(0, 4), ['--from', 'revit-model-mcp==0.0.0', 'python', '-c']);
+            const expected = {
+              REVIT_MCP_REDACT_PATHS: (userConfig.REVIT_MCP_REDACT_PATHS ?? true) ? '1' : '0',
+              REVIT_MCP_ALLOW_WRITE: userConfig.REVIT_MCP_ALLOW_WRITE ? '1' : '0',
+              REVIT_MCP_HOST: userConfig.REVIT_MCP_HOST ?? 'local',
+              REVIT_MCP_TOKEN: userConfig.REVIT_MCP_TOKEN ?? '',
+            };
+            // Capture the environment when the server is imported, before action registration.
+            const probe = `import builtins, os, types\noriginal = builtins.__import__\ndef capture(name, *args, **kwargs):\n if name == 'revit_model_mcp.server':\n  assert {key: os.environ[key] for key in ${JSON.stringify(Object.keys(expected))}} == ${JSON.stringify(expected)}\n  return types.SimpleNamespace(main=lambda: None)\n return original(name, *args, **kwargs)\nbuiltins.__import__ = capture\n`;
+            const result = spawnSync('python3', ['-c', probe + config.args[4]], {env: {...process.env, ...config.env}, encoding: 'utf8'});
+            assert.equal(result.status, 0, result.stderr);
+          }
+          console.log('PASS: 18 documented tools, default settings, all boolean combinations and host/token forwarding');
+          JAVASCRIPT
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bundle
+          path: ${{ runner.temp }}/revit-model-mcp.mcpb
+          if-no-files-found: error
+
   test:
     runs-on: windows-latest
     steps:
