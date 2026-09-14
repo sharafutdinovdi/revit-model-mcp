@@ -5,6 +5,9 @@ on:
     types: [opened]
   pull_request_target:
     types: [opened, synchronize, reopened]
+  workflow_run:
+    workflows: [PR checks]
+    types: [completed]
   schedule:
     - cron: '30 1 * * *'
 
@@ -15,5 +18,60 @@ permissions:
 
 jobs:
   community:
+    if: github.event_name != 'workflow_run'
     uses: sharafutdinovdi/.github/.github/workflows/community.yml@main
     secrets: inherit
+
+  artifact-comment:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    concurrency:
+      group: artifact-comment-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    steps:
+      - name: Update build artifact comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const repo = context.repo;
+            // Fork runs can omit pull_requests; resolve the association through the API.
+            const pulls = run.pull_requests.length ? run.pull_requests :
+              await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+                ...repo, commit_sha: run.head_sha, per_page: 100
+              });
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+              ...repo, run_id: run.id, per_page: 100
+            });
+            const years = [2022, 2026];
+            const links = years.map(year => {
+              const artifact = artifacts.find(item =>
+                item.name === `revit-model-mcp-addin-R${String(year).slice(2)}` && !item.expired);
+              if (!artifact) throw new Error(`Missing artifact for Revit ${year}`);
+              return `- [Revit ${year}](${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${run.id}/artifacts/${artifact.id})`;
+            });
+            const marker = '<!-- addin-build-artifacts -->';
+            const body = [marker, 'Add-in builds passed for Revit 2022 and 2026.', '',
+              ...links, '', `Commit: \`${run.head_sha}\`. Sign in to GitHub to download; artifacts expire after 90 days.`].join('\n');
+            for (const candidate of pulls) {
+              const { data: pr } = await github.rest.pulls.get({...repo, pull_number: candidate.number});
+              if (pr.state !== 'open' || pr.base.repo.full_name !== `${repo.owner}/${repo.repo}` ||
+                  pr.head.sha !== run.head_sha) continue;
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                ...repo, issue_number: pr.number, per_page: 100
+              });
+              const previous = comments.find(item => item.user.login === 'github-actions[bot]' &&
+                item.body.includes(marker));
+              if (previous) {
+                await github.rest.issues.updateComment({...repo, comment_id: previous.id, body});
+              } else {
+                await github.rest.issues.createComment({...repo, issue_number: pr.number, body});
+              }
+            }
