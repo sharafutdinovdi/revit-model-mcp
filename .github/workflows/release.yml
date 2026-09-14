@@ -182,7 +182,7 @@ jobs:
             echo 'uvx revit-model-mcp'
             echo '```'
             echo
-            echo 'The package command requires a successful PyPI publication; prereleases use the wheel above.'
+            echo 'Prereleases are not published to PyPI; install the wheel above instead.'
             echo
             echo '---'
           } > release-notes.md
@@ -195,7 +195,12 @@ jobs:
         run: |
           options=()
           if [[ "$RELEASE_TAG" == *-* ]]; then options+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --notes-file release-notes.md --generate-notes "${options[@]}"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" artifacts/release/* --clobber
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md "${options[@]}"
+          else
+            gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --notes-file release-notes.md --generate-notes "${options[@]}"
+          fi
 
 
   # PyPI pending publisher:
