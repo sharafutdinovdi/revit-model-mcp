@@ -6,6 +6,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.4.0...v0.5.0) (2026-09-14)
+
+
+### Features
+
+* prepare desktop bundle for directory review ([#40](https://github.com/sharafutdinovdi/revit-model-mcp/issues/40)) ([fcd5db9](https://github.com/sharafutdinovdi/revit-model-mcp/commit/fcd5db91a52c904193d86f1ba804e25161ec6a32))
+
+
+### Bug Fixes
+
+* target the lowest available Revit API build of each year ([#42](https://github.com/sharafutdinovdi/revit-model-mcp/issues/42)) ([e17d8a7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e17d8a75be7ea9db058a5478537c2c3449ebfa67))
+
 ## [0.4.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.3.0...v0.4.0) (2026-09-14)
 
 
