@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="Revit Model MCP mark" width="96" height="96">
+</p>
+
 # Revit Model MCP
 
 For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, read-only by default, and act in it only when two explicit gates are on.
@@ -9,7 +13,6 @@ For people reviewing or automating Revit models with an AI client: read a live R
 [![Downloads](https://img.shields.io/github/downloads/sharafutdinovdi/revit-model-mcp/total?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases)
 ![Revit 2022-2027](https://img.shields.io/badge/Revit-2022--2027-005FB8?style=flat-square)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square)
-![Tests: 297](https://img.shields.io/badge/tests-297-brightgreen?style=flat-square)
 [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 ## Install
@@ -50,7 +53,7 @@ For Claude Desktop, add to its MCP configuration:
 }
 ```
 
-`uvx` works once the package is on PyPI; `uv run --directory server revit-model-mcp` from a clone works today.
+From a clone, `uv run --directory server revit-model-mcp` runs the same server without installing the package.
 For macOS or Linux clients, configure a [remote workstation](#remote-workstations).
 
 ### Check
@@ -129,7 +132,7 @@ See [validation evidence](https://sharafutdinovdi.github.io/revit-model-mcp/vali
 [Documentation](https://sharafutdinovdi.github.io/revit-model-mcp/) covers setup, tools and transport.
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), ask questions in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions), or report bugs and request features through the [issue forms](https://github.com/sharafutdinovdi/revit-model-mcp/issues/new/choose).
-The suite contains 149 C# tests and 148 Python tests; CI runs both languages and builds the supported CI Revit configurations.
+CI runs the C# and Python test suites and builds the supported Revit configurations.
 
 ## Contributors
 
