@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Revit Model MCP</title>
+  <rect x="8" y="14" width="28" height="6" rx="2" fill="#005FB8"/>
+  <rect x="8" y="29" width="28" height="6" rx="2" fill="#005FB8"/>
+  <rect x="8" y="44" width="28" height="6" rx="2" fill="#005FB8"/>
+  <path d="M 49.7 24.6 A 10 10 0 0 1 49.7 39.4 M 54.4 19.4 A 17 17 0 0 1 54.4 44.6" fill="none" stroke="#1A1A1A" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="43" cy="32" r="3.5" fill="#1A1A1A"/>
+</svg>

@@ -6,6 +6,8 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  logo: assets/logo-white.svg
+  favicon: assets/favicon.svg
   palette:
     - media: '(prefers-color-scheme: light)'
       scheme: default
@@ -91,18 +93,19 @@ plugins:
 
 nav:
   - Home: index.md
-  - Getting started:
-      - Install: https://sharafutdinovdi.github.io/revit-model-mcp/#install
+  - Guide:
       - Server: server.md
-  - How it works: how-it-works.md
-  - Tools: tools.md
-  - Actions: actions.md
-  - Transport: transport.md
-  - Security: security.md
-  - Architecture: architecture.md
-  - Validation: validation.md
-  - Feed format: feed-format.md
-  - Roadmap: roadmap.md
-  - Contributing: contributing.md
-  - Changelog: changelog.md
-  - Security policy: security-policy.md
+      - How it works: how-it-works.md
+      - Transport: transport.md
+      - Security: security.md
+      - Architecture: architecture.md
+  - Reference:
+      - Tools: tools.md
+      - Actions: actions.md
+      - Validation: validation.md
+      - Feed format: feed-format.md
+      - Roadmap: roadmap.md
+  - Project:
+      - Contributing: contributing.md
+      - Changelog: changelog.md
+      - Security policy: security-policy.md
