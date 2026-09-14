@@ -19,16 +19,26 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
+      has_pat: ${{ steps.token.outputs.has_pat }}
     steps:
+      # With RELEASE_PLEASE_TOKEN (a fine-grained PAT: contents and pull requests read/write on this
+      # repository) the release PR gets CI checks and the tag push starts release.yml on its own.
+      # Without it, GITHUB_TOKEN is used: the release PR shows no checks and the pipeline is dispatched below.
+      - name: Detect release token
+        id: token
+        env:
+          HAS_PAT: ${{ secrets.RELEASE_PLEASE_TOKEN != '' }}
+        run: echo "has_pat=$HAS_PAT" >> "$GITHUB_OUTPUT"
       - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         id: release
         with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
   dispatch-release:
     needs: release
-    if: needs.release.outputs.release_created == 'true'
+    if: needs.release.outputs.release_created == 'true' && needs.release.outputs.has_pat != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Run the release pipeline for the new tag
