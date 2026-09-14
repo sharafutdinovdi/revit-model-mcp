@@ -1,0 +1,157 @@
+{
+  "manifest_version": "0.3",
+  "name": "revit-model-mcp",
+  "display_name": "Revit Model MCP",
+  "version": "0.0.0",
+  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, read-only by default, and act in it only when two explicit gates are on. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
+  "long_description": "Actions are opt-in and require both the client setting and the workstation allow-write file. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
+  "author": {
+    "name": "Dinar Sharafutdinov"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sharafutdinovdi/revit-model-mcp"
+  },
+  "homepage": "https://sharafutdinovdi.github.io/revit-model-mcp/",
+  "documentation": "https://sharafutdinovdi.github.io/revit-model-mcp/transport/",
+  "license": "MIT",
+  "keywords": [
+    "revit",
+    "bim",
+    "mcp",
+    "architecture"
+  ],
+  "icon": "icon.png",
+  "server": {
+    "type": "binary",
+    "entry_point": "uvx",
+    "mcp_config": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "revit-model-mcp==0.0.0",
+        "python",
+        "-c",
+        "import os; os.environ.update({key: '1' if os.environ.get(key, default).lower() in ('true', '1') else '0' for key, default in (('REVIT_MCP_REDACT_PATHS', 'true'), ('REVIT_MCP_ALLOW_WRITE', 'false'))}); from revit_model_mcp.server import main; main()"
+      ],
+      "env": {
+        "REVIT_MCP_HOST": "${user_config.REVIT_MCP_HOST}",
+        "REVIT_MCP_REDACT_PATHS": "${user_config.REVIT_MCP_REDACT_PATHS}",
+        "REVIT_MCP_ALLOW_WRITE": "${user_config.REVIT_MCP_ALLOW_WRITE}",
+        "REVIT_MCP_TOKEN": "${user_config.REVIT_MCP_TOKEN}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "revit_ping",
+      "description": "Check connectivity; returns data:\"pong\"."
+    },
+    {
+      "name": "revit_document_info",
+      "description": "Read document, levels, area schemes and worksets."
+    },
+    {
+      "name": "revit_list_catalog",
+      "description": "Discover valid category, family, view and parameter names."
+    },
+    {
+      "name": "revit_aggregate_elements",
+      "description": "Group by one or two fields; return counts and optional sum/average."
+    },
+    {
+      "name": "revit_query_elements",
+      "description": "Read a page of matching elements."
+    },
+    {
+      "name": "revit_list_views",
+      "description": "Find views in the active document."
+    },
+    {
+      "name": "revit_view_summary",
+      "description": "Read view metadata and category counts."
+    },
+    {
+      "name": "revit_export_view",
+      "description": "Download a PNG; pixel_size is 1-4000 pixels on the fitted image dimension."
+    },
+    {
+      "name": "revit_view_elements",
+      "description": "Read a page of elements in a view."
+    },
+    {
+      "name": "revit_element_details",
+      "description": "Read instance/type parameters and geometry by unitless Revit ID."
+    },
+    {
+      "name": "revit_view_warnings",
+      "description": "Read warnings involving elements in a view."
+    },
+    {
+      "name": "revit_list_warnings",
+      "description": "Group warnings or inspect a specific warning group."
+    },
+    {
+      "name": "revit_list_relations",
+      "description": "Read membership or dependencies."
+    },
+    {
+      "name": "revit_list_instances",
+      "description": "List endpoint or heartbeat information."
+    },
+    {
+      "name": "revit_model_health",
+      "description": "Read model quality counts and top warnings before hand-over."
+    },
+    {
+      "name": "revit_links_status",
+      "description": "Read RVT, CAD and image status, paths and instance counts."
+    },
+    {
+      "name": "revit_shared_coordinates",
+      "description": "Read base/survey points, sites and link transforms in mm and degrees."
+    },
+    {
+      "name": "revit_parameter_fill_check",
+      "description": "Count filled, empty and missing values; sample unitless element IDs."
+    }
+  ],
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": [
+      "win32",
+      "darwin",
+      "linux"
+    ],
+    "claude_desktop": ">=0.10.0"
+  },
+  "user_config": {
+    "REVIT_MCP_HOST": {
+      "type": "string",
+      "title": "Workstation host",
+      "description": "Use local on the Windows Revit workstation, ssh:<alias> for a configured SSH host, or http://host:port (https://host:port with a TLS proxy) for HTTP. macOS and Linux require a remote Windows workstation. Prefer a loopback tunnel for HTTP.",
+      "default": "local",
+      "required": false
+    },
+    "REVIT_MCP_REDACT_PATHS": {
+      "type": "boolean",
+      "title": "Redact model paths",
+      "description": "Hide directories in response path fields. Model names, parameter values, errors and exported image localPath values remain visible.",
+      "default": true
+    },
+    "REVIT_MCP_ALLOW_WRITE": {
+      "type": "boolean",
+      "title": "Allow actions (dangerous)",
+      "description": "Dangerous: enables actions that can change the Revit model. Also requires the workstation allow-write file. Leave disabled for read-only use.",
+      "default": false
+    },
+    "REVIT_MCP_TOKEN": {
+      "type": "string",
+      "title": "HTTP bearer token",
+      "description": "Required only for HTTP or HTTPS. Use the token from the workstation settings.json. Leave empty for local or SSH.",
+      "sensitive": true,
+      "required": false,
+      "default": ""
+    }
+  }
+}

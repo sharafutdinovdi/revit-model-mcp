@@ -19,6 +19,10 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -116,11 +120,41 @@ jobs:
           name: python-dist
           path: server/dist/*
           if-no-files-found: error
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Set bundle release version
+        shell: python
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          import json
+          import os
+          from pathlib import Path
+
+          version = os.environ['RELEASE_VERSION']
+          path = Path('bundle/manifest.json')
+          manifest = json.loads(path.read_text())
+          manifest['version'] = version
+          package = f'revit-model-mcp=={version}'
+          # Prereleases are distributed as wheels on GitHub, without PyPI publishing.
+          if '-' in version:
+              wheel, = Path('server/dist').glob('*.whl')
+              package = f'https://github.com/{os.environ["GITHUB_REPOSITORY"]}/releases/download/{os.environ["RELEASE_TAG"]}/{wheel.name}'
+          manifest['server']['mcp_config']['args'][1] = package
+          path.write_text(json.dumps(manifest, indent=2) + '\n')
+      - name: Validate and pack Claude Desktop bundle
+        shell: pwsh
+        run: |
+          npx --yes @anthropic-ai/mcpb@2.1.2 validate bundle/manifest.json
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle validation failed' }
+          npx --yes @anthropic-ai/mcpb@2.1.2 pack bundle "artifacts/release/revit-model-mcp-$env:RELEASE_VERSION.mcpb"
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle packing failed' }
       - name: Stage release assets and checksums
         shell: pwsh
         run: |
           Copy-Item output/*.msi, server/dist/*.whl, server/dist/*.tar.gz artifacts/release/
-          $expected = @{ '*.zip' = 6; '*.msi' = 2; '*.whl' = 1; '*.tar.gz' = 1 }
+          $expected = @{ '*.zip' = 6; '*.msi' = 2; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1 }
           foreach ($pattern in $expected.Keys) {
             $count = @(Get-ChildItem "artifacts/release/$pattern").Count
             if ($count -ne $expected[$pattern]) { throw "Unexpected $pattern count: $count" }
@@ -129,6 +163,10 @@ jobs:
           Get-ChildItem artifacts/release -File | Sort-Object Name | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
           } | Set-Content artifacts/release/SHA256SUMS.txt -Encoding utf8
+      - name: Attest release assets
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: artifacts/release/*
       - uses: actions/upload-artifact@v7
         with:
           name: release-assets
@@ -165,6 +203,7 @@ jobs:
           {
             echo '## Install'
             echo
+            echo "- Claude Desktop: [download the .mcpb and open it]($base/revit-model-mcp-$version.mcpb). Requires uv on the client PATH and the add-in on the Windows workstation."
             echo "- [Single-user MSI]($base/RevitModelMcp-$version-SingleUser.msi): current Windows account."
             echo "- [Multi-user MSI]($base/RevitModelMcp-$version-MultiUser.msi): all users."
             printf '%s' '- Per-year ZIPs:'

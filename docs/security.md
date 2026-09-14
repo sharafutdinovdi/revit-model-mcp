@@ -25,3 +25,29 @@ Authentication and routing use the local OpenSSH configuration and agent.
 The default multiplexing socket directory has mode `0700` on macOS and Linux.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).
+
+## Verify downloads
+
+Release assets carry GitHub build provenance attestations.
+After downloading an asset, verify it with the GitHub CLI:
+
+```sh
+gh attestation verify RevitModelMcp-<version>-SingleUser.msi --owner sharafutdinovdi
+```
+
+A successful command exits with code 0 and reports a verified attestation.
+Check that the repository is `sharafutdinovdi/revit-model-mcp`, the signer workflow is `.github/workflows/release.yml`, and the source commit matches the intended release tag.
+For an explicit repository and workflow constraint:
+
+```sh
+gh attestation verify RevitModelMcp-<version>-SingleUser.msi \
+  --repo sharafutdinovdi/revit-model-mcp \
+  --signer-workflow sharafutdinovdi/revit-model-mcp/.github/workflows/release.yml
+```
+
+The same command accepts a per-year ZIP, wheel, source distribution, `.mcpb` or `SHA256SUMS.txt` in place of the MSI filename.
+The attestation binds the downloaded file's digest to this repository's build workflow and a source commit.
+It does not certify that the program is safe or cover packages downloaded later by uv.
+The MSI and executable files are not Authenticode-signed; Windows may still show an unknown publisher warning.
+The bundle has no MCPB certificate signature.
+Attestations are available for releases built after provenance was enabled; older releases are not retroactively attested.
