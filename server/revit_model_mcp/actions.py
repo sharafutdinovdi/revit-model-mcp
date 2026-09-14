@@ -89,6 +89,19 @@ class BatchStep(BaseModel):
         }
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    """Read a boolean environment setting; reject unrecognized values."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be 1/0, true/false, yes/no or on/off.")
+
+
 def millimeters_to_feet(value: float) -> float:
     """Convert a finite millimetre length to Revit internal feet for client calculations."""
     import math
@@ -99,7 +112,7 @@ def millimeters_to_feet(value: float) -> float:
 
 
 def register_actions(mcp, execute, host_provider) -> None:
-    if os.environ.get("REVIT_MCP_ALLOW_WRITE") != "1":
+    if not env_flag("REVIT_MCP_ALLOW_WRITE", False):
         return
 
     async def send(command: str, **payload) -> dict[str, Any]:
@@ -120,14 +133,27 @@ def register_actions(mcp, execute, host_provider) -> None:
         return await execute(job, DEFAULT_TIMEOUT_SECONDS, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
 
     def action(function):
+        title = {
+            "revit_select": "Select Elements",
+            "revit_show": "Show Elements",
+            "revit_isolate": "Isolate Elements",
+            "revit_move": "Move Elements",
+            "revit_place_family": "Place Family",
+            "revit_create_wall": "Create Wall",
+            "revit_set_parameter": "Set Parameter",
+            "revit_delete": "Delete Elements",
+            "revit_batch": "Run Action Batch",
+        }[function.__name__]
         return mcp.tool(
+            title=title,
             annotations=ToolAnnotations(
+                title=title,
                 readOnlyHint=False,
                 destructiveHint=function.__name__
                 not in {"revit_select", "revit_show", "revit_isolate"},
                 idempotentHint=function.__name__
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
-            )
+            ),
         )(function)
 
     @action
