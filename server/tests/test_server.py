@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -147,6 +148,11 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
         tools = {tool.name: tool for tool in result.tools}
         self.assertEqual(set(tools), EXPECTED_TOOLS)
+        for tool in tools.values():
+            self.assertTrue(tool.title)
+            self.assertLessEqual(len(tool.title), 40)
+            self.assertEqual(tool.annotations.title, tool.title)
+            self.assertIs(tool.annotations.read_only_hint, True)
         self.assertTrue(
             all(tool.annotations and tool.annotations.read_only_hint for tool in tools.values())
         )
@@ -412,3 +418,55 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize("default", [False, True])
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, None),
+        ("1", True),
+        ("0", False),
+        ("true", True),
+        ("false", False),
+        ("yes", True),
+        ("no", False),
+        ("on", True),
+        ("off", False),
+        ("  TrUe \t", True),
+        (" NO ", False),
+    ],
+)
+def test_env_flag(monkeypatch, default, value, expected):
+    monkeypatch.delenv("REVIT_MCP_ALLOW_WRITE", raising=False)
+    if value is not None:
+        monkeypatch.setenv("REVIT_MCP_ALLOW_WRITE", value)
+    assert revit_server.env_flag("REVIT_MCP_ALLOW_WRITE", default) is (
+        default if expected is None else expected
+    )
+
+
+@pytest.mark.parametrize("value", ["", "enabled", "2"])
+def test_env_flag_rejects_invalid_values(monkeypatch, value):
+    monkeypatch.setenv("REVIT_MCP_ALLOW_WRITE", value)
+    with pytest.raises(ValueError, match="REVIT_MCP_ALLOW_WRITE must be"):
+        revit_server.env_flag("REVIT_MCP_ALLOW_WRITE", False)
+
+
+def test_redaction_accepts_boolean_string(monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "true")
+    assert revit_server.redact_model_paths({"documentPath": r"C:\Models\Model.rvt"}) == {
+        "documentPath": "Model.rvt"
+    }
+
+
+def test_in_process_read_tool_titles():
+    import asyncio
+
+    tools = asyncio.run(revit_server.mcp.list_tools())
+    reads = {tool.name: tool for tool in tools if tool.name in EXPECTED_TOOLS}
+    assert set(reads) == EXPECTED_TOOLS
+    for tool in reads.values():
+        assert tool.title and len(tool.title) <= 40
+        assert tool.annotations.title == tool.title
+        assert tool.annotations.read_only_hint is True

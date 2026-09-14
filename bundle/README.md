@@ -14,12 +14,18 @@ Path redaction defaults to enabled.
 Actions default to disabled and also require the workstation `allow-write` file.
 Redaction leaves model names, parameter values, errors and exported image `localPath` values visible.
 
+## Privacy policy
+
+Revit Model MCP returns requested model data to the selected MCP client.
+The bundle enables response path redaction by default.
+The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
+
 ## Build
 
 The manifest follows [MCPB 0.3](https://github.com/anthropics/mcpb/blob/main/MANIFEST.md).
 The binary command is the external `uvx` executable on PATH.
 The bundle contains metadata and the icon; uv downloads the Python package and dependencies at first launch.
-The inline Python command converts MCPB boolean strings to `1` or `0` before importing the server.
+The server accepts boolean environment values directly, with `1` and `0` as the canonical values.
 User settings pass through environment variables.
 The manifest declares a Claude Desktop minimum of `0.10.0`; Linux compatibility describes the server client platform, not availability of Claude Desktop for Linux.
 
@@ -33,7 +39,7 @@ unzip -l /tmp/revit-model-mcp.mcpb
 
 CI validates and packs the `0.0.0` placeholder and uploads the `bundle` artifact.
 That artifact validates packaging and is not installable from PyPI.
-CI also checks tool coverage, boolean conversion and host/token forwarding with the MCPB configuration resolver.
+CI also checks tool coverage, boolean forwarding and host/token forwarding with the MCPB configuration resolver.
 The release workflow replaces both the manifest version and the package pin with the tag version.
 Prerelease bundles reference the release wheel URL because prereleases are not published to PyPI.
 Stable bundles require the corresponding PyPI publishing job to finish before first launch.

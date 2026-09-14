@@ -106,6 +106,7 @@ nav:
       - Feed format: feed-format.md
       - Roadmap: roadmap.md
   - Project:
+      - Privacy: privacy.md
       - Contributing: contributing.md
       - Changelog: changelog.md
       - Security policy: security-policy.md

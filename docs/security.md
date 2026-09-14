@@ -1,5 +1,7 @@
 # Security
 
+See the [privacy policy](privacy.md) for data handling, retention and contact information.
+
 The model API is read-only by default.
 Action tools are absent unless `REVIT_MCP_ALLOW_WRITE=1`; action execution also requires the workstation gate file described in [actions](actions.md).
 The default surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.

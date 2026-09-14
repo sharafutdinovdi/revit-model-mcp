@@ -16,6 +16,12 @@ For people reviewing or automating Revit models with an AI client: read a live R
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square)
 [![MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
+## Privacy policy
+
+Revit Model MCP returns requested model data to the selected MCP client.
+The bundle enables response path redaction by default.
+The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
+
 ## Install
 
 ### Claude Desktop bundle

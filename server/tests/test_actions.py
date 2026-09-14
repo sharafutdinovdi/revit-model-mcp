@@ -37,9 +37,17 @@ def test_stdio_action_gate(flag):
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             result = await client.list_tools()
         tools = {tool.name: tool for tool in result.tools}
-        assert ACTION_TOOLS.intersection(tools) == (ACTION_TOOLS if flag == "1" else set())
+        assert ACTION_TOOLS.intersection(tools) == (
+            ACTION_TOOLS if flag in {"1", "true"} else set()
+        )
         for name in ACTION_TOOLS.intersection(tools):
-            assert not tools[name].annotations.read_only_hint
+            tool = tools[name]
+            assert tool.annotations.read_only_hint is False
+            assert tool.title and len(tool.title) <= 40
+            assert tool.annotations.title == tool.title
+            assert tool.annotations.destructive_hint is (
+                name not in {"revit_select", "revit_show", "revit_isolate"}
+            )
         return tools
 
     asyncio.run(check())
@@ -295,3 +303,20 @@ def test_batch_payload_and_annotations(dry_run):
     assert tool.annotations.read_only_hint is False
     assert tool.annotations.destructive_hint is True
     assert tool.annotations.idempotent_hint is False
+
+
+def test_in_process_action_titles_with_true(monkeypatch):
+    import asyncio
+
+    monkeypatch.setenv("REVIT_MCP_ALLOW_WRITE", "true")
+    server = MCPServer("action-titles")
+    register_actions(server, AsyncMock(), lambda: AsyncMock())
+    tools = asyncio.run(server.list_tools())
+    assert {tool.name for tool in tools} == ACTION_TOOLS
+    for tool in tools:
+        assert tool.title and len(tool.title) <= 40
+        assert tool.annotations.title == tool.title
+        assert tool.annotations.read_only_hint is False
+        assert tool.annotations.destructive_hint is (
+            tool.name not in {"revit_select", "revit_show", "revit_isolate"}
+        )

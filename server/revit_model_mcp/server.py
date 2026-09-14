@@ -11,7 +11,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
 
 from revit_model_mcp import package_version
-from revit_model_mcp.actions import register_actions
+from revit_model_mcp.actions import env_flag, register_actions
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
@@ -42,7 +42,7 @@ channel = RevitReadChannel(host)
 
 
 def redact_model_paths(value: Any) -> Any:
-    if os.environ.get("REVIT_MCP_REDACT_PATHS") != "1":
+    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return value
     if isinstance(value, dict):
         return {
@@ -141,7 +141,29 @@ def addressed_tool(function):
         "\n\nIf more than one Revit instance is running, document is required; "
         "otherwise any instance may respond."
     )
-    return mcp.tool(annotations=READ_ONLY_TOOL)(function)
+    title = {
+        "revit_ping": "Check Revit Connection",
+        "revit_document_info": "Document Info",
+        "revit_list_catalog": "List Catalog",
+        "revit_aggregate_elements": "Aggregate Elements",
+        "revit_query_elements": "Query Elements",
+        "revit_list_views": "List Views",
+        "revit_view_summary": "View Summary",
+        "revit_export_view": "Export View to PNG",
+        "revit_view_elements": "View Elements",
+        "revit_element_details": "Element Details",
+        "revit_view_warnings": "View Warnings",
+        "revit_list_warnings": "List Warnings",
+        "revit_list_relations": "List Relations",
+        "revit_list_instances": "List Instances",
+        "revit_model_health": "Model Health Check",
+        "revit_links_status": "Links Status",
+        "revit_shared_coordinates": "Shared Coordinates",
+        "revit_parameter_fill_check": "Parameter Fill Check",
+    }[function.__name__]
+    return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
+        function
+    )
 
 
 @addressed_tool
@@ -554,7 +576,10 @@ async def revit_list_relations(
     )
 
 
-@mcp.tool(annotations=READ_ONLY_TOOL)
+@mcp.tool(
+    title="List Instances",
+    annotations=READ_ONLY_TOOL.model_copy(update={"title": "List Instances"}),
+)
 async def revit_list_instances(document: Document = None) -> list[dict[str, object]]:
     """List Revit processes with active documents, versions and processId.
 
@@ -582,7 +607,7 @@ def main() -> None:
             "Transport settings from the environment (no connection is opened):\n"
             f"  host mode: {default_host}\n"
             f"  channel dir (Windows): {channel_dir}\n"
-            f"  redact paths: {os.environ.get('REVIT_MCP_REDACT_PATHS') == '1'}"
+            f"  redact paths: {env_flag('REVIT_MCP_REDACT_PATHS', False)}"
         ),
     )
     parser.add_argument(

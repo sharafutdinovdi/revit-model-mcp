@@ -28,11 +28,7 @@
     "mcp_config": {
       "command": "uvx",
       "args": [
-        "--from",
-        "revit-model-mcp==0.0.0",
-        "python",
-        "-c",
-        "import os; os.environ.update({key: '1' if os.environ.get(key, default).lower() in ('true', '1') else '0' for key, default in (('REVIT_MCP_REDACT_PATHS', 'true'), ('REVIT_MCP_ALLOW_WRITE', 'false'))}); from revit_model_mcp.server import main; main()"
+        "revit-model-mcp==0.0.0"
       ],
       "env": {
         "REVIT_MCP_HOST": "${user_config.REVIT_MCP_HOST}",
@@ -153,5 +149,8 @@
       "required": false,
       "default": ""
     }
-  }
+  },
+  "privacy_policies": [
+    "https://sharafutdinovdi.github.io/revit-model-mcp/privacy/"
+  ]
 }
