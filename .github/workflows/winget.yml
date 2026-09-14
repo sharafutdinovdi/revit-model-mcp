@@ -99,6 +99,14 @@ jobs:
           }
           gh release download --repo microsoft/winget-create --pattern wingetcreate.exe --dir "$env:RUNNER_TEMP/wingetcreate"
           if ($LASTEXITCODE -ne 0) { throw 'wingetcreate download failed' }
+          # One PR per package version: a pipeline re-run must not open a duplicate in winget-pkgs.
+          $env:GH_TOKEN = $env:WINGET_TOKEN
+          $existing = gh pr list --repo microsoft/winget-pkgs --state open --search "Sharafutdinov.RevitModelMcp version $env:RELEASE_TAG.Substring(1) in:title" --json number,title --jq ".[] | select(.title == \"Sharafutdinov.RevitModelMcp version $env:RELEASE_TAG.Substring(1)\") | .number" | Select-Object -First 1
+          if ($existing) {
+            Write-Host "A pull request for Sharafutdinov.RevitModelMcp $env:RELEASE_TAG.Substring(1) is already open: https://github.com/microsoft/winget-pkgs/pull/$existing"
+            $global:LASTEXITCODE = 0
+            exit 0
+          }
           $submitLog = "$env:RUNNER_TEMP/wingetcreate-submit.txt"
           & "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" submit artifacts/winget --token $env:WINGET_TOKEN 2>&1 | Tee-Object -FilePath $submitLog | Out-String | Write-Host
           if ($LASTEXITCODE -ne 0) { throw 'WinGet submission failed' }
