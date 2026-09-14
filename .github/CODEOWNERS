@@ -1,1 +1,17 @@
-* @sharafutdinovdi
+# Runs inside Revit or on user workstations: owner review required.
+/src/                         @sharafutdinovdi
+/server/revit_model_mcp/      @sharafutdinovdi
+/build/install/               @sharafutdinovdi
+/install.ps1                  @sharafutdinovdi
+# Secrets and publishing.
+/.github/workflows/release.yml         @sharafutdinovdi
+/.github/workflows/release-please.yml  @sharafutdinovdi
+/.github/workflows/winget.yml          @sharafutdinovdi
+/.github/workflows/dependabot-auto-merge.yml @sharafutdinovdi
+/.github/CODEOWNERS           @sharafutdinovdi
+/SECURITY.md                  @sharafutdinovdi
+/LICENSE                      @sharafutdinovdi
+# Dependency manifests are un-owned so Dependabot can auto-merge.
+/src/**/*.csproj
+/server/pyproject.toml
+/server/uv.lock

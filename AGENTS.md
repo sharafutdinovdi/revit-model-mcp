@@ -58,7 +58,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 - Use Conventional Commits for commits and PR titles.
 - Write code, comments and documentation in English with sentence-case headings and short sentences.
 - Add or update tests for every behavior change; never delete or weaken existing tests.
-- Update the Unreleased section in [CHANGELOG.md](CHANGELOG.md).
+- Describe release changes in Conventional Commit messages; release-please updates [CHANGELOG.md](CHANGELOG.md).
 - Follow `.editorconfig` and the pinned Ruff configuration.
 - Keep internal documentation links valid when moving sections.
 
@@ -76,5 +76,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 
 Follow the [release ritual](CONTRIBUTING.md#release-ritual).
 The version in `server/pyproject.toml` must equal the tag without its `v` prefix.
-Move Unreleased entries into a dated version section before tagging; missing highlights fail publication.
+Agents never edit `CHANGELOG.md`, the `server/pyproject.toml` version or either `server/server.json` version by hand.
+release-please owns these files and version fields through its release PR.
+The maintainer merges the release PR to create the tag and publish the release.
 Verify assets and publishing jobs after the release workflow finishes.
