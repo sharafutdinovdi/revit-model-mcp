@@ -130,7 +130,9 @@ jobs:
           $installLine
           - [x] Manifest conforms to the [1.12 schema](https://github.com/microsoft/winget-pkgs/tree/master/doc/manifest/schema/1.12.0)
           "@
+          # REST works with the public_repo scope; gh pr edit needs read:org for the microsoft organization.
+          $prNumber = ($prUrl -split '/')[-1]
           $env:GH_TOKEN = $env:WINGET_TOKEN
-          gh pr edit $prUrl --body $body
+          $body | gh api -X PATCH "repos/microsoft/winget-pkgs/pulls/$prNumber" -F body=@-
           if ($LASTEXITCODE -ne 0) { throw 'Could not update the WinGet pull request body' }
           Write-Host "WinGet PR: $prUrl"
