@@ -19,6 +19,16 @@ The Python server runs on the MCP client's machine and exposes stdio tools over 
 
 ## Build and test
 
+Install local hooks and run all checks from the repository root:
+
+```sh
+uv tool install pre-commit
+pre-commit install
+pre-commit run --all-files
+```
+
+The C# hook requires Windows; on macOS or Linux, report its result and use Windows PR CI as the oracle.
+See [Local checks](CONTRIBUTING.md#local-checks) for prerequisites and the platform-specific skip command.
 Use the SDK in `global.json`.
 Run from the repository root on Windows:
 

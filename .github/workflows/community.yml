@@ -1,23 +1,26 @@
-name: PR labels and artifacts
+name: Community
 
 on:
+  issues:
+    types: [opened]
   pull_request_target:
     types: [opened, synchronize, reopened]
-
   workflow_run:
     workflows: [PR checks]
     types: [completed]
+  schedule:
+    - cron: '30 1 * * *'
 
 permissions:
   contents: read
+  issues: write
   pull-requests: write
 
 jobs:
-  label:
-    if: github.event_name == 'pull_request_target'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/labeler@v7
+  community:
+    if: github.event_name != 'workflow_run'
+    uses: sharafutdinovdi/.github/.github/workflows/community.yml@main
+    secrets: inherit
 
   artifact-comment:
     if: >-
