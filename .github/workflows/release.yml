@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      WINGET_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -13,6 +21,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
@@ -24,7 +34,7 @@ jobs:
       - name: Validate release version
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           $version = $env:RELEASE_TAG.Substring(1)
           if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw 'Expected a v<semver> tag' }
@@ -132,25 +142,19 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - uses: actions/download-artifact@v8
         with:
           name: release-assets
           path: artifacts/release
-      - name: Compose release notes
+      - name: Compose install notes
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
-          section="$(awk -v heading="## [$version]" '
-            $0 == heading || index($0, heading " - ") == 1 { found = 1; next }
-            /^## / && found { exit }
-            found { print }' CHANGELOG.md)"
-          if [[ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]]; then
-            echo "CHANGELOG.md has no section for $version. Add '## [$version] - YYYY-MM-DD' before tagging." >&2
-            exit 1
-          fi
           base="https://github.com/$GH_REPO/releases/download/$RELEASE_TAG"
           wheels=(artifacts/release/*.whl)
           if [[ ${#wheels[@]} -ne 1 || ! -f "${wheels[0]}" ]]; then
@@ -159,10 +163,6 @@ jobs:
           fi
           wheel="${wheels[0]##*/}"
           {
-            echo '## Highlights'
-            echo
-            printf '%s\n' "$section"
-            echo
             echo '## Install'
             echo
             echo "- [Single-user MSI]($base/RevitModelMcp-$version-SingleUser.msi): current Windows account."
@@ -183,23 +183,34 @@ jobs:
             echo '```'
             echo
             echo 'Prereleases are not published to PyPI; install the wheel above instead.'
-            echo
-            echo '---'
-          } > release-notes.md
-          cat release-notes.md
+          } > install-notes.md
+          cat install-notes.md
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
+          set -euo pipefail
           options=()
           if [[ "$RELEASE_TAG" == *-* ]]; then options+=(--prerelease); fi
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/release/* --clobber
+            gh release view "$RELEASE_TAG" --json body --jq '.body' > release-notes.md
+            python - <<'PYTHON'
+          from pathlib import Path
+          import re
+
+          path = Path('release-notes.md')
+          body = path.read_text()
+          # Replace only the managed section on retries; preserve all other release notes.
+          body = re.sub(r'^## Install\n.*?(?=^## |\Z)', '', body, flags=re.MULTILINE | re.DOTALL)
+          install = Path('install-notes.md').read_text()
+          path.write_text(body.rstrip() + '\n\n' + install)
+          PYTHON
             gh release edit "$RELEASE_TAG" --notes-file release-notes.md "${options[@]}"
           else
-            gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --notes-file release-notes.md --generate-notes "${options[@]}"
+            gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --notes-file install-notes.md --generate-notes "${options[@]}"
           fi
 
 
@@ -212,7 +223,7 @@ jobs:
   # Prerelease tags skip PyPI and MCP Registry publishing.
   pypi:
     needs: build
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -234,9 +245,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - name: Set registry package version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           python - <<'PYTHON'
           import json
@@ -278,9 +291,9 @@ jobs:
   # Releases created with GITHUB_TOKEN do not trigger release workflows.
   winget:
     needs: publish
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
     uses: ./.github/workflows/winget.yml
     with:
-      release_tag: ${{ github.ref_name }}
+      release_tag: ${{ inputs.tag || github.ref_name }}
     secrets:
       WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

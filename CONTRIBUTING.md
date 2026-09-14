@@ -21,8 +21,21 @@ The PR checklist covers supported Revit builds, tests, documentation, screenshot
 Include commands, results and affected Revit years in the validation section; state when a checklist item does not apply.
 Use English for code and public API descriptions.
 
-`main` requires a PR, one approving review, and passing CI, PR checks and CodeQL for contributors.
-Administrators can bypass these rules; force pushes remain disabled.
+`main` requires a PR and passing required checks on an up-to-date branch.
+There is no blanket approval requirement.
+Owner review applies to the paths in [CODEOWNERS](.github/CODEOWNERS):
+
+- Add-in and Core source under `src/`, except project dependency manifests.
+- Python runtime code under `server/revit_model_mcp/`.
+- Installer code under `build/install/` and the root installation script.
+- Release, release-please, WinGet and Dependabot auto-merge workflows.
+- CODEOWNERS, the security policy and the license.
+
+Docs, tests, other CI workflows and dependency manifests without an owner can merge after required checks pass.
+Dependabot patch and minor updates enable squash auto-merge; required checks and any owner review still apply.
+Major updates receive a `needs-review` label and wait for a maintainer.
+NuGet manifests under `build/install/` and publishing workflow updates still require owner review.
+All merges use squash with the PR title and body, and history remains linear.
 CI builds the Revit 2022, 2026 and 2027 add-ins, runs Core and Python tests, builds and smoke-tests both MSI scopes, and validates the Python package.
 PR checks validate the Conventional Commit title, all workflow files with `actionlint`, C# formatting from `.editorconfig`, and Python lint and formatting with Ruff.
 CodeQL analyzes C# and Python on PRs, pushes to `main` and a weekly schedule.
@@ -94,21 +107,34 @@ Automated tests do not validate live Revit behavior; see [validation evidence](d
 
 ## Release ritual
 
-1. Move Unreleased entries in [CHANGELOG.md](CHANGELOG.md) into `## [X.Y.Z] - YYYY-MM-DD`; leave an empty Unreleased section.
-2. Set `server/pyproject.toml` to the same version and merge the release preparation PR after CI passes.
-3. Tag that commit with `git tag vX.Y.Z` and push it with `git push origin vX.Y.Z`.
-4. Check the Release workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
+1. Merge PRs with Conventional Commit titles.
+2. release-please maintains a `chore(main): release X.Y.Z` PR with generated changelog entries and version updates.
+3. The maintainer checks the release PR and merges it after required checks pass.
+4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
 5. Check PyPI, MCP Registry and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
 
+release-please owns [CHANGELOG.md](CHANGELOG.md), the version in `server/pyproject.toml` and both versions in `server/server.json`.
+The manifest starts at `0.3.0`; `server/pyproject.toml` remains the package version checked by the build.
+The simple strategy skips its absent default `version.txt`; no separate version file is maintained.
+Before 1.0, `feat` and breaking changes bump the minor version, while `fix` bumps the patch version.
+Visible documentation and dependency changes can also produce a patch release.
+The `bump-patch-for-minor-pre-major` option is false to retain minor bumps for features.
+
+Merging the release PR creates `vX.Y.Z` and a GitHub Release with the generated notes.
+The workflow calls the existing build and publish pipeline directly; tags created with `GITHUB_TOKEN` do not trigger tag-push workflows.
+The pipeline appends an Install section and replaces only that section on retries.
+A manually pushed tag also runs the pipeline and uses GitHub-generated notes if no release exists.
 The tag version must equal `server/pyproject.toml`.
-Release notes contain Highlights extracted from the matching changelog section, direct Install links and GitHub-generated PR notes.
-A missing or empty version section fails publication.
+
+Release PRs created or updated with `GITHUB_TOKEN` do not trigger pull request checks.
+The maintainer closes and reopens the release PR after its latest update to start those checks before merging.
+Repository Actions settings must allow GitHub Actions to create pull requests.
 
 ## Release assets
 
 CI uploads installable R22, R26 and R27 folder layouts and an `installers` artifact.
 It extracts both MSIs, rejects Revit API assemblies, and checks installation and removal for each built year.
-A `v<version>` tag triggers all six add-in builds and Core/server tests.
+The release-please workflow or a manually pushed `v<version>` tag triggers all six add-in builds and Core/server tests.
 The tag version must match `server/pyproject.toml`.
 The GitHub Release contains six per-year ZIPs, single-user and multi-user MSIs, the Python wheel and source distribution, and `SHA256SUMS.txt` covering every asset.
 Extract each year's ZIP into `%APPDATA%\Autodesk\Revit\Addins\20<yy>` while that Revit instance is closed.
@@ -137,6 +163,8 @@ Registry publishing is best-effort and its response appears in the job log.
 Prerelease tags containing `-` skip PyPI, MCP Registry and WinGet publishing.
 
 The release workflow calls `.github/workflows/winget.yml` after publishing the GitHub Release.
+The nested `release-please.yml` to `release.yml` to `winget.yml` chain uses supported reusable workflow nesting.
+The calling job grants `id-token: write`; the PyPI job retains the `pypi` environment and both publishers retain OIDC permissions.
 WinGet also supports manually published releases and `workflow_dispatch` with a stable release tag.
 It generates and validates manifests for `Sharafutdinov.RevitModelMcp` and uploads a `winget-manifests` artifact.
 Submission requires the optional `WINGET_TOKEN` repository secret, a classic PAT with `public_repo` scope.
