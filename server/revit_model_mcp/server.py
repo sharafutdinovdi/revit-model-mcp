@@ -58,57 +58,161 @@ def redact_model_paths(value: Any) -> Any:
 
 READ_ONLY_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
 TimeoutSeconds = Annotated[
-    int, Field(validation_alias=AliasChoices("timeout_seconds", "timeoutSeconds"))
+    int,
+    Field(
+        validation_alias=AliasChoices("timeout_seconds", "timeoutSeconds"),
+        description="Positive integer seconds to wait for a result after pickup (120 when omitted); HTTP uses this as its response budget. Expiry raises an error, and increasing it does not override the add-in's execution limits.",
+    ),
 ]
 PickupTimeoutSeconds = Annotated[
-    int, Field(validation_alias=AliasChoices("pickup_timeout_seconds", "pickupTimeoutSeconds"))
+    int,
+    Field(
+        validation_alias=AliasChoices("pickup_timeout_seconds", "pickupTimeoutSeconds"),
+        description="Positive integer seconds to wait for the add-in to pick up a local or SSH job (300 when omitted); ignored over HTTP. A pickup timeout raises an error but the pending job may still execute later.",
+    ),
 ]
-GroupBy = Annotated[list[str], Field(validation_alias=AliasChoices("group_by", "groupBy"))]
+GroupBy = Annotated[
+    list[str],
+    Field(
+        validation_alias=AliasChoices("group_by", "groupBy"),
+        description="Required list of one or two distinct system fields (e.g. category, family, type, level) or exact localized parameter names from the catalog; no default. Each combination produces a count, with numeric totals added by sum_field.",
+    ),
+]
 SumField = Annotated[
     str | None,
-    Field(validation_alias=AliasChoices("sum_field", "sumField", "numeric_field", "numericField")),
+    Field(
+        validation_alias=AliasChoices("sum_field", "sumField", "numeric_field", "numericField"),
+        description="Numeric system field or exact localized parameter name to sum and average within each group. Default null omits numeric aggregation; lengths use mm, areas m2, volumes m3, and other quantities use the returned unit.",
+    ),
 ]
 TypeName = Annotated[
-    str | None, Field(validation_alias=AliasChoices("type_name", "typeName", "type"))
+    str | None,
+    Field(
+        validation_alias=AliasChoices("type_name", "typeName", "type"),
+        description="Exact type name to match, case-insensitively, combined with the other model filters. Default null applies no type filter; discover names with the family-types catalog.",
+    ),
 ]
 AreaScheme = Annotated[
-    str | None, Field(validation_alias=AliasChoices("area_scheme", "areaScheme"))
+    str | None,
+    Field(
+        validation_alias=AliasChoices("area_scheme", "areaScheme"),
+        description="Exact area-scheme name from the area-schemes catalog, matched case-insensitively. Default null applies no scheme filter; selecting a scheme restricts results to its areas and combines with the other filters.",
+    ),
 ]
 ParameterFilters = Annotated[
     list[dict[str, Any]] | None,
-    Field(validation_alias=AliasChoices("parameter_filters", "parameterFilters")),
+    Field(
+        validation_alias=AliasChoices("parameter_filters", "parameterFilters"),
+        description="AND-combined objects with an exact localized parameter name in parameter, an operator (equals, contains, greater, less, empty, not-empty, exists), and value for comparisons; default null applies no parameter filters. Numeric values use mm, m2, m3 or other document display units; contains requires text, and empty/not-empty/exists need no value.",
+    ),
 ]
-SortField = Annotated[str, Field(validation_alias=AliasChoices("sort_field", "sortField"))]
+SortField = Annotated[
+    str,
+    Field(
+        validation_alias=AliasChoices("sort_field", "sortField"),
+        description="System field (e.g. id, category, level) or exact localized parameter name to sort before pagination; default id sorts by Revit element ID. Uses sort_direction, with element ID breaking ties for other fields.",
+    ),
+]
 SortDirection = Annotated[
-    str, Field(validation_alias=AliasChoices("sort_direction", "sortDirection"))
+    str,
+    Field(
+        validation_alias=AliasChoices("sort_direction", "sortDirection"),
+        description="Sort order: asc or desc, case-insensitively; default asc means ascending. Applies to sort_field before offset and limit.",
+    ),
 ]
-ViewType = Annotated[str | None, Field(validation_alias=AliasChoices("view_type", "viewType"))]
+ViewType = Annotated[
+    str | None,
+    Field(
+        validation_alias=AliasChoices("view_type", "viewType"),
+        description="English Revit ViewType name, such as FloorPlan or ThreeD, matched case-insensitively. Default null includes all non-template view types; combines with name_contains.",
+    ),
+]
 NameContains = Annotated[
-    str | None, Field(validation_alias=AliasChoices("name_contains", "nameContains"))
+    str | None,
+    Field(
+        validation_alias=AliasChoices("name_contains", "nameContains"),
+        description="Case-insensitive substring of the view name. Default null applies no name filter; combines with view_type and excludes templates.",
+    ),
 ]
-ViewName = Annotated[str, Field(validation_alias=AliasChoices("view", "view_name", "viewName"))]
+ViewName = Annotated[
+    str,
+    Field(
+        validation_alias=AliasChoices("view", "view_name", "viewName"),
+        description="Required exact, case-sensitive non-template view name from revit_list_views, or its Revit view ID as a decimal string; no default. An exact name takes precedence over interpreting a numeric string as an ID.",
+    ),
+]
 PixelSize = Annotated[
-    int, Field(validation_alias=AliasChoices("pixel_size", "pixelSize"), ge=1, le=4000)
+    int,
+    Field(
+        validation_alias=AliasChoices("pixel_size", "pixelSize"),
+        ge=1,
+        le=4000,
+        description="PNG size in pixels along the fitted image dimension, an integer from 1 to 4000. Default 1600 fits the view at that size while preserving its aspect ratio.",
+    ),
 ]
-SaveTo = Annotated[str | None, Field(validation_alias=AliasChoices("save_to", "saveTo"))]
+SaveTo = Annotated[
+    str | None,
+    Field(
+        validation_alias=AliasChoices("save_to", "saveTo"),
+        description="New PNG file path on the MCP client machine, not the Revit host; an existing destination causes an error. Default null downloads to a local temporary directory and returns localPath.",
+    ),
+]
 OptionalViewName = Annotated[
-    str | None, Field(validation_alias=AliasChoices("view", "view_name", "viewName"))
+    str | None,
+    Field(
+        validation_alias=AliasChoices("view", "view_name", "viewName"),
+        description="Exact non-template view name from the views catalog, matched case-insensitively, to restrict the element collector. Default null searches the document without a view filter; combines with the other model filters.",
+    ),
 ]
-ElementId = Annotated[int, Field(validation_alias=AliasChoices("element_id", "elementId", "id"))]
+ElementId = Annotated[
+    int,
+    Field(
+        validation_alias=AliasChoices("element_id", "elementId", "id"),
+        description="Required positive integer Revit element ID from revit_query_elements or revit_view_elements; no default. The ID must exist in the target document.",
+    ),
+]
 WarningText = Annotated[
-    str | None, Field(validation_alias=AliasChoices("warning_text", "warningText"))
+    str | None,
+    Field(
+        validation_alias=AliasChoices("warning_text", "warningText"),
+        description="Exact warning description from revit_list_warnings, matched case-insensitively. Default null includes all warning groups; an unmatched supplied text raises an error.",
+    ),
 ]
 IncludeGeometry = Annotated[
-    bool, Field(validation_alias=AliasChoices("include_geometry", "includeGeometry"))
+    bool,
+    Field(
+        validation_alias=AliasChoices("include_geometry", "includeGeometry"),
+        description="Whether each query row includes available location, boundingBox and placed-room roomCenterMm coordinates in model millimetres, rounded to one decimal. Default false omits geometry; true increases the response size.",
+    ),
 ]
 IncludeElements = Annotated[
-    bool, Field(validation_alias=AliasChoices("include_elements", "includeElements"))
+    bool,
+    Field(
+        validation_alias=AliasChoices("include_elements", "includeElements"),
+        description="Whether warning groups include affected elements with ID, category and name. Default false returns counts without element rows; combine true with warning_text to inspect one group.",
+    ),
 ]
-SourceId = Annotated[int | None, Field(validation_alias=AliasChoices("source_id", "sourceId"))]
+SourceId = Annotated[
+    int | None,
+    Field(
+        validation_alias=AliasChoices("source_id", "sourceId"),
+        description="Positive integer Revit ID of the source group for group-elements or family instance for nested-family. Default null is valid for name-based relations; these two ID-based relations require a value.",
+    ),
+]
 SourceName = Annotated[
-    str | None, Field(validation_alias=AliasChoices("source_name", "sourceName"))
+    str | None,
+    Field(
+        validation_alias=AliasChoices("source_name", "sourceName"),
+        description="Exact, case-insensitive source name: a level for level-rooms, area scheme for area-scheme-elements, or view template for view-template-dependents. Default null is valid for ID-based relations; name-based relations require a value from the catalog.",
+    ),
 ]
-Document = Annotated[str | None, Field(validation_alias=AliasChoices("document", "targetDocument"))]
+Document = Annotated[
+    str | None,
+    Field(
+        validation_alias=AliasChoices("document", "targetDocument"),
+        description="Case-insensitive substring of the target active document title or file name; default null leaves requests unaddressed, so any instance may respond. Use a unique substring with multiple instances; revit_list_instances instead returns all matching instances, or all instances when omitted.",
+    ),
+]
 
 mcp = MCPServer(
     "Revit Model Reader",
@@ -174,8 +278,8 @@ async def revit_ping(
 ) -> dict[str, Any]:
     """Check the RevitModelMcp connection without reading the model.
 
-    Returns pong even when no document is active.
-    Parameters: timeout_seconds, pickup_timeout_seconds, document.
+    Returns a response with data="pong", even when no document is active.
+    Connection failures and timeouts raise errors; no partial result is returned.
     """
     return await _execute(ReadJob.ping(), timeout_seconds, pickup_timeout_seconds, document)
 
@@ -188,9 +292,10 @@ async def revit_document_info(
 ) -> dict[str, Any]:
     """Read general information about the active Revit model.
 
-    Returns the file name, Revit version, levels, area schemes, worksets and view count.
+    Returns data with file name, Revit version, levels (elevations in mm), area schemes, worksets and view count.
+    Absent collections are empty; non-workshared models have no worksets.
     Call revit_list_views next for view analysis.
-    Parameters: timeout_seconds, pickup_timeout_seconds, document.
+    A missing active document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.document_info(), timeout_seconds, pickup_timeout_seconds, document
@@ -203,7 +308,13 @@ async def revit_model_health(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read model quality counts; call before an export or hand-over."""
+    """Read model quality counts before an export or hand-over.
+
+    Returns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.
+    Absent objects have zero counts; unavailable metrics are null and listed in skipped with their errors.
+    Use revit_list_warnings to inspect affected elements.
+    A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
+    """
     return await _execute(
         ReadJob("model-health", {"command": "model-health"}),
         timeout_seconds,
@@ -218,7 +329,13 @@ async def revit_links_status(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read RVT, CAD and image link status; call before an export or hand-over."""
+    """Read RVT, CAD and image link status before an export or hand-over.
+
+    Returns data with summary counts and rvtLinks, cadLinks and images lists containing status, paths and instance counts.
+    Each list is capped at 100 entries by ID without pagination; summary counts cover all entries.
+    No links produce empty lists; per-entry failures appear in error with status Other.
+    A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
+    """
     return await _execute(
         ReadJob("links-status", {"command": "links-status"}),
         timeout_seconds,
@@ -233,7 +350,12 @@ async def revit_shared_coordinates(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read project and survey coordinates; call before an export or hand-over."""
+    """Read project and survey coordinates before an export or hand-over.
+
+    Returns data with base/survey points, the active site, project locations and link offsets in mm and rotations in degrees, rounded to one decimal.
+    Location and link lists are capped at 100 without pagination, with total counts; no links produce an empty sharedSiteFromLinks list.
+    A missing active document, read failure or timeout raises an error; partial data is not returned.
+    """
     return await _execute(
         ReadJob("shared-coordinates", {"command": "shared-coordinates"}),
         timeout_seconds,
@@ -244,18 +366,44 @@ async def revit_shared_coordinates(
 
 @addressed_tool
 async def revit_parameter_fill_check(
-    categories: Annotated[list[str], Field(min_length=1, max_length=20)],
-    parameters: Annotated[list[str], Field(min_length=1, max_length=30)],
+    categories: Annotated[
+        list[str],
+        Field(
+            min_length=1,
+            max_length=20,
+            description="Required list of 1-20 category names from the categories catalog; no default. Matches any listed category and combines with level, workset and view filters.",
+        ),
+    ],
+    parameters: Annotated[
+        list[str],
+        Field(
+            min_length=1,
+            max_length=30,
+            description="Required list of 1-30 exact localized parameter names; no default. Each name uses the first LookupParameter match, with type fallback controlled by include_types; missing names are counted as missing.",
+        ),
+    ],
     level: str | None = None,
     workset: str | None = None,
     view: OptionalViewName = None,
-    sample_limit: Annotated[int, Field(ge=1, le=100)] = 20,
+    sample_limit: Annotated[
+        int,
+        Field(
+            ge=1,
+            le=100,
+            description="Maximum element IDs sampled per parameter for each empty and missing list, an integer from 1 to 100. Default 20 limits samples only; all matching elements contribute to counts.",
+        ),
+    ] = 20,
     include_types: bool = True,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Count filled, empty and missing parameters; call before an export or hand-over."""
+    """Count filled, empty and missing parameters before an export or hand-over.
+
+    Returns data with scope, per-parameter and per-category counts, instance/type ownership, storage types and empty/missing element ID samples.
+    No matching elements produce zero counts and empty samples; absent parameters count as missing, and numeric zero counts as filled.
+    A missing document, invalid scope or timeout raises an error; partial data is not returned.
+    """
     payload = dict(
         ReadJob.query_elements(
             categories=categories,
@@ -289,10 +437,11 @@ async def revit_list_catalog(
 ) -> dict[str, Any]:
     """Discover valid model names before filtering.
 
-    Start universal queries here. section accepts categories, family-types, levels,
-    area-schemes, views, worksets, phases or parameters. The parameters section lists
-    names, categories and value types. Prefer aggregation before requesting rows.
-    Parameters: section, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with section and items containing names and section-specific IDs, categories, types or counts; an empty catalog returns items=[].
+    section is required: categories, family-types, levels, area-schemes, views, worksets, phases or parameters.
+    The parameters section reports localized names, categories and value types.
+    Start universal queries here, then prefer revit_aggregate_elements for counts and breakdowns; use revit_query_elements only for individual rows.
+    An unknown section, missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document
@@ -316,14 +465,14 @@ async def revit_aggregate_elements(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read a compact element summary after revit_list_catalog.
+    """Summarize matching elements by one or two fields after revit_list_catalog.
 
-    group_by accepts one or two system fields or exact parameter names. count is
-    always included. sum_field adds sum and average. Use an exact localized Revit
-    parameter name from the parameters catalog. parameter_filters accepts objects
-    with parameter/operator/value. Operators: equals, contains, greater, less,
-    empty, not-empty, exists. For area totals group by level and select the area scheme.
-    Parameters: group_by, sum_field, categories, family, type_name, level, view, workset, phase, area_scheme, parameter_filters, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with matchedElements and groups containing keys, count and optional numericCount, sum, average and unit.
+    Lengths use mm, areas m2 and volumes m3; groups without numeric values have null sum and average.
+    No matches return groups=[]; invalid field or filter names raise errors even for empty results.
+    Call revit_list_catalog first; prefer this tool for counts and breakdowns, and revit_query_elements only for individual rows.
+    For area totals, group by level and select the area scheme.
+    A missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.aggregate_elements(
@@ -366,16 +515,14 @@ async def revit_query_elements(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read a page of elements after revit_list_catalog.
+    """Read a page of matching element rows after revit_list_catalog.
 
-    Use aggregation first when a summary is sufficient. Model filters combine.
-    parameter_filters accepts equals, contains, greater, less, empty, not-empty,
-    exists. fields accepts system fields or exact localized parameter names.
-    Advance offset while hasMore=true. sort_direction accepts asc or desc.
-    include_geometry=true adds location and boundingBox in model millimetres,
-    rounded to 1 decimal, plus roomCenterMm for placed rooms. Default false keeps
-    large queries small. Use roomCenterMm when placing something inside a room.
-    Parameters: categories, family, type_name, level, view, workset, phase, area_scheme, parameter_filters, fields, offset, limit, sort_field, sort_direction, include_geometry, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with elements (id and values), fields, total, offset, limit and hasMore; values include availability, source and units when available.
+    Lengths use mm, areas m2 and volumes m3; optional geometry uses model mm rounded to one decimal, and unavailable geometry is omitted.
+    Use roomCenterMm for placement inside rooms; a bounding-box centre can lie outside the room.
+    No matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.
+    Call revit_list_catalog first and prefer revit_aggregate_elements for counts and breakdowns.
+    Invalid fields or filters, a missing document, read failure or timeout raise errors; partial data is not returned.
     """
     return await _execute(
         ReadJob.query_elements(
@@ -409,12 +556,12 @@ async def revit_list_views(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Find views in the active model before analyzing a view.
+    """Find non-template views before analyzing a view.
 
-    view_type accepts an English Revit ViewType such as FloorPlan. name_contains
-    matches a substring. Both filters are optional. Use an exact returned name
-    with revit_view_summary before requesting element pages.
-    Parameters: view_type, name_contains, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with views containing id, name, type, level, scale and template, plus total and processed counts for scanned non-template views.
+    No filter matches return views=[].
+    Use a returned name with revit_view_summary before requesting element pages.
+    A missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.list_views(view_type, name_contains),
@@ -433,9 +580,9 @@ async def revit_view_summary(
 ) -> dict[str, Any]:
     """Read element categories and counts for a selected view.
 
-    Use an exact name from revit_list_views. Select relevant categories from this
-    summary before calling revit_view_elements.
-    Parameters: view, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].
+    Prefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.
+    A missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.view_summary(view), timeout_seconds, pickup_timeout_seconds, document
@@ -451,11 +598,10 @@ async def revit_export_view(
 ) -> dict[str, Any]:
     """Export a selected view to PNG when numbers do not explain geometry.
 
-    Use for visual checks of outlines, zones and room boundaries. The tool does not
-    change the active view or write to the model. The image is copied from the Revit
-    host to save_to or a local temporary directory. The response contains a local
-    path and metadata without base64.
-    Parameters: view, pixel_size, save_to, document.
+    Returns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.
+    The export does not change the active view or write to the model; use it to inspect outlines, zones and room boundaries.
+    A missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.
+    Uses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.
     """
     return await _execute(
         ReadJob.export_view(view, pixel_size, save_to),
@@ -477,10 +623,10 @@ async def revit_view_elements(
 ) -> dict[str, Any]:
     """Read one page of elements in a selected view.
 
-    Call revit_view_summary first. Supply relevant categories, offset and limit.
-    Advance offset while hasMore=true. Use revit_element_details for all parameters
-    of a selected element.
-    Parameters: view, categories, offset, limit, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with elements, total, offset, limit and hasMore; rows include IDs, category, family, type, level and available measurements in mm, m2 and m3.
+    No matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.
+    Prefer revit_view_summary for counts and category discovery; use this tool for individual rows and revit_element_details for all parameters.
+    A missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.view_elements(view, categories, offset, limit),
@@ -497,15 +643,13 @@ async def revit_element_details(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read parameters and geometry of an element by Revit id.
+    """Read parameters and geometry of an element by Revit ID.
 
-    Use an id from revit_query_elements or revit_view_elements. Returns instance
-    and type parameters and related warnings. Rooms also include level, area,
-    volume and boundaries. location and boundingBox use model millimetres rounded
-    to 1 decimal. Unavailable geometry is omitted. Use roomCenterMm from the
-    room location when placing something inside a room; boundingBox.centerMm
-    may lie outside a nonrectangular room.
-    Parameters: element_id, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with element, instance parameters, available typeElement parameters and related warnings; no warnings return an empty list.
+    Rooms include level, area in m2, volume in m3 and boundaries in mm; parameter values include display/internal values and metric units when available.
+    Location and boundingBox use model mm rounded to one decimal; unavailable geometry is omitted.
+    Use roomCenterMm for placement inside rooms; boundingBox.centerMm may lie outside a nonrectangular room.
+    An absent element or document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document
@@ -519,11 +663,12 @@ async def revit_view_warnings(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read Revit warnings related to elements in a selected view.
+    """Read warnings involving elements present in a selected view.
 
-    Use an exact name from revit_list_views. Use revit_view_summary first to inspect
-    the contents of the view.
-    Parameters: view, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with view and warnings containing text, severity and element IDs with presentOnView flags; no related warnings return warnings=[].
+    A warning may also involve elements outside the view.
+    Use revit_view_summary to inspect view contents, or revit_list_warnings for model-wide warning groups.
+    A missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.view_warnings(view), timeout_seconds, pickup_timeout_seconds, document
@@ -538,11 +683,12 @@ async def revit_list_warnings(
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Group model warnings by text.
+    """Group model warnings by description text.
 
-    Start without warning_text or elements. Repeat with an exact warning_text
-    and include_elements=true to inspect elements in a warning group.
-    Parameters: warning_text, include_elements, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with totalWarnings and groups containing text, severity, count, affectedElementCount and optional element rows.
+    Start without filters, then repeat with a returned warning_text and include_elements=true to inspect one group.
+    No model warnings return groups=[]; an unmatched warning_text raises an error.
+    A missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.list_warnings(warning_text, include_elements),
@@ -563,10 +709,10 @@ async def revit_list_relations(
 ) -> dict[str, Any]:
     """Read model object membership or dependencies.
 
-    relation accepts level-rooms with source_name, group-elements or nested-family
-    with source_id, area-scheme-elements with source_name, or
-    view-template-dependents with source_name. Obtain names from the catalog.
-    Parameters: relation, source_id, source_name, timeout_seconds, pickup_timeout_seconds, document.
+    Returns data with relation, source and elements containing IDs, names, categories, families and types; no related objects return elements=[].
+    relation is required: level-rooms, area-scheme-elements or view-template-dependents with source_name, or group-elements or nested-family with source_id.
+    Obtain source names from revit_list_catalog and IDs from element queries.
+    An invalid relation, missing or wrong source, missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
         ReadJob.list_relations(relation, source_id, source_name),
@@ -581,12 +727,12 @@ async def revit_list_relations(
     annotations=READ_ONLY_TOOL.model_copy(update={"title": "List Instances"}),
 )
 async def revit_list_instances(document: Document = None) -> list[dict[str, object]]:
-    """List Revit processes with active documents, versions and processId.
+    """List Revit processes and their active documents.
 
-    The add-in reports the document through a heartbeat file. Fallback processes
-    have an empty document and pluginResponding=false. Optional document filters
-    by a substring of the model name.
-    Parameters: document.
+    Returns a list of documentName, documentPath, revitVersion, processId and pluginResponding records; no matching instances return [].
+    Local and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.
+    HTTP mode reports only its connected process; transport failures raise errors.
+    Use this tool before choosing a unique document substring for other tools.
     """
     try:
         return redact_model_paths(await host.list_revit_instances(document))
