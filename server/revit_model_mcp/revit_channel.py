@@ -363,12 +363,34 @@ class RevitReadChannel:
                     f"{TRIGGER_FILE} {trigger_state}. The job was not deleted and may still execute later."
                 )
 
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + timeout_seconds
             response_name = await self.remote.wait_for_new_response(
                 job.command, known_responses, timeout_seconds
             )
-            if response_name is None:
+            while response_name is not None:
+                # Progress writes reuse this file; cleanup must wait for a real result.
+                try:
+                    content, _ = await asyncio.wait_for(
+                        self.remote.finish_job(response_name, [], False, None),
+                        timeout=max(0, deadline - loop.time()),
+                    )
+                except TimeoutError:
+                    break
+                result = parse_response(content, job.command)
+                if not _is_intermediate_response(result):
+                    break
+                result = None
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                await asyncio.sleep(min(1, remaining))
+                if loop.time() >= deadline:
+                    break
+
+            if result is None:
                 raise ResponseTimeoutError(
-                    f"The add-in picked up the job, but no response to {job.command} appeared within {timeout_seconds} s. "
+                    f"The add-in picked up the job, but no result for {job.command} appeared within {timeout_seconds} s. "
                     + (
                         "The action may have executed. Inspect the model before retrying."
                         if job.command in ACTION_COMMANDS
@@ -376,16 +398,17 @@ class RevitReadChannel:
                     )
                 )
 
-            finish_attempted = True
-            content, local_path = await self.remote.finish_job(
-                response_name,
-                [temporary_name, response_name],
-                job.command == "export-view",
-                job.save_to,
-            )
-            result = parse_response(content, job.command)
-            if local_path is not None:
-                result["data"]["localPath"] = local_path
+            if job.command == "export-view" and result.get("success") is True:
+                finish_attempted = True
+                content, local_path = await self.remote.finish_job(
+                    response_name,
+                    [temporary_name, response_name],
+                    True,
+                    job.save_to,
+                )
+                result = parse_response(content, job.command)
+                if local_path is not None:
+                    result["data"]["localPath"] = local_path
         except (Exception, asyncio.CancelledError) as error:
             # Preserve the original failure until temporary-file cleanup finishes.
             failure = error
@@ -414,6 +437,13 @@ class RevitReadChannel:
         return result
 
 
+def _is_intermediate_response(response: dict[str, Any]) -> bool:
+    return response.get("partial") is True and (
+        response.get("message") == "Command accepted and running."
+        or (response.get("data") == "accepted" and response.get("elapsedMs") == 0)
+    )
+
+
 def parse_response(content: str, expected_command: str) -> dict[str, Any]:
     try:
         response = json.loads(content)
@@ -432,6 +462,13 @@ def parse_response(content: str, expected_command: str) -> dict[str, Any]:
         )
     if response["success"] is False:
         if expected_command in ACTION_COMMANDS:
+            return response
+        if _is_intermediate_response(response) or (
+            response.get("partial") is True
+            and isinstance(response.get("data"), (dict, list))
+            and isinstance(response.get("elapsedMs"), (int, float))
+            and response["elapsedMs"] > 0
+        ):
             return response
         message = response.get("message")
         raise PluginResponseError(

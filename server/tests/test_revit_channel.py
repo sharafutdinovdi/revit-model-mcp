@@ -479,6 +479,122 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_waits_for_success_after_accepted_response(self) -> None:
+        for placeholder in (
+            {"data": "accepted", "message": "Command accepted and running.", "elapsedMs": 0},
+            {"message": "Command accepted and running.", "elapsedMs": 0},
+            {"data": "accepted", "elapsedMs": 0},
+        ):
+            with self.subTest(placeholder=placeholder):
+                remote = FakeRemoteHost()
+                accepted = json.dumps(
+                    {"command": "document-info", "success": False, "partial": True, **placeholder}
+                )
+                remote.finish_job = AsyncMock(
+                    side_effect=[(accepted, None), (SUCCESS_RESPONSE, None)]
+                )
+                with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+                    result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+                self.assertTrue(result["success"])
+                self.assertEqual(result["data"]["viewCount"], 84)
+                self.assertEqual(remote.finish_job.await_count, 2)
+                for call in remote.finish_job.await_args_list:
+                    self.assertEqual(call.args, (remote.response_name, [], False, None))
+                self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_waits_for_error_after_accepted_response(self) -> None:
+        remote = FakeRemoteHost()
+        accepted = json.dumps(
+            {
+                "command": "document-info",
+                "success": False,
+                "partial": True,
+                "data": "accepted",
+                "message": "Command accepted and running.",
+                "elapsedMs": 0,
+            }
+        )
+        error = json.dumps(
+            {
+                "command": "document-info",
+                "success": False,
+                "partial": False,
+                "message": "The document was closed.",
+                "elapsedMs": 20,
+            }
+        )
+        remote.finish_job = AsyncMock(side_effect=[(accepted, None), (error, None)])
+        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+            with self.assertRaisesRegex(PluginResponseError, "The document was closed"):
+                await RevitReadChannel(remote).execute(ReadJob.document_info())
+        self.assertEqual(remote.finish_job.await_count, 2)
+        self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_accepted_response_times_out_with_original_response_budget(self) -> None:
+        class FakeLoop:
+            now = 0.0
+
+            def time(self) -> float:
+                return self.now
+
+        loop = FakeLoop()
+        remote = FakeRemoteHost()
+        remote.response_content = json.dumps(
+            {
+                "command": "document-info",
+                "success": False,
+                "partial": True,
+                "data": "accepted",
+                "message": "Command accepted and running.",
+                "elapsedMs": 0,
+            }
+        )
+
+        async def discover(command, known_names, timeout_seconds):
+            loop.now += 2
+            return remote.response_name
+
+        async def advance(seconds):
+            self.assertNotIn(remote.response_name, remote.deleted_names)
+            loop.now += seconds
+
+        remote.wait_for_new_response = AsyncMock(side_effect=discover)
+        with (
+            patch("revit_model_mcp.revit_channel.asyncio.get_running_loop", return_value=loop),
+            patch("revit_model_mcp.revit_channel.asyncio.sleep", side_effect=advance),
+        ):
+            with self.assertRaises(ResponseTimeoutError):
+                await RevitReadChannel(remote).execute(ReadJob.document_info(), timeout_seconds=3)
+        self.assertEqual(loop.now, 3)
+        self.assertIn(remote.response_name, remote.deleted_names)
+        self.assertIn(remote.written_name, remote.deleted_names)
+
+    async def test_returns_genuine_partial_after_accepted_response(self) -> None:
+        remote = FakeRemoteHost()
+        accepted = json.dumps(
+            {
+                "command": "list-views",
+                "success": False,
+                "partial": True,
+                "data": "accepted",
+                "message": "Command accepted and running.",
+                "elapsedMs": 0,
+            }
+        )
+        partial = {
+            "command": "list-views",
+            "success": False,
+            "partial": True,
+            "data": {"views": [{"name": "L1"}]},
+            "message": "The 60-second limit was reached.",
+            "elapsedMs": 60000,
+        }
+        remote.finish_job = AsyncMock(side_effect=[(accepted, None), (json.dumps(partial), None)])
+        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+            result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+        self.assertEqual(result, partial)
+        self.assertIn(remote.response_name, remote.deleted_names)
+
     async def test_reports_ssh_unavailable(self) -> None:
         remote = FakeRemoteHost()
         remote.prepare_error = SshUnavailableError("Host revit-host is unreachable over SSH.")
@@ -585,8 +701,8 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("trigger.txt", remote.deleted_names)
         self.assertEqual(remote.pickup_timeout, DEFAULT_PICKUP_TIMEOUT_SECONDS)
         self.assertEqual(remote.response_timeout, 120)
-        connection_events = [event for event in remote.events if event != "delete"]
-        self.assertEqual(len(connection_events), 4)
+        connection_events = remote.events
+        self.assertEqual(len(connection_events), 5)
         self.assertLessEqual(len(connection_events), RELAY_CONNECTION_LIMIT)
 
     async def test_serializes_parallel_calls_because_channel_has_no_correlation_id(

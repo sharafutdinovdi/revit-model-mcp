@@ -7,7 +7,8 @@ Examples (run on Windows from a repository checkout):
   .\install.ps1 -Year 2024,2026 -Source Build -RegisterClaude
   .\install.ps1 -Year 2027 -Version 0.2.0 -SignThumbprint ABC123
   .\install.ps1 -Year 2026 -Uninstall
-Payload and install writes use TEMP and APPDATA Addins only. Explicit Build and
+Payload writes use TEMP and APPDATA Addins. Elevated installs also register the
+default HTTP URL ACL for the current user. Explicit Build and
 RegisterClaude commands also write their normal build/cache and Claude settings.
 #>
 [CmdletBinding()]
@@ -110,6 +111,42 @@ function Uninstall-Year([string] $SelectedYear) {
     Write-Host "uninstalled $SelectedYear -> $addins"
 }
 
+function Update-HttpUrlAcl {
+    $prefix = 'http://127.0.0.1:53110/'
+    if ($Uninstall) {
+        foreach ($candidate in 2022..2027) {
+            if (Test-Path (Join-Path $env:APPDATA "Autodesk\Revit\Addins\$candidate\RevitModelMcp.addin")) {
+                return
+            }
+        }
+    }
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    try {
+        $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+        $elevated = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $account = $identity.Name
+    }
+    finally { $identity.Dispose() }
+    $arguments = @('http', 'add', 'urlacl', "url=$prefix", "user=$account")
+    $command = 'netsh http add urlacl url={0} user="{1}"' -f $prefix, $account
+    if ($Uninstall) {
+        $arguments = @('http', 'delete', 'urlacl', "url=$prefix")
+        $command = "netsh http delete urlacl url=$prefix"
+    }
+    if (!$elevated) {
+        Write-Warning "HTTP URL ACL requires administrator rights. Run once from an elevated command prompt: $command"
+        return
+    }
+    $netsh = Join-Path $env:SystemRoot 'System32\netsh.exe'
+    & $netsh http show urlacl "url=$prefix" *> $null
+    $exists = $LASTEXITCODE -eq 0
+    if ((!$Uninstall -and $exists) -or ($Uninstall -and !$exists)) { return }
+    & $netsh @arguments | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "HTTP URL ACL update failed (exit $LASTEXITCODE). Run once from an elevated command prompt: $command"
+    }
+}
+
 function Register-Claude {
     if (!(Get-Command claude -ErrorAction SilentlyContinue)) {
         Write-Warning 'Claude Code is not on PATH; skipping registration.'
@@ -175,6 +212,7 @@ try {
             Install-Year $selected $payload
         }
     }
+    Update-HttpUrlAcl
     if ($RegisterClaude -and !$Uninstall) { Register-Claude }
     $action = 'Installed'
     if ($Uninstall) { $action = 'Uninstalled' }

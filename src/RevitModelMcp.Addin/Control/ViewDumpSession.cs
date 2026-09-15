@@ -78,9 +78,9 @@ internal sealed class ViewDumpSession : IControlSession
                 return;
             }
 
-            if (application.ActiveUIDocument?.Document != _document)
+            if (!_document.IsValidObject)
             {
-                Fail("The active document changed during the dump.");
+                Fail("The document was closed during the dump.");
                 return;
             }
 

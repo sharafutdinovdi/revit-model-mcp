@@ -102,8 +102,8 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["data"]["localPath"], "/tmp/view.png")
         self.assertEqual(response["data"]["width"], 1600)
         self.assertEqual(response["data"]["viewType"], "FloorPlan")
-        self.assertEqual(events, ["prepare", "pickup", "response", "finish", "delete"])
-        self.assertEqual(len([event for event in events if event != "delete"]), 4)
+        self.assertEqual(events, ["prepare", "pickup", "response", "finish", "finish", "delete"])
+        self.assertEqual(len([event for event in events if event != "delete"]), 5)
 
 
 if __name__ == "__main__":

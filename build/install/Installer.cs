@@ -2,6 +2,7 @@ using Installer;
 using WixSharp;
 using WixSharp.CommonTasks;
 using WixSharp.Controls;
+using WixToolset.Dtf.WindowsInstaller;
 
 const string outputName = "RevitModelMcp";
 const string projectName = "RevitModelMcp";
@@ -22,7 +23,28 @@ var project = new Project
     {
         Manufacturer = "Dinar Sharafutdinov",
         ProductIcon = @"build\install\Resources\Icons\ShellIcon.ico"
-    }
+    },
+    Actions =
+    [
+        new PathFileAction(new Id("RegisterHttpUrlAcl"),
+            @"[System64Folder]netsh.exe",
+            "http add urlacl url=http://127.0.0.1:53110/ sddl=\"D:(A;;GX;;;[UserSID])\"",
+            "System64Folder", Return.ignore, When.After, Step.InstallFiles,
+            new Condition("NOT REMOVE~=\"ALL\""))
+        {
+            Execute = Execute.deferred,
+            Impersonate = false
+        },
+        new PathFileAction(new Id("RemoveHttpUrlAcl"),
+            @"[System64Folder]netsh.exe",
+            "http delete urlacl url=http://127.0.0.1:53110/",
+            "System64Folder", Return.ignore, When.Before, Step.RemoveFiles,
+            new Condition("REMOVE=\"ALL\" AND NOT UPGRADINGPRODUCTCODE"))
+        {
+            Execute = Execute.deferred,
+            Impersonate = false
+        }
+    ]
 };
 
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
@@ -39,7 +61,11 @@ void BuildSingleUserMsi()
     [
         new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
     ];
-    project.BuildMsi();
+    var installerPath = project.BuildMsi();
+    // WiX perUser sets the no-elevation bit; URL ACL custom actions require elevation.
+    using var database = new Database(installerPath, DatabaseOpenMode.Direct);
+    database.SummaryInfo.WordCount &= ~8;
+    database.Commit();
 }
 
 void BuildMultiUserMsi()
