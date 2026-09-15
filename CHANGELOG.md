@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.5.0...v0.5.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* resolve manual-test read and HTTP installation failures ([#45](https://github.com/sharafutdinovdi/revit-model-mcp/issues/45)) ([61bd2ba](https://github.com/sharafutdinovdi/revit-model-mcp/commit/61bd2ba13c1c668b0a3d5e53f06ee6a8011f4292))
+
 ## [0.5.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.4.0...v0.5.0) (2026-09-14)
 
 
