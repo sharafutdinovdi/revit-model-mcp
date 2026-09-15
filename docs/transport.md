@@ -31,6 +31,38 @@ Set `httpEnabled=false` or `REVIT_MCP_HTTP_ENABLED=0` to turn the listener off e
 Restart Revit after changing listener settings.
 Invalid settings disable HTTP and leave the file channel available.
 
+### Windows URL reservation
+
+Elevated `install.ps1` installs and both MSI packages reserve `http://127.0.0.1:53110/` for the installing Windows user.
+The single-user MSI requests elevation for this reservation and keeps its per-user installation scope.
+Existing reservations are preserved on repeated installs.
+Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
+Without elevation, `install.ps1` completes the file installation and prints the exact command to run once from an elevated command prompt:
+
+```bat
+netsh http add urlacl url=http://127.0.0.1:53110/ user="DOMAIN\name"
+```
+
+Changing `httpPort` or `httpBind` requires a matching URL reservation.
+Use `+` in the reservation prefix for `httpBind=0.0.0.0`.
+An access-denied warning in the add-in log includes the exact configured prefix and repair command.
+The listener remains stopped until the reservation exists and Revit restarts.
+
+MSI uninstall removes the default reservation; major upgrades retain it.
+`install.ps1 -Uninstall` removes it after the last installed Revit year for the current user, or prints the removal command when not elevated.
+Custom reservations require manual removal.
+
+After installation, start Revit with a model open and check from PowerShell:
+
+```powershell
+Test-NetConnection 127.0.0.1 -Port 53110
+curl.exe -i http://127.0.0.1:53110/health
+```
+
+The TCP check reports `TcpTestSucceeded: True`; `/health` returns HTTP 200.
+
+### Client connection
+
 The client reads `REVIT_MCP_TOKEN`; `--token` overrides it.
 Prefer the environment populated by a secret store.
 With the token already available in the client environment:

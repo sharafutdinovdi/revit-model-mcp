@@ -103,9 +103,9 @@ internal sealed class ViewElementsSession : IControlSession
                 return;
             }
 
-            if (application.ActiveUIDocument?.Document != _document)
+            if (!_document.IsValidObject)
             {
-                Fail("The active document changed while reading elements.");
+                Fail("The document was closed while reading elements.");
                 return;
             }
 

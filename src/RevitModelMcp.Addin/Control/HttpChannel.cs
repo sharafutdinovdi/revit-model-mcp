@@ -59,7 +59,7 @@ internal sealed class HttpChannel : IDisposable
         catch (HttpListenerException exception) when (exception.NativeErrorCode == 5)
         {
             using var identity = WindowsIdentity.GetCurrent();
-            PluginLog.Warn($"HTTP access denied. Run once from an elevated command prompt: netsh http add urlacl url={prefix} user={identity.Name}");
+            PluginLog.Warn($"HTTP listener NOT started: access denied for '{prefix}'. Run once from an elevated command prompt: netsh http add urlacl url={prefix} user=\"{identity.Name}\"");
         }
         catch (HttpListenerException exception)
         {
