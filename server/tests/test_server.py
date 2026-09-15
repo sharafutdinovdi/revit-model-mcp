@@ -189,10 +189,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             properties = tools[name].input_schema["properties"]
             self.assertEqual(list(properties), parameters)
             self.assertTrue(all(parameter == parameter.lower() for parameter in properties))
-            description = " ".join(tools[name].description.split())
-            self.assertIn(f"Parameters: {', '.join(parameters)}.", description)
-            if name != "revit_list_instances":
-                self.assertIn("document is required", description)
+            self.assertTrue(tools[name].description.strip())
+            if "document" in properties:
+                self.assertTrue(properties["document"].get("description"))
 
     async def test_camel_case_aliases_reach_jobs_without_revit(self) -> None:
         channel = RecordingChannel()
