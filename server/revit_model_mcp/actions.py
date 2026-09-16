@@ -5,7 +5,7 @@ from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
@@ -21,6 +21,13 @@ Number = Annotated[float, Field(allow_inf_nan=False)]
 PositiveLength = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Name = Annotated[str, Field(min_length=1, pattern=r"\S")]
 Point = Annotated[list[Number], Field(min_length=2, max_length=2)]
+Document = Annotated[
+    str | None,
+    Field(
+        validation_alias=AliasChoices("document", "targetDocument"),
+        description="Case-insensitive substring of the target open document's title or file name. Required to disambiguate when the Revit process has more than one document open; omit only when a single document is open (the active document is used). An unknown or ambiguous reference is rejected before any change.",
+    ),
+]
 
 
 _BATCH_FIELDS = {
@@ -115,13 +122,15 @@ def register_actions(mcp, execute, host_provider) -> None:
     if not env_flag("REVIT_MCP_ALLOW_WRITE", False):
         return
 
-    async def send(command: str, **payload) -> dict[str, Any]:
+    async def send(command: str, *, document: str | None = None, **payload) -> dict[str, Any]:
         try:
             instances = await host_provider().list_revit_instances()
         except RevitChannelError as error:
             raise ToolError(str(error)) from error
         if len(instances) != 1:
             raise ToolError("Actions require exactly one running Revit instance.")
+        if document is not None:
+            payload["targetDocument"] = document
         job = ReadJob(
             command,
             {
@@ -157,21 +166,31 @@ def register_actions(mcp, execute, host_provider) -> None:
         )(function)
 
     @action
-    async def revit_select(element_ids: ElementIds) -> dict[str, Any]:
-        """Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless."""
-        return await send("select", elementIds=element_ids)
+    async def revit_select(element_ids: ElementIds, document: Document = None) -> dict[str, Any]:
+        """Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        """
+        return await send("select", elementIds=element_ids, document=document)
 
     @action
-    async def revit_show(element_ids: NonEmptyIds, select: bool = True) -> dict[str, Any]:
-        """Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless."""
-        return await send("show", elementIds=element_ids, select=select)
+    async def revit_show(
+        element_ids: NonEmptyIds, select: bool = True, document: Document = None
+    ) -> dict[str, Any]:
+        """Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        """
+        return await send("show", elementIds=element_ids, select=select, document=document)
 
     @action
-    async def revit_isolate(element_ids: ElementIds, reset: bool = False) -> dict[str, Any]:
-        """Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless."""
+    async def revit_isolate(
+        element_ids: ElementIds, reset: bool = False, document: Document = None
+    ) -> dict[str, Any]:
+        """Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        """
         if not reset and not element_ids:
             raise ToolError("element_ids must not be empty unless reset is true.")
-        return await send("isolate", elementIds=element_ids, reset=reset)
+        return await send("isolate", elementIds=element_ids, reset=reset, document=document)
 
     @action
     async def revit_move(
@@ -180,12 +199,20 @@ def register_actions(mcp, execute, host_provider) -> None:
         dy_mm: Number,
         dz_mm: Number = 0,
         dry_run: bool = False,
+        document: Document = None,
     ) -> dict[str, Any]:
         """Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
-            "move", elementIds=element_ids, dxMm=dx_mm, dyMm=dy_mm, dzMm=dz_mm, dryRun=dry_run
+            "move",
+            elementIds=element_ids,
+            dxMm=dx_mm,
+            dyMm=dy_mm,
+            dzMm=dz_mm,
+            dryRun=dry_run,
+            document=document,
         )
 
     @action
@@ -197,6 +224,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         level: Name,
         rotation_deg: Number = 0,
         dry_run: bool = False,
+        document: Document = None,
     ) -> dict[str, Any]:
         """Place a loaded unhosted family on a named level for layout.
 
@@ -207,6 +235,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         Use roomCenterMm when placing something inside a room.
 
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
             "place-family",
@@ -217,6 +246,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             level=level,
             rotationDeg=rotation_deg,
             dryRun=dry_run,
+            document=document,
         )
 
     @action
@@ -227,9 +257,11 @@ def register_actions(mcp, execute, host_provider) -> None:
         wall_type: Name | None,
         height_mm: PositiveLength = 3000,
         dry_run: bool = False,
+        document: Document = None,
     ) -> dict[str, Any]:
         """Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         if start_mm == end_mm:
             raise ToolError("Wall endpoints must differ.")
@@ -241,33 +273,51 @@ def register_actions(mcp, execute, host_provider) -> None:
             wallType=wall_type,
             heightMm=height_mm,
             dryRun=dry_run,
+            document=document,
         )
 
     @action
     async def revit_set_parameter(
-        element_id: ElementId, parameter: Name, value: str, dry_run: bool = False
+        element_id: ElementId,
+        parameter: Name,
+        value: str,
+        dry_run: bool = False,
+        document: Document = None,
     ) -> dict[str, Any]:
         """Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
-            "set-parameter", elementId=element_id, parameter=parameter, value=value, dryRun=dry_run
+            "set-parameter",
+            elementId=element_id,
+            parameter=parameter,
+            value=value,
+            dryRun=dry_run,
+            document=document,
         )
 
     @action
-    async def revit_delete(element_ids: NonEmptyIds, dry_run: bool = False) -> dict[str, Any]:
+    async def revit_delete(
+        element_ids: NonEmptyIds, dry_run: bool = False, document: Document = None
+    ) -> dict[str, Any]:
         """Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
-        return await send("delete", elementIds=element_ids, dryRun=dry_run)
+        return await send("delete", elementIds=element_ids, dryRun=dry_run, document=document)
 
     @action
     async def revit_batch(
         steps: Annotated[list[BatchStep], Field(min_length=1, max_length=50)],
         dry_run: bool = False,
+        document: Document = None,
     ) -> dict[str, Any]:
         """Execute up to 50 actions with one undo step; roll back the batch on its first failure.
 
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
-        return await send("batch", steps=[step.payload() for step in steps], dryRun=dry_run)
+        return await send(
+            "batch", steps=[step.payload() for step in steps], dryRun=dry_run, document=document
+        )

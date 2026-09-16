@@ -111,7 +111,13 @@ def action_server():
     ],
 )
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload, dry_run):
+@pytest.mark.parametrize(
+    "document_arguments",
+    [{}, {"document": None}, {"document": "Tower"}, {"targetDocument": "Tower"}],
+)
+def test_action_arguments_reach_channel_in_millimeters(
+    name, arguments, payload, dry_run, document_arguments
+):
     import asyncio
 
     server, execute, _ = action_server()
@@ -119,11 +125,15 @@ def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload,
         if dry_run:
             arguments = {**arguments, "dry_run": True}
         payload = {**payload, "dryRun": dry_run}
-    asyncio.run(server.call_tool(name, arguments))
+    asyncio.run(server.call_tool(name, {**arguments, **document_arguments}))
     execute.assert_awaited_once()
     job = execute.await_args.args[0]
     command = name.removeprefix("revit_").replace("_", "-")
     assert job.command == command
+    if "Tower" in document_arguments.values():
+        payload = {**payload, "targetDocument": "Tower"}
+    else:
+        assert "targetDocument" not in job.payload
     assert job.payload == {"command": command, **payload, "targetProcessId": 42}
 
 
@@ -310,7 +320,11 @@ def test_batch_invalid_steps_never_reach_channel(steps):
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_batch_payload_and_annotations(dry_run):
+@pytest.mark.parametrize(
+    "document_arguments",
+    [{}, {"document": None}, {"document": "Tower"}, {"targetDocument": "Tower"}],
+)
+def test_batch_payload_and_annotations(dry_run, document_arguments):
     import asyncio
 
     server, execute, _ = action_server()
@@ -326,12 +340,20 @@ def test_batch_payload_and_annotations(dry_run):
                     },
                 ],
                 "dry_run": dry_run,
+                **document_arguments,
             },
         )
     )
-    assert execute.await_args.args[0].payload == {
+    payload = execute.await_args.args[0].payload
+    if "Tower" in document_arguments.values():
+        document_payload = {"targetDocument": "Tower"}
+    else:
+        document_payload = {}
+        assert "targetDocument" not in payload
+    assert payload == {
         "command": "batch",
         "targetProcessId": 42,
+        **document_payload,
         "dryRun": dry_run,
         "steps": [
             {
