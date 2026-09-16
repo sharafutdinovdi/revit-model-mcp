@@ -388,12 +388,18 @@ internal sealed record HttpSettings
                 stream.SetLength(stream.Position);
             }
         }
-        if (Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_ENABLED") is { } enabled)
+        var enabled = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_ENABLED");
+        if (!string.IsNullOrWhiteSpace(enabled))
             settings.HttpEnabled = enabled switch { "0" => false, "1" => true, _ => throw new InvalidDataException("REVIT_MCP_HTTP_ENABLED must be 0 or 1.") };
-        settings.HttpBind = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_BIND") ?? settings.HttpBind;
-        if (Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_PORT") is { } port)
+        var bind = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_BIND");
+        if (!string.IsNullOrWhiteSpace(bind))
+            settings.HttpBind = bind;
+        var port = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_PORT");
+        if (!string.IsNullOrWhiteSpace(port))
             settings.HttpPort = int.TryParse(port, out var parsed) ? parsed : 0;
-        settings.Token = Environment.GetEnvironmentVariable("REVIT_MCP_TOKEN") ?? settings.Token;
+        var token = Environment.GetEnvironmentVariable("REVIT_MCP_TOKEN");
+        if (!string.IsNullOrWhiteSpace(token))
+            settings.Token = token;
         if (!IPAddress.TryParse(settings.HttpBind, out var address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
             throw new InvalidDataException("httpBind must be an IPv4 interface address, or explicitly 0.0.0.0.");
         if (settings.HttpPort is < 1 or > 65535) throw new InvalidDataException("httpPort must be between 1 and 65535.");
