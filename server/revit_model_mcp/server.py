@@ -210,7 +210,7 @@ Document = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("document", "targetDocument"),
-        description="Case-insensitive substring of the target active document title or file name; default null leaves requests unaddressed, so any instance may respond. Use a unique substring with multiple instances; revit_list_instances instead returns all matching instances, or all instances when omitted.",
+        description="Case-insensitive substring of the target active document title or file name. Reads require exactly one matching instance; omitted document requires exactly one running instance. Zero or multiple matches fail before publishing. revit_list_instances returns all matching instances, or all running instances when omitted.",
     ),
 ]
 
@@ -729,7 +729,10 @@ async def revit_list_relations(
 async def revit_list_instances(document: Document = None) -> list[dict[str, object]]:
     """List Revit processes and their active documents.
 
-    Returns a list of documentName, documentPath, revitVersion, processId and pluginResponding records; no matching instances return [].
+    Returns documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.
+    For file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.
+    Busy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.
+    Legacy heartbeat presence is only a pre-check. No matching instances return [].
     Local and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.
     HTTP mode reports only its connected process; transport failures raise errors.
     Use this tool before choosing a unique document substring for other tools.

@@ -87,6 +87,15 @@ public sealed class InstanceStatus
 
     [DataMember(Name = "updatedUtc", Order = 5)]
     public string UpdatedUtc { get; set; } = string.Empty;
+
+    [DataMember(Name = "fileChannelVersion", Order = 6)]
+    public int FileChannelVersion { get; set; } = 2;
+
+    [DataMember(Name = "startedUtc", Order = 7)]
+    public string StartedUtc { get; set; } = string.Empty;
+
+    [DataMember(Name = "httpPort", Order = 8)]
+    public int? HttpPort { get; set; }
 }
 
 [DataContract]

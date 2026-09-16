@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using Autodesk.Revit.UI;
@@ -33,11 +35,16 @@ internal sealed class SnapshotRunResult
 
 internal static class SnapshotFileWriter
 {
-    internal static string OutputDirectory => Environment.GetEnvironmentVariable("REVIT_MCP_CHANNEL_DIR") is { Length: > 0 } directory
+    internal static string RootDirectory { get; } = Environment.GetEnvironmentVariable("REVIT_MCP_CHANNEL_DIR") is { Length: > 0 } directory
         ? directory
         : Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RevitModelMcp");
+
+    internal static string OutputDirectory { get; } = Path.Combine(
+        RootDirectory, "instances", Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
+
+    internal static string StartedUtc { get; } = DateTime.UtcNow.ToString("O");
 
     public static SnapshotWriteResult Write(Snapshot snapshot, DateTime localTime)
     {

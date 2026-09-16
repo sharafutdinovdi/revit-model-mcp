@@ -20,6 +20,17 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    public async Task Serialize_DocumentChangedError_PreservesCorrelationAndResponder()
+    {
+        var response = CommandResponse<object>.Fail("document-info", "The active document no longer matches the target document.", 0, "read-50");
+        response.Responder = new ResponderInfo { ProcessId = 42, DocumentName = "Architectural" };
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.GetProperty("success").GetBoolean()).IsFalse();
+        await Assert.That(json.RootElement.GetProperty("correlationId").GetString()).IsEqualTo("read-50");
+        await Assert.That(json.RootElement.GetProperty("responder").GetProperty("processId").GetInt32()).IsEqualTo(42);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task Serialize_RoundTripsCorrelationId(bool partial)

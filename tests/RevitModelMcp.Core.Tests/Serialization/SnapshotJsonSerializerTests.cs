@@ -1,3 +1,5 @@
+using System.Runtime.Serialization.Json;
+using System.Text;
 using System.Text.Json;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -7,7 +9,9 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class SnapshotJsonSerializerTests
 {
     [Test]
-    public async Task Serialize_InstanceStatus_PreservesChannelContract()
+    [Arguments(null)]
+    [Arguments(53110)]
+    public async Task Serialize_InstanceStatus_PreservesChannelContract(int? httpPort)
     {
         var status = new InstanceStatus
         {
@@ -15,12 +19,22 @@ public sealed class SnapshotJsonSerializerTests
             RevitVersion = "2023",
             DocumentTitle = "SampleModel",
             DocumentPath = @"C:\\Models\\SampleModel.rvt",
-            UpdatedUtc = "2026-08-17T09:15:30.0000000Z"
+            UpdatedUtc = "2026-08-17T09:15:30.0000000Z",
+            StartedUtc = "2026-08-17T09:00:00.0000000Z",
+            HttpPort = httpPort
         };
 
         using var json = JsonDocument.Parse(InstanceStatusJsonSerializer.Serialize(status));
         var root = json.RootElement;
 
+        await Assert.That(root.GetProperty("fileChannelVersion").GetInt32()).IsEqualTo(2);
+        await Assert.That(root.GetProperty("startedUtc").GetString()).IsEqualTo(status.StartedUtc);
+        await Assert.That(root.GetProperty("httpPort").ValueKind).IsEqualTo(httpPort.HasValue ? JsonValueKind.Number : JsonValueKind.Null);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(root.GetRawText()));
+        var restored = (InstanceStatus)new DataContractJsonSerializer(typeof(InstanceStatus)).ReadObject(stream)!;
+        await Assert.That(restored.FileChannelVersion).IsEqualTo(2);
+        await Assert.That(restored.StartedUtc).IsEqualTo(status.StartedUtc);
+        await Assert.That(restored.HttpPort).IsEqualTo(httpPort);
         await Assert.That(root.GetProperty("processId").GetInt32()).IsEqualTo(4242);
         await Assert.That(root.GetProperty("revitVersion").GetString()).IsEqualTo("2023");
         await Assert.That(root.GetProperty("documentTitle").GetString()).IsEqualTo("SampleModel");

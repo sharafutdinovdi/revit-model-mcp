@@ -7,8 +7,8 @@ Examples (run on Windows from a repository checkout):
   .\install.ps1 -Year 2024,2026 -Source Build -RegisterClaude
   .\install.ps1 -Year 2027 -Version 0.2.0 -SignThumbprint ABC123
   .\install.ps1 -Year 2026 -Uninstall
-Payload writes use TEMP and APPDATA Addins. Elevated installs also register the
-default HTTP URL ACL for the current user. Explicit Build and
+Payload writes use TEMP and APPDATA Addins. -EnableHttp explicitly requests a
+URL ACL for -HttpBind and -HttpPort; the Revit listener is enabled separately. Explicit Build and
 RegisterClaude commands also write their normal build/cache and Claude settings.
 #>
 [CmdletBinding()]
@@ -18,6 +18,9 @@ param(
     [string] $Version = 'latest',
     [string] $SignThumbprint,
     [switch] $RegisterClaude,
+    [switch] $EnableHttp,
+    [ValidatePattern('^(?:\d{1,3}\.){3}\d{1,3}$')] [string] $HttpBind = '127.0.0.1',
+    [ValidateRange(1, 65535)] [int] $HttpPort = 53110,
     [switch] $Uninstall,
     [switch] $Force
 )
@@ -111,15 +114,7 @@ function Uninstall-Year([string] $SelectedYear) {
     Write-Host "uninstalled $SelectedYear -> $addins"
 }
 
-function Update-HttpUrlAcl {
-    $prefix = 'http://127.0.0.1:53110/'
-    if ($Uninstall) {
-        foreach ($candidate in 2022..2027) {
-            if (Test-Path (Join-Path $env:APPDATA "Autodesk\Revit\Addins\$candidate\RevitModelMcp.addin")) {
-                return
-            }
-        }
-    }
+function Get-HttpIdentity {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     try {
         $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -127,6 +122,34 @@ function Update-HttpUrlAcl {
         $account = $identity.Name
     }
     finally { $identity.Dispose() }
+    return @{ Elevated = $elevated; Account = $account }
+}
+
+function Update-HttpUrlAcl {
+    $ownershipFile = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\RevitModelMcp-http-urlacl.txt'
+    if (!$Uninstall -and !$EnableHttp) { return }
+    if ($Uninstall -and !(Test-Path -LiteralPath $ownershipFile)) { return }
+    $address = [Net.IPAddress]::Parse($HttpBind)
+    $bind = $address.ToString()
+    if ($bind -eq '0.0.0.0') { $bind = '+' }
+    $prefix = "http://${bind}:${HttpPort}/"
+    if ($Uninstall) { $prefix = (Get-Content -LiteralPath $ownershipFile -Raw).Trim() }
+    elseif (Test-Path -LiteralPath $ownershipFile) {
+        $ownedPrefix = (Get-Content -LiteralPath $ownershipFile -Raw).Trim()
+        if ($ownedPrefix -ne $prefix) {
+            throw "This script already owns $ownedPrefix. Remove that reservation and $ownershipFile before changing the install prefix."
+        }
+    }
+    if ($Uninstall) {
+        foreach ($candidate in 2022..2027) {
+            if (Test-Path (Join-Path $env:APPDATA "Autodesk\Revit\Addins\$candidate\RevitModelMcp.addin")) {
+                return
+            }
+        }
+    }
+    $identity = Get-HttpIdentity
+    $elevated = $identity.Elevated
+    $account = $identity.Account
     $arguments = @('http', 'add', 'urlacl', "url=$prefix", "user=$account")
     $command = 'netsh http add urlacl url={0} user="{1}"' -f $prefix, $account
     if ($Uninstall) {
@@ -140,11 +163,18 @@ function Update-HttpUrlAcl {
     $netsh = Join-Path $env:SystemRoot 'System32\netsh.exe'
     & $netsh http show urlacl "url=$prefix" *> $null
     $exists = $LASTEXITCODE -eq 0
-    if ((!$Uninstall -and $exists) -or ($Uninstall -and !$exists)) { return }
+    if (!$Uninstall -and $exists) { return }
+    if ($Uninstall -and !$exists) {
+        Remove-Item -LiteralPath $ownershipFile
+        return
+    }
     & $netsh @arguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "HTTP URL ACL update failed (exit $LASTEXITCODE). Run once from an elevated command prompt: $command"
+        return
     }
+    if ($Uninstall) { Remove-Item -LiteralPath $ownershipFile }
+    else { Set-Content -LiteralPath $ownershipFile -Value $prefix -Encoding ASCII }
 }
 
 function Register-Claude {
@@ -212,7 +242,7 @@ try {
             Install-Year $selected $payload
         }
     }
-    Update-HttpUrlAcl
+    if ($EnableHttp -or $Uninstall) { Update-HttpUrlAcl }
     if ($RegisterClaude -and !$Uninstall) { Register-Claude }
     $action = 'Installed'
     if ($Uninstall) { $action = 'Uninstalled' }

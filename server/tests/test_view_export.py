@@ -77,6 +77,9 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
         events: list[str] = []
 
         class Remote:
+            async def select_job(self, job):
+                return self, job
+
             async def prepare_job(self, name, content, command):
                 events.append("prepare")
                 return set()

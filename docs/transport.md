@@ -7,11 +7,12 @@ The MCP client still communicates with the Python server over stdio.
 
 ## HTTP configuration
 
+HTTP is opt-in and off by default; a default deployment uses only the local file channel.
 On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json`:
 
 ```json
 {
-  "httpEnabled": true,
+  "httpEnabled": false,
   "httpBind": "127.0.0.1",
   "httpPort": 53110,
   "token": "<generated 32-byte base64url token>"
@@ -27,32 +28,48 @@ Do not put it in a URL, repository or shared shell history.
 
 Revit environment variables override settings at startup: `REVIT_MCP_HTTP_ENABLED=0|1`, `REVIT_MCP_HTTP_BIND`, `REVIT_MCP_HTTP_PORT` and `REVIT_MCP_TOKEN`.
 Overrides are not written back to the settings file.
+Set `httpEnabled=true` in settings or `REVIT_MCP_HTTP_ENABLED=1` before launching Revit to enable HTTP.
+Assign each HTTP-enabled Revit process its own `REVIT_MCP_HTTP_PORT`; the settings file is shared by the Windows user.
+For example, launch one process from a PowerShell session with `$env:REVIT_MCP_HTTP_ENABLED = '1'` and `$env:REVIT_MCP_HTTP_PORT = '53111'`, and another with port `53112`.
+Each port requires its own URL reservation.
 Set `httpEnabled=false` or `REVIT_MCP_HTTP_ENABLED=0` to turn the listener off entirely.
+
+**Upgrade note:** an existing `settings.json` with `httpEnabled:true` remains enabled after this default change.
+The stored value is preserved.
+To stop the listener, set it to `false` or set `REVIT_MCP_HTTP_ENABLED=0` before upgrading, then enable HTTP deliberately if wanted.
 Restart Revit after changing listener settings.
 Invalid settings disable HTTP and leave the file channel available.
 
 ### Windows URL reservation
 
-Elevated `install.ps1` installs and both MSI packages reserve `http://127.0.0.1:53110/` for the installing Windows user.
-The single-user MSI requests elevation for this reservation and keeps its per-user installation scope.
-Existing reservations are preserved on repeated installs.
-Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
-Without elevation, `install.ps1` completes the file installation and prints the exact command to run once from an elevated command prompt:
+Default script and MSI installs neither register a URL ACL nor require a `netsh` command.
+URL reservation is a separate opt-in installation step; it does not change the listener settings.
+An elevated script install reserves the selected prefix only with `-EnableHttp`:
 
-```bat
-netsh http add urlacl url=http://127.0.0.1:53110/ user="DOMAIN\name"
+```powershell
+.\install.ps1 -Year 2026 -EnableHttp -HttpBind 127.0.0.1 -HttpPort 53111
 ```
+
+For either MSI package, pass `HTTP_ENABLED=1 HTTP_URL_PREFIX="http://127.0.0.1:53111/"` to `msiexec /i <package.msi>`.
+The prefix must match the explicitly enabled Revit process.
+The single-user MSI retains its per-user installation scope and supports elevation for the optional reservation.
+Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
+Without elevation, an opted-in script install prints the exact reservation command for an elevated command prompt.
+The script preserves existing reservations without claiming ownership.
+An opted-in MSI install fails if its prefix already exists; omit `HTTP_ENABLED=1` to use a reservation managed outside that MSI.
 
 Changing `httpPort` or `httpBind` requires a matching URL reservation.
 Use `+` in the reservation prefix for `httpBind=0.0.0.0`.
 An access-denied warning in the add-in log includes the exact configured prefix and repair command.
 The listener remains stopped until the reservation exists and Revit restarts.
 
-MSI uninstall removes the default reservation; major upgrades retain it.
-`install.ps1 -Uninstall` removes it after the last installed Revit year for the current user, or prints the removal command when not elevated.
-Custom reservations require manual removal.
+MSI uninstall removes only the prefix recorded for that installed product after successful registration.
+Major upgrades remove that owned reservation; pass the HTTP installation properties again to reserve a prefix for the new version.
+The script records a successfully created prefix under `%APPDATA%\Autodesk\Revit\Addins\RevitModelMcp-http-urlacl.txt`.
+`install.ps1 -Uninstall` removes that recorded prefix after the last installed Revit year for the current user, or prints its removal command when not elevated.
+Reservations from older installers without an ownership record, and manually managed reservations, require manual removal.
 
-After installation, start Revit with a model open and check from PowerShell:
+After explicitly enabling HTTP, start Revit with a model open and check from PowerShell:
 
 ```powershell
 Test-NetConnection 127.0.0.1 -Port 53110
@@ -75,12 +92,12 @@ uv run --directory server revit-model-mcp
 HTTP has no built-in TLS.
 Use an SSH tunnel, Tailscale or a TLS reverse proxy; the client validates HTTPS certificates.
 Redirects are rejected to prevent forwarding the bearer token to another endpoint.
-`/health` is unauthenticated and reveals the Revit version, active document name, process ID and read-only state.
+`/health` is unauthenticated and reveals the Revit version, active document name, process ID, startup identity (`startedUtc`) and read-only state.
 All other routes require `Authorization: Bearer <token>`.
 
 | Request | Result |
 | --- | --- |
-| `GET /health` | `ok`, `revitVersion`, `documentName`, `processId`, `readOnly` |
+| `GET /health` | `ok`, `revitVersion`, `documentName`, `processId`, `startedUtc`, `readOnly` |
 | `POST /jobs?timeout=120` | File-channel job JSON in the body; final response JSON with HTTP 200 |
 | `GET /jobs/{id}` | HTTP 202 while pending; final response with HTTP 200; HTTP 404 after expiry |
 | `GET /views/{name}/image?pixel=1600` | PNG bytes from the same view exporter used by `revit_export_view` |
@@ -108,8 +125,10 @@ The Python exporter follows this path and preserves response metadata and the lo
 HTTP image artifacts fetched this way expire with the result.
 
 Each HTTP endpoint belongs to one Revit process.
+The server checks PID and `startedUtc` through `/health` before submission and uses only the configured endpoint; it does not scan ports.
+The heartbeat advertises `httpPort` only after the listener binds successfully; disabled or failed listeners advertise null.
 For several instances, configure a distinct port in each process environment before launch.
-An occupied port disables HTTP for the later instance and produces a log message.
+An occupied port disables HTTP for the later instance and produces a log message; its file channel remains available.
 `revit_list_instances` reports the connected endpoint in HTTP mode.
 `targetDocument` and `targetProcessId` are checked in the Revit API context before execution.
 
@@ -199,7 +218,7 @@ export REVIT_MCP_HOST=http://127.0.0.1:53110
 uv run --directory server revit-model-mcp
 ```
 
-### 4. Legacy SSH file channel
+### 4. SSH file channel
 
 The existing transport remains available without HTTP:
 
@@ -208,7 +227,7 @@ export REVIT_MCP_HOST=ssh:revit-host
 uv run --directory server revit-model-mcp
 ```
 
-Set `httpEnabled=false` on the workstation if only the file channel is needed.
+The file channel needs no HTTP opt-in or URL reservation.
 
 ## File channel
 
@@ -217,13 +236,53 @@ Set `REVIT_MCP_CHANNEL_DIR` to an absolute Windows path to override it.
 The server and Revit must use the same directory.
 The Revit environment must contain the override before Revit starts.
 
-| File | Role |
+Discovery reads `ROOT\instance_<pid>.json` only, where `ROOT` is the configured directory.
+Each v2 add-in owns `ROOT\instances\<pid>\`:
+
+| Location | Role |
 | --- | --- |
-| `mcp_<uuid>.tmp` | JSON job before publication |
-| `trigger.txt` | Published job awaiting pickup |
-| `response_<timestamp>_<command>.json` | Add-in response |
-| `view_<timestamp>_<id>.png` | Exported view before download |
-| `instance_<processId>.json` | Instance heartbeat |
+| `ROOT\instance_<pid>.json` | Shared discovery heartbeat |
+| `ROOT\instances\<pid>\mcp_<uuid>.tmp` | Job before atomic publication |
+| `ROOT\instances\<pid>\trigger.txt` | Published job awaiting pickup |
+| `ROOT\instances\<pid>\response_<timestamp>_<command>_<correlationId>.json` | Atomic correlated response |
+| `ROOT\instances\<pid>\view_*.png` | Exported view before download |
+| `ROOT\instances\<pid>\latest.json`, `latest.txt`, `snapshot_*.json`, `views_dump_*` | Legacy snapshot and view-dump output in the same instance directory |
+
+Response temporary files also remain in the selected instance directory.
+On startup the add-in moves any previous `trigger.txt` to a uniquely named `stale_*.tmp` before starting its watcher.
+It does not execute that pending job after PID reuse or watch a trigger in ROOT.
+
+The server resolves a target before publishing any job.
+Actions and undirected reads require exactly one running Revit process.
+Directed reads require exactly one active document matching the case-insensitive title or file-name substring.
+Zero or multiple matches fail before publication.
+Actions retain their open-document resolution inside the selected process.
+After pickup, a directed read rechecks the active document and returns a correlated error if it changed to a non-matching model.
+
+A fresh heartbeat and an existing process are pre-checks.
+For v2 the server performs a bounded ping handshake with a fresh `correlationId` in the selected directory.
+It checks the response correlation, `responder.processId` and unchanged heartbeat `startedUtc` before submitting the requested job.
+The handshake has a 60-second budget, including the SSH connection limiter.
+`pluginResponding=true` for v2 means this handshake succeeded.
+Busy and timed-out instances remain in discovery with `pluginResponding=false`.
+Processes without a fresh heartbeat remain visible with empty document fields when no document filter is supplied.
+The server rejects execution on an unconfirmed channel.
+
+The selected PID, startup identity and directory remain fixed through polling, JSON/PNG reads and cleanup.
+Publication checks that the selected process still exists and that its v2 heartbeat identity is current.
+Atomic publication does not overwrite an existing trigger.
+Cleanup affects only the selected directory and the current job's files.
+Two MCP clients targeting the same PID still contend for one channel.
+Reading inactive documents and cancelling accepted actions are outside this protocol.
+
+### File protocol compatibility
+
+Update the server **before** updating the add-in.
+A heartbeat without `fileChannelVersion` selects the legacy shared ROOT layout only when exactly one Revit process is running.
+The legacy heartbeat indicates presence only; it does not prove a v2 handshake or resolve the old shared-trigger race.
+A v2 add-in remains discoverable by old servers, but their ROOT file commands are incompatible.
+Unknown protocol versions are rejected explicitly before publication.
+Mixed installations allow directed reads to a uniquely matched v2 instance; legacy execution remains restricted to a single process.
 
 The file transport operates independently of the optional HTTP listener.
 Revit API work runs through ExternalEvent.

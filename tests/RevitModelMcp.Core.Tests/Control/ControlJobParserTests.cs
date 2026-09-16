@@ -7,6 +7,28 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task PinnedRead_ClaimsTriggerButDocumentMustStillMatchBeforeReading()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var trigger = Path.Combine(directory, "trigger.txt");
+        const string content = """{"command":"document-info","targetProcessId":42,"targetDocument":"Structural","correlationId":"read-50"}""";
+        File.WriteAllText(trigger, content);
+        try
+        {
+            var job = ControlJobParser.Parse(content);
+            await Assert.That(JobTargetMatcher.TryClaim(trigger, job, "Architectural", "/Models/Architectural.rvt", 42)).IsTrue();
+            await Assert.That(File.Exists(trigger)).IsFalse();
+            await Assert.That(JobTargetMatcher.MatchesDocument("Architectural", "/Models/Architectural.rvt", job.TargetDocument!)).IsFalse();
+            await Assert.That(job.CorrelationId).IsEqualTo("read-50");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
     [Arguments("ping")]
     [Arguments("view-elements")]
     [Arguments("move")]

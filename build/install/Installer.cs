@@ -24,22 +24,40 @@ var project = new Project
         Manufacturer = "Dinar Sharafutdinov",
         ProductIcon = @"build\install\Resources\Icons\ShellIcon.ico"
     },
+    Properties =
+    [
+        new Property("HTTP_ENABLED", "0") { Secure = true },
+        new Property("HTTP_URL_PREFIX", "http://127.0.0.1:53110/") { Secure = true },
+        new RegValueProperty("HTTP_OWNED_PREFIX", RegistryHive.LocalMachine,
+            @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]", "Prefix", "") { Secure = true }
+    ],
+    RegValues =
+    [
+        new RegValue(RegistryHive.LocalMachine, @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]",
+            "Prefix", "[HTTP_OWNED_PREFIX]")
+        {
+            ComponentCondition = "HTTP_ENABLED=\"1\" AND NOT Installed"
+        }
+    ],
     Actions =
     [
+        new SetPropertyAction("HTTP_OWNED_PREFIX", "[HTTP_URL_PREFIX]", Return.check,
+            When.Before, Step.CostFinalize,
+            new Condition("HTTP_ENABLED=\"1\" AND NOT Installed AND NOT REMOVE~=\"ALL\"")),
         new PathFileAction(new Id("RegisterHttpUrlAcl"),
             @"[System64Folder]netsh.exe",
-            "http add urlacl url=http://127.0.0.1:53110/ sddl=\"D:(A;;GX;;;[UserSID])\"",
-            "System64Folder", Return.ignore, When.After, Step.InstallFiles,
-            new Condition("NOT REMOVE~=\"ALL\""))
+            "http add urlacl url=[HTTP_OWNED_PREFIX] sddl=\"D:(A;;GX;;;[UserSID])\"",
+            "System64Folder", Return.check, When.Before, Step.WriteRegistryValues,
+            new Condition("HTTP_ENABLED=\"1\" AND NOT Installed AND NOT REMOVE~=\"ALL\""))
         {
             Execute = Execute.deferred,
             Impersonate = false
         },
         new PathFileAction(new Id("RemoveHttpUrlAcl"),
             @"[System64Folder]netsh.exe",
-            "http delete urlacl url=http://127.0.0.1:53110/",
+            "http delete urlacl url=[HTTP_OWNED_PREFIX]",
             "System64Folder", Return.ignore, When.Before, Step.RemoveFiles,
-            new Condition("REMOVE=\"ALL\" AND NOT UPGRADINGPRODUCTCODE"))
+            new Condition("REMOVE=\"ALL\" AND HTTP_OWNED_PREFIX"))
         {
             Execute = Execute.deferred,
             Impersonate = false
