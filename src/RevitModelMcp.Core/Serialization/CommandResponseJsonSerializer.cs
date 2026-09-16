@@ -86,14 +86,10 @@ public static class CommandResponseJsonFile
             {
                 try
                 {
-#if NET48
                     if (File.Exists(path))
-                        File.Replace(temporaryPath, path, null);
+                        File.Replace(temporaryPath, path, destinationBackupFileName: null);
                     else
                         File.Move(temporaryPath, path);
-#else
-                    File.Move(temporaryPath, path, overwrite: true);
-#endif
                     break;
                 }
                 catch (Exception exception) when (attempt < maximumAttempts && exception is IOException or UnauthorizedAccessException)
