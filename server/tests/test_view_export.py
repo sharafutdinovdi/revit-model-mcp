@@ -85,7 +85,9 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 events.append("pickup")
                 return JobPickupStatus(True, 0, False, 0.1)
 
-            async def wait_for_new_response(self, command, known_names, timeout_seconds):
+            async def wait_for_new_response(
+                self, command, known_names, timeout_seconds, correlation_id=None
+            ):
                 events.append("response")
                 return "response_export-view.json"
 

@@ -7,6 +7,36 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    [Arguments("ping")]
+    [Arguments("view-elements")]
+    [Arguments("move")]
+    [Arguments("unknown-command")]
+    public async Task Parse_PreservesCorrelationIdIncludingValidationErrors(string command)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"{{command}}","correlationId":"job-24"}""");
+        await Assert.That(result.CorrelationId).IsEqualTo("job-24");
+        await Assert.That(result.CoordinatorJob.CorrelationId).IsEqualTo("job-24");
+    }
+
+    [Test]
+    [Arguments("""{"correlationId":"job-24"}""")]
+    [Arguments("""{"command":"view-elements","offset":"invalid","correlationId":"job-24"}""")]
+    public async Task Parse_InvalidJob_PreservesCorrelationIdForEarlyError(string content)
+    {
+        var result = ControlJobParser.Parse(content);
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(result.CorrelationId).IsEqualTo("job-24");
+        var response = CommandResponse<object>.Fail(result.Command, result.Error!, 0, result.CorrelationId);
+        await Assert.That(response.CorrelationId).IsEqualTo(result.CorrelationId);
+    }
+
+    [Test]
+    public async Task Parse_LegacyJob_HasNoCorrelationId()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"ping"}""").CorrelationId).IsNull();
+    }
+
+    [Test]
     public async Task Parse_ModelHealth_ReturnsReadCommand()
     {
         var result = ControlJobParser.Parse("""{"command":"model-health"}""");

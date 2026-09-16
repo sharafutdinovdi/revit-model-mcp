@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using RevitModelMcp.Core.Models;
@@ -30,7 +31,28 @@ public static class CommandResponseJsonFile
 {
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
 
-    public static void Execute(string path, string command, Action<Stopwatch> operation)
+    public static string CreatePath(string directory, DateTime localTime, string command, string? correlationId = null)
+    {
+        var timestamp = localTime.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture);
+        var safeCommand = new string(command.Where(character =>
+            char.IsLetterOrDigit(character) || character is '-' or '_').ToArray());
+        if (string.IsNullOrWhiteSpace(safeCommand)) safeCommand = "invalid";
+        if (!string.IsNullOrEmpty(correlationId))
+            return Path.Combine(directory, $"response_{timestamp}_{safeCommand}_{Uri.EscapeDataString(correlationId)}.json");
+
+        var suffix = string.Empty;
+        var counter = 0;
+        string path;
+        do
+        {
+            path = Path.Combine(directory, $"response_{timestamp}_{safeCommand}{suffix}.json");
+            suffix = $"_{++counter:00}";
+        }
+        while (File.Exists(path));
+        return path;
+    }
+
+    public static void Execute(string path, string command, Action<Stopwatch> operation, string? correlationId = null)
     {
         var stopwatch = Stopwatch.StartNew();
         try
@@ -45,7 +67,8 @@ public static class CommandResponseJsonFile
                 CommandResponse<object>.Fail(
                     command,
                     $"Failed to execute the command: {exception}",
-                    stopwatch.ElapsedMilliseconds));
+                    stopwatch.ElapsedMilliseconds,
+                    correlationId));
         }
     }
 
@@ -54,6 +77,30 @@ public static class CommandResponseJsonFile
         var directory = Path.GetDirectoryName(path)
                         ?? throw new InvalidOperationException("No directory was specified for the response file.");
         Directory.CreateDirectory(directory);
-        File.WriteAllText(path, CommandResponseJsonSerializer.Serialize(response), Utf8WithoutBom);
+        var temporaryPath = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temporaryPath, CommandResponseJsonSerializer.Serialize(response), Utf8WithoutBom);
+            const int maximumAttempts = 10;
+            for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+            {
+                try
+                {
+                    if (File.Exists(path))
+                        File.Replace(temporaryPath, path, destinationBackupFileName: null);
+                    else
+                        File.Move(temporaryPath, path);
+                    break;
+                }
+                catch (Exception exception) when (attempt < maximumAttempts && exception is IOException or UnauthorizedAccessException)
+                {
+                    Thread.Sleep(attempt);
+                }
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+        }
     }
 }

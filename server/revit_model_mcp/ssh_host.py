@@ -169,15 +169,36 @@ class SshPowerShellHost:
         )
 
     async def wait_for_new_response(
-        self, command: str, known_names: set[str], timeout_seconds: float
+        self,
+        command: str,
+        known_names: set[str],
+        timeout_seconds: float,
+        correlation_id: str | None = None,
     ) -> str | None:
         known = ",".join(f"'{_ps_quote(name)}'" for name in sorted(known_names))
         pattern = f"response_*_{command}*.json"
+        selection = "Select-Object -Last 1"
+        if correlation_id is not None:
+            identity = _ps_quote(correlation_id)
+            selection = (
+                "ForEach-Object { "
+                "$file = $_; $response = $null; "
+                "try { $response = [Text.Encoding]::UTF8.GetString((Read-ResponseBytes $file.FullName)) | ConvertFrom-Json -ErrorAction Stop } catch {}; "
+                f"if ($response.correlationId -eq '{identity}' -or "
+                f"($file.Name.EndsWith('_{identity}.json') -and -not $response.correlationId)) {{ "
+                "$matched = $file } "
+                "elseif ($null -ne $response -and -not $response.correlationId "
+                f"-and $response.command -eq '{_ps_quote(command)}' "
+                f"-and $file.Name -match '_{_ps_quote(command)}(?:_[0-9]{{2,}})?\\.json$') {{ $legacy = $file }} "
+                "}; $candidate = if ($null -ne $matched) { $matched } else { $legacy }"
+            )
         script = (
-            f"$directory = {_ps_directory()}; $known = @({known}); "
+            _ps_response_reader()
+            + f"$directory = {_ps_directory()}; $known = @({known}); $matched = $null; $legacy = $null; "
             f"$candidate = Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue | "
-            "Where-Object { $known -notcontains $_.Name } | Sort-Object LastWriteTimeUtc | Select-Object -Last 1; "
-            "if ($null -ne $candidate) { $candidate.Name }"
+            "Where-Object { $known -notcontains $_.Name } | Sort-Object LastWriteTimeUtc | "
+            + selection
+            + "; if ($null -ne $candidate) { $candidate.Name }"
         )
         result, _, _ = await self._poll_for_change(script, "", timeout_seconds)
         return result
@@ -243,8 +264,9 @@ class SshPowerShellHost:
     ) -> tuple[str, str | None]:
         paths = ",".join(f"'{_ps_quote(name)}'" for name in cleanup_names)
         output = await self._run(
-            f"$directory = {_ps_directory()}; $path = Join-Path $directory '{_ps_quote(response_name)}'; "
-            "$artifactName = $null; try { $responseBytes = [IO.File]::ReadAllBytes($path); $artifact = $null; "
+            _ps_response_reader()
+            + f"$directory = {_ps_directory()}; $path = Join-Path $directory '{_ps_quote(response_name)}'; "
+            "$artifactName = $null; try { $responseBytes = Read-ResponseBytes $path; $artifact = $null; "
             + (
                 "$response = [Text.Encoding]::UTF8.GetString($responseBytes) | ConvertFrom-Json; "
                 "$artifactName = [IO.Path]::GetFileName([string]$response.data.fileName); "
@@ -455,6 +477,18 @@ def _parse_instance_package(
             }
         )
     return sorted(fallback, key=lambda item: int(item["processId"]))
+
+
+def _ps_response_reader() -> str:
+    # Atomic replacement on Windows requires readers to permit deletion of the old file.
+    return (
+        "function Read-ResponseBytes([string]$path) { "
+        "$stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, "
+        "([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)); "
+        "try { $reader = New-Object IO.BinaryReader($stream); "
+        "try { return ,$reader.ReadBytes([int]$stream.Length) } finally { $reader.Dispose() } "
+        "} finally { $stream.Dispose() } }; "
+    )
 
 
 def _ps_directory() -> str:

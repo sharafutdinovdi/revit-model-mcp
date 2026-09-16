@@ -17,7 +17,8 @@ internal static class ReadCommandExecutor
         var output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             job.Command,
-            ReadCommandReader.ReadResponder(application));
+            ReadCommandReader.ReadResponder(application),
+            job.CorrelationId);
         output.Write(CommandResponse<string>.PartialResult(
             job.Command,
             "accepted",
@@ -151,24 +152,26 @@ internal static class ReadCommandExecutor
         ControlJobParseResult job,
         DateTimeOffset startedAt)
     {
-        WriteError(application, job.Command, job.Error ?? "Invalid job.", startedAt);
+        WriteError(application, job.Command, job.Error ?? "Invalid job.", startedAt, job.CorrelationId);
     }
 
     public static void WriteError(
         UIApplication application,
         string command,
         string message,
-        DateTimeOffset startedAt)
+        DateTimeOffset startedAt,
+        string? correlationId = null)
     {
         if (ActionJobParser.IsAction(command))
         {
-            ActionCommandExecutor.WriteError(application, command, message, startedAt);
+            ActionCommandExecutor.WriteError(application, command, message, startedAt, correlationId);
             return;
         }
         var output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             command,
-            ReadCommandReader.ReadResponder(application));
+            ReadCommandReader.ReadResponder(application),
+            correlationId);
         output.Write(CommandResponse<object>.Fail(command, message, 0));
         LogFinished(command, "error", 0, output.FilePath, message);
     }

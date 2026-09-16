@@ -18,6 +18,7 @@ internal sealed class ControlChannel
     private bool _executing;
     private bool _stopped;
     private ControlJobParseResult? _httpJob;
+    private ControlJobParseResult? _currentJob;
     private TaskCompletionSource<string>? _httpCompletion;
     private string? _httpResponse;
 
@@ -56,11 +57,12 @@ internal sealed class ControlChannel
                 TickFile(application);
                 return;
             }
+            _currentJob = _httpJob;
             ResponseDelivery.Current = content => _httpResponse = content;
             if (_session is not null)
                 ProcessActiveSession(application);
             else if (!MatchesCurrentInstance(application, _httpJob))
-                TryWriteError(application, _httpJob.Command, "The target document or process does not match this endpoint.", DateTimeOffset.Now);
+                TryWriteError(application, _httpJob.Command, "The target document or process does not match this endpoint.", DateTimeOffset.Now, _httpJob.CorrelationId);
             else
                 ProcessJob(application, _httpJob);
         }
@@ -76,11 +78,12 @@ internal sealed class ControlChannel
                 if (_httpJob is not null && _session is null)
                 {
                     _httpCompletion!.TrySetResult(_httpResponse ?? CommandResponseJsonSerializer.Serialize(
-                        CommandResponse<object>.Fail(_httpJob.Command, "The command ended without a response.", 0)));
+                        CommandResponse<object>.Fail(_httpJob.Command, "The command ended without a response.", 0, _httpJob.CorrelationId)));
                     _httpJob = null;
                     _httpCompletion = null;
                     _httpResponse = null;
                 }
+                _currentJob = null;
                 _executing = false;
             }
         }
@@ -122,6 +125,7 @@ internal sealed class ControlChannel
         }
 
         var parsed = ControlJobParser.Parse(content);
+        _currentJob = parsed;
         if (!MatchesCurrentInstance(application, parsed))
         {
             LogSkippedOnce(parsed, content);
@@ -159,7 +163,7 @@ internal sealed class ControlChannel
             catch (Exception exception)
             {
                 PluginLog.Error("Legacy snapshot failed.", exception);
-                TryWriteError(application, "legacy-snapshot", $"Could not execute the command: {exception}", startedAt);
+                TryWriteError(application, "legacy-snapshot", $"Could not execute the command: {exception}", startedAt, parsed.CorrelationId);
             }
 
             return;
@@ -174,7 +178,7 @@ internal sealed class ControlChannel
         if (parsed.Kind == ControlJobKind.Invalid)
         {
             PluginLog.Info($"Job processing started. Command='{parsed.Command}'.");
-            TryWriteError(application, parsed.Command, parsed.Error ?? "Invalid job.", startedAt);
+            TryWriteError(application, parsed.Command, parsed.Error ?? "Invalid job.", startedAt, parsed.CorrelationId);
             return;
         }
 
@@ -201,7 +205,8 @@ internal sealed class ControlChannel
                 application,
                 parsed.Command,
                 $"Could not start the command: {exception}",
-                startedAt);
+                startedAt,
+                parsed.CorrelationId);
             _session = null;
         }
     }
@@ -236,10 +241,8 @@ internal sealed class ControlChannel
         {
             PluginLog.Warn(
                 $"Job rejected while busy. Parameters='{parameters}'. TriggerPath='{_triggerFilePath}'.");
-            if (ActionJobParser.IsAction(parsed.Command))
-                ActionCommandExecutor.WriteError(application, parsed.Command, "The add-in is busy with another command.", DateTimeOffset.Now);
-            else if (_httpJob is not null)
-                TryWriteError(application, parsed.Command, "The add-in is busy with another command.", DateTimeOffset.Now);
+            if (parsed.CorrelationId is not null || ActionJobParser.IsAction(parsed.Command) || _httpJob is not null)
+                TryWriteError(application, parsed.Command, "The add-in is busy with another command.", DateTimeOffset.Now, parsed.CorrelationId);
             else
                 _session!.RejectJobWhileBusy();
         }
@@ -330,7 +333,7 @@ internal sealed class ControlChannel
         {
             _stopped = true;
             _httpCompletion?.TrySetResult(CommandResponseJsonSerializer.Serialize(
-                CommandResponse<object>.Fail(_httpJob?.Command ?? "invalid", "Revit is shutting down.", 0)));
+                CommandResponse<object>.Fail(_httpJob?.Command ?? "invalid", "Revit is shutting down.", 0, _httpJob?.CorrelationId)));
             _httpJob = null;
             _httpCompletion = null;
         }
@@ -377,20 +380,22 @@ internal sealed class ControlChannel
 
         TryWriteError(
             application,
-            "invalid",
+            _currentJob?.Command ?? "invalid",
             $"Job processing failed: {exception}",
-            DateTimeOffset.Now);
+            DateTimeOffset.Now,
+            _currentJob?.CorrelationId);
     }
 
     private static void TryWriteError(
         UIApplication application,
         string command,
         string message,
-        DateTimeOffset startedAt)
+        DateTimeOffset startedAt,
+        string? correlationId = null)
     {
         try
         {
-            ReadCommandExecutor.WriteError(application, command, message, startedAt);
+            ReadCommandExecutor.WriteError(application, command, message, startedAt, correlationId);
         }
         catch (Exception exception)
         {

@@ -246,7 +246,11 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
 
     result = asyncio.run(RevitReadChannel(host).execute(job))
 
-    assert json.loads(host.prepare_job.await_args.args[1]) == {
+    sent = json.loads(host.prepare_job.await_args.args[1])
+    correlation_id = sent.pop("correlationId")
+    assert len(correlation_id) == 32
+    assert host.wait_for_new_response.await_args.args[3] == correlation_id
+    assert sent == {
         **payload,
         "targetProcessId": 42,
         "targetDocument": document,

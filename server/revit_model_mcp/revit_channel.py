@@ -303,7 +303,11 @@ class RemoteHost(Protocol):
     async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus: ...
 
     async def wait_for_new_response(
-        self, command: str, known_names: set[str], timeout_seconds: float
+        self,
+        command: str,
+        known_names: set[str],
+        timeout_seconds: float,
+        correlation_id: str | None = None,
     ) -> str | None: ...
 
     async def finish_job(
@@ -339,7 +343,9 @@ class RevitReadChannel:
     async def _execute_serial(
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
-        temporary_name = f"mcp_{uuid.uuid4().hex}.tmp"
+        correlation_id = uuid.uuid4().hex
+        job = replace(job, payload={**job.payload, "correlationId": correlation_id})
+        temporary_name = f"mcp_{correlation_id}.tmp"
         response_name: str | None = None
         job_prepared = False
         finish_attempted = False
@@ -366,7 +372,7 @@ class RevitReadChannel:
             loop = asyncio.get_running_loop()
             deadline = loop.time() + timeout_seconds
             response_name = await self.remote.wait_for_new_response(
-                job.command, known_responses, timeout_seconds
+                job.command, known_responses, timeout_seconds, correlation_id
             )
             while response_name is not None:
                 # Progress writes reuse this file; cleanup must wait for a real result.
@@ -377,16 +383,31 @@ class RevitReadChannel:
                     )
                 except TimeoutError:
                     break
-                result = parse_response(content, job.command)
-                if not _is_intermediate_response(result):
-                    break
-                result = None
+                try:
+                    envelope = json.loads(content)
+                except json.JSONDecodeError:
+                    envelope = None
+                if isinstance(envelope, dict) and envelope.get("correlationId") not in (
+                    None,
+                    "",
+                    correlation_id,
+                ):
+                    known_responses.add(response_name)
+                    response_name = None
+                elif envelope is not None:
+                    result = parse_response(content, job.command)
+                    if not _is_intermediate_response(result):
+                        break
+                    result = None
                 remaining = deadline - loop.time()
                 if remaining <= 0:
                     break
                 await asyncio.sleep(min(1, remaining))
                 if loop.time() >= deadline:
                     break
+                response_name = await self.remote.wait_for_new_response(
+                    job.command, known_responses, deadline - loop.time(), correlation_id
+                )
 
             if result is None:
                 raise ResponseTimeoutError(
@@ -438,8 +459,31 @@ class RevitReadChannel:
 
 
 def _is_intermediate_response(response: dict[str, Any]) -> bool:
-    return response.get("partial") is True and (
-        response.get("message") == "Command accepted and running."
+    if response.get("partial") is not True:
+        return False
+    message = response.get("message")
+    if response.get("correlationId"):
+        terminal_partial = isinstance(message, str) and (
+            "The 60-second limit was reached" in message
+            or message.startswith(
+                (
+                    "Processing limit reached:",
+                    "Element reading stopped:",
+                    "Element reading aborted:",
+                )
+            )
+        )
+        return not terminal_partial
+    return (
+        message
+        in (
+            "Command accepted and running.",
+            "Command accepted; preparing the view element list.",
+            "The element list is ready; reading data in batches.",
+            "Processing is waiting for the next ExternalEvent call.",
+            "New job rejected: RevitModelMcp is busy reading elements.",
+        )
+        or (isinstance(message, str) and message.startswith("Processed "))
         or (response.get("data") == "accepted" and response.get("elapsedMs") == 0)
     )
 

@@ -69,7 +69,7 @@ internal static class ActionCommandExecutor
         if (job.Command == "show") response.ViewOpened = viewOpened;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
-            ReadCommandReader.ReadResponder(application)).Write(response);
+            ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
 
     private static Document ResolveDocument(UIApplication application, string? reference)
@@ -153,7 +153,7 @@ internal static class ActionCommandExecutor
         }
     }
 
-    public static void WriteError(UIApplication application, string command, string message, DateTimeOffset startedAt)
+    public static void WriteError(UIApplication application, string command, string message, DateTimeOffset startedAt, string? correlationId = null)
     {
         var error = ActionsEnabled ? message : "actions disabled on the workstation";
         var response = CommandResponse<ActionResultData>.Fail(command, error, 0);
@@ -162,7 +162,7 @@ internal static class ActionCommandExecutor
         if (command == "show") response.ViewOpened = false;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, command,
-            ReadCommandReader.ReadResponder(application)).Write(response);
+            ReadCommandReader.ReadResponder(application), correlationId).Write(response);
     }
 
     private static bool OpenViewForElements(UIDocument uiDocument, List<ElementId> ids)
