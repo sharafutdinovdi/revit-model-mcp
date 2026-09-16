@@ -167,11 +167,41 @@ public sealed class ControlJobParserTests
         var job = ControlJobParseResult.FromContract(new ControlJobContract
         {
             Command = "document-info",
-            TargetDocument = reference,
-            TargetProcessId = 42
+            TargetDocument = reference
         });
         await Assert.That(JobTargetMatcher.Matches(job, title, path, 42)).IsEqualTo(expected);
-        await Assert.That(JobTargetMatcher.Matches(job, title, path, 43)).IsFalse();
+    }
+
+    [Test]
+    [Arguments(42, true)]
+    [Arguments(43, false)]
+    public async Task JobTargetMatcher_PinnedProcess_IgnoresActiveDocument(int processId, bool expected)
+    {
+        var job = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "document-info",
+            TargetDocument = "Structural",
+            TargetProcessId = 42
+        });
+
+        await Assert.That(JobTargetMatcher.Matches(job, "Architectural", "/Models/Architectural.rvt", processId))
+            .IsEqualTo(expected);
+        await Assert.That(JobTargetMatcher.Matches(job, "Structural", "/Models/Structural.rvt", processId))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments("Structural Model", true)]
+    [Arguments("Architectural Model", false)]
+    public async Task JobTargetMatcher_UnpinnedProcess_RoutesByActiveDocument(string title, bool expected)
+    {
+        var job = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "document-info",
+            TargetDocument = "Structural"
+        });
+
+        await Assert.That(JobTargetMatcher.Matches(job, title, "/Models/Other.rvt", 42)).IsEqualTo(expected);
     }
 
     [Test]

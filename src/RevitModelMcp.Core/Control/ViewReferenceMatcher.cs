@@ -36,6 +36,11 @@ public static class JobTargetMatcher
             return false;
         }
 
+        if (job.TargetProcessId.HasValue)
+        {
+            return true;
+        }
+
         if (job.TargetDocument is null)
         {
             return true;
