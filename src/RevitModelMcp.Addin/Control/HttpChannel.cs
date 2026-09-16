@@ -38,6 +38,8 @@ internal sealed class HttpChannel : IDisposable
         _settings = settings;
     }
 
+    public int? BoundPort { get; private set; }
+
     public void UpdateDocument(string? name) => _documentName = name ?? string.Empty;
 
     public void Start()
@@ -52,6 +54,7 @@ internal sealed class HttpChannel : IDisposable
         try
         {
             _listener.Start();
+            BoundPort = _settings.HttpPort;
             _cleanup = new Timer(_ => RemoveExpiredResults(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
             _ = Task.Run(ListenAsync);
             PluginLog.Info($"HTTP listener started. Prefix='{prefix}'.");
@@ -105,6 +108,7 @@ internal sealed class HttpChannel : IDisposable
                     ["revitVersion"] = _version,
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
+                    ["startedUtc"] = SnapshotFileWriter.StartedUtc,
                     ["readOnly"] = !ActionCommandExecutor.ActionsEnabled
                 }).ConfigureAwait(false);
                 return;

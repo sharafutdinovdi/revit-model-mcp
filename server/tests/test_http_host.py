@@ -104,7 +104,9 @@ def endpoint():
 
 def test_health_and_instance_discovery(endpoint):
     host, state = endpoint
-    assert asyncio.run(host.health())["readOnly"] is True
+    health = asyncio.run(host.health())
+    assert health["readOnly"] is True
+    assert health["startedUtc"] == "2026-09-16T00:00:00Z"
     instances = asyncio.run(host.list_revit_instances("mod"))
     assert instances[0]["processId"] == 42
     assert instances[0]["pluginResponding"] is True
@@ -221,6 +223,27 @@ def test_redirect_does_not_forward_token(endpoint):
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
+
+
+def test_addin_advertises_bound_http_endpoint_identity():
+    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
+    application = (REPOSITORY / "src/RevitModelMcp.Addin/Application.cs").read_text()
+    assert "public int? BoundPort { get; private set; }" in source
+    start = source.split("public void Start()", 1)[1].split("private async Task", 1)[0]
+    disabled, enabled = start.split("_listener.Start();", 1)
+    assert "if (!_settings.HttpEnabled)" in disabled
+    assert "return;" in disabled
+    assert "BoundPort =" not in disabled
+    assert enabled.lstrip().startswith("BoundPort = _settings.HttpPort;")
+    assert source.count("BoundPort =") == 1
+    after_start = application.split("_httpChannel.Start();", 1)[1]
+    assert after_start.lstrip().startswith(
+        "_instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);"
+    )
+    assert "HttpPort = _httpPort" in application
+    health = source.split('path == "/health"', 1)[1].split("return;", 1)[0]
+    assert '["startedUtc"] = SnapshotFileWriter.StartedUtc' in health
+    assert "StartedUtc = Output.SnapshotFileWriter.StartedUtc" in application
 
 
 def run_powershell(script):
