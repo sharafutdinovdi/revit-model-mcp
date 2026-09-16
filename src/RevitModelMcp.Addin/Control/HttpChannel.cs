@@ -339,7 +339,7 @@ internal sealed class HttpChannel : IDisposable
 [DataContract]
 internal sealed record HttpSettings
 {
-    [DataMember(Name = "httpEnabled", Order = 1)] public bool HttpEnabled { get; set; } = true;
+    [DataMember(Name = "httpEnabled", Order = 1)] public bool HttpEnabled { get; set; } = false;
     [DataMember(Name = "httpBind", Order = 2)] public string HttpBind { get; set; } = "127.0.0.1";
     [DataMember(Name = "httpPort", Order = 3)] public int HttpPort { get; set; } = 53110;
     [DataMember(Name = "token", Order = 4)] public string Token { get; set; } = string.Empty;
@@ -347,7 +347,7 @@ internal sealed record HttpSettings
     [OnDeserializing]
     private void SetDefaults(StreamingContext context)
     {
-        HttpEnabled = true;
+        HttpEnabled = false;
         HttpBind = "127.0.0.1";
         HttpPort = 53110;
         Token = string.Empty;

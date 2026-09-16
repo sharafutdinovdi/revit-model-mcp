@@ -1,8 +1,11 @@
 import asyncio
 import json
+import shutil
 import struct
+import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
@@ -209,3 +212,172 @@ def test_redirect_does_not_forward_token(endpoint):
     with pytest.raises(RevitChannelError, match="HTTP 302"):
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
     assert len(state["requests"]) == 1
+
+
+REPOSITORY = Path(__file__).resolve().parents[2]
+
+
+def run_powershell(script):
+    executable = shutil.which("pwsh")
+    if not executable:
+        pytest.skip("PowerShell 7 is required for add-in and installer regression checks")
+    result = subprocess.run(
+        [executable, "-NoProfile", "-NonInteractive", "-Command", script],
+        cwd=REPOSITORY,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_addin_http_settings_default_and_opt_in():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$source = Get-Content src/RevitModelMcp.Addin/Control/HttpChannel.cs -Raw
+$imports = @"
+#nullable enable
+using System; using System.IO; using System.Linq; using System.Collections.Generic;
+using System.Runtime.Serialization; using System.Runtime.Serialization.Json;
+using System.Security.AccessControl; using System.Security.Cryptography;
+using System.Security.Principal; using System.Net; using System.Text;
+"@
+$source = $imports + $source.Substring($source.IndexOf('[DataContract]'))
+Add-Type -TypeDefinition $source.Replace('internal sealed record', 'public sealed record')
+if ([HttpSettings]::new().HttpEnabled) { throw 'Constructor enables HTTP by default' }
+$serializer = [Runtime.Serialization.Json.DataContractJsonSerializer]::new([HttpSettings])
+foreach ($json in '{}', '{"httpEnabled":false}', '{"httpEnabled":true}') {
+    $stream = [IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes($json))
+    try { $settings = $serializer.ReadObject($stream) } finally { $stream.Dispose() }
+    if ($settings.HttpEnabled -ne ($json -eq '{"httpEnabled":true}')) {
+        throw "Wrong stored HTTP value for $json"
+    }
+    if ($settings.HttpPort -ne 53110 -or $settings.HttpBind -ne '127.0.0.1') {
+        throw 'Bind or port default changed'
+    }
+}
+# Load applies protected Windows file ACLs; exercise it on Windows only.
+if ($env:OS -eq 'Windows_NT') {
+    $directory = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+    try {
+        foreach ($name in 'HTTP_ENABLED', 'HTTP_BIND', 'HTTP_PORT', 'TOKEN') {
+            [Environment]::SetEnvironmentVariable("REVIT_MCP_$name", $null)
+        }
+        if ([HttpSettings]::Load($directory).HttpEnabled) { throw 'First load enabled HTTP' }
+        $env:REVIT_MCP_HTTP_ENABLED = '1'
+        $env:REVIT_MCP_HTTP_PORT = '53112'
+        $env:REVIT_MCP_HTTP_BIND = '127.0.0.2'
+        $env:REVIT_MCP_TOKEN = 'test-override-token'
+        $settings = [HttpSettings]::Load($directory)
+        if (!$settings.HttpEnabled -or $settings.HttpPort -ne 53112 -or
+            $settings.HttpBind -ne '127.0.0.2' -or $settings.Token -ne 'test-override-token') {
+            throw 'Environment overrides were not applied'
+        }
+        $path = Join-Path $directory 'settings.json'
+        $stored = Get-Content $path -Raw | ConvertFrom-Json
+        if ($stored.httpEnabled) { throw 'Environment override persisted' }
+        $stored.httpEnabled = $true
+        $stored | ConvertTo-Json | Set-Content $path
+        $env:REVIT_MCP_HTTP_ENABLED = $null
+        if (![HttpSettings]::Load($directory).HttpEnabled) { throw 'Stored opt-in lost' }
+        $env:REVIT_MCP_HTTP_ENABLED = '0'
+        if ([HttpSettings]::Load($directory).HttpEnabled) { throw 'Disable override ignored' }
+    }
+    finally { Remove-Item $directory -Recurse -Force }
+}
+"""
+    )
+
+
+def test_script_http_url_acl_opt_in_and_ownership():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+function Get-HttpIdentity { return @{ Elevated = $true; Account = 'test-user' } }
+function Join-Path($Path, $ChildPath) {
+    if ($ChildPath -eq 'System32\netsh.exe') { return 'Invoke-TestNetsh' }
+    Microsoft.PowerShell.Management\Join-Path $Path $ChildPath
+}
+$calls = [Collections.Generic.List[string]]::new()
+$script:exists = $false
+$script:failAdd = $false
+function Invoke-TestNetsh {
+    $calls.Add(($args -join ' '))
+    $global:LASTEXITCODE = 0
+    switch ($args[1]) {
+        'show' { if (!$script:exists) { $global:LASTEXITCODE = 1 } }
+        'add' {
+            if ($script:failAdd) { $global:LASTEXITCODE = 1 }
+            else { $script:exists = $true }
+        }
+        'delete' { $script:exists = $false }
+    }
+}
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+$env:APPDATA = $root
+$env:SystemRoot = $root
+$addins = Join-Path $root 'Autodesk\Revit\Addins'
+$marker = Join-Path $addins 'RevitModelMcp-http-urlacl.txt'
+New-Item $addins -ItemType Directory -Force | Out-Null
+try {
+    $EnableHttp = $false; $Uninstall = $false; $HttpBind = '127.0.0.1'; $HttpPort = 53112
+    Update-HttpUrlAcl
+    $Uninstall = $true
+    Update-HttpUrlAcl
+    if ($calls.Count) { throw 'Default install/uninstall invoked netsh' }
+    $Uninstall = $false; $EnableHttp = $true; $script:exists = $true
+    Update-HttpUrlAcl
+    if (Test-Path $marker) { throw 'Claimed an existing reservation' }
+    $script:exists = $false; $script:failAdd = $true
+    Update-HttpUrlAcl
+    if (Test-Path $marker) { throw 'Claimed a failed reservation' }
+    $script:failAdd = $false
+    Update-HttpUrlAcl
+    if ((Get-Content $marker -Raw).Trim() -ne 'http://127.0.0.1:53112/') {
+        throw 'Wrong ownership prefix'
+    }
+    $year = Join-Path $addins '2026'
+    New-Item $year -ItemType Directory | Out-Null
+    $manifest = Join-Path $year 'RevitModelMcp.addin'
+    Set-Content $manifest 'installed'
+    $Uninstall = $true; $EnableHttp = $false; $HttpPort = 53110
+    $before = $calls.Count
+    Update-HttpUrlAcl
+    if ($calls.Count -ne $before) { throw 'Deleted ACL while another year is installed' }
+    Remove-Item $manifest
+    Update-HttpUrlAcl
+    if ($calls[$calls.Count - 1] -ne 'http delete urlacl url=http://127.0.0.1:53112/') {
+        throw 'Did not remove exactly the owned prefix'
+    }
+    if (Test-Path $marker) { throw 'Ownership record not removed' }
+    $Uninstall = $false; $EnableHttp = $true; $HttpBind = '0.0.0.0'
+    Update-HttpUrlAcl
+    if ((Get-Content $marker -Raw).Trim() -ne 'http://+:53110/') {
+        throw 'Wildcard bind was not mapped to the listener prefix'
+    }
+}
+finally { Remove-Item $root -Recurse -Force }
+"""
+    )
+
+
+def test_msi_http_url_acl_requires_opt_in_and_owned_prefix():
+    source = (REPOSITORY / "build/install/Installer.cs").read_text()
+    assert 'new Property("HTTP_ENABLED", "0")' in source
+    register = source.split('new Id("RegisterHttpUrlAcl")', 1)[1].split(
+        'new Id("RemoveHttpUrlAcl")', 1
+    )[0]
+    assert 'HTTP_ENABLED=\\"1\\" AND NOT Installed' in register
+    assert "Return.check" in register
+    assert "Step.WriteRegistryValues" in register
+    assert "url=[HTTP_OWNED_PREFIX]" in register
+    remove = source.split('new Id("RemoveHttpUrlAcl")', 1)[1]
+    assert 'REMOVE=\\"ALL\\" AND HTTP_OWNED_PREFIX' in remove
+    assert "http delete urlacl url=[HTTP_OWNED_PREFIX]" in remove
+    assert 'new RegValueProperty("HTTP_OWNED_PREFIX"' in source
+    assert "HttpUrlAcl\\[ProductCode]" in source

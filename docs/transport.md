@@ -7,11 +7,12 @@ The MCP client still communicates with the Python server over stdio.
 
 ## HTTP configuration
 
+HTTP is opt-in and off by default; a default deployment uses only the local file channel.
 On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json`:
 
 ```json
 {
-  "httpEnabled": true,
+  "httpEnabled": false,
   "httpBind": "127.0.0.1",
   "httpPort": 53110,
   "token": "<generated 32-byte base64url token>"
@@ -27,32 +28,48 @@ Do not put it in a URL, repository or shared shell history.
 
 Revit environment variables override settings at startup: `REVIT_MCP_HTTP_ENABLED=0|1`, `REVIT_MCP_HTTP_BIND`, `REVIT_MCP_HTTP_PORT` and `REVIT_MCP_TOKEN`.
 Overrides are not written back to the settings file.
+Set `httpEnabled=true` in settings or `REVIT_MCP_HTTP_ENABLED=1` before launching Revit to enable HTTP.
+Assign each HTTP-enabled Revit process its own `REVIT_MCP_HTTP_PORT`; the settings file is shared by the Windows user.
+For example, launch one process from a PowerShell session with `$env:REVIT_MCP_HTTP_ENABLED = '1'` and `$env:REVIT_MCP_HTTP_PORT = '53111'`, and another with port `53112`.
+Each port requires its own URL reservation.
 Set `httpEnabled=false` or `REVIT_MCP_HTTP_ENABLED=0` to turn the listener off entirely.
+
+**Upgrade note:** an existing `settings.json` with `httpEnabled:true` remains enabled after this default change.
+The stored value is preserved.
+To stop the listener, set it to `false` or set `REVIT_MCP_HTTP_ENABLED=0` before upgrading, then enable HTTP deliberately if wanted.
 Restart Revit after changing listener settings.
 Invalid settings disable HTTP and leave the file channel available.
 
 ### Windows URL reservation
 
-Elevated `install.ps1` installs and both MSI packages reserve `http://127.0.0.1:53110/` for the installing Windows user.
-The single-user MSI requests elevation for this reservation and keeps its per-user installation scope.
-Existing reservations are preserved on repeated installs.
-Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
-Without elevation, `install.ps1` completes the file installation and prints the exact command to run once from an elevated command prompt:
+Default script and MSI installs neither register a URL ACL nor require a `netsh` command.
+URL reservation is a separate opt-in installation step; it does not change the listener settings.
+An elevated script install reserves the selected prefix only with `-EnableHttp`:
 
-```bat
-netsh http add urlacl url=http://127.0.0.1:53110/ user="DOMAIN\name"
+```powershell
+.\install.ps1 -Year 2026 -EnableHttp -HttpBind 127.0.0.1 -HttpPort 53111
 ```
+
+For either MSI package, pass `HTTP_ENABLED=1 HTTP_URL_PREFIX="http://127.0.0.1:53111/"` to `msiexec /i <package.msi>`.
+The prefix must match the explicitly enabled Revit process.
+The single-user MSI retains its per-user installation scope and supports elevation for the optional reservation.
+Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
+Without elevation, an opted-in script install prints the exact reservation command for an elevated command prompt.
+The script preserves existing reservations without claiming ownership.
+An opted-in MSI install fails if its prefix already exists; omit `HTTP_ENABLED=1` to use a reservation managed outside that MSI.
 
 Changing `httpPort` or `httpBind` requires a matching URL reservation.
 Use `+` in the reservation prefix for `httpBind=0.0.0.0`.
 An access-denied warning in the add-in log includes the exact configured prefix and repair command.
 The listener remains stopped until the reservation exists and Revit restarts.
 
-MSI uninstall removes the default reservation; major upgrades retain it.
-`install.ps1 -Uninstall` removes it after the last installed Revit year for the current user, or prints the removal command when not elevated.
-Custom reservations require manual removal.
+MSI uninstall removes only the prefix recorded for that installed product after successful registration.
+Major upgrades remove that owned reservation; pass the HTTP installation properties again to reserve a prefix for the new version.
+The script records a successfully created prefix under `%APPDATA%\Autodesk\Revit\Addins\RevitModelMcp-http-urlacl.txt`.
+`install.ps1 -Uninstall` removes that recorded prefix after the last installed Revit year for the current user, or prints its removal command when not elevated.
+Reservations from older installers without an ownership record, and manually managed reservations, require manual removal.
 
-After installation, start Revit with a model open and check from PowerShell:
+After explicitly enabling HTTP, start Revit with a model open and check from PowerShell:
 
 ```powershell
 Test-NetConnection 127.0.0.1 -Port 53110
@@ -109,7 +126,7 @@ HTTP image artifacts fetched this way expire with the result.
 
 Each HTTP endpoint belongs to one Revit process.
 For several instances, configure a distinct port in each process environment before launch.
-An occupied port disables HTTP for the later instance and produces a log message.
+An occupied port disables HTTP for the later instance and produces a log message; its file channel remains available.
 `revit_list_instances` reports the connected endpoint in HTTP mode.
 `targetDocument` and `targetProcessId` are checked in the Revit API context before execution.
 
@@ -208,7 +225,7 @@ export REVIT_MCP_HOST=ssh:revit-host
 uv run --directory server revit-model-mcp
 ```
 
-Set `httpEnabled=false` on the workstation if only the file channel is needed.
+The file channel needs no HTTP opt-in or URL reservation.
 
 ## File channel
 
