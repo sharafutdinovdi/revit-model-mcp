@@ -7,22 +7,22 @@ namespace RevitModelMcp.Control;
 
 internal static class ActionVerifier
 {
-    internal static ActionFacts? CaptureBefore(Document document, string command,
+    internal static ActionFacts? CaptureBefore(Document targetDocument, string command,
         ActionJobContract action, List<ElementId> ids) => command switch
         {
-            "move" => new ActionFacts { Elements = ids.Select(id => Bounds(RequiredElement(document, RevitValueReader.GetId(id)))).ToList() },
-            "set-parameter" => ParameterFacts(document, action),
+            "move" => new ActionFacts { Elements = ids.Select(id => Bounds(RequiredElement(targetDocument, RevitValueReader.GetId(id)))).ToList() },
+            "set-parameter" => ParameterFacts(targetDocument, action),
             "delete" => new ActionFacts { Requested = ids.Select(RevitValueReader.GetId).ToList() },
             _ => null
         };
 
-    internal static void CaptureAfter(Document document, string command, ActionJobContract action, ActionResultData result)
+    internal static void CaptureAfter(Document targetDocument, string command, ActionJobContract action, ActionResultData result)
     {
         var verification = result.Verification!;
         switch (command)
         {
             case "move":
-                var after = action.ElementIds.Select(id => Bounds(RequiredElement(document, id))).ToList();
+                var after = action.ElementIds.Select(id => Bounds(RequiredElement(targetDocument, id))).ToList();
                 verification.After = new ActionFacts { Elements = after };
                 verification.Changed = verification.Before!.Elements!.Zip(after, (before, current) =>
                     SameBounds(before.BoundingBoxMinMm, current.BoundingBoxMinMm) &&
@@ -30,36 +30,36 @@ internal static class ActionVerifier
                     .Where(id => id.HasValue).Select(id => id!.Value).ToList();
                 break;
             case "set-parameter":
-                verification.After = ParameterFacts(document, action);
+                verification.After = ParameterFacts(targetDocument, action);
                 verification.Changed = verification.Before!.Value == verification.After.Value ? [] : [action.ElementId];
                 break;
             case "place-family":
             case "create-wall":
-                var element = RequiredElement(document, result.Id!.Value);
+                var element = RequiredElement(targetDocument, result.Id!.Value);
                 var facts = Bounds(element);
-                var type = element.GetTypeId().ToElement<ElementType>(document);
+                var type = element.GetTypeId().ToElement<ElementType>(targetDocument);
                 facts.Family = type?.FamilyName ?? string.Empty;
                 facts.Type = type?.Name ?? string.Empty;
-                facts.Level = element.LevelId.ToElement<Level>(document)?.Name ?? string.Empty;
+                facts.Level = element.LevelId.ToElement<Level>(targetDocument)?.Name ?? string.Empty;
                 verification.After = facts;
                 verification.WouldCreate = action.DryRun ? true : null;
                 break;
             case "delete":
                 var stillPresent = verification.Changed!
-                    .Where(id => ActionCommandExecutor.CreateId(id).ToElement(document) is not null).ToList();
+                    .Where(id => ActionCommandExecutor.CreateId(id).ToElement(targetDocument) is not null).ToList();
                 verification.After = new ActionFacts { StillPresent = stillPresent };
                 if (stillPresent.Count > 0) throw new InvalidOperationException("Deletion verification found surviving elements.");
                 break;
         }
     }
 
-    private static Element RequiredElement(Document document, long id) =>
-        ActionCommandExecutor.CreateId(id).ToElement(document)
+    private static Element RequiredElement(Document targetDocument, long id) =>
+        ActionCommandExecutor.CreateId(id).ToElement(targetDocument)
         ?? throw new InvalidOperationException($"Verification could not find element {id}.");
 
-    private static ActionFacts ParameterFacts(Document document, ActionJobContract action)
+    private static ActionFacts ParameterFacts(Document targetDocument, ActionJobContract action)
     {
-        var element = RequiredElement(document, action.ElementId);
+        var element = RequiredElement(targetDocument, action.ElementId);
         var parameter = element.FindParameter(action.Parameter!)
                         ?? throw new ArgumentException($"Parameter '{action.Parameter}' was not found on the instance or type.");
         return new ActionFacts

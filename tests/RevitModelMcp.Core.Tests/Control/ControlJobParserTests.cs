@@ -152,6 +152,29 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    [Arguments("Sample Model", "/Models/Other.rvt", "Sample", true)]
+    [Arguments("Other", "/Models/Sample Model.rvt", "Model.rvt", true)]
+    [Arguments("Sample Model", "/Models/Other.rvt", "sAmPlE", true)]
+    [Arguments(null, "/Models/Sample Model.RVT", "mOdEl.rvt", true)]
+    [Arguments("Other", "/Sample/Other.rvt", "Sample", false)]
+    [Arguments("Other", "/Models/Other.rvt", "Missing", false)]
+    [Arguments("Unsaved Model", "", "Unsaved", true)]
+    [Arguments(null, null, "Sample", false)]
+    public async Task JobTargetMatcher_MatchesDocument_UsesTitleOrFileName(
+        string? title, string? path, string reference, bool expected)
+    {
+        await Assert.That(JobTargetMatcher.MatchesDocument(title, path, reference)).IsEqualTo(expected);
+        var job = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "document-info",
+            TargetDocument = reference,
+            TargetProcessId = 42
+        });
+        await Assert.That(JobTargetMatcher.Matches(job, title, path, 42)).IsEqualTo(expected);
+        await Assert.That(JobTargetMatcher.Matches(job, title, path, 43)).IsFalse();
+    }
+
+    [Test]
     public async Task JobTargetMatcher_RejectsForeignDocumentAndAcceptsUnaddressedJob()
     {
         var foreign = ControlJobParser.Parse(

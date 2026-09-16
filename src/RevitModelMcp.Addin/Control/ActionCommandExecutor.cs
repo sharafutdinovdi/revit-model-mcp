@@ -34,13 +34,18 @@ internal static class ActionCommandExecutor
         {
             if (!ActionsEnabled) throw new InvalidOperationException("actions disabled on the workstation");
             if (job.Error is not null) throw new ArgumentException(job.Error);
-            var uiDocument = application.ActiveUIDocument ?? throw new InvalidOperationException("No active Revit document.");
+            var document = ResolveDocument(application, job.TargetDocument);
+            var activeUiDocument = application.ActiveUIDocument;
+            var uiDocument = activeUiDocument is not null
+                             && activeUiDocument.Document.Title == document.Title
+                             && activeUiDocument.Document.PathName == document.PathName
+                ? activeUiDocument : null;
             var action = job.Action ?? throw new ArgumentException("Missing action arguments.");
             ActionResultData data;
             if (job.Command == "batch")
-                data = BatchActionExecutor.Execute(uiDocument, action, failures);
+                data = BatchActionExecutor.Execute(document, uiDocument, action, failures);
             else
-                data = ExecuteStep(uiDocument, job.Command, action, failures, out viewOpened);
+                data = ExecuteStep(document, uiDocument, job.Command, action, failures, out viewOpened);
             response = data.Committed == false && data.FailedStep.HasValue
                 ? CommandResponse<ActionResultData>.Fail(job.Command, data.Steps!.Last().Error!, stopwatch.ElapsedMilliseconds)
                 : CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
@@ -67,21 +72,39 @@ internal static class ActionCommandExecutor
             ReadCommandReader.ReadResponder(application)).Write(response);
     }
 
-    internal static ActionResultData ExecuteStep(UIDocument uiDocument, string command,
+    private static Document ResolveDocument(UIApplication application, string? reference)
+    {
+        if (reference is null)
+            return application.ActiveUIDocument?.Document
+                   ?? throw new InvalidOperationException("No active Revit document.");
+
+        var candidates = application.Application.Documents.Cast<Document>()
+            .Where(document => JobTargetMatcher.MatchesDocument(document.Title, document.PathName, reference))
+            .ToList();
+        return candidates.Count switch
+        {
+            0 => throw new InvalidOperationException($"The addressed document '{reference}' is not open."),
+            1 => candidates[0],
+            _ => throw new InvalidOperationException($"The document reference '{reference}' is ambiguous ({candidates.Count} open documents match); use a more specific substring.")
+        };
+    }
+
+    internal static ActionResultData ExecuteStep(Document document, UIDocument? uiDocument, string command,
         ActionJobContract action, ActionFailures failures, out bool viewOpened, bool deferDryRun = false)
     {
         viewOpened = false;
-        var document = uiDocument.Document;
+        if (command is "select" or "show" or "isolate" && uiDocument is null)
+            throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
         if (command is "select" or "show")
         {
             if (command == "show")
             {
-                viewOpened = OpenViewForElements(uiDocument, ids);
-                uiDocument.ShowElements(ids);
+                viewOpened = OpenViewForElements(uiDocument!, ids);
+                uiDocument!.ShowElements(ids);
             }
-            if (command == "select" || action.Select) uiDocument.Selection.SetElementIds(ids);
-            return new ActionResultData { Count = uiDocument.Selection.GetElementIds().Count };
+            if (command == "select" || action.Select) uiDocument!.Selection.SetElementIds(ids);
+            return new ActionResultData { Count = uiDocument!.Selection.GetElementIds().Count };
         }
 
         using var transaction = new Transaction(document, "revit_" + command.Replace('-', '_'));

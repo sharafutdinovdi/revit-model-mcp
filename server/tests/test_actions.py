@@ -9,7 +9,12 @@ from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
 
 from revit_model_mcp.actions import millimeters_to_feet, register_actions
-from revit_model_mcp.revit_channel import parse_response
+from revit_model_mcp.revit_channel import (
+    JobPickupStatus,
+    ReadJob,
+    RevitReadChannel,
+    parse_response,
+)
 
 ACTION_TOOLS = {
     "revit_select",
@@ -189,6 +194,54 @@ def test_mm_conversion(value, expected):
 def test_mm_conversion_rejects_non_finite(value):
     with pytest.raises(ValueError):
         millimeters_to_feet(value)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"command": "move", "elementIds": [1], "dxMm": 10, "dyMm": 0},
+        {"command": "delete", "elementIds": [1]},
+        {"command": "select", "elementIds": [1]},
+        {"command": "isolate", "elementIds": [], "reset": True},
+        {"command": "batch", "steps": [{"command": "delete", "elementIds": [1]}]},
+    ],
+)
+@pytest.mark.parametrize(
+    "document,error",
+    [
+        ("Model A", None),
+        ("Missing", "The addressed document 'Missing' is not open."),
+        (
+            "Model",
+            "The document reference 'Model' is ambiguous (2 open documents match); "
+            "use a more specific substring.",
+        ),
+    ],
+)
+def test_addressed_action_channel_preserves_target_and_response(payload, document, error):
+    import asyncio
+
+    command = payload["command"]
+    job = ReadJob(command, {**payload, "targetProcessId": 42}).for_document(document)
+    response = {"command": command, "success": error is None, "activeView": "Model B Plan"}
+    if error is None:
+        response["data"] = {}
+    else:
+        response["error"] = error
+    host = AsyncMock()
+    host.prepare_job.return_value = set()
+    host.wait_until_trigger_is_gone.return_value = JobPickupStatus(True, 0, False, 0)
+    host.wait_for_new_response.return_value = "response_action.json"
+    host.finish_job.return_value = (json.dumps(response), None)
+
+    result = asyncio.run(RevitReadChannel(host).execute(job))
+
+    assert json.loads(host.prepare_job.await_args.args[1]) == {
+        **payload,
+        "targetProcessId": 42,
+        "targetDocument": document,
+    }
+    assert result == response
 
 
 def test_action_failure_preserves_gate_message_view_and_suggestions():

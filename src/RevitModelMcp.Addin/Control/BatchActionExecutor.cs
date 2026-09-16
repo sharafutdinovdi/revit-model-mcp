@@ -6,11 +6,10 @@ namespace RevitModelMcp.Control;
 
 internal static class BatchActionExecutor
 {
-    internal static ActionResultData Execute(UIDocument uiDocument, ActionJobContract action,
+    internal static ActionResultData Execute(Document document, UIDocument? uiDocument, ActionJobContract action,
         ActionCommandExecutor.ActionFailures failures)
     {
-        var document = uiDocument.Document;
-        var selection = uiDocument.Selection.GetElementIds();
+        var selection = uiDocument?.Selection.GetElementIds();
         var result = new ActionResultData
         {
             DryRun = action.DryRun,
@@ -35,7 +34,7 @@ internal static class BatchActionExecutor
                     try
                     {
                         stepAction.DryRun |= action.DryRun;
-                        entry.Data = ActionCommandExecutor.ExecuteStep(uiDocument, step.Command, stepAction,
+                        entry.Data = ActionCommandExecutor.ExecuteStep(document, uiDocument, step.Command, stepAction,
                             failures, out _, deferDryRun: action.DryRun);
                     }
                     finally
@@ -83,7 +82,7 @@ internal static class BatchActionExecutor
                 entry.RolledBack = true;
                 if (entry.Data is not null) entry.Data.RolledBack = true;
             }
-            uiDocument.Selection.SetElementIds(selection);
+            if (selection is not null) uiDocument!.Selection.SetElementIds(selection);
         }
     }
 }
