@@ -50,7 +50,8 @@ def endpoint():
                         "ok": True,
                         "revitVersion": "2026",
                         "documentName": "Model",
-                        "processId": 42,
+                        "processId": state.get("processId", 42),
+                        "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": True,
                     },
                 )
@@ -117,7 +118,12 @@ def test_job_round_trip(endpoint):
     assert result["data"] == "pong"
     assert state["payload"]["command"] == "ping"
     assert len(state["payload"]["correlationId"]) == 32
-    assert state["requests"] == [("POST", "/jobs?timeout=0", "Bearer test-token")]
+    assert state["requests"] == [
+        ("GET", "/health", None),
+        ("GET", "/health", None),
+        ("POST", "/jobs?timeout=0", "Bearer test-token"),
+    ]
+    assert state["payload"]["targetProcessId"] == 42
 
 
 @pytest.mark.parametrize(
@@ -128,7 +134,7 @@ def test_http_errors(endpoint, status, message):
     state["status"] = status
     with pytest.raises(RevitChannelError, match=message):
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
-    assert len(state["requests"]) == 1
+    assert len(state["requests"]) == 3
 
 
 def test_wrong_token(endpoint):
@@ -165,7 +171,7 @@ def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metada
     assert target.read_bytes() == PNG
     assert result["data"]["width"] == 1600
     assert result["data"]["localPath"] == str(target)
-    assert len(state["requests"]) == 2
+    assert len(state["requests"]) == 4
     with pytest.raises(RevitChannelError, match="already exists"):
         asyncio.run(RevitReadChannel(host).execute(job))
     assert target.read_bytes() == PNG
@@ -203,7 +209,7 @@ def test_missing_token_does_not_submit(endpoint):
     host.token = ""
     with pytest.raises(RevitChannelError, match="Set REVIT_MCP_TOKEN"):
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
-    assert state["requests"] == []
+    assert state["requests"] == [("GET", "/health", None), ("GET", "/health", None)]
 
 
 def test_redirect_does_not_forward_token(endpoint):
@@ -211,7 +217,7 @@ def test_redirect_does_not_forward_token(endpoint):
     state.update(status=302, redirect=host.host + "/health")
     with pytest.raises(RevitChannelError, match="HTTP 302"):
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
-    assert len(state["requests"]) == 1
+    assert len(state["requests"]) == 3
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -381,3 +387,25 @@ def test_msi_http_url_acl_requires_opt_in_and_owned_prefix():
     assert "http delete urlacl url=[HTTP_OWNED_PREFIX]" in remove
     assert 'new RegValueProperty("HTTP_OWNED_PREFIX"' in source
     assert "HttpUrlAcl\\[ProductCode]" in source
+
+
+@pytest.mark.parametrize("changed", [{"processId": 84}, {"startedUtc": "2026-09-16T01:00:00Z"}])
+def test_endpoint_identity_change_rejected_before_post(endpoint, changed):
+    host, state = endpoint
+
+    async def submit():
+        selected, job = await host.select_job(ReadJob.ping())
+        state.update(changed)
+        await selected.prepare_job("unused.tmp", job.to_json(), job.command)
+
+    with pytest.raises(RevitChannelError, match="identity changed"):
+        asyncio.run(submit())
+    assert all(method == "GET" for method, _, _ in state["requests"])
+
+
+def test_http_action_keeps_inactive_document_address(endpoint):
+    host, state = endpoint
+    job = ReadJob("select", {"command": "select", "targetDocument": "Inactive", "elementIds": [1]})
+    asyncio.run(RevitReadChannel(host).execute(job))
+    assert state["payload"]["targetDocument"] == "Inactive"
+    assert state["payload"]["targetProcessId"] == 42

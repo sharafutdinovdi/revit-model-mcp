@@ -469,3 +469,31 @@ def test_in_process_read_tool_titles():
         assert tool.title and len(tool.title) <= 40
         assert tool.annotations.title == tool.title
         assert tool.annotations.read_only_hint is True
+
+
+def test_discovery_unions_heartbeats_with_all_running_processes():
+    from revit_model_mcp.ssh_host import _parse_instance_package
+
+    now = datetime.now(timezone.utc)
+    status = {
+        "processId": 42,
+        "revitVersion": "2024",
+        "documentTitle": "Model A",
+        "documentPath": r"C:\Models\Unique.rvt",
+        "updatedUtc": now.isoformat(),
+        "fileChannelVersion": 2,
+        "startedUtc": now.isoformat(),
+        "httpPort": None,
+    }
+    package = {
+        "processes": [{"processId": 42}, {"processId": 84}],
+        "files": [{"name": "instance_42.json", "content": json.dumps(status)}],
+    }
+    instances = _parse_instance_package(package, "", now)
+    assert [item["processId"] for item in instances] == [42, 84]
+    assert all(item["pluginResponding"] is False for item in instances)
+    assert instances[0]["startedUtc"] == status["startedUtc"]
+    assert instances[0]["httpPort"] is None
+    assert _parse_instance_package(package, "unique.rvt", now)[0]["processId"] == 42
+    package["processes"] = [{"processId": 84}]
+    assert [item["processId"] for item in _parse_instance_package(package, "", now)] == [84]

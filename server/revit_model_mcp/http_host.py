@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from revit_model_mcp.revit_channel import (
     JobPickupStatus,
+    ReadJob,
     ResponseParseError,
     ResponseTimeoutError,
     RevitChannelError,
+    matches_document,
+    select_instance,
 )
 
 
@@ -43,6 +48,7 @@ class HttpHost:
         self._job_id: str | None = None
         self._response: str | None = None
         self._payload: dict[str, Any] = {}
+        self._identity: dict[str, Any] | None = None
 
     async def health(self) -> dict[str, Any]:
         _, body, _ = await self._request("GET", "/health", authenticated=False)
@@ -54,7 +60,7 @@ class HttpHost:
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
         status = await self.health()
         name = status.get("documentName", "")
-        if document and document.casefold() not in str(name).casefold():
+        if document and not matches_document(status, document):
             return []
         return [
             {
@@ -66,7 +72,23 @@ class HttpHost:
             }
         ]
 
+    async def select_job(self, job: ReadJob) -> tuple[HttpHost, ReadJob]:
+        instance = select_instance(await self.list_revit_instances(), job)
+        selected = copy.copy(self)
+        selected._identity = instance
+        return selected, replace(
+            job, payload={**job.payload, "targetProcessId": instance["processId"]}
+        )
+
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
+        if self._identity is not None:
+            status = await self.health()
+            if any(
+                status.get(key) != self._identity.get(key) for key in ("processId", "startedUtc")
+            ):
+                raise RevitChannelError(
+                    "The configured HTTP endpoint identity changed before submission. Retry discovery."
+                )
         self._job_id = None
         self._response = None
         self._payload = json.loads(content)

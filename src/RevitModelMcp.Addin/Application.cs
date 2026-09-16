@@ -39,6 +39,11 @@ public sealed class Application : ExternalApplication
         _externalEvent = Autodesk.Revit.UI.ExternalEvent.Create(_eventHandler);
         _requestQueue = new ExternalEventRequestQueue(() => _externalEvent.Raise());
         _eventHandler.Attach(_requestQueue);
+        Directory.CreateDirectory(Output.SnapshotFileWriter.OutputDirectory);
+        if (File.Exists(TriggerFilePath))
+        {
+            File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+        }
         _triggerWatcher = new TriggerFileWatcher(
             TriggerFilePath,
             RequestExecution,
@@ -46,7 +51,7 @@ public sealed class Application : ExternalApplication
             TimeSpan.FromSeconds(10));
         _triggerWatcher.Start();
         _instanceHeartbeat = new InstanceHeartbeat(
-            Path.GetDirectoryName(TriggerFilePath)!,
+            Output.SnapshotFileWriter.RootDirectory,
             Process.GetCurrentProcess().Id,
             Application.ControlledApplication.VersionNumber);
         Application.ViewActivated += OnViewActivated;
@@ -132,6 +137,7 @@ internal sealed class InstanceHeartbeat : IDisposable
     private string _documentTitle = string.Empty;
     private string _documentPath = string.Empty;
     private bool _disposed;
+    private int? _httpPort;
 
     public InstanceHeartbeat(string directory, int processId, string revitVersion)
     {
@@ -164,6 +170,15 @@ internal sealed class InstanceHeartbeat : IDisposable
         }
     }
 
+    public void UpdateHttpPort(int? port)
+    {
+        lock (_sync)
+        {
+            _httpPort = port;
+            if (!_disposed) WriteStatus();
+        }
+    }
+
     private void Tick()
     {
         lock (_sync)
@@ -188,7 +203,9 @@ internal sealed class InstanceHeartbeat : IDisposable
                 RevitVersion = _revitVersion,
                 DocumentTitle = _documentTitle,
                 DocumentPath = _documentPath,
-                UpdatedUtc = DateTime.UtcNow.ToString("O")
+                UpdatedUtc = DateTime.UtcNow.ToString("O"),
+                StartedUtc = Output.SnapshotFileWriter.StartedUtc,
+                HttpPort = _httpPort
             };
             File.WriteAllText(_temporaryPath, InstanceStatusJsonSerializer.Serialize(status), Utf8WithoutBom);
             if (File.Exists(_path))

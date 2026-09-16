@@ -150,6 +150,14 @@ internal sealed class ControlChannel
             PluginLog.Error($"Job parsing failed. Command='{parsed.Command}'.", parsed.Cause);
         }
 
+        var document = application.ActiveUIDocument?.Document;
+        if (!ActionJobParser.IsAction(parsed.Command) && parsed.TargetDocument is not null &&
+            !JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, parsed.TargetDocument))
+        {
+            TryWriteError(application, parsed.Command, "The active document no longer matches the target document.", startedAt, parsed.CorrelationId);
+            return;
+        }
+
         if (parsed.Kind == ControlJobKind.LegacySnapshot)
         {
             PluginLog.Info("Job processing started. Command='legacy-snapshot'.");
