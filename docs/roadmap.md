@@ -1,6 +1,18 @@
 # Roadmap
 
-Review date: 2026-09-12.
+Review date: 2026-09-15.
+
+## Direction
+
+Announced on the Autodesk Revit API forum on 2026-09-15. The project does not compete with the Autodesk Revit MCP on generic CRUD; it stays useful on Revit 2022–2026, where the Autodesk server is not available, and moves in five directions:
+
+- Coordinator-grade checks with evidence: every check names the rule, the elements and the view it was evaluated on, so the result can be handed to a client without rerunning it.
+- Checks across linked models: link status, shared coordinates and clash-adjacent questions that need more than one document open.
+- Execution policy for unattended runs: confirmation tokens for actions and a stated policy for what an unattended client may do (see the action policy gap below).
+- Live validation on every supported Revit year, recorded in the validation table with the contributor's name when offered.
+- Design and Make Marketplace listing in the Local (stdio) model: manifest, tool inventory, declaration form.
+
+New tools follow from the first direction; a check that a coordinator scripts by hand every week is the next candidate.
 
 ## Known gaps
 
