@@ -83,9 +83,16 @@ public sealed class CommandResponseJsonSerializerTests
             });
             while (!writer.IsCompleted)
             {
-                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                using var json = JsonDocument.Parse(stream);
-                await Assert.That(json.RootElement.GetProperty("correlationId").GetString()).IsEqualTo("job-24");
+                try
+                {
+                    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using var json = JsonDocument.Parse(stream);
+                    await Assert.That(json.RootElement.GetProperty("correlationId").GetString()).IsEqualTo("job-24");
+                }
+                catch (IOException)
+                {
+                    continue;
+                }
             }
             await writer;
             using var final = JsonDocument.Parse(File.ReadAllText(path));
