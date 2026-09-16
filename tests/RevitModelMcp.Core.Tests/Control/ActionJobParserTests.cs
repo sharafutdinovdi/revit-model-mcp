@@ -13,11 +13,12 @@ public sealed class ActionJobParserTests
     [Arguments("delete")]
     public async Task Parse_ElementActions_DeduplicatesIds(string command)
     {
-        var result = ControlJobParser.Parse($$"""{"command":"{{command}}","elementIds":[1,2,1],"targetProcessId":42}""");
+        var result = ControlJobParser.Parse($$"""{"command":"{{command}}","elementIds":[1,2,1],"targetDocument":" Model A ","targetProcessId":42}""");
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
         await Assert.That(result.Action!.ElementIds).IsEquivalentTo(new long[] { 1, 2 });
         await Assert.That(result.Action.Select).IsTrue();
         await Assert.That(result.TargetProcessId).IsEqualTo(42);
+        await Assert.That(result.TargetDocument).IsEqualTo("Model A");
     }
 
     [Test]

@@ -152,6 +152,59 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    [Arguments("Sample Model", "/Models/Other.rvt", "Sample", true)]
+    [Arguments("Other", "/Models/Sample Model.rvt", "Model.rvt", true)]
+    [Arguments("Sample Model", "/Models/Other.rvt", "sAmPlE", true)]
+    [Arguments(null, "/Models/Sample Model.RVT", "mOdEl.rvt", true)]
+    [Arguments("Other", "/Sample/Other.rvt", "Sample", false)]
+    [Arguments("Other", "/Models/Other.rvt", "Missing", false)]
+    [Arguments("Unsaved Model", "", "Unsaved", true)]
+    [Arguments(null, null, "Sample", false)]
+    public async Task JobTargetMatcher_MatchesDocument_UsesTitleOrFileName(
+        string? title, string? path, string reference, bool expected)
+    {
+        await Assert.That(JobTargetMatcher.MatchesDocument(title, path, reference)).IsEqualTo(expected);
+        var job = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "document-info",
+            TargetDocument = reference
+        });
+        await Assert.That(JobTargetMatcher.Matches(job, title, path, 42)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(42, true)]
+    [Arguments(43, false)]
+    public async Task JobTargetMatcher_PinnedProcess_IgnoresActiveDocument(int processId, bool expected)
+    {
+        var job = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "document-info",
+            TargetDocument = "Structural",
+            TargetProcessId = 42
+        });
+
+        await Assert.That(JobTargetMatcher.Matches(job, "Architectural", "/Models/Architectural.rvt", processId))
+            .IsEqualTo(expected);
+        await Assert.That(JobTargetMatcher.Matches(job, "Structural", "/Models/Structural.rvt", processId))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments("Structural Model", true)]
+    [Arguments("Architectural Model", false)]
+    public async Task JobTargetMatcher_UnpinnedProcess_RoutesByActiveDocument(string title, bool expected)
+    {
+        var job = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "document-info",
+            TargetDocument = "Structural"
+        });
+
+        await Assert.That(JobTargetMatcher.Matches(job, title, "/Models/Other.rvt", 42)).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task JobTargetMatcher_RejectsForeignDocumentAndAcceptsUnaddressedJob()
     {
         var foreign = ControlJobParser.Parse(

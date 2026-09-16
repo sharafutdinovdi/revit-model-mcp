@@ -9,7 +9,12 @@ from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
 
 from revit_model_mcp.actions import millimeters_to_feet, register_actions
-from revit_model_mcp.revit_channel import parse_response
+from revit_model_mcp.revit_channel import (
+    JobPickupStatus,
+    ReadJob,
+    RevitReadChannel,
+    parse_response,
+)
 
 ACTION_TOOLS = {
     "revit_select",
@@ -106,7 +111,13 @@ def action_server():
     ],
 )
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload, dry_run):
+@pytest.mark.parametrize(
+    "document_arguments",
+    [{}, {"document": None}, {"document": "Tower"}, {"targetDocument": "Tower"}],
+)
+def test_action_arguments_reach_channel_in_millimeters(
+    name, arguments, payload, dry_run, document_arguments
+):
     import asyncio
 
     server, execute, _ = action_server()
@@ -114,11 +125,15 @@ def test_action_arguments_reach_channel_in_millimeters(name, arguments, payload,
         if dry_run:
             arguments = {**arguments, "dry_run": True}
         payload = {**payload, "dryRun": dry_run}
-    asyncio.run(server.call_tool(name, arguments))
+    asyncio.run(server.call_tool(name, {**arguments, **document_arguments}))
     execute.assert_awaited_once()
     job = execute.await_args.args[0]
     command = name.removeprefix("revit_").replace("_", "-")
     assert job.command == command
+    if "Tower" in document_arguments.values():
+        payload = {**payload, "targetDocument": "Tower"}
+    else:
+        assert "targetDocument" not in job.payload
     assert job.payload == {"command": command, **payload, "targetProcessId": 42}
 
 
@@ -191,6 +206,54 @@ def test_mm_conversion_rejects_non_finite(value):
         millimeters_to_feet(value)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"command": "move", "elementIds": [1], "dxMm": 10, "dyMm": 0},
+        {"command": "delete", "elementIds": [1]},
+        {"command": "select", "elementIds": [1]},
+        {"command": "isolate", "elementIds": [], "reset": True},
+        {"command": "batch", "steps": [{"command": "delete", "elementIds": [1]}]},
+    ],
+)
+@pytest.mark.parametrize(
+    "document,error",
+    [
+        ("Model A", None),
+        ("Missing", "The addressed document 'Missing' is not open."),
+        (
+            "Model",
+            "The document reference 'Model' is ambiguous (2 open documents match); "
+            "use a more specific substring.",
+        ),
+    ],
+)
+def test_addressed_action_channel_preserves_target_and_response(payload, document, error):
+    import asyncio
+
+    command = payload["command"]
+    job = ReadJob(command, {**payload, "targetProcessId": 42}).for_document(document)
+    response = {"command": command, "success": error is None, "activeView": "Model B Plan"}
+    if error is None:
+        response["data"] = {}
+    else:
+        response["error"] = error
+    host = AsyncMock()
+    host.prepare_job.return_value = set()
+    host.wait_until_trigger_is_gone.return_value = JobPickupStatus(True, 0, False, 0)
+    host.wait_for_new_response.return_value = "response_action.json"
+    host.finish_job.return_value = (json.dumps(response), None)
+
+    result = asyncio.run(RevitReadChannel(host).execute(job))
+
+    assert json.loads(host.prepare_job.await_args.args[1]) == {
+        **payload,
+        "targetProcessId": 42,
+        "targetDocument": document,
+    }
+    assert result == response
+
+
 def test_action_failure_preserves_gate_message_view_and_suggestions():
     response = {
         "command": "place-family",
@@ -257,7 +320,11 @@ def test_batch_invalid_steps_never_reach_channel(steps):
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
-def test_batch_payload_and_annotations(dry_run):
+@pytest.mark.parametrize(
+    "document_arguments",
+    [{}, {"document": None}, {"document": "Tower"}, {"targetDocument": "Tower"}],
+)
+def test_batch_payload_and_annotations(dry_run, document_arguments):
     import asyncio
 
     server, execute, _ = action_server()
@@ -273,12 +340,20 @@ def test_batch_payload_and_annotations(dry_run):
                     },
                 ],
                 "dry_run": dry_run,
+                **document_arguments,
             },
         )
     )
-    assert execute.await_args.args[0].payload == {
+    payload = execute.await_args.args[0].payload
+    if "Tower" in document_arguments.values():
+        document_payload = {"targetDocument": "Tower"}
+    else:
+        document_payload = {}
+        assert "targetDocument" not in payload
+    assert payload == {
         "command": "batch",
         "targetProcessId": 42,
+        **document_payload,
         "dryRun": dry_run,
         "steps": [
             {

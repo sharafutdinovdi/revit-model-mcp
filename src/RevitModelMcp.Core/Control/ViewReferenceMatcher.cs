@@ -36,13 +36,23 @@ public static class JobTargetMatcher
             return false;
         }
 
+        if (job.TargetProcessId.HasValue)
+        {
+            return true;
+        }
+
         if (job.TargetDocument is null)
         {
             return true;
         }
 
-        var fileName = Path.GetFileName(documentPath ?? string.Empty);
-        return Contains(documentTitle, job.TargetDocument) || Contains(fileName, job.TargetDocument);
+        return MatchesDocument(documentTitle, documentPath, job.TargetDocument);
+    }
+
+    public static bool MatchesDocument(string? title, string? path, string reference)
+    {
+        var fileName = Path.GetFileName(path ?? string.Empty);
+        return Contains(title, reference) || Contains(fileName, reference);
     }
 
     public static bool TryClaim(

@@ -9,6 +9,18 @@ HTTP addresses one endpoint; the file transports discover workstation instances.
 All IDs are unitless Revit element IDs.
 Revit 2022–2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
 
+Action jobs with `targetDocument` resolve that reference when the add-in executes the job.
+The reference must match exactly one open document by a case-insensitive substring of its title or file name.
+The resolved document is bound by its title and full path for all mutations and verification, even if another document is active.
+An unknown or closed target returns `The addressed document '<TargetDocument>' is not open.`
+An ambiguous target returns `The document reference '<TargetDocument>' is ambiguous (N open documents match); use a more specific substring.`
+Resolution failure aborts the whole batch before any step runs; an addressed job never falls back to the active document.
+The target is resolved once before the batch loop, and a later document or transaction failure is reported as a step error.
+`select`, `show` and `isolate` (including `reset=true`) require the resolved document to be active.
+Otherwise, they return `Cannot run '<command>' on '<title>' because it is not the active document; activate it in Revit first.`
+Jobs without `targetDocument` retain the active-document behavior.
+`activeView` always reports the actual active view, even when a mutation targets another document.
+
 | Tool | Arguments | Action and units |
 | --- | --- | --- |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
