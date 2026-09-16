@@ -112,7 +112,8 @@ def test_job_round_trip(endpoint):
     host, state = endpoint
     result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
     assert result["data"] == "pong"
-    assert state["payload"] == {"command": "ping"}
+    assert state["payload"]["command"] == "ping"
+    assert len(state["payload"]["correlationId"]) == 32
     assert state["requests"] == [("POST", "/jobs?timeout=0", "Bearer test-token")]
 
 

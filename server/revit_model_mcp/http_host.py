@@ -88,7 +88,11 @@ class HttpHost:
         )
 
     async def wait_for_new_response(
-        self, command: str, known_names: set[str], timeout_seconds: float
+        self,
+        command: str,
+        known_names: set[str],
+        timeout_seconds: float,
+        correlation_id: str | None = None,
     ) -> str | None:
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout_seconds

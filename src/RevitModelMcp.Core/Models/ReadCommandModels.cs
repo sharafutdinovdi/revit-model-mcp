@@ -45,6 +45,9 @@ public sealed class CommandResponse<T>
         set => warningsDismissed = value;
     }
 
+    [DataMember(Name = "correlationId", Order = 13, EmitDefaultValue = false)]
+    public string? CorrelationId { get; set; }
+
     private List<string>? warningsDismissed;
 
     public static CommandResponse<T> Ok(string command, T data, long elapsedMs, string? message = null)
@@ -76,12 +79,13 @@ public sealed class CommandResponse<T>
         };
     }
 
-    public static CommandResponse<T> Fail(string command, string message, long elapsedMs)
+    public static CommandResponse<T> Fail(string command, string message, long elapsedMs, string? correlationId = null)
     {
         return new CommandResponse<T>
         {
             Command = command,
             Success = false,
+            CorrelationId = correlationId,
             Message = message,
             ElapsedMs = elapsedMs
         };

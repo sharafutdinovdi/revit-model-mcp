@@ -20,6 +20,86 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Serialize_RoundTripsCorrelationId(bool partial)
+    {
+        var response = partial
+            ? CommandResponse<string>.PartialResult("ping", "accepted", "Command accepted and running.", 0)
+            : CommandResponse<string>.Ok("ping", "pong", 1);
+        response.CorrelationId = "job-24";
+        var content = CommandResponseJsonSerializer.Serialize(response);
+        using var json = JsonDocument.Parse(content);
+        await Assert.That(json.RootElement.GetProperty("correlationId").GetString()).IsEqualTo("job-24");
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(content));
+        var restored = (CommandResponse<string>)new DataContractJsonSerializer(typeof(CommandResponse<string>)).ReadObject(stream)!;
+        await Assert.That(restored.CorrelationId).IsEqualTo(response.CorrelationId);
+        await Assert.That(restored.Partial).IsEqualTo(partial);
+    }
+
+    [Test]
+    public async Task CreatePath_CorrelatedJob_ReusesFilenameWhileLegacyUsesSuffix()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-tests-{Guid.NewGuid():N}");
+        var timestamp = new DateTime(2026, 9, 16, 12, 34, 56, 789);
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var path = CommandResponseJsonFile.CreatePath(directory, timestamp, "ping", "job-24");
+            await Assert.That(Path.GetFileName(path)).IsEqualTo("response_20260916_123456_789_ping_job-24.json");
+            File.WriteAllText(path, "existing");
+            await Assert.That(CommandResponseJsonFile.CreatePath(directory, timestamp, "ping", "job-24")).IsEqualTo(path);
+            var other = CommandResponseJsonFile.CreatePath(directory, timestamp, "ping", "other-job");
+            await Assert.That(other).IsNotEqualTo(path);
+            var legacy = CommandResponseJsonFile.CreatePath(directory, timestamp, "ping");
+            await Assert.That(Path.GetFileName(legacy)).IsEqualTo("response_20260916_123456_789_ping.json");
+            File.WriteAllText(legacy, "existing");
+            var nextLegacy = CommandResponseJsonFile.CreatePath(directory, timestamp, "ping");
+            await Assert.That(Path.GetFileName(nextLegacy)).IsEqualTo("response_20260916_123456_789_ping_01.json");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task Write_ReplacesProgressAtomicallyAndCleansTemporaryFiles()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-tests-{Guid.NewGuid():N}");
+        var path = Path.Combine(directory, "response_ping_job-24.json");
+        try
+        {
+            var progress = CommandResponse<string>.PartialResult("ping", new string('x', 100_000), "Processing.", 1);
+            progress.CorrelationId = "job-24";
+            CommandResponseJsonFile.Write(path, progress);
+            var writer = Task.Run(() =>
+            {
+                for (var iteration = 0; iteration < 100; iteration++)
+                    CommandResponseJsonFile.Write(path, progress);
+                var terminal = CommandResponse<string>.Ok("ping", "pong", 2);
+                terminal.CorrelationId = "job-24";
+                CommandResponseJsonFile.Write(path, terminal);
+            });
+            while (!writer.IsCompleted)
+            {
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var json = JsonDocument.Parse(stream);
+                await Assert.That(json.RootElement.GetProperty("correlationId").GetString()).IsEqualTo("job-24");
+            }
+            await writer;
+            using var final = JsonDocument.Parse(File.ReadAllText(path));
+            await Assert.That(final.RootElement.GetProperty("partial").GetBoolean()).IsFalse();
+            await Assert.That(final.RootElement.GetProperty("data").GetString()).IsEqualTo("pong");
+            await Assert.That(Directory.GetFiles(directory, "*.tmp").Length).IsEqualTo(0);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
     public async Task CoordinatorHealth_RoundTrip_PreservesNullMetrics()
     {
         var data = RoundTripCoordinator("model-health", new ModelHealthData
@@ -511,7 +591,8 @@ public sealed class CommandResponseJsonSerializerTests
             CommandResponseJsonFile.Execute(
                 path,
                 "failing-command",
-                _ => throw new InvalidOperationException("test failure"));
+                _ => throw new InvalidOperationException("test failure"),
+                "job-24");
 
             await Assert.That(File.Exists(path)).IsTrue();
             using var json = JsonDocument.Parse(File.ReadAllText(path));
@@ -519,6 +600,7 @@ public sealed class CommandResponseJsonSerializerTests
             await Assert.That(root.GetProperty("success").GetBoolean()).IsFalse();
             await Assert.That(root.GetProperty("partial").GetBoolean()).IsFalse();
             await Assert.That(root.GetProperty("message").GetString()).Contains("test failure");
+            await Assert.That(root.GetProperty("correlationId").GetString()).IsEqualTo("job-24");
         }
         finally
         {

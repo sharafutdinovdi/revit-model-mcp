@@ -4,7 +4,9 @@ import asyncio
 import base64
 import json
 import os
+import shutil
 import stat
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -110,7 +112,11 @@ class FakeRemoteHost:
         )
 
     async def wait_for_new_response(
-        self, command: str, known_names: set[str], timeout_seconds: float
+        self,
+        command: str,
+        known_names: set[str],
+        timeout_seconds: float,
+        correlation_id: str | None = None,
     ) -> str | None:
         self.events.append("response")
         self.response_timeout = timeout_seconds
@@ -293,7 +299,8 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(local_path)
         host._run.assert_awaited_once()
         script = host._run.await_args.args[0]
-        self.assertIn("ReadAllBytes", script)
+        self.assertIn("Read-ResponseBytes $path", script)
+        self.assertIn("[IO.FileShare]::Delete", script)
         self.assertIn("Remove-Item", script)
 
     async def test_connection_budget_delays_sixth_start(self) -> None:
@@ -550,7 +557,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             }
         )
 
-        async def discover(command, known_names, timeout_seconds):
+        async def discover(command, known_names, timeout_seconds, correlation_id=None):
             loop.now += 2
             return remote.response_name
 
@@ -594,6 +601,47 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             result = await RevitReadChannel(remote).execute(ReadJob.list_views())
         self.assertEqual(result, partial)
         self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_ignores_another_job_and_awaits_correlated_terminal_response(self) -> None:
+        remote = FakeRemoteHost()
+        other_name = "response_other_document-info.json"
+        own_name = "response_own_document-info.json"
+        remote.wait_for_new_response = AsyncMock(side_effect=[other_name, own_name, own_name])
+        reads = 0
+
+        async def read_response(name, cleanup_names, download_artifact, save_to):
+            nonlocal reads
+            reads += 1
+            identity = json.loads(remote.written_content)["correlationId"]
+            envelope = json.loads(SUCCESS_RESPONSE)
+            envelope["correlationId"] = "other-job" if name == other_name else identity
+            envelope["partial"] = reads == 2
+            envelope["message"] = "Reading model elements." if reads == 2 else "Done."
+            return json.dumps(envelope), None
+
+        remote.finish_job = AsyncMock(side_effect=read_response)
+        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+            result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+        identity = json.loads(remote.written_content)["correlationId"]
+        self.assertEqual(result["correlationId"], identity)
+        self.assertFalse(result["partial"])
+        self.assertEqual(reads, 3)
+        self.assertNotIn(other_name, remote.deleted_names)
+        self.assertIn(own_name, remote.deleted_names)
+        self.assertTrue(
+            all(call.args[3] == identity for call in remote.wait_for_new_response.await_args_list)
+        )
+
+    async def test_reusing_job_generates_a_fresh_id_without_mutating_payload(self) -> None:
+        remote = FakeRemoteHost()
+        job = ReadJob.document_info()
+        channel = RevitReadChannel(remote)
+        await channel.execute(job)
+        first = json.loads(remote.written_content)["correlationId"]
+        await channel.execute(job)
+        second = json.loads(remote.written_content)["correlationId"]
+        self.assertNotEqual(first, second)
+        self.assertEqual(job.payload, {"command": "document-info"})
 
     async def test_reports_ssh_unavailable(self) -> None:
         remote = FakeRemoteHost()
@@ -669,12 +717,13 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(str(raised.exception), "The add-in is busy.")
         self.assertIn(remote.response_name, remote.deleted_names)
 
-    async def test_reports_unparseable_response(self) -> None:
+    async def test_retries_unparseable_response(self) -> None:
         remote = FakeRemoteHost()
-        remote.response_content = "{broken"
-
-        with self.assertRaisesRegex(ResponseParseError, "Response could not be parsed"):
-            await RevitReadChannel(remote).execute(ReadJob.document_info())
+        remote.finish_job = AsyncMock(side_effect=[("{broken", None), (SUCCESS_RESPONSE, None)])
+        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+            response = await RevitReadChannel(remote).execute(ReadJob.document_info())
+        self.assertTrue(response["success"])
+        self.assertEqual(remote.finish_job.await_count, 2)
 
     async def test_returns_response_and_cleans_temporary_files(self) -> None:
         remote = FakeRemoteHost()
@@ -694,7 +743,10 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                 "delete",
             ],
         )
-        self.assertEqual(json.loads(remote.written_content or "{}"), {"command": "document-info"})
+        payload = json.loads(remote.written_content or "{}")
+        self.assertEqual(payload["command"], "document-info")
+        self.assertRegex(payload["correlationId"], r"^[0-9a-f]{32}$")
+        self.assertEqual(remote.written_name, f"mcp_{payload['correlationId']}.tmp")
         self.assertEqual(remote.published_name, remote.written_name)
         self.assertIn(remote.written_name, remote.deleted_names)
         self.assertIn(remote.response_name, remote.deleted_names)
@@ -705,7 +757,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(connection_events), 5)
         self.assertLessEqual(len(connection_events), RELAY_CONNECTION_LIMIT)
 
-    async def test_serializes_parallel_calls_because_channel_has_no_correlation_id(
+    async def test_serializes_parallel_calls_to_the_single_trigger(
         self,
     ) -> None:
         events: list[str] = []
@@ -855,3 +907,61 @@ def test_local_command_ignores_ssh_settings(monkeypatch):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(
+    shutil.which("pwsh"), "PowerShell is required for file selection integration tests"
+)
+class ResponseSelectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_selects_matching_id_before_newer_legacy_and_ignores_tmp_and_other_ids(self):
+        with tempfile.TemporaryDirectory() as directory:
+
+            async def run_script(script, timeout_seconds=60):
+                process = await asyncio.create_subprocess_exec(
+                    shutil.which("pwsh"),
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-Command",
+                    script,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await process.communicate()
+                self.assertEqual(process.returncode, 0, stderr.decode())
+                return stdout.decode().strip()
+
+            def publish(name, identity=None):
+                body = {"command": "ping", "success": True, "partial": False, "data": "pong"}
+                if identity is not None:
+                    body["correlationId"] = identity
+                Path(directory, name).write_text(json.dumps(body))
+                return name
+
+            own = publish("response_20260916_120000_000_ping_job-24.json", "job-24")
+            legacy = publish("response_20260916_120001_000_ping_01.json")
+            publish("response_20260916_120002_000_ping_other-job.json", "other-job")
+            Path(directory, "response_20260916_120003_000_ping_job-24.json.tmp").write_text(
+                "{broken"
+            )
+            with patch.dict(os.environ, {"REVIT_MCP_CHANNEL_DIR": directory}):
+                for local in (False, True):
+                    host = SshPowerShellHost("local" if local else "test-host")
+                    host._run = AsyncMock(side_effect=run_script)
+                    self.assertEqual(
+                        await host.wait_for_new_response("ping", set(), 10, "job-24"), own
+                    )
+                    self.assertEqual(
+                        await host.wait_for_new_response("ping", {own}, 10, "job-24"), legacy
+                    )
+                    content, artifact = await host.finish_job(own, [], False, None)
+                    self.assertEqual(json.loads(content)["correlationId"], "job-24")
+                    self.assertIsNone(artifact)
+                Path(directory, own).unlink()
+                Path(directory, legacy).unlink()
+                # A matching JSON id also works with an old filename.
+                parsed = publish("response_20260916_120004_000_ping.json", "job-24")
+                self.assertEqual(
+                    await host.wait_for_new_response("ping", set(), 10, "job-24"), parsed
+                )
+                Path(directory, parsed).unlink()
+                self.assertIsNone(await host.wait_for_new_response("ping", set(), 2, "job-24"))

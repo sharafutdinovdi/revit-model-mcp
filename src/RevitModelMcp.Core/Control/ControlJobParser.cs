@@ -42,6 +42,7 @@ public sealed class ControlJobParseResult
     public ControlJobContract CoordinatorJob { get; internal set; } = new();
     public ControlJobKind Kind { get; }
     public string Command { get; }
+    public string? CorrelationId { get; internal set; }
     public IReadOnlyList<string> Views { get; internal set; } = Array.Empty<string>();
     public string? View { get; internal set; }
     public string? ViewType { get; internal set; }
@@ -142,7 +143,10 @@ public sealed class ControlJobParseResult
         var command = Normalize(job.Command);
         if (command is null)
         {
-            return Invalid("invalid", "The command field is required.");
+            return new ControlJobParseResult(ControlJobKind.Invalid, "invalid", "The command field is required.")
+            {
+                CorrelationId = job.CorrelationId
+            };
         }
 
         var views = NormalizeMany(job.Views);
@@ -172,6 +176,8 @@ public sealed class ControlJobParseResult
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
             _ => Invalid(command, $"Unknown command: {command}.")
         };
+        result.CorrelationId = job.CorrelationId;
+        result.CoordinatorJob.CorrelationId = job.CorrelationId;
         result.TargetDocument = Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
         return result;
@@ -291,17 +297,44 @@ public static class ControlJobParser
         }
         catch (Exception exception)
         {
-            return ControlJobParseResult.Invalid(
+            var result = ControlJobParseResult.Invalid(
                 "invalid",
                 $"Failed to parse the job JSON: {exception.Message}",
                 exception);
+            try
+            {
+                using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+                var envelope = new DataContractJsonSerializer(typeof(JobEnvelope)).ReadObject(stream) as JobEnvelope;
+                if (envelope is not null)
+                {
+                    result = ControlJobParseResult.Invalid(envelope.Command ?? "invalid", result.Error!, exception);
+                    result.CorrelationId = envelope.CorrelationId;
+                }
+            }
+            catch (SerializationException)
+            {
+                // Malformed JSON has no recoverable job envelope.
+            }
+            return result;
         }
+    }
+
+    [DataContract]
+    private sealed class JobEnvelope
+    {
+        [DataMember(Name = "command")]
+        public string? Command { get; set; }
+
+        [DataMember(Name = "correlationId")]
+        public string? CorrelationId { get; set; }
     }
 }
 
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "correlationId", EmitDefaultValue = false)]
+    public string? CorrelationId { get; set; }
     [DataMember(Name = "parameters", EmitDefaultValue = false)]
     public List<string>? Parameters { get; set; }
     [DataMember(Name = "sampleLimit", EmitDefaultValue = false)]

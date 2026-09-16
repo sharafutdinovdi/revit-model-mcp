@@ -183,7 +183,7 @@ internal sealed class HttpChannel : IDisposable
                 if (job is null) return;
                 if (!await WaitAsync(job, 120).ConfigureAwait(false))
                 {
-                    await JsonAsync(context, 202, new() { ["jobId"] = job.Id }).ConfigureAwait(false);
+                    await JsonAsync(context, 202, new() { ["jobId"] = job.Id, ["correlationId"] = job.Command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
                     return;
                 }
                 var result = await job.Completion.ConfigureAwait(false);
@@ -251,12 +251,12 @@ internal sealed class HttpChannel : IDisposable
     {
         if (ActionJobParser.IsAction(command.Command) && !ActionCommandExecutor.ActionsEnabled)
         {
-            await JsonAsync(context, 403, new() { ["error"] = "actions disabled on the workstation" }).ConfigureAwait(false);
+            await JsonAsync(context, 403, new() { ["error"] = "actions disabled on the workstation", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
             return null;
         }
         if (!_channel.TrySubmit(command, out var completion))
         {
-            await JsonAsync(context, 409, new() { ["error"] = "The add-in is busy with another command." }).ConfigureAwait(false);
+            await JsonAsync(context, 409, new() { ["error"] = "The add-in is busy with another command.", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
             return null;
         }
         var job = new HttpJob(Guid.NewGuid().ToString("N"), command, completion!);
@@ -288,7 +288,7 @@ internal sealed class HttpChannel : IDisposable
         if (await WaitAsync(job, seconds).ConfigureAwait(false))
             await BytesAsync(context, 200, Encoding.UTF8.GetBytes(await job.Completion.ConfigureAwait(false)), "application/json").ConfigureAwait(false);
         else
-            await JsonAsync(context, 202, new() { ["jobId"] = job.Id }).ConfigureAwait(false);
+            await JsonAsync(context, 202, new() { ["jobId"] = job.Id, ["correlationId"] = job.Command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
     }
 
     private void RemoveExpiredResults()

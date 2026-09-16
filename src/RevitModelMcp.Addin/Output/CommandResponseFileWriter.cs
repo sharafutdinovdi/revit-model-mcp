@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.IO;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -9,11 +7,13 @@ internal sealed class CommandResponseFileWriter
 {
     private readonly string _path;
     private readonly ResponderInfo _responder;
+    private readonly string? _correlationId;
 
-    private CommandResponseFileWriter(string path, ResponderInfo responder)
+    private CommandResponseFileWriter(string path, ResponderInfo responder, string? correlationId)
     {
         _path = path;
         _responder = responder;
+        _correlationId = correlationId;
     }
 
     public string FilePath => _path;
@@ -21,28 +21,12 @@ internal sealed class CommandResponseFileWriter
     public static CommandResponseFileWriter Create(
         DateTime localTime,
         string command,
-        ResponderInfo responder)
+        ResponderInfo responder,
+        string? correlationId = null)
     {
-        var directory = SnapshotFileWriter.OutputDirectory;
-        var timestamp = localTime.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture);
-        var safeCommand = new string(command.Where(character =>
-            char.IsLetterOrDigit(character) || character is '-' or '_').ToArray());
-        if (string.IsNullOrWhiteSpace(safeCommand))
-        {
-            safeCommand = "invalid";
-        }
-
-        var suffix = string.Empty;
-        var counter = 0;
-        string path;
-        do
-        {
-            path = System.IO.Path.Combine(directory, $"response_{timestamp}_{safeCommand}{suffix}.json");
-            suffix = $"_{++counter:00}";
-        }
-        while (File.Exists(path));
-
-        return new CommandResponseFileWriter(path, responder);
+        var path = CommandResponseJsonFile.CreatePath(
+            SnapshotFileWriter.OutputDirectory, localTime, command, correlationId);
+        return new CommandResponseFileWriter(path, responder, correlationId);
     }
 
     public void Write<T>(CommandResponse<T> response)
@@ -50,6 +34,7 @@ internal sealed class CommandResponseFileWriter
         try
         {
             response.Responder = _responder;
+            response.CorrelationId = _correlationId;
             if (ResponseDelivery.Current is { } delivery)
             {
                 delivery(CommandResponseJsonSerializer.Serialize(response));
