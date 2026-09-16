@@ -95,7 +95,24 @@ public sealed class CommandResponseJsonSerializerTests
         }
         finally
         {
-            Directory.Delete(directory, true);
+            TryDeleteDirectory(directory);
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            try
+            {
+                Directory.Delete(path, true);
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                if (attempt < 9)
+                    Thread.Sleep(5);
+            }
         }
     }
 
