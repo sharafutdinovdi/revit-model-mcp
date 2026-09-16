@@ -81,14 +81,26 @@ public static class CommandResponseJsonFile
         try
         {
             File.WriteAllText(temporaryPath, CommandResponseJsonSerializer.Serialize(response), Utf8WithoutBom);
+            const int maximumAttempts = 10;
+            for (var attempt = 1; attempt <= maximumAttempts; attempt++)
+            {
+                try
+                {
 #if NET48
-            if (File.Exists(path))
-                File.Replace(temporaryPath, path, null);
-            else
-                File.Move(temporaryPath, path);
+                    if (File.Exists(path))
+                        File.Replace(temporaryPath, path, null);
+                    else
+                        File.Move(temporaryPath, path);
 #else
-            File.Move(temporaryPath, path, overwrite: true);
+                    File.Move(temporaryPath, path, overwrite: true);
 #endif
+                    break;
+                }
+                catch (Exception exception) when (attempt < maximumAttempts && exception is IOException or UnauthorizedAccessException)
+                {
+                    Thread.Sleep(attempt);
+                }
+            }
         }
         finally
         {
