@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.5.0...v0.6.0) (2026-09-20)
+
+
+### Features
+
+* **channel:** correlate responses by job id and publish atomically ([#61](https://github.com/sharafutdinovdi/revit-model-mcp/issues/61)) ([5a65afc](https://github.com/sharafutdinovdi/revit-model-mcp/commit/5a65afc47789f07c2df495e2779e69dafd2e58b0))
+* **channel:** scope by process + HTTP opt-in — fix multi-instance collisions ([#62](https://github.com/sharafutdinovdi/revit-model-mcp/issues/62)) ([90cbeee](https://github.com/sharafutdinovdi/revit-model-mcp/commit/90cbeee5184a834c6f0441ce9006c16a7f90a5ef))
+
+
+### Bug Fixes
+
+* **addin:** target write actions at the addressed document, not the active one ([#60](https://github.com/sharafutdinovdi/revit-model-mcp/issues/60)) ([d558ee9](https://github.com/sharafutdinovdi/revit-model-mcp/commit/d558ee955e29f60a194d7280df88791c2fc9c1d9))
+* resolve manual-test read and HTTP installation failures ([#45](https://github.com/sharafutdinovdi/revit-model-mcp/issues/45)) ([61bd2ba](https://github.com/sharafutdinovdi/revit-model-mcp/commit/61bd2ba13c1c668b0a3d5e53f06ee6a8011f4292))
+
+
+### Documentation
+
+* add direction section to roadmap ([#49](https://github.com/sharafutdinovdi/revit-model-mcp/issues/49)) ([b99218b](https://github.com/sharafutdinovdi/revit-model-mcp/commit/b99218bcefc1380bf40603f7afb239a1f47a9e98))
+
 ## [0.5.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.4.0...v0.5.0) (2026-09-14)
 
 
