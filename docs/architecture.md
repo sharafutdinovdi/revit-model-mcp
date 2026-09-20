@@ -24,22 +24,24 @@ flowchart LR
 
 ## File request lifecycle
 
-1. The server checks for a Revit process and records existing responses for the command.
-2. It writes JSON to a unique `mcp_<uuid>.tmp` file and moves it to `trigger.txt`.
-3. The file watcher requests an ExternalEvent. A 10-second timer provides a fallback check.
-4. Revit executes the handler in its API context. The channel matches `targetDocument` and claims the trigger.
-5. Readers produce a response. Paged sessions request further ExternalEvent callbacks until complete.
-6. The server detects a new `response_<timestamp>_<command>.json` and validates the response.
-7. The host removes response and temporary files. View exports also copy and remove the remote PNG.
+1. Under its existing job lock, the server discovers processes and heartbeats in ROOT and selects one target.
+2. It pins the PID, `startedUtc` identity and `ROOT\instances\<pid>` directory, then confirms the v2 channel with a bounded correlated ping.
+3. It verifies the selected process and identity again, writes a unique `mcp_<uuid>.tmp` and atomically moves it to that directory's `trigger.txt` without overwriting.
+4. The instance's watcher requests an ExternalEvent; a 10-second timer provides a fallback check.
+5. Revit checks the PID and claims the trigger in its API context. Directed reads recheck the active document; actions resolve the addressed open document.
+6. Readers atomically write correlated responses in the same directory. Paged sessions request further ExternalEvent callbacks until complete.
+7. The server polls that fixed directory and validates response correlation and PID. It copies exported PNGs and cleans only the current job's files there.
 
 Jobs contain a `command` and command-specific fields.
 Successful responses contain `command`, `success` and `data`.
 Responses also carry timing and responder metadata.
 See the [response contracts](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs).
-The file protocol has no request correlation identifier.
+The server gives each job a fresh `correlationId`; v2 responses must echo it.
+Late responses from other jobs are ignored.
 HTTP assigns a `jobId` and polls `/jobs/{id}`; completed results expire after ten minutes.
 The asyncio lock serializes calls within one server process only.
-One server process per channel directory avoids competing response consumers.
+Clients targeting different PIDs use separate directories.
+Clients targeting the same PID still contend for one channel.
 
 ## Revit context and model access
 
@@ -56,19 +58,34 @@ File output, logs and optional window activation are observable side effects.
 
 ## Instances and heartbeat
 
-Each Revit instance writes `instance_<processId>.json` every five seconds.
-The heartbeat contains process ID, Revit version, active document title, path and a UTC timestamp.
+Each Revit instance writes `ROOT\instance_<processId>.json` every five seconds.
+The heartbeat preserves process ID, Revit version, active document title, path and `updatedUtc`.
+It also reports `fileChannelVersion=2`, a `startedUtc` identity fixed at startup, and nullable `httpPort` populated only after a successful listener bind.
 The add-in caches document information from Revit events before the timer writes it.
 Heartbeat replacement uses a temporary file and `File.Replace` or `File.Move`.
-The server ignores malformed heartbeat files and records older than 60 seconds.
-When valid heartbeats exist it returns those instances.
-Only when none remain does it fall back to process IDs with `pluginResponding=false` and empty document fields.
+Discovery reads only ROOT and combines fresh heartbeat data with every running Revit process.
+Missing, malformed or expired heartbeats leave the process visible with `pluginResponding=false` and empty document fields.
+For v2, a fresh heartbeat is a pre-check; `pluginResponding=true` requires a bounded ping confirming correlation, responder PID and unchanged startup identity.
+Busy or timed-out handshakes never remove a process from discovery.
+
+Each instance watches only its own `ROOT\instances\<pid>\trigger.txt`.
+Responses, atomic temporary files, PNGs, `latest.json`, `latest.txt`, `snapshot_*.json` and `views_dump_*` share that per-PID directory.
+Startup moves any stale working trigger aside before the watcher starts.
+Cleanup never targets another instance's directory, and later discovery cannot redirect an outstanding job.
 
 `document` maps to `targetDocument` in a job.
-The matcher checks the active document title and the file name extracted from its path.
-Matching is case-insensitive and accepts substrings.
-Use a distinctive title or file name to avoid ambiguous matches.
-Without a target any matching Revit instance can claim the trigger.
+Directed reads match active document titles or file names case-insensitively and require exactly one matching instance before publication.
+Actions and undirected reads require exactly one running instance, including processes without confirmed channels in that count.
+The PID guard remains in the add-in.
+After claiming a directed read, the add-in rejects an active document that no longer matches; the correlated error consumes the trigger.
+Actions retain their existing open-document resolution.
+
+Update the server before the add-in.
+Heartbeats without `fileChannelVersion` use the legacy ROOT channel only with a single Revit process; the old claim race remains a legacy limitation.
+New add-ins remain discoverable by old servers, but ROOT file commands are incompatible.
+The add-in does not watch a legacy ROOT trigger, and the server rejects unknown protocol versions before publication.
+HTTP remains one configured endpoint with PID and startup identity checked through `/health`; no port scanning occurs.
+See [transport compatibility](transport.md#file-protocol-compatibility).
 
 ## Failure behavior
 

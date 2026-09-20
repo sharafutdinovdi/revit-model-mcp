@@ -239,6 +239,8 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
     else:
         response["error"] = error
     host = AsyncMock()
+    host.requires_identity = False
+    host.select_job.return_value = (host, job)
     host.prepare_job.return_value = set()
     host.wait_until_trigger_is_gone.return_value = JobPickupStatus(True, 0, False, 0)
     host.wait_for_new_response.return_value = "response_action.json"

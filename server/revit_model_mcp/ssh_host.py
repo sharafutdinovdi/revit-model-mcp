@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import json
 import logging
 import os
@@ -9,6 +10,7 @@ import re
 import shlex
 from collections import deque
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,10 +21,14 @@ from revit_model_mcp.revit_channel import (
     TRIGGER_FILE,
     ActivationError,
     JobPickupStatus,
+    ReadJob,
     ResponseParseError,
     RevitChannelError,
     RevitNotRunningError,
+    RevitReadChannel,
     SshUnavailableError,
+    matches_document,
+    select_instance,
 )
 
 RELAY_CONNECTION_LIMIT = 5
@@ -32,6 +38,7 @@ POLL_COMMAND_TIMEOUT_SECONDS = 5.0
 PICKUP_COMMAND_TIMEOUT_SECONDS = 10.0
 ACTIVATION_DELAY_SECONDS = 60.0
 INSTANCE_STALE_SECONDS = 60.0
+HANDSHAKE_TIMEOUT_SECONDS = 60.0
 LOGGER = logging.getLogger(__name__)
 
 
@@ -56,11 +63,17 @@ class SshPowerShellHost:
         self.connect_timeout_seconds = connect_timeout_seconds
         self._connection_starts: deque[float] = deque()
         self._connection_lock = asyncio.Lock()
+        self._root_directory = _ps_directory()
+        self._directory = self._root_directory
+        self._instance: dict[str, object] | None = None
 
-    async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
-        filter_text = document.strip() if document else ""
+    @property
+    def requires_identity(self) -> bool:
+        return self._instance is not None and self._instance.get("fileChannelVersion") == 2
+
+    async def _discover_instances(self) -> list[dict[str, object]]:
         script = (
-            f"$directory = {_ps_directory()}; "
+            f"$directory = {self._root_directory}; "
             "$processes = @(Get-Process Revit -ErrorAction SilentlyContinue | ForEach-Object { "
             "[ordered]@{ processId = $_.Id; revitVersion = $_.FileVersionInfo.ProductVersion } }); "
             "$files = @(Get-ChildItem -LiteralPath $directory -Filter 'instance_*.json' -File -ErrorAction SilentlyContinue | "
@@ -73,19 +86,116 @@ class SshPowerShellHost:
             raise ResponseParseError(
                 f"Revit instance list could not be parsed as JSON: {error}"
             ) from error
-        return _parse_instance_package(package, filter_text, datetime.now(timezone.utc))
+        return _parse_instance_package(package, "", datetime.now(timezone.utc))
+
+    def _for_instance(self, instance: dict[str, object]) -> SshPowerShellHost:
+        version = instance.get("fileChannelVersion")
+        if "fileChannelVersion" in instance and (type(version) is not int or version != 2):
+            raise RevitChannelError(
+                f"Unsupported file channel version: {version!r}. Update the server and add-in."
+            )
+        if not instance.get("updatedUtc"):
+            raise RevitChannelError(
+                "The selected Revit instance has no fresh heartbeat; its file channel is unconfirmed."
+            )
+        if version == 2 and not instance.get("startedUtc"):
+            raise RevitChannelError(
+                "The selected Revit instance has no startup identity; its file channel is unconfirmed."
+            )
+        selected = copy.copy(self)
+        selected._instance = dict(instance)
+        selected._directory = (
+            f"(Join-Path ({self._root_directory}) 'instances\\{instance['processId']}')"
+            if version == 2
+            else self._root_directory
+        )
+        return selected
+
+    async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
+        instances = await self._discover_instances()
+        for instance in instances:
+            if document and not matches_document(instance, document):
+                continue
+            if instance.get("fileChannelVersion") == 2:
+                try:
+                    await self._for_instance(instance)._handshake()
+                    instance["pluginResponding"] = True
+                except RevitChannelError:
+                    instance["pluginResponding"] = False
+        return [item for item in instances if not document or matches_document(item, document)]
+
+    async def select_job(self, job: ReadJob) -> tuple[SshPowerShellHost, ReadJob]:
+        instances = await self._discover_instances()
+        instance = select_instance(instances, job)
+        selected = self._for_instance(instance)
+        if instance.get("fileChannelVersion") is None:
+            if len(instances) != 1:
+                raise RevitChannelError(
+                    "Legacy file channels require exactly one running Revit instance. Update the add-in for per-PID routing."
+                )
+        else:
+            await selected._handshake()
+        return selected, replace(
+            job, payload={**job.payload, "targetProcessId": instance["processId"]}
+        )
+
+    async def _verify_identity(self) -> None:
+        instances = await self._discover_instances()
+        current = next(
+            (item for item in instances if item["processId"] == self._instance["processId"]), None
+        )
+        if (
+            current is None
+            or not current.get("updatedUtc")
+            or any(
+                current.get(key) != self._instance.get(key)
+                for key in ("startedUtc", "fileChannelVersion")
+            )
+        ):
+            raise RevitChannelError(
+                "The selected Revit instance identity changed or its heartbeat expired. Retry discovery."
+            )
+
+    async def _handshake(self) -> None:
+        async def confirm() -> None:
+            job = ReadJob(
+                "ping", {"command": "ping", "targetProcessId": self._instance["processId"]}
+            )
+            await RevitReadChannel(self)._execute_serial(
+                job, HANDSHAKE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS
+            )
+            await self._verify_identity()
+
+        try:
+            await asyncio.wait_for(confirm(), HANDSHAKE_TIMEOUT_SECONDS)
+        except TimeoutError as error:
+            raise RevitChannelError(
+                "The selected file channel is unconfirmed: handshake timed out; its ping may still execute later."
+            ) from error
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
+        if self._instance is None:
+            raise RevitChannelError("Select a Revit instance before publishing a job.")
+        process_id = self._instance["processId"]
+        identity_check = ""
+        if self._instance.get("fileChannelVersion") == 2:
+            identity = _ps_quote(str(self._instance["startedUtc"]))
+            identity_check = (
+                f"$heartbeat = Get-Content -LiteralPath (Join-Path ({self._root_directory}) 'instance_{process_id}.json') -Raw -ErrorAction Stop | ConvertFrom-Json; "
+                f"if ($heartbeat.processId -ne {process_id} -or ([DateTime]$heartbeat.startedUtc).ToUniversalTime() -ne [DateTime]::Parse('{identity}').ToUniversalTime() -or $heartbeat.fileChannelVersion -ne 2 "
+                "-or ([DateTime]$heartbeat.updatedUtc).ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds(-60)) { throw 'Selected Revit identity changed or heartbeat expired.' }; "
+            )
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
         pattern = f"response_*_{_ps_quote(command)}*.json"
         script = (
-            f"$directory = {_ps_directory()}; "
-            "$revitRunning = $null -ne (Get-Process Revit -ErrorAction SilentlyContinue); "
+            f"$directory = {self._directory}; "
+            f"$revitRunning = $null -ne (Get-Process Revit -ErrorAction SilentlyContinue | Where-Object {{ $_.Id -eq {process_id} }}); "
             f"$responses = @(Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue | "
             "ForEach-Object { $_.Name }); "
             "$result = [ordered]@{ revitRunning = $revitRunning; responses = $responses; published = $false; channelBusy = $false }; "
             "if (-not $revitRunning) { $result | ConvertTo-Json -Compress; exit }; "
-            "New-Item -ItemType Directory -Force -Path $directory | Out-Null; "
+            + identity_check
+            + "New-Item -ItemType Directory -Force -Path $directory | Out-Null; "
             f"$source = Join-Path $directory '{_ps_quote(name)}'; $target = Join-Path $directory '{TRIGGER_FILE}'; "
             "if (Test-Path -LiteralPath $target) { $result.channelBusy = $true; $result | ConvertTo-Json -Compress; exit }; "
             f"$bytes = [Convert]::FromBase64String('{encoded}'); "
@@ -119,7 +229,7 @@ class SshPowerShellHost:
         return set(responses)
 
     async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus:
-        trigger_assignment = f"$trigger = Join-Path ({_ps_directory()}) '{TRIGGER_FILE}'; "
+        trigger_assignment = f"$trigger = Join-Path ({self._directory}) '{TRIGGER_FILE}'; "
         trigger_check = "if (Test-Path -LiteralPath $trigger) { 'present' } else { 'gone' }"
         check_script = trigger_assignment + trigger_check
         activation_attempts = 0
@@ -180,6 +290,7 @@ class SshPowerShellHost:
         selection = "Select-Object -Last 1"
         if correlation_id is not None:
             identity = _ps_quote(correlation_id)
+            fallback = "$null" if self.requires_identity else "$legacy"
             selection = (
                 "ForEach-Object { "
                 "$file = $_; $response = $null; "
@@ -190,11 +301,11 @@ class SshPowerShellHost:
                 "elseif ($null -ne $response -and -not $response.correlationId "
                 f"-and $response.command -eq '{_ps_quote(command)}' "
                 f"-and $file.Name -match '_{_ps_quote(command)}(?:_[0-9]{{2,}})?\\.json$') {{ $legacy = $file }} "
-                "}; $candidate = if ($null -ne $matched) { $matched } else { $legacy }"
+                f"}}; $candidate = if ($null -ne $matched) {{ $matched }} else {{ {fallback} }}"
             )
         script = (
             _ps_response_reader()
-            + f"$directory = {_ps_directory()}; $known = @({known}); $matched = $null; $legacy = $null; "
+            + f"$directory = {self._directory}; $known = @({known}); $matched = $null; $legacy = $null; "
             f"$candidate = Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue | "
             "Where-Object { $known -notcontains $_.Name } | Sort-Object LastWriteTimeUtc | "
             + selection
@@ -265,7 +376,7 @@ class SshPowerShellHost:
         paths = ",".join(f"'{_ps_quote(name)}'" for name in cleanup_names)
         output = await self._run(
             _ps_response_reader()
-            + f"$directory = {_ps_directory()}; $path = Join-Path $directory '{_ps_quote(response_name)}'; "
+            + f"$directory = {self._directory}; $path = Join-Path $directory '{_ps_quote(response_name)}'; "
             "$artifactName = $null; try { $responseBytes = Read-ResponseBytes $path; $artifact = $null; "
             + (
                 "$response = [Text.Encoding]::UTF8.GetString($responseBytes) | ConvertFrom-Json; "
@@ -298,7 +409,7 @@ class SshPowerShellHost:
             return
         paths = ",".join(f"'{_ps_quote(name)}'" for name in names)
         await self._run(
-            f"$directory = {_ps_directory()}; @({paths}) | ForEach-Object {{ "
+            f"$directory = {self._directory}; @({paths}) | ForEach-Object {{ "
             "$path = Join-Path $directory $_; Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }"
         )
 
@@ -422,6 +533,11 @@ def _parse_instance_package(
     processes = package.get("processes")
     if not isinstance(files, list) or not isinstance(processes, list):
         raise ResponseParseError("Revit instance list contains invalid files or processes.")
+    running = {
+        item["processId"]: item
+        for item in processes
+        if isinstance(item, dict) and type(item.get("processId")) is int
+    }
     instances: list[dict[str, object]] = []
     stale_before = now - timedelta(seconds=INSTANCE_STALE_SECONDS)
     for item in files:
@@ -431,6 +547,8 @@ def _parse_instance_package(
             if updated.tzinfo is None or updated < stale_before:
                 continue
             process_id = status["processId"]
+            if process_id not in running or item.get("name") != f"instance_{process_id}.json":
+                continue
             version = status["revitVersion"]
             title = status["documentTitle"]
             path = status["documentPath"]
@@ -448,22 +566,21 @@ def _parse_instance_package(
                 "documentTitle": title,
                 "documentPath": path,
                 "windowTitle": "",
-                "pluginResponding": True,
+                "pluginResponding": "fileChannelVersion" not in status,
+                "updatedUtc": status["updatedUtc"],
+                **{
+                    key: status[key]
+                    for key in ("fileChannelVersion", "startedUtc", "httpPort")
+                    if key in status
+                },
             }
         )
-    if instances:
-        needle = filter_text.casefold()
-        return sorted(
-            (
-                item
-                for item in instances
-                if not needle or needle in str(item["documentName"]).casefold()
-            ),
-            key=lambda item: int(item["processId"]),
-        )
-    fallback: list[dict[str, object]] = []
+    fallback = instances
+    confirmed_ids = {item["processId"] for item in instances}
     for process in processes:
         if not isinstance(process, dict) or not isinstance(process.get("processId"), int):
+            continue
+        if process["processId"] in confirmed_ids:
             continue
         fallback.append(
             {
@@ -476,7 +593,10 @@ def _parse_instance_package(
                 "pluginResponding": False,
             }
         )
-    return sorted(fallback, key=lambda item: int(item["processId"]))
+    return sorted(
+        (item for item in fallback if not filter_text or matches_document(item, filter_text)),
+        key=lambda item: int(item["processId"]),
+    )
 
 
 def _ps_response_reader() -> str:

@@ -297,7 +297,44 @@ def _unique_texts(values: list[str]) -> list[str]:
     return result
 
 
+def matches_document(instance: dict[str, Any], document: str) -> bool:
+    needle = document.strip().casefold()
+    filename = str(instance.get("documentPath", "")).replace("\\", "/").rsplit("/", 1)[-1]
+    return any(
+        needle in str(value).casefold()
+        for value in (instance.get("documentTitle", instance.get("documentName", "")), filename)
+    )
+
+
+def select_instance(instances: list[dict[str, Any]], job: ReadJob) -> dict[str, Any]:
+    document = job.payload.get("targetDocument")
+    if job.command in ACTION_COMMANDS or not document:
+        if len(instances) != 1:
+            raise RevitChannelError(
+                "Actions and undirected reads require exactly one running Revit instance. Use revit_list_instances and a unique document for directed reads."
+            )
+        selected = instances[0]
+    else:
+        matches = [item for item in instances if matches_document(item, document)]
+        if not matches:
+            raise RevitChannelError(
+                "No running Revit instance has a matching active document. Use revit_list_instances."
+            )
+        if len(matches) != 1:
+            raise RevitChannelError(
+                "The document reference is ambiguous across Revit instances. Use a unique title or file name."
+            )
+        selected = matches[0]
+    if job.payload.get("targetProcessId", selected["processId"]) != selected["processId"]:
+        raise RevitChannelError(
+            "The selected Revit process changed before submission. Retry discovery."
+        )
+    return selected
+
+
 class RemoteHost(Protocol):
+    async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]: ...
+
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]: ...
 
     async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus: ...
@@ -338,7 +375,10 @@ class RevitReadChannel:
             raise RevitChannelError("pickup_timeout_seconds must be greater than zero.")
 
         async with self._lock:
-            return await self._execute_serial(job, timeout_seconds, pickup_timeout_seconds)
+            remote, job = await self.remote.select_job(job)
+            return await RevitReadChannel(remote)._execute_serial(
+                job, timeout_seconds, pickup_timeout_seconds
+            )
 
     async def _execute_serial(
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
@@ -396,6 +436,15 @@ class RevitReadChannel:
                     response_name = None
                 elif envelope is not None:
                     result = parse_response(content, job.command)
+                    responder = result.get("responder")
+                    if getattr(self.remote, "requires_identity", False) and (
+                        result.get("correlationId") != correlation_id
+                        or not isinstance(responder, dict)
+                        or responder.get("processId") != job.payload.get("targetProcessId")
+                    ):
+                        raise RevitChannelError(
+                            "The selected channel returned an unconfirmed response identity or correlation."
+                        )
                     if not _is_intermediate_response(result):
                         break
                     result = None
