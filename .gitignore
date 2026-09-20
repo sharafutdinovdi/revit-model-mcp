@@ -44,3 +44,17 @@ site/
 
 # MCP bundle output
 *.mcpb
+
+# Editor and local tool state
+.vscode/*
+__omp_shell(".vscode/settings.json")
+__omp_shell(".vscode/extensions.json")
+.idea/
+.claude/
+.codex/
+.omp/
+.playwright-mcp/
+.mcp.json
+CLAUDE.local.md
+*.local.json
+*.local.md
