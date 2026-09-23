@@ -86,11 +86,11 @@ internal static class FamilyAuditReader
     {
         var parameters = familyDocument.FamilyManager.Parameters.Cast<FamilyParameter>().ToList();
         var dimensionLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(Dimension))
-            .Cast<Dimension>().Where(dimension => dimension.FamilyLabel is not null)
-            .Select(dimension => dimension.FamilyLabel.Definition.Name).ToList();
+            .Cast<Dimension>().Select(dimension => ReadLabel(() => dimension.FamilyLabel)?.Definition.Name)
+            .OfType<string>().ToList();
         var arrayLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(BaseArray))
-            .Cast<BaseArray>().Where(array => array.Label is not null)
-            .Select(array => array.Label.Definition.Name).ToList();
+            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label)?.Definition.Name)
+            .OfType<string>().ToList();
         var usage = ParameterUsage.Evaluate(parameters.Select(parameter => new ParameterUsageInput(
             parameter.Definition.Name, parameter.IsShared,
             parameter.Definition is InternalDefinition definition && definition.BuiltInParameter != BuiltInParameter.INVALID,
@@ -115,5 +115,17 @@ internal static class FamilyAuditReader
                     DataCarrierRisk = used.DataCarrierRisk
                 };
             }).ToList();
+    }
+
+    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel)
+    {
+        try
+        {
+            return getLabel();
+        }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+        {
+            return null;
+        }
     }
 }
