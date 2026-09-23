@@ -26,6 +26,7 @@ ACTION_TOOLS = {
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
+    "revit_edit_families",
 }
 
 
@@ -47,7 +48,9 @@ def test_stdio_action_gate(flag):
         )
         for name in ACTION_TOOLS.intersection(tools):
             tool = tools[name]
-            assert "response_timeout_s" not in tool.input_schema["properties"]
+            assert ("response_timeout_s" in tool.input_schema["properties"]) is (
+                name == "revit_edit_families"
+            )
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
             assert tool.annotations.title == tool.title
@@ -413,3 +416,45 @@ def test_in_process_action_titles_with_true(monkeypatch):
         assert tool.annotations.destructive_hint is (
             tool.name not in {"revit_select", "revit_show", "revit_isolate"}
         )
+
+
+def test_edit_families_maps_discriminated_operations_and_defaults():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_edit_families",
+            {
+                "families": ["Door"],
+                "operations": [
+                    {
+                        "op": "add_shared_parameters",
+                        "parameters": [{"name": "Tag", "group": "Data"}],
+                    },
+                    {"op": "remove_parameters", "names": ["Old"]},
+                    {"op": "purge"},
+                    {"op": "set_shared", "shared": True},
+                ],
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.command == "edit-families"
+    assert job.payload["overwriteParameterValues"] is False
+    assert job.payload["stopOnError"] is True
+    assert job.payload["dryRun"] is False
+    assert job.payload["operations"][0]["replaceFamilyParameter"] is False
+    assert job.payload["operations"][0]["parameters"][0]["instance"] is True
+    assert job.payload["operations"][1]["includeShared"] is False
+    assert execute.await_args.args[1] == 1800
+
+
+def test_edit_families_rejects_unknown_op_and_empty_names():
+    import asyncio
+
+    server, execute, _ = action_server()
+    for operations in ([{"op": "unknown"}], [{"op": "remove_parameters", "names": []}]):
+        with pytest.raises(Exception):
+            asyncio.run(server.call_tool("revit_edit_families", {"operations": operations}))
+    execute.assert_not_awaited()

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import partial
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Union
 
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
@@ -97,6 +97,59 @@ class BatchStep(BaseModel):
         }
 
 
+class SharedParameter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: Name
+    guid: str | None = None
+    group: Name
+    instance: bool = True
+
+
+class AddSharedParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["add_shared_parameters"]
+    parameters: Annotated[list[SharedParameter], Field(min_length=1)]
+    replace_family_parameter: bool = False
+    shared_parameter_file: str | None = None
+
+
+class RemoveParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["remove_parameters"]
+    names: Annotated[list[Name], Field(min_length=1)]
+    include_shared: bool = False
+
+
+class Purge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["purge"]
+
+
+class SetShared(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    op: Literal["set_shared"]
+    shared: bool
+
+
+FamilyOperation = Annotated[
+    Union[AddSharedParameters, RemoveParameters, Purge, SetShared], Field(discriminator="op")
+]
+
+
+def family_operation_payload(operation: FamilyOperation) -> dict[str, Any]:
+    value = operation.model_dump()
+    return {
+        "replaceFamilyParameter"
+        if key == "replace_family_parameter"
+        else "sharedParameterFile"
+        if key == "shared_parameter_file"
+        else "includeShared"
+        if key == "include_shared"
+        else key: item
+        for key, item in value.items()
+    }
+
+
 def env_flag(name: str, default: bool = False) -> bool:
     """Read a boolean environment setting; reject unrecognized values."""
     value = os.environ.get(name)
@@ -164,6 +217,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
             "revit_batch": "Run Action Batch",
+            "revit_edit_families": "Edit Families",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -332,4 +386,32 @@ def register_actions(mcp, execute, host_provider) -> None:
         """
         return await send(
             "batch", steps=[step.payload() for step in steps], dryRun=dry_run, document=document
+        )
+
+    @action
+    async def revit_edit_families(
+        operations: Annotated[list[FamilyOperation], Field(min_length=1)],
+        families: Annotated[list[Name] | None, Field(min_length=1, max_length=200)] = None,
+        overwrite_parameter_values: bool = False,
+        stop_on_error: bool = True,
+        dry_run: bool = False,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Edit an open family in place or named project families in one load cycle each.
+
+        In project mode, pass exact family names or ["*"]. A dry run rolls back all changes.
+        The workstation write gate and REVIT_MCP_ALLOW_WRITE=1 are both required.
+        """
+        if families is not None and "*" in families and families != ["*"]:
+            raise ToolError("The '*' family selector must be alone.")
+        return await send(
+            "edit-families",
+            operations=[family_operation_payload(operation) for operation in operations],
+            families=families,
+            overwriteParameterValues=overwrite_parameter_values,
+            stopOnError=stop_on_error,
+            dryRun=dry_run,
+            response_timeout_s=response_timeout_s,
+            document=document,
         )

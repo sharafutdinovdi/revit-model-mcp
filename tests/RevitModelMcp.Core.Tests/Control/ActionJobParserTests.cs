@@ -7,6 +7,56 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    [Arguments("""{"command":"edit-families","operations":[]}""")]
+    [Arguments("""{"command":"edit-families","operations":[{"op":"unknown"}]}""")]
+    [Arguments("""{"command":"edit-families","operations":[{"op":"remove_parameters","names":[]}]}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"edit-families","operations":[{"op":"purge"}]}]}""")]
+    public async Task Parse_InvalidFamilyEdits_AreRejected(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Parse_FamilyWildcardAndDefaults()
+    {
+        var result = ControlJobParser.Parse("""{"command":"edit-families","families":["*"],"operations":[{"op":"purge"}]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Families).IsEquivalentTo(new[] { "*" });
+        await Assert.That(result.Action.StopOnError).IsTrue();
+        await Assert.That(result.Action.OverwriteParameterValues).IsFalse();
+    }
+
+    [Test]
+    public async Task Parse_FamilyAudit_UsesReadRoutingAndKeepsAddressedDocument()
+    {
+        var result = ControlJobParser.Parse("""{"command":"family-audit","families":["Door"],"targetDocument":"Model"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.FamilyAudit);
+        await Assert.That(ActionJobParser.IsAction(result.Command)).IsFalse();
+        await Assert.That(result.CoordinatorJob.TargetDocument).IsEqualTo("Model");
+        await Assert.That(result.TargetDocument).IsNull();
+        await Assert.That(result.Action!.Families).IsEquivalentTo(new[] { "Door" });
+    }
+
+    [Test]
+    public async Task Parse_MoreThanTwoHundredFamilies_IsRejected()
+    {
+        var names = string.Join(",", Enumerable.Range(0, 201).Select(index => $"\"Family {index}\""));
+        var result = ControlJobParser.Parse($$"""{"command":"family-audit","families":[{{names}}]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task ValidateFamilyMode_RequiresNamesOnlyForProject()
+    {
+        var action = new ActionJobContract();
+        await Assert.That(() => ActionJobParser.ValidateFamilyMode(action, false)).Throws<ArgumentException>();
+        ActionJobParser.ValidateFamilyMode(action, true);
+        action.Families = ["*"];
+        ActionJobParser.ValidateFamilyMode(action, false);
+        await Assert.That(() => ActionJobParser.ValidateFamilyMode(action, true)).Throws<ArgumentException>();
+    }
+
+    [Test]
     [Arguments("select")]
     [Arguments("show")]
     [Arguments("isolate")]

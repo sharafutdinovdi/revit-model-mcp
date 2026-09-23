@@ -28,6 +28,7 @@ ACTION_COMMANDS = frozenset(
         "set-parameter",
         "delete",
         "batch",
+        "edit-families",
     }
 )
 

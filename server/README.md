@@ -61,13 +61,16 @@ mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 | Variable | Default | Behavior |
 |---|---|---|
 | `REVIT_MCP_HOST` | `local` | Local PowerShell, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_ALLOW_WRITE` | Unset | Only `1` registers the nine action tools, including `revit_batch` at server startup; the workstation gate is also required. |
+| `REVIT_MCP_ALLOW_WRITE` | Unset | Only `1` registers the action tools, including `revit_batch` and `revit_edit_families` at server startup; the workstation gate is also required. |
+
 | `REVIT_MCP_TOKEN` | Unset | HTTP bearer token from workstation settings. `--token` overrides it. |
 | `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
 | `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
 | `REVIT_MCP_ACTIVATE_TASK` | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
 | `REVIT_MCP_CHANNEL_DIR` | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the Python server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. |
 | `REVIT_MCP_REDACT_PATHS` | Unset | `1` replaces every response `documentPath` and nested `path` value with its file name. `--redact-paths` enables the same behavior. |
+
+`revit_family_audit` is a read tool. It inspects an open family when `families` is omitted, or exact family names / `["*"]` in a project. `revit_edit_families` applies ordered shared-parameter, removal, purge and shared-flag operations. Project edits use one family load per family and one undo entry; `dry_run=true` rolls back. The edit tool requires both action gates. Family audit defaults to a 600-second response budget; family edits default to 1800 seconds.
 
 SSH mode passes `ControlMaster=auto`, `ControlPath=<dir>/mux-%C` and `ControlPersist=600` on every invocation.
 The socket directory is `$XDG_RUNTIME_DIR` when nonempty, otherwise `/tmp/revit-model-mcp-<uid>/`.

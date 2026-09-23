@@ -264,6 +264,7 @@ def addressed_tool(function):
         "revit_links_status": "Links Status",
         "revit_shared_coordinates": "Shared Coordinates",
         "revit_parameter_fill_check": "Parameter Fill Check",
+        "revit_family_audit": "Audit Families",
     }[function.__name__]
     return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
         function
@@ -741,6 +742,29 @@ async def revit_list_instances(document: Document = None) -> list[dict[str, obje
         return redact_model_paths(await host.list_revit_instances(document))
     except RevitChannelError as error:
         raise ToolError(str(error)) from error
+
+
+@addressed_tool
+async def revit_family_audit(
+    families: Annotated[list[str] | None, Field(min_length=1, max_length=200)] = None,
+    response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Audit an open family or named project families without saving or loading changes.
+
+    In project mode, pass exact names or ["*"]. In family mode, omit families.
+    Unused shared parameters may still carry schedule or tag data in the project.
+    """
+    if families is not None and (not families or any(not name.strip() for name in families)):
+        raise ToolError("families must contain 1 to 200 non-empty names.")
+    if families is not None and "*" in families and families != ["*"]:
+        raise ToolError("The '*' family selector must be alone.")
+    return await _execute(
+        ReadJob("family-audit", {"command": "family-audit", "families": families}),
+        response_timeout_s,
+        DEFAULT_PICKUP_TIMEOUT_SECONDS,
+        document,
+    )
 
 
 register_actions(mcp, _execute, lambda: host)

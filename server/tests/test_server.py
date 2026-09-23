@@ -37,6 +37,7 @@ EXPECTED_TOOLS = {
     "revit_list_warnings",
     "revit_list_relations",
     "revit_list_instances",
+    "revit_family_audit",
 }
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
@@ -119,6 +120,7 @@ EXPECTED_PARAMETERS = {
         "document",
     ],
     "revit_list_instances": ["document"],
+    "revit_family_audit": ["families", "response_timeout_s", "document"],
 }
 
 
@@ -132,6 +134,20 @@ class RecordingChannel:
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_family_audit_is_read_only_and_uses_response_budget(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool(
+                "revit_family_audit",
+                {"families": ["Door"], "response_timeout_s": 600, "document": "Model"},
+            )
+        job, response_timeout, pickup_timeout = channel.calls[0]
+        self.assertEqual(job.command, "family-audit")
+        self.assertEqual(job.payload["families"], ["Door"])
+        self.assertEqual(job.payload["targetDocument"], "Model")
+        self.assertEqual(response_timeout, 600)
+        self.assertEqual(pickup_timeout, 300)
+
     def test_server_version_matches_package_metadata(self) -> None:
         self.assertEqual(revit_server.mcp.version, package_version())
 

@@ -3,8 +3,7 @@
 Read-only by default. Actions are a separate tool set you enable on purpose.
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
-The action tools listed below accept `document`; none accepts `response_timeout_s`.
-New action tools that expose `response_timeout_s` accept integer values from 30 to 3600 seconds.
+The action tools listed below accept `document`. `revit_edit_families` also accepts `response_timeout_s` from 30 to 3600 seconds.
 Revit remains busy for the whole action duration.
 The listed tools use the default response timeout of 120 seconds and pickup timeout of 300 seconds, and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
@@ -34,6 +33,26 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions with a single undo entry named `revit_batch`. |
+| `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `response_timeout_s=1800` | Edit open family or named project families; one load cycle per family. |
+
+### Family edits
+
+In an open `.rfa`, omit `families`. The add-in edits it in place and leaves saving to the user. In a project, pass 1–200 exact family names or `["*"]`; in-place, non-editable, missing and other-user-owned families are skipped with reasons. The add-in opens each family, applies operations in order inside one family transaction, then loads it into the project with one project undo entry. A dry run re-reads the prospective family and rolls back without loading. The command is excluded from `revit_batch`.
+
+Operations use snake_case `op` values:
+
+```json
+{"operations":[
+  {"op":"add_shared_parameters","parameters":[{"name":"AssetId","guid":null,"group":"Data","instance":true}],"replace_family_parameter":false,"shared_parameter_file":null},
+  {"op":"remove_parameters","names":["Old"],"include_shared":false},
+  {"op":"purge"},
+  {"op":"set_shared","shared":true}
+]}
+```
+
+`add_shared_parameters` reads definitions from the named absolute workstation file or Revit's current shared parameter file. A GUID identifies a definition; name lookup must be unique across groups. `group` is a `GroupTypeId` property name. Existing GUIDs are unchanged; same-name conflicts need `replace_family_parameter=true`. `remove_parameters` removes only unused parameters. Formula references, associations and labels keep a parameter; shared parameters also need `include_shared=true`. Built-in parameters remain. `purge` repeats up to five passes and reports deletion counts. Revit 2022–2023 covers only unused families and types; Revit 2024 and later uses full purge candidates. `set_shared` reports unsupported families and verifies the loaded project state. Shared nested families keep the project version during load. `overwrite_parameter_values=true` replaces existing project type parameter values; instance values remain.
+
+With `stop_on_error=true`, the first failed family rolls back the whole project group and reports `failedFamily`. With `false`, that family's load is rolled back and later families continue. A shared-to-non-shared overwrite may fail verification; delete and reload that family manually if Revit keeps its previous shared state.
 
 `type_name` and `wall_type` are required arguments that accept `null`.
 
