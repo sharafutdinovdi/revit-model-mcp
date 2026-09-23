@@ -22,7 +22,6 @@ internal static class NwcExporter
         var job = action.Nwc;
         NwcPathValidator.Validate(job.Path);
         var folder = Path.GetDirectoryName(job.Path)!;
-        var name = Path.GetFileNameWithoutExtension(job.Path);
         if (!Directory.Exists(folder)) throw new ArgumentException("path parent directory does not exist.");
         var targetExists = File.Exists(job.Path);
         if (targetExists && !job.Overwrite) throw new ArgumentException("path already exists; set overwrite=true.");
@@ -30,9 +29,18 @@ internal static class NwcExporter
         View3D? view = null;
         if (job.Scope == "view")
         {
-            if (long.TryParse(job.View, out var viewId))
-                view = ActionCommandExecutor.CreateId(viewId).ToElement(document) as View3D;
-            else
+            if (long.TryParse(job.View, out var viewId) && viewId > 0)
+            {
+                try
+                {
+                    view = ActionCommandExecutor.CreateId(viewId).ToElement(document) as View3D;
+                }
+                catch (OverflowException)
+                {
+                    // Revit 2022-2023 element IDs are 32-bit; the text may still be a view name.
+                }
+            }
+            if (view is null)
             {
                 using var views = document.CollectElements().OfClass<View3D>();
                 view = views.Cast<View3D>().FirstOrDefault(candidate => candidate.Name == job.View);
@@ -40,9 +48,7 @@ internal static class NwcExporter
             if (view is null || view.IsTemplate)
                 throw new ArgumentException("view must identify a non-template 3D view.");
         }
-        var ids = job.Scope == "selection" ? action.ElementIds.Select(ActionCommandExecutor.CreateId).ToList() : [];
-        foreach (var id in ids)
-            if (id.ToElement(document) is null) throw new ArgumentException($"Element {id} was not found.");
+        var ids = job.Scope == "selection" ? ActionCommandExecutor.ResolveIds(document, action.ElementIds) : [];
 
         var result = new ActionResultData
         {

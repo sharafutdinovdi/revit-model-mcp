@@ -237,7 +237,7 @@ internal static class ActionCommandExecutor
         }
     }
 
-    private static List<ElementId> ResolveIds(Document document, IEnumerable<long> values)
+    internal static List<ElementId> ResolveIds(Document document, IEnumerable<long> values)
     {
         var ids = values.Select(CreateId).ToList();
         foreach (var id in ids)

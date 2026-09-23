@@ -42,6 +42,14 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task Parse_NwcRejectsNonStringParameters()
+    {
+        var result = ControlJobParser.Parse("""{"command":"export-nwc","path":"C:\\x\\a.nwc","parameters":["none"]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(result.Cause).IsNull();
+    }
+
+    [Test]
     public async Task Serialize_NwcResponse_UsesSnakeCaseOptions()
     {
         var data = new ActionResultData

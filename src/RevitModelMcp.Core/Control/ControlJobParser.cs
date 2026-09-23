@@ -287,10 +287,11 @@ public static class ControlJobParser
             return ControlJobParseResult.LegacySnapshot();
         }
 
+        var isNwcExport = Regex.IsMatch(content, "\"command\"\\s*:\\s*\"export-nwc\"");
         try
         {
-            if (Regex.IsMatch(content, "\"command\"\\s*:\\s*\"export-nwc\""))
-                content = Regex.Replace(content, "\"parameters\"(?=\\s*:\\s*\")", "\"nwcParameters\"");
+            if (isNwcExport)
+                content = Regex.Replace(content, "\"parameters\"(?=\\s*:)", "\"nwcParameters\"");
             var serializer = new DataContractJsonSerializer(typeof(ControlJobContract));
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
             var job = serializer.ReadObject(stream) as ControlJobContract;
@@ -302,15 +303,15 @@ public static class ControlJobParser
         {
             var result = ControlJobParseResult.Invalid(
                 "invalid",
-                $"Failed to parse the job JSON: {exception.Message}",
-                exception);
+                isNwcExport ? "Failed to parse the export-nwc job JSON." : $"Failed to parse the job JSON: {exception.Message}",
+                isNwcExport ? null : exception);
             try
             {
                 using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
                 var envelope = new DataContractJsonSerializer(typeof(JobEnvelope)).ReadObject(stream) as JobEnvelope;
                 if (envelope is not null)
                 {
-                    result = ControlJobParseResult.Invalid(envelope.Command ?? "invalid", result.Error!, exception);
+                    result = ControlJobParseResult.Invalid(envelope.Command ?? "invalid", result.Error!, isNwcExport ? null : exception);
                     result.CorrelationId = envelope.CorrelationId;
                 }
             }

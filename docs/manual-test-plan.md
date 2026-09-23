@@ -113,6 +113,7 @@ Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstatio
 - [ ] With the exporter installed, run `dry_run=true` with a new absolute `.nwc` path. Check all effective options and `exporterAvailable:true`; confirm no file is created.
 - [ ] Export the full model with `coordinates="shared"`. Open it in Navisworks and verify alignment with an NWC of a linked model exported the same way.
 - [ ] Export a non-template 3D view with `scope="view"` and an enabled section box. Verify the NWC respects the section box.
+- [ ] Export a 3D view whose exact name is numeric. Verify name lookup works when that number is not a view ID.
 - [ ] Export once with `parameters="all"` and once with `parameters="none"`. Verify element properties disappear in the second NWC.
 - [ ] Export to an existing file without `overwrite`. Verify the error and confirm the original file bytes are unchanged.
 
