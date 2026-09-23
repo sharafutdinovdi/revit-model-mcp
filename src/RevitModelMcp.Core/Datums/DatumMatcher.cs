@@ -15,16 +15,17 @@ public static class DatumMatcher
         if (transform is null) throw new ArgumentNullException(nameof(transform));
         if (options is null) throw new ArgumentNullException(nameof(options));
         var includeLevels = options.Kinds.Contains("levels");
-        if (includeLevels && (Math.Abs(transform.BasisZ.X) > 1e-9 || Math.Abs(transform.BasisZ.Y) > 1e-9 ||
-                              Math.Abs(Math.Abs(transform.BasisZ.Z) - 1) > 1e-9))
+        var tiltedLevels = includeLevels && (Math.Abs(transform.BasisZ.X) > 1e-9 ||
+            Math.Abs(transform.BasisZ.Y) > 1e-9 || Math.Abs(Math.Abs(transform.BasisZ.Z) - 1) > 1e-9);
+        if (tiltedLevels && !options.Kinds.Contains("grids"))
             throw new ArgumentException("Link transform is tilted; levels cannot be compared.");
 
         var includedKinds = options.Kinds.Select(kind => kind == "levels" ? "level" : "grid").ToHashSet();
-        var links = linkDatums.Where(datum => includedKinds.Contains(datum.Kind)).ToList();
-        var hosts = hostDatums.Where(datum => includedKinds.Contains(datum.Kind)).ToList();
-        var available = hosts.Where(datum => !datum.MultiSegment).ToDictionary(datum => datum.Id);
+        var links = linkDatums.Where(datum => includedKinds.Contains(datum.Kind) && (!tiltedLevels || datum.Kind != "level")).ToList();
+        var hosts = hostDatums.Where(datum => includedKinds.Contains(datum.Kind) && (!tiltedLevels || datum.Kind != "level")).ToList();
+        var available = hosts.Where(datum => !datum.MultiSegment && HasSupportedCurve(datum)).ToDictionary(datum => datum.Id);
         var namedHosts = new Dictionary<long, DatumRecord>();
-        foreach (var link in links.Where(datum => !datum.MultiSegment))
+        foreach (var link in links.Where(datum => !datum.MultiSegment && HasSupportedCurve(datum)))
         {
             var targetName = options.NameMap.TryGetValue(link.Name, out var mappedName)
                 ? mappedName : options.Prefix + link.Name + options.Suffix;
@@ -43,6 +44,13 @@ public static class DatumMatcher
             {
                 item.Status = "unsupported";
                 item.Reason = "multi-segment grid";
+                result.Add(item);
+                continue;
+            }
+            if (!HasSupportedCurve(link))
+            {
+                item.Status = "unsupported";
+                item.Reason = "grid curve is unavailable";
                 result.Add(item);
                 continue;
             }
@@ -83,10 +91,44 @@ public static class DatumMatcher
                 Status = "unsupported",
                 Reason = "multi-segment grid"
             });
+        foreach (var host in hosts.Where(datum => !datum.MultiSegment && !HasSupportedCurve(datum)))
+            result.Add(new LinkDatumItem
+            {
+                Kind = host.Kind,
+                Name = host.Name,
+                HostId = host.Id,
+                Status = "unsupported",
+                Reason = "grid curve is unavailable"
+            });
         foreach (var host in available.Values)
             result.Add(new LinkDatumItem { Kind = host.Kind, Name = host.Name, HostId = host.Id, Status = "host_only" });
+        if (tiltedLevels)
+        {
+            foreach (var link in linkDatums.Where(datum => datum.Kind == "level"))
+                result.Add(new LinkDatumItem
+                {
+                    Kind = "level",
+                    Name = options.NameMap.TryGetValue(link.Name, out var mapped) ? mapped : options.Prefix + link.Name + options.Suffix,
+                    LinkName = link.Name,
+                    LinkId = link.Id,
+                    Status = "unsupported",
+                    Reason = "Link transform is tilted; levels cannot be compared."
+                });
+            foreach (var host in hostDatums.Where(datum => datum.Kind == "level"))
+                result.Add(new LinkDatumItem
+                {
+                    Kind = "level",
+                    Name = host.Name,
+                    HostId = host.Id,
+                    Status = "unsupported",
+                    Reason = "Link transform is tilted; levels cannot be compared."
+                });
+        }
         return result;
     }
+
+    private static bool HasSupportedCurve(DatumRecord datum) => datum.Kind != "grid" ||
+        datum.Center is not null || datum.Start is not null && datum.End is not null;
 
     private static DatumRecord Transform(DatumRecord datum, DatumTransform transform, double levelOffset)
     {

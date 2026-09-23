@@ -254,7 +254,7 @@ internal static class ActionCommandExecutor
 #endif
     }
 
-    private static double Millimeters(double value) => UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters);
+    internal static double Millimeters(double value) => UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters);
 
     internal sealed class ActionFailures : IFailuresPreprocessor
     {

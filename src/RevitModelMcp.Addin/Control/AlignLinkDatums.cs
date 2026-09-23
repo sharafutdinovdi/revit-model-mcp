@@ -10,10 +10,15 @@ internal static class AlignLinkDatums
     public static ActionResultData Execute(Document document, LinkDatumJobOptions options, bool dryRun,
         ActionCommandExecutor.ActionFailures failures)
     {
-        var levelType = ResolveType<LevelType>(document, options.LevelType, ElementTypeGroup.LevelType);
-        var gridType = ResolveType<GridType>(document, options.GridType, ElementTypeGroup.GridType);
-        var planType = ResolvePlanType(document, options.CreatePlanViews, options.PlanViewType);
         var comparison = LinkDatumReader.Read(document, options);
+        var createLevels = options.CreateMissing && comparison.Items.Any(item => item.Kind == "level" && item.Status == "missing_in_host");
+        var createGrids = options.CreateMissing && comparison.Items.Any(item => item.Kind == "grid" && item.Status == "missing_in_host");
+        var levelType = options.LevelType is not null || createLevels
+            ? ResolveType<LevelType>(document, options.LevelType, ElementTypeGroup.LevelType) : null;
+        var gridType = options.GridType is not null || createGrids
+            ? ResolveType<GridType>(document, options.GridType, ElementTypeGroup.GridType) : null;
+        var planType = ResolvePlanType(document, options.CreatePlanViews &&
+            (createLevels || options.PlanViewType is not null), options.PlanViewType);
         var (instance, linkDatums, _, _) = LinkDatumReader.Collect(document, options);
         var linkDocument = instance.GetLinkDocument()!;
         var transform = instance.GetTotalTransform();
@@ -49,7 +54,7 @@ internal static class AlignLinkDatums
                     if (host is Level level)
                     {
                         var difference = transform.OfPoint(new XYZ(0, 0, linkRecord.Elevation)).Z +
-                            Feet(options.LevelOffsetMm) - level.ProjectElevation;
+                            ActionCommandExecutor.Millimeters(options.LevelOffsetMm) - level.ProjectElevation;
                         item.DependentCount = Math.Max(0, level.GetDependentElements(null).Count - 1);
                         ElementTransformUtils.MoveElement(document, level.Id, new XYZ(0, 0, difference));
                         movedLevels = true;
@@ -96,9 +101,10 @@ internal static class AlignLinkDatums
                 Element created;
                 if (item.Kind == "level")
                 {
-                    var elevation = transform.OfPoint(new XYZ(0, 0, linkRecord.Elevation)).Z + Feet(options.LevelOffsetMm);
+                    var elevation = transform.OfPoint(new XYZ(0, 0, linkRecord.Elevation)).Z +
+                        ActionCommandExecutor.Millimeters(options.LevelOffsetMm);
                     var level = Level.Create(document, elevation);
-                    level.ChangeTypeId(levelType.Id);
+                    level.ChangeTypeId(levelType!.Id);
                     created = level;
                     if (planType is not null) ViewPlan.Create(document, planType.Id, level.Id);
                 }
@@ -112,7 +118,7 @@ internal static class AlignLinkDatums
                         Arc arc => Grid.Create(document, arc),
                         _ => throw new ArgumentException("Unsupported grid curve.")
                     };
-                    grid.ChangeTypeId(gridType.Id);
+                    grid.ChangeTypeId(gridType!.Id);
                     created = grid;
                 }
                 created.Name = item.Name;
@@ -125,7 +131,7 @@ internal static class AlignLinkDatums
             foreach (var item in comparison.Items.Where(item => item.Status == "moved" && item.Kind == "level"))
             {
                 var level = (Level)document.GetElement(ActionCommandExecutor.CreateId(item.HostId!.Value));
-                item.After = new DatumElevation { ElevationMm = Math.Round(Mm(level.ProjectElevation), 1) };
+                item.After = new DatumElevation { ElevationMm = Math.Round(RevitValueReader.ToMillimeters(level.ProjectElevation), 1) };
             }
             if (movedLevels)
                 comparison.Warning = "Elements hosted on moved levels moved with them.";
@@ -181,7 +187,7 @@ internal static class AlignLinkDatums
     private static bool NameInUse(Document document, string kind, string name)
     {
         using var collector = new FilteredElementCollector(document).OfClass(kind == "level" ? typeof(Level) : typeof(Grid));
-        return collector.Cast<Element>().Any(element => element.Name == name);
+        return collector.Cast<Element>().Any(element => string.Equals(element.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
     private static ViewFamilyType? ResolvePlanType(Document document, bool create, string? name)
@@ -192,7 +198,4 @@ internal static class AlignLinkDatums
             candidate.ViewFamily == ViewFamily.FloorPlan && (name is null || candidate.Name == name));
         return type ?? throw new ArgumentException($"Unknown floor-plan type '{name}'.");
     }
-
-    private static double Feet(double millimeters) => UnitUtils.ConvertToInternalUnits(millimeters, UnitTypeId.Millimeters);
-    private static double Mm(double feet) => UnitUtils.ConvertFromInternalUnits(feet, UnitTypeId.Millimeters);
 }

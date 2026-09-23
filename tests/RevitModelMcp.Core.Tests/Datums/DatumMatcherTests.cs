@@ -80,5 +80,19 @@ public sealed class DatumMatcherTests
             Options("levels"))).Throws<ArgumentException>();
         var grids = DatumMatcher.Match([Line(1, "A")], [Line(2, "A")], tilted, Options("grids"));
         await Assert.That(grids[0].Status).IsEqualTo("aligned");
+        var mixed = DatumMatcher.Match([Line(1, "A"), new DatumRecord(3, "L", "level")],
+            [Line(2, "A"), new DatumRecord(4, "L", "level")], tilted, Options("grids", "levels"));
+        await Assert.That(mixed[0].Status).IsEqualTo("aligned");
+        await Assert.That(mixed.Where(item => item.Kind == "level").All(item => item.Status == "unsupported")).IsTrue();
+    }
+
+    [Test]
+    public async Task UnavailableGridCurvesAreUnsupportedInsteadOfCreated()
+    {
+        var unavailable = new DatumRecord(1, "A", "grid");
+        var result = DatumMatcher.Match([unavailable], [unavailable with { Id = 2 }], Identity, Options("grids"));
+        await Assert.That(result.Count).IsEqualTo(2);
+        await Assert.That(result.All(item => item.Status == "unsupported")).IsTrue();
+        await Assert.That(result.All(item => item.Reason == "grid curve is unavailable")).IsTrue();
     }
 }
