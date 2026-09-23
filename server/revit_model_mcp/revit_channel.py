@@ -29,6 +29,7 @@ ACTION_COMMANDS = frozenset(
         "delete",
         "batch",
         "export-nwc",
+        "edit-families",
     }
 )
 

@@ -6,8 +6,17 @@ namespace RevitModelMcp.Core.Control;
 
 public static class ActionJobParser
 {
+    public static void ValidateFamilyMode(ActionJobContract action, bool isFamilyDocument)
+    {
+        if (action is null) throw new ArgumentNullException(nameof(action));
+        if (isFamilyDocument && action.Families is not null)
+            throw new ArgumentException("families must be absent in family mode.");
+        if (!isFamilyDocument && action.Families is null)
+            throw new ArgumentException("families is required in project mode.");
+    }
+
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -50,7 +59,11 @@ public static class ActionJobParser
                     DivideFileIntoLevels = job.DivideFileIntoLevels ?? true,
                     FindMissingMaterials = job.FindMissingMaterials ?? true,
                     FacetingFactor = job.FacetingFactor ?? 1.0, Overwrite = job.Overwrite ?? false
-                }
+                },
+                Families = job.Families,
+                Operations = job.Operations ?? [],
+                OverwriteParameterValues = job.OverwriteParameterValues ?? false,
+                StopOnError = job.StopOnError ?? true
             };
             if (command == "batch")
             {
@@ -58,11 +71,44 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc"),
+                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc" or "edit-families" or "family-audit"),
                         "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
                     action.Steps.Add(parsed);
+                }
+            }
+            if (command is "edit-families" or "family-audit")
+            {
+                Require(job.Families is null || job.Families.Count is > 0 and <= 200,
+                    "families must contain 1 to 200 names.");
+                Require(job.Families is null || job.Families.All(name => !string.IsNullOrWhiteSpace(name)),
+                    "Family names must not be blank.");
+                Require(job.Families is null || !job.Families.Contains("*") || job.Families.Count == 1,
+                    "The '*' family selector must be alone.");
+            }
+            if (command == "edit-families")
+            {
+                Require(action.Operations.Count > 0, "operations must not be empty.");
+                foreach (var operation in action.Operations)
+                {
+                    if (operation is null) throw new ArgumentException("operations must not contain null.");
+                    Require(operation.Op is "add_shared_parameters" or "remove_parameters" or "purge" or "set_shared",
+                        $"Unknown family operation: {operation.Op}.");
+                    if (operation.Op == "add_shared_parameters")
+                    {
+                        if (operation.Parameters is not { Count: > 0 })
+                            throw new ArgumentException("add_shared_parameters requires parameters.");
+                        Require(operation.Parameters.All(parameter => !string.IsNullOrWhiteSpace(parameter.Name) && !string.IsNullOrWhiteSpace(parameter.Group)),
+                            "Shared parameter name and group are required.");
+                        Require(operation.Parameters.All(parameter => parameter.Guid is null || Guid.TryParse(parameter.Guid, out _)),
+                            "Shared parameter GUID is invalid.");
+                    }
+                    if (operation.Op == "remove_parameters")
+                        Require(operation.Names is { Count: > 0 } && operation.Names.All(name => !string.IsNullOrWhiteSpace(name)),
+                            "remove_parameters requires non-empty names.");
+                    if (operation.Op == "set_shared")
+                        Require(operation.Shared.HasValue, "set_shared requires shared.");
                 }
             }
             if (command is "select" or "show" or "isolate" or "move" or "delete")
@@ -198,6 +244,10 @@ public sealed class ActionJobContract
     public long ElementId { get; set; }
     public string? Parameter { get; set; }
     public string? Value { get; set; }
+    public List<string>? Families { get; set; }
+    public List<FamilyEditOperationContract> Operations { get; set; } = [];
+    public bool OverwriteParameterValues { get; set; }
+    public bool StopOnError { get; set; }
 }
 
 public sealed class NwcExportJob
@@ -260,6 +310,33 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "elementId")] public long? ActionElementId { get; set; }
     [DataMember(Name = "parameter")] public string? Parameter { get; set; }
     [DataMember(Name = "value")] public string? Value { get; set; }
+    [DataMember(Name = "families")] public List<string>? Families { get; set; }
+    [DataMember(Name = "operations")] public List<FamilyEditOperationContract>? Operations { get; set; }
+    [DataMember(Name = "overwriteParameterValues")] public bool? OverwriteParameterValues { get; set; }
+    [DataMember(Name = "stopOnError")] public bool? StopOnError { get; set; }
+}
+
+[DataContract]
+public sealed class FamilyEditOperationContract
+{
+    [DataMember(Name = "op")] public string? Op { get; set; }
+    [DataMember(Name = "parameters")] public List<SharedParameterSpec>? Parameters { get; set; }
+    [DataMember(Name = "replaceFamilyParameter")] public bool ReplaceFamilyParameter { get; set; }
+    [DataMember(Name = "sharedParameterFile")] public string? SharedParameterFile { get; set; }
+    [DataMember(Name = "names")] public List<string>? Names { get; set; }
+    [DataMember(Name = "includeShared")] public bool IncludeShared { get; set; }
+    [DataMember(Name = "shared")] public bool? Shared { get; set; }
+}
+
+[DataContract]
+public sealed class SharedParameterSpec
+{
+    private bool? _instance;
+
+    [DataMember(Name = "name")] public string? Name { get; set; }
+    [DataMember(Name = "guid")] public string? Guid { get; set; }
+    [DataMember(Name = "group")] public string? Group { get; set; }
+    [DataMember(Name = "instance")] public bool Instance { get => _instance ?? true; set => _instance = value; }
 }
 
 [DataContract]

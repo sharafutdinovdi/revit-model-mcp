@@ -36,6 +36,18 @@ internal static class ReadCommandExecutor
                 return;
             }
 
+            if (job.Command == "family-audit")
+            {
+                var reference = job.CoordinatorJob.TargetDocument;
+                var target = ActionCommandExecutor.ResolveDocument(application,
+                    string.IsNullOrWhiteSpace(reference) ? null : reference!.Trim());
+                ActionJobParser.ValidateFamilyMode(job.Action ?? throw new ArgumentException("Missing family arguments."), target.IsFamilyDocument);
+                var audit = FamilyAuditReader.Read(target, job.Action?.Families);
+                stopwatch.Stop();
+                output.Write(CommandResponse<FamilyAuditData>.Ok(job.Command, audit, stopwatch.ElapsedMilliseconds));
+                LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
+                return;
+            }
             var document = application.ActiveUIDocument?.Document
                            ?? throw new InvalidOperationException("No active Revit document.");
             switch (job.Kind)

@@ -50,7 +50,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 ### 2.1 Local server via `uvx` (Windows workstation)
 - [ ] `uvx revit-model-mcp` resolves and installs the package from PyPI on first run (record package count + time).
 - [ ] Server starts and reports `serverInfo: { name: "Revit Model Reader", version: "<ver>" }` on `initialize`.
-- [ ] `tools/list` returns **18 read tools** (enumerate — see §3).
+- [ ] `tools/list` returns **19 read tools** (enumerate — see §3).
 
 ### 2.2 Claude Code registration (`claude mcp add`)
 - [ ] `claude mcp add revit-model-mcp -s user -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uvx revit-model-mcp` writes to `~/.claude.json`.
@@ -73,7 +73,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 ---
 
-## 3. Read tools — full coverage (18)
+## 3. Read tools — full coverage (19)
 
 Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggregate_elements` second, `revit_query_elements` only when rows are needed** (per server guidance). For each tool: record the JSON, confirm `success: true`, spot-check values.
 
@@ -97,13 +97,26 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 | 16 | `revit_list_warnings` | "list all model warnings" | model-wide warnings list | [ ] |
 | 17 | `revit_list_relations` | "show hosting/group relations for element <id>" | relation graph (host, hosted, group membership) | [ ] |
 | 18 | `revit_list_instances` | "list instances of family/type <X>" | instances of the named type | [ ] |
+| 19 | `revit_family_audit` | "audit family <X>" | parameter use, shared flag and purge coverage; no project change | [ ] |
 
-- [ ] **3.19 Redaction on**: with `REVIT_MCP_REDACT_PATHS=1`, path fields are redacted but names, parameter values, errors, channel files and export `localPath` remain visible.
-- [ ] **3.20 Redaction off**: `REVIT_MCP_REDACT_PATHS=0` shows full paths.
+- [ ] **3.20 Redaction on**: with `REVIT_MCP_REDACT_PATHS=1`, path fields are redacted but names, parameter values, errors, channel files and export `localPath` remain visible.
+- [ ] **3.21 Redaction off**: `REVIT_MCP_REDACT_PATHS=0` shows full paths.
 
 ---
 
-## 4. Action tools — gated writes (10)
+## 4. Action tools — gated writes (11)
+
+### Family audit and edits
+
+- [ ] Open an `.rfa`. Run `revit_family_audit` without `families`; inspect shared status, parameter use and purge counts. Run `revit_edit_families` with an added shared parameter, then save manually.
+- [ ] In a project, audit three editable families. Run the same edit with `dry_run=true`; verify the project is unchanged and no family was loaded.
+- [ ] Run the edit for real; verify one `revit_edit_families` undo entry. Undo and verify that the original family state returns.
+- [ ] Run `set_shared` and confirm the flag in Family Category and Parameters. Check the reported loaded state.
+- [ ] Run `purge` on Revit 2023 and verify coverage `families-and-types`; on Revit 2026 verify `full`.
+- [ ] Verify a used parameter is kept with `usedBy`, an unused shared parameter requires `include_shared=true`, and a missing shared parameter file fails before any edit.
+- [ ] With `replace_family_parameter=true`, give a valid GUID and a different parameter name. Verify the edit fails and the original parameter and its values remain intact.
+- [ ] Cause the first family edit to fail with `stop_on_error=true`. Verify `success:false`, `committed:false`, `failedFamily`, and `rolledBack:true`; confirm the project is unchanged.
+- [ ] Audit enough families for the call to take over 60 seconds. Verify the complete audit returns `success:true` within the configured response timeout.
 
 Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstation allow-write file. Direct HTTP callers also need the bearer token.
 

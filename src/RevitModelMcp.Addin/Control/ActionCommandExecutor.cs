@@ -18,6 +18,11 @@ internal static class ActionCommandExecutor
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
+        if (job.Command == "edit-families")
+        {
+            ExecuteFamilies(application, job, startedAt);
+            return;
+        }
         var stopwatch = Stopwatch.StartNew();
         CommandResponse<ActionResultData> response;
         var dialogsSuppressed = new List<string>();
@@ -25,9 +30,7 @@ internal static class ActionCommandExecutor
         var failures = new ActionFailures();
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
-            if (arguments is not TaskDialogShowingEventArgs dialog) return;
-            if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
-                dialogsSuppressed.Add(dialog.Message);
+            SuppressTaskDialog(arguments, dialogsSuppressed);
         }
         application.DialogBoxShowing += SuppressDialog;
         try
@@ -73,7 +76,61 @@ internal static class ActionCommandExecutor
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
 
-    private static Document ResolveDocument(UIApplication application, string? reference)
+    private static void ExecuteFamilies(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var dialogsSuppressed = new List<string>();
+        void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
+        {
+            SuppressTaskDialog(arguments, dialogsSuppressed);
+        }
+        application.DialogBoxShowing += SuppressDialog;
+        try
+        {
+            if (!ActionsEnabled)
+                throw new InvalidOperationException("actions disabled on the workstation");
+            if (job.Error is not null) throw new ArgumentException(job.Error);
+            var document = ResolveDocument(application, job.TargetDocument);
+            var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
+            ActionJobParser.ValidateFamilyMode(action, document.IsFamilyDocument);
+            var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+                ReadCommandReader.ReadResponder(application), job.CorrelationId);
+            var failures = new ActionFailures();
+            var result = FamilyEditor.Execute(document, action, failures, application.Application);
+            var failed = !result.Committed && result.FailedFamily is not null;
+            var error = failed ? result.Families.First(family => family.Status == "failed").Reason ?? "Family edit failed." : null;
+            var response = failed
+                ? CommandResponse<FamilyEditData>.Fail(job.Command, error!, stopwatch.ElapsedMilliseconds)
+                : CommandResponse<FamilyEditData>.Ok(job.Command, result, stopwatch.ElapsedMilliseconds);
+            response.Data = result;
+            response.Error = error;
+            response.DialogsSuppressed = dialogsSuppressed;
+            response.WarningsDismissed = failures.WarningsDismissed;
+            output.Write(response);
+        }
+        catch (Exception exception)
+        {
+            var response = CommandResponse<object>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
+            response.Error = exception.Message;
+            response.DialogsSuppressed = dialogsSuppressed;
+            CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+                ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+            PluginLog.Error($"Family command failed. Command='{job.Command}'.", exception);
+        }
+        finally
+        {
+            application.DialogBoxShowing -= SuppressDialog;
+        }
+    }
+
+    private static void SuppressTaskDialog(DialogBoxShowingEventArgs arguments, List<string> dialogsSuppressed)
+    {
+        if (arguments is not TaskDialogShowingEventArgs dialog) return;
+        if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
+            dialogsSuppressed.Add(dialog.Message);
+    }
+
+    internal static Document ResolveDocument(UIApplication application, string? reference)
     {
         if (reference is null)
             return application.ActiveUIDocument?.Document

@@ -27,6 +27,7 @@ public enum ControlJobKind
     ListCatalog,
     ListWarnings,
     ListRelations,
+    FamilyAudit,
     Action,
     Invalid
 }
@@ -174,13 +175,24 @@ public sealed class ControlJobParseResult
             "list-catalog" => UniversalJobParser.ParseCatalog(job),
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
+            "family-audit" => ParseFamilyAudit(job),
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
             _ => Invalid(command, $"Unknown command: {command}.")
         };
         result.CorrelationId = job.CorrelationId;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
-        result.TargetDocument = Normalize(job.TargetDocument);
+        if (command == "family-audit") result.CoordinatorJob = job;
+        result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
+        return result;
+    }
+
+    private static ControlJobParseResult ParseFamilyAudit(ControlJobContract job)
+    {
+        var parsed = ActionJobParser.Parse("family-audit", job);
+        if (parsed.Error is not null) return parsed;
+        var result = ControlJobParseResult.Create(ControlJobKind.FamilyAudit, "family-audit");
+        result.Action = parsed.Action;
         return result;
     }
 

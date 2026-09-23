@@ -27,6 +27,7 @@ HTTP stores completed response JSON in memory; exported PNGs still use the chann
 MCP tools translate snake_case arguments into channel JSON fields.
 The request `{"command":"ping"}` checks connectivity without an active model.
 Read jobs may contain `targetDocument`; actions add `targetProcessId` from instance discovery.
+`family-audit` contains `families` only in project mode. `edit-families` contains `operations` and may contain `families`; the addressed Revit document determines the mode.
 `targetDocument` matches a case-insensitive substring of the active document title or path basename in the add-in.
 An HTTP endpoint also rejects jobs addressed to another process.
 
@@ -211,6 +212,8 @@ Action failures retain the response object and add `error`.
 
 Transport errors and target mismatches can occur before the action executor and omit these fields.
 See [response models](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs) and [action models](../src/RevitModelMcp.Core/Control/ActionJobParser.cs).
+
+Family responses have `data.mode` (`family` or `project`) and `data.families`. Audit entries include `parameters`, `purgeable`, `purgeableTotal` and `purgeCoverage`; skipped entries include a reason. Edit responses include `dryRun`, `committed`, `failedFamily`, per-family status and ordered operation results. `stopOnError=true` rolls back the project group and marks attempted families `rolledBack:true`. A timed-out response may follow a committed change; inspect the model before retrying.
 
 ## Action writes and batches
 
