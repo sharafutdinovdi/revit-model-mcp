@@ -1,3 +1,5 @@
+using System.Runtime.Serialization.Json;
+using System.Text.Json;
 using RevitModelMcp.Core.Datums;
 using RevitModelMcp.Core.Models;
 
@@ -10,6 +12,70 @@ public sealed class DatumMatcherTests
     private static DatumRecord Line(long id, string name, double y = 0, bool reverse = false) =>
         new(id, name, "grid", Start: reverse ? new(10, y) : new(0, y),
             End: reverse ? new(0, y) : new(10, y));
+
+    [Test]
+    public async Task ReadSummaryCountsEveryItemAndOnlyReadStatuses()
+    {
+        var data = new LinkDatumData
+        {
+            Items = [
+                new() { Status = "aligned" }, new() { Status = "differs" },
+                new() { Status = "missing_in_host" }, new() { Status = "host_only" },
+                new() { Status = "unsupported" }
+            ]
+        };
+
+        data.UpdateSummary();
+        var summary = SerializedSummary(data);
+
+        await Assert.That(summary.EnumerateObject().Select(property => property.Name))
+            .IsEquivalentTo(new[] { "aligned", "differs", "missingInHost", "hostOnly", "unsupported" });
+        await Assert.That(summary.EnumerateObject().Sum(property => property.Value.GetInt32()))
+            .IsEqualTo(data.Items.Count);
+    }
+
+    [Test]
+    public async Task ActionSummaryCountsEveryItemAndOnlyActionStatuses()
+    {
+        var data = new LinkDatumData
+        {
+            Items = [
+                new() { Status = "aligned" }, new() { Status = "moved" },
+                new() { Status = "created" }, new() { Status = "host_only" },
+                new() { Status = "skipped" }, new() { Status = "unsupported" }
+            ]
+        };
+
+        data.UpdateSummary(action: true);
+        var summary = SerializedSummary(data);
+
+        await Assert.That(summary.EnumerateObject().Select(property => property.Name))
+            .IsEquivalentTo(new[] { "aligned", "moved", "created", "hostOnly", "skipped", "unsupported" });
+        await Assert.That(summary.EnumerateObject().Sum(property => property.Value.GetInt32()))
+            .IsEqualTo(data.Items.Count);
+    }
+
+    private static JsonElement SerializedSummary(LinkDatumData data)
+    {
+        using var stream = new MemoryStream();
+        new DataContractJsonSerializer(typeof(LinkDatumData)).WriteObject(stream, data);
+        stream.Position = 0;
+        using var json = JsonDocument.Parse(stream);
+        return json.RootElement.GetProperty("summary").Clone();
+    }
+
+    [Test]
+    public async Task CreatedItemSerializesNullWorksetAndPlanViewId()
+    {
+        var item = new LinkDatumItem { Status = "created", PlanViewId = 42 };
+        using var stream = new MemoryStream();
+        new DataContractJsonSerializer(typeof(LinkDatumItem)).WriteObject(stream, item);
+        stream.Position = 0;
+        using var json = JsonDocument.Parse(stream);
+
+        await Assert.That(json.RootElement.GetProperty("workset").ValueKind).IsEqualTo(JsonValueKind.Null);
+        await Assert.That(json.RootElement.GetProperty("planViewId").GetInt64()).IsEqualTo(42);
+    }
 
     [Test]
     public async Task ExactAndOffsetMatch()

@@ -41,12 +41,14 @@ internal static class AlignLinkDatums
                     {
                         item.Status = "skipped";
                         item.Reason = "owned by " + WorksharingUtils.GetWorksharingTooltipInfo(document, host.Id).Owner;
+                        item.After = null;
                         continue;
                     }
                     if (host.Pinned && !options.IncludePinned)
                     {
                         item.Status = "skipped";
                         item.Reason = "pinned";
+                        item.After = null;
                         continue;
                     }
                     var wasPinned = host.Pinned;
@@ -106,7 +108,8 @@ internal static class AlignLinkDatums
                     var level = Level.Create(document, elevation);
                     level.ChangeTypeId(levelType!.Id);
                     created = level;
-                    if (planType is not null) ViewPlan.Create(document, planType.Id, level.Id);
+                    if (planType is not null)
+                        item.PlanViewId = RevitValueReader.GetId(ViewPlan.Create(document, planType.Id, level.Id).Id);
                 }
                 else
                 {
@@ -139,7 +142,7 @@ internal static class AlignLinkDatums
                 reread.Items.All(checkedItem => checkedItem.LinkId != item.LinkId || checkedItem.Status != "aligned")))
                 comparison.Warning = (comparison.Warning is null ? "" : comparison.Warning + " ") +
                     "Some aligned datums did not verify within tolerance.";
-            comparison.UpdateSummary();
+            comparison.UpdateSummary(action: true);
             if (dryRun)
             {
                 if (transaction.RollBack() != TransactionStatus.RolledBack)
