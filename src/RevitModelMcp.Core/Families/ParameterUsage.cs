@@ -35,7 +35,7 @@ public static class ParameterUsage
                 .Where(other => !ReferenceEquals(other, parameter) &&
                     other.Formula?.IndexOf(parameter.Name, StringComparison.OrdinalIgnoreCase) >= 0)
                 .Select(other => "formula:" + other.Name));
-            var used = parameter.BuiltIn || reasons.Count > 0;
+            var used = reasons.Count > 0;
             result[parameter.Name] = new ParameterUsageResult(used, !used && parameter.IsShared, reasons);
         }
         return result;
