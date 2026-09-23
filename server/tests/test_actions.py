@@ -26,6 +26,7 @@ ACTION_TOOLS = {
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
+    "revit_export_nwc",
 }
 
 
@@ -47,7 +48,9 @@ def test_stdio_action_gate(flag):
         )
         for name in ACTION_TOOLS.intersection(tools):
             tool = tools[name]
-            assert "response_timeout_s" not in tool.input_schema["properties"]
+            assert ("response_timeout_s" in tool.input_schema["properties"]) is (
+                name == "revit_export_nwc"
+            )
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
             assert tool.annotations.title == tool.title
@@ -67,6 +70,92 @@ def action_server():
     with patch.dict(os.environ, {"REVIT_MCP_ALLOW_WRITE": "1"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_nwc_export_defaults_and_options_reach_channel():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_export_nwc", {"path": "C:\\x\\a.nwc"}))
+    payload = execute.await_args.args[0].payload
+    assert execute.await_args.args[1] == 1800
+    assert payload == {
+        "command": "export-nwc",
+        "targetProcessId": 42,
+        "path": "C:\\x\\a.nwc",
+        "scope": "model",
+        "view": None,
+        "elementIds": None,
+        "coordinates": "shared",
+        "parameters": "all",
+        "exportElementIds": True,
+        "convertElementProperties": False,
+        "exportParts": False,
+        "exportRoomAsAttribute": True,
+        "exportRoomGeometry": True,
+        "convertLights": False,
+        "convertLinkedCadFormats": True,
+        "exportLinks": False,
+        "exportUrls": True,
+        "divideFileIntoLevels": True,
+        "findMissingMaterials": True,
+        "facetingFactor": 1.0,
+        "overwrite": False,
+        "dryRun": False,
+    }
+
+
+def test_nwc_export_overrides_reach_channel():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_export_nwc",
+            {
+                "path": "C:\\x\\a.nwc",
+                "scope": "selection",
+                "element_ids": [1],
+                "coordinates": "internal",
+                "parameters": "none",
+                "export_element_ids": False,
+                "convert_element_properties": True,
+                "export_parts": True,
+                "export_room_as_attribute": False,
+                "export_room_geometry": False,
+                "convert_lights": True,
+                "convert_linked_cad_formats": False,
+                "export_links": True,
+                "export_urls": False,
+                "divide_file_into_levels": False,
+                "find_missing_materials": False,
+                "faceting_factor": 5,
+                "overwrite": True,
+                "dry_run": True,
+                "response_timeout_s": 900,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert execute.await_args.args[1] == 900
+    assert payload["elementIds"] == [1]
+    assert payload["coordinates"] == "internal"
+    assert payload["parameters"] == "none"
+    for key in (
+        "exportElementIds",
+        "exportRoomAsAttribute",
+        "exportRoomGeometry",
+        "convertLinkedCadFormats",
+        "exportUrls",
+        "divideFileIntoLevels",
+        "findMissingMaterials",
+    ):
+        assert payload[key] is False
+    for key in ("convertElementProperties", "exportParts", "convertLights", "exportLinks"):
+        assert payload[key] is True
+    assert payload["facetingFactor"] == 5
+    assert payload["overwrite"] is True
+    assert payload["dryRun"] is True
 
 
 @pytest.mark.parametrize("response_timeout_s", [None, 900])

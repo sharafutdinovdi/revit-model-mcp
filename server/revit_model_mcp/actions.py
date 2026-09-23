@@ -164,6 +164,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
             "revit_batch": "Run Action Batch",
+            "revit_export_nwc": "Export Navisworks NWC",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -318,6 +319,62 @@ def register_actions(mcp, execute, host_provider) -> None:
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send("delete", elementIds=element_ids, dryRun=dry_run, document=document)
+
+    @action
+    async def revit_export_nwc(
+        path: Name,
+        scope: Literal["model", "view", "selection"] = "model",
+        view: str | ElementId | None = None,
+        element_ids: ElementIds | None = None,
+        coordinates: Literal["shared", "internal"] = "shared",
+        parameters: Literal["all", "elements", "none"] = "all",
+        export_element_ids: bool = True,
+        convert_element_properties: bool = False,
+        export_parts: bool = False,
+        export_room_as_attribute: bool = True,
+        export_room_geometry: bool = True,
+        convert_lights: bool = False,
+        convert_linked_cad_formats: bool = True,
+        export_links: bool = False,
+        export_urls: bool = True,
+        divide_file_into_levels: bool = True,
+        find_missing_materials: bool = True,
+        faceting_factor: Annotated[float, Field(gt=0, le=100, allow_inf_nan=False)] = 1.0,
+        overwrite: bool = False,
+        dry_run: bool = False,
+        document: Document = None,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
+    ) -> dict[str, Any]:
+        """Export NWC on the Revit workstation. Requires the Navisworks exporter and both action gates. The file stays on the workstation; dialog settings do not apply."""
+        if scope == "view" and not view:
+            raise ToolError("view is required for scope=view.")
+        if scope == "selection" and not element_ids:
+            raise ToolError("element_ids must be non-empty for scope=selection.")
+        return await send(
+            "export-nwc",
+            path=path,
+            scope=scope,
+            view=str(view) if view is not None else None,
+            elementIds=element_ids,
+            coordinates=coordinates,
+            parameters=parameters,
+            exportElementIds=export_element_ids,
+            convertElementProperties=convert_element_properties,
+            exportParts=export_parts,
+            exportRoomAsAttribute=export_room_as_attribute,
+            exportRoomGeometry=export_room_geometry,
+            convertLights=convert_lights,
+            convertLinkedCadFormats=convert_linked_cad_formats,
+            exportLinks=export_links,
+            exportUrls=export_urls,
+            divideFileIntoLevels=divide_file_into_levels,
+            findMissingMaterials=find_missing_materials,
+            facetingFactor=faceting_factor,
+            overwrite=overwrite,
+            dryRun=dry_run,
+            document=document,
+            response_timeout_s=response_timeout_s,
+        )
 
     @action
     async def revit_batch(

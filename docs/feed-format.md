@@ -264,6 +264,8 @@ Verification records each step immediately; later steps can supersede those fact
 
 ## Geometry and image exports
 
+`export-nwc` is a gated action job and is excluded from `batch`. It accepts `path`, `scope`, `view`, `elementIds`, `coordinates`, `parameters`, all exporter Boolean options, `facetingFactor`, `overwrite` and `dryRun`. The add-in assigns every `NavisworksExportOptions` property explicitly. The response `data` includes `path`, `bytes`, `sha256`, `elapsedMs`, `scope`, `view`, `elementCount`, `options` with snake_case keys, `dryRun` and `overwritten`. A dry run also reports `exporterAvailable` and `pathChecks` without writing a file. NWC bytes remain on the workstation.
+
 `revit_element_details` returns `location`, `boundingBox` and `roomCenterMm` directly under `data` when available.
 `revit_query_elements(include_geometry=true)` includes them on each returned element.
 Point locations use `type:"point"`, `xMm`, `yMm`, `zMm`.

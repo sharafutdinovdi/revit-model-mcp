@@ -3,8 +3,7 @@
 Read-only by default. Actions are a separate tool set you enable on purpose.
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
-The action tools listed below accept `document`; none accepts `response_timeout_s`.
-New action tools that expose `response_timeout_s` accept integer values from 30 to 3600 seconds.
+The action tools listed below accept `document`. Only `revit_export_nwc` accepts `response_timeout_s` (30–3600 seconds).
 Revit remains busy for the whole action duration.
 The listed tools use the default response timeout of 120 seconds and pickup timeout of 300 seconds, and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
@@ -34,6 +33,37 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions with a single undo entry named `revit_batch`. |
+| `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. |
+
+### NWC export options
+
+The API export uses only the options sent to `revit_export_nwc`; settings saved by the Navisworks exporter dialog are not used. The target must be a project document. The NWC file stays on the Revit workstation; no artifact is transferred to the client. This action cannot run inside `revit_batch`.
+
+| Argument | Default | Revit API property |
+| --- | --- | --- |
+| `path` | required | `Document.Export` folder and name without `.nwc` |
+| `scope` | `model` | `ExportScope`: `model`, `view`, `selection` |
+| `view` | `null` | `ViewId`; non-template 3D view name or ID, required for `view` scope |
+| `element_ids` | `null` | `SetSelectedElementIds`; nonempty for `selection` scope |
+| `coordinates` | `shared` | `Coordinates`: `shared`, `internal` |
+| `parameters` | `all` | `Parameters`: `all`, `elements`, `none` |
+| `export_element_ids` | `true` | `ExportElementIds` |
+| `convert_element_properties` | `false` | `ConvertElementProperties` |
+| `export_parts` | `false` | `ExportParts` |
+| `export_room_as_attribute` | `true` | `ExportRoomAsAttribute` |
+| `export_room_geometry` | `true` | `ExportRoomGeometry` |
+| `convert_lights` | `false` | `ConvertLights` |
+| `convert_linked_cad_formats` | `true` | `ConvertLinkedCADFormats` |
+| `export_links` | `false` | `ExportLinks` |
+| `export_urls` | `true` | `ExportUrls` |
+| `divide_file_into_levels` | `true` | `DivideFileIntoLevels` |
+| `find_missing_materials` | `true` | `FindMissingMaterials` |
+| `faceting_factor` | `1.0` | `FacetingFactor`, greater than 0 and at most 100 |
+| `overwrite` | `false` | Replace an existing NWC only after successful export |
+| `dry_run` | `false` | Validate without exporting |
+| `response_timeout_s` | `1800` | Channel response timeout, 30–3600 seconds |
+
+`path` must be an absolute drive or UNC path ending in `.nwc`, with an existing parent directory. Relative paths, `..` segments, device paths, invalid file names and existing files without `overwrite=true` are rejected. A dry run checks the path, exporter and resolved view or selection, then returns effective options without writing. `scope="view"` exports the specified 3D view with its section box. The RVT file reader's Embed textures, Strict sectioning and view conversion settings are outside this exporter API.
 
 `type_name` and `wall_type` are required arguments that accept `null`.
 

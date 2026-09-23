@@ -1,6 +1,7 @@
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
+using System.Text.RegularExpressions;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Control;
@@ -288,6 +289,8 @@ public static class ControlJobParser
 
         try
         {
+            if (Regex.IsMatch(content, "\"command\"\\s*:\\s*\"export-nwc\""))
+                content = Regex.Replace(content, "\"parameters\"(?=\\s*:\\s*\")", "\"nwcParameters\"");
             var serializer = new DataContractJsonSerializer(typeof(ControlJobContract));
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
             var job = serializer.ReadObject(stream) as ControlJobContract;

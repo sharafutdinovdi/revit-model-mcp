@@ -103,9 +103,18 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 
 ---
 
-## 4. Action tools — gated writes (≈9)
+## 4. Action tools — gated writes (10)
 
 Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstation allow-write file. Direct HTTP callers also need the bearer token.
+
+### NWC export
+
+- [ ] Remove or disable the year-matched Navisworks NWC exporter. `revit_export_nwc` reports `Navisworks exporter is not installed for Revit <year> on this workstation.`
+- [ ] With the exporter installed, run `dry_run=true` with a new absolute `.nwc` path. Check all effective options and `exporterAvailable:true`; confirm no file is created.
+- [ ] Export the full model with `coordinates="shared"`. Open it in Navisworks and verify alignment with an NWC of a linked model exported the same way.
+- [ ] Export a non-template 3D view with `scope="view"` and an enabled section box. Verify the NWC respects the section box.
+- [ ] Export once with `parameters="all"` and once with `parameters="none"`. Verify element properties disappear in the second NWC.
+- [ ] Export to an existing file without `overwrite`. Verify the error and confirm the original file bytes are unchanged.
 
 - [ ] **4.0 Enumerate**: start the server with write enabled and run `tools/list` — record the exact action tool names and count. Known action set from the demo recording (README "In action"): open a view, select element(s), isolate, place a family instance, move an element, and cleanup/undo. Fill the table with the real names.
 

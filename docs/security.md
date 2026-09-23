@@ -4,6 +4,7 @@ See the [privacy policy](privacy.md) for data handling, retention and contact in
 
 The model API is read-only by default.
 Action tools are absent unless `REVIT_MCP_ALLOW_WRITE=1`; action execution also requires the workstation gate file described in [actions](actions.md).
+`revit_export_nwc` may write to any valid absolute workstation path only when both action gates are enabled. It never transfers the NWC file to the client; logging omits the export path.
 The default surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.

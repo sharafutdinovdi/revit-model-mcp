@@ -7,6 +7,74 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task Parse_NwcDefaultsMatchExporterDefaults()
+    {
+        var result = ControlJobParser.Parse("""{"command":"export-nwc","path":"C:\\x\\a.nwc"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        var options = result.Action!.Nwc;
+        await Assert.That(options.Scope).IsEqualTo("model");
+        await Assert.That(options.Coordinates).IsEqualTo("shared");
+        await Assert.That(options.Parameters).IsEqualTo("all");
+        await Assert.That(options.ExportElementIds).IsTrue();
+        await Assert.That(options.ConvertElementProperties).IsFalse();
+        await Assert.That(options.ExportParts).IsFalse();
+        await Assert.That(options.ExportRoomAsAttribute).IsTrue();
+        await Assert.That(options.ExportRoomGeometry).IsTrue();
+        await Assert.That(options.ConvertLights).IsFalse();
+        await Assert.That(options.ConvertLinkedCadFormats).IsTrue();
+        await Assert.That(options.ExportLinks).IsFalse();
+        await Assert.That(options.ExportUrls).IsTrue();
+        await Assert.That(options.DivideFileIntoLevels).IsTrue();
+        await Assert.That(options.FindMissingMaterials).IsTrue();
+        await Assert.That(options.FacetingFactor).IsEqualTo(1);
+        await Assert.That(options.Overwrite).IsFalse();
+    }
+
+    [Test]
+    public async Task Parse_NwcAcceptsParameterOverrideAndSelection()
+    {
+        var result = ControlJobParser.Parse("""{"command":"export-nwc","path":"C:\\x\\a.nwc","scope":"selection","elementIds":[1,2],"parameters":"none","facetingFactor":5,"overwrite":true}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Nwc.Parameters).IsEqualTo("none");
+        await Assert.That(result.Action.Nwc.FacetingFactor).IsEqualTo(5);
+        await Assert.That(result.Action.Nwc.Overwrite).IsTrue();
+        await Assert.That(result.Action.ElementIds).IsEquivalentTo(new long[] { 1, 2 });
+    }
+
+    [Test]
+    public async Task Serialize_NwcResponse_UsesSnakeCaseOptions()
+    {
+        var data = new ActionResultData
+        {
+            Path = @"C:\x\a.nwc", Scope = "model", DryRun = true, Overwritten = false,
+            Options = new NwcOptionsResult { Scope = "model", Coordinates = "shared", Parameters = "all", FacetingFactor = 1 }
+        };
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("export-nwc", data, 1));
+        await Assert.That(json).Contains("\"export_element_ids\":false");
+        await Assert.That(json).Contains("\"faceting_factor\":1");
+        await Assert.That(json).Contains("\"view\":null");
+    }
+
+    [Test]
+    [Arguments("\"scope\":\"view\"")]
+    [Arguments("\"scope\":\"selection\",\"elementIds\":[]")]
+    [Arguments("\"coordinates\":\"unknown\"")]
+    [Arguments("\"parameters\":\"unknown\"")]
+    [Arguments("\"facetingFactor\":0")]
+    [Arguments("\"facetingFactor\":101")]
+    public async Task Parse_NwcRejectsInvalidOptions(string fields)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"export-nwc","path":"C:\\x\\a.nwc",{{fields}}}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Parse_BatchRejectsNwcExport()
+    {
+        var result = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"export-nwc","path":"C:\\x\\a.nwc"}]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+    [Test]
     [Arguments("select")]
     [Arguments("show")]
     [Arguments("isolate")]

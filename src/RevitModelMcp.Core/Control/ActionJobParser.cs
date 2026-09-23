@@ -1,11 +1,13 @@
 using System.Runtime.Serialization;
+using RevitModelMcp.Core.Export;
+using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Control;
 
 public static class ActionJobParser
 {
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -32,7 +34,23 @@ public static class ActionJobParser
                 HeightMm = job.HeightMm ?? 3000,
                 ElementId = job.ActionElementId ?? 0,
                 Parameter = job.Parameter,
-                Value = job.Value
+                Value = job.Value,
+                Nwc = new NwcExportJob
+                {
+                    Path = job.Path ?? string.Empty, Scope = job.Scope ?? "model", View = job.View,
+                    Coordinates = job.Coordinates ?? "shared", Parameters = job.NwcParameters ?? "all",
+                    ExportElementIds = job.ExportElementIds ?? true,
+                    ConvertElementProperties = job.ConvertElementProperties ?? false,
+                    ExportParts = job.ExportParts ?? false,
+                    ExportRoomAsAttribute = job.ExportRoomAsAttribute ?? true,
+                    ExportRoomGeometry = job.ExportRoomGeometry ?? true,
+                    ConvertLights = job.ConvertLights ?? false,
+                    ConvertLinkedCadFormats = job.ConvertLinkedCadFormats ?? true,
+                    ExportLinks = job.ExportLinks ?? false, ExportUrls = job.ExportUrls ?? true,
+                    DivideFileIntoLevels = job.DivideFileIntoLevels ?? true,
+                    FindMissingMaterials = job.FindMissingMaterials ?? true,
+                    FacetingFactor = job.FacetingFactor ?? 1.0, Overwrite = job.Overwrite ?? false
+                }
             };
             if (command == "batch")
             {
@@ -40,7 +58,7 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch"),
+                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc"),
                         "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
@@ -94,6 +112,19 @@ public static class ActionJobParser
                 Require(!string.IsNullOrWhiteSpace(action.Parameter), "parameter is required.");
                 Require(action.Value is not null, "value is required (an empty string is allowed).");
             }
+            if (command == "export-nwc")
+            {
+                var export = action.Nwc;
+                NwcPathValidator.Validate(export.Path);
+                Require(export.Scope is "model" or "view" or "selection", "scope must be model, view or selection.");
+                Require(export.Coordinates is "shared" or "internal", "coordinates must be shared or internal.");
+                Require(export.Parameters is "all" or "elements" or "none", "parameters must be all, elements or none.");
+                Require(Finite(export.FacetingFactor) && export.FacetingFactor is > 0 and <= 100,
+                    "facetingFactor must be greater than 0 and at most 100.");
+                Require(export.Scope != "view" || !string.IsNullOrWhiteSpace(export.View), "view is required for scope=view.");
+                Require(export.Scope != "selection" || action.ElementIds.Count > 0, "elementIds must be non-empty for scope=selection.");
+                Require(export.Scope != "selection" || action.ElementIds.All(id => id > 0), "Element IDs must be positive.");
+            }
             var result = ControlJobParseResult.Create(ControlJobKind.Action, command);
             result.Action = action;
             return result;
@@ -145,6 +176,7 @@ public static class ActionJobParser
 
 public sealed class ActionJobContract
 {
+    public NwcExportJob Nwc { get; set; } = new();
     public bool DryRun { get; set; }
     public List<ControlJobParseResult> Steps { get; set; } = [];
     public List<long> ElementIds { get; set; } = [];
@@ -168,8 +200,47 @@ public sealed class ActionJobContract
     public string? Value { get; set; }
 }
 
+public sealed class NwcExportJob
+{
+    public string Path { get; set; } = string.Empty;
+    public string Scope { get; set; } = "model";
+    public string? View { get; set; }
+    public string Coordinates { get; set; } = "shared";
+    public string Parameters { get; set; } = "all";
+    public bool ExportElementIds { get; set; }
+    public bool ConvertElementProperties { get; set; }
+    public bool ExportParts { get; set; }
+    public bool ExportRoomAsAttribute { get; set; }
+    public bool ExportRoomGeometry { get; set; }
+    public bool ConvertLights { get; set; }
+    public bool ConvertLinkedCadFormats { get; set; }
+    public bool ExportLinks { get; set; }
+    public bool ExportUrls { get; set; }
+    public bool DivideFileIntoLevels { get; set; }
+    public bool FindMissingMaterials { get; set; }
+    public double FacetingFactor { get; set; }
+    public bool Overwrite { get; set; }
+}
+
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "path")] public string? Path { get; set; }
+    [DataMember(Name = "scope")] public string? Scope { get; set; }
+    [DataMember(Name = "coordinates")] public string? Coordinates { get; set; }
+    [DataMember(Name = "exportElementIds")] public bool? ExportElementIds { get; set; }
+    [DataMember(Name = "convertElementProperties")] public bool? ConvertElementProperties { get; set; }
+    [DataMember(Name = "exportParts")] public bool? ExportParts { get; set; }
+    [DataMember(Name = "exportRoomAsAttribute")] public bool? ExportRoomAsAttribute { get; set; }
+    [DataMember(Name = "exportRoomGeometry")] public bool? ExportRoomGeometry { get; set; }
+    [DataMember(Name = "convertLights")] public bool? ConvertLights { get; set; }
+    [DataMember(Name = "convertLinkedCadFormats")] public bool? ConvertLinkedCadFormats { get; set; }
+    [DataMember(Name = "exportLinks")] public bool? ExportLinks { get; set; }
+    [DataMember(Name = "exportUrls")] public bool? ExportUrls { get; set; }
+    [DataMember(Name = "divideFileIntoLevels")] public bool? DivideFileIntoLevels { get; set; }
+    [DataMember(Name = "findMissingMaterials")] public bool? FindMissingMaterials { get; set; }
+    [DataMember(Name = "facetingFactor")] public double? FacetingFactor { get; set; }
+    [DataMember(Name = "overwrite")] public bool? Overwrite { get; set; }
+    [DataMember(Name = "nwcParameters")] public string? NwcParameters { get; set; }
     [DataMember(Name = "dryRun")] public bool? DryRun { get; set; }
     [DataMember(Name = "steps")] public List<ControlJobContract>? Steps { get; set; }
     [DataMember(Name = "elementIds")] public List<long>? ElementIds { get; set; }
@@ -194,6 +265,17 @@ public sealed partial class ControlJobContract
 [DataContract]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "path", EmitDefaultValue = false)] public string? Path { get; set; }
+    [DataMember(Name = "bytes", EmitDefaultValue = false)] public long? Bytes { get; set; }
+    [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }
+    [DataMember(Name = "elapsedMs", EmitDefaultValue = false)] public long? ElapsedMs { get; set; }
+    [DataMember(Name = "scope", EmitDefaultValue = false)] public string? Scope { get; set; }
+    [DataMember(Name = "view")] public NwcViewResult? View { get; set; }
+    [DataMember(Name = "elementCount", EmitDefaultValue = false)] public int? ElementCount { get; set; }
+    [DataMember(Name = "options", EmitDefaultValue = false)] public NwcOptionsResult? Options { get; set; }
+    [DataMember(Name = "overwritten", EmitDefaultValue = false)] public bool? Overwritten { get; set; }
+    [DataMember(Name = "exporterAvailable", EmitDefaultValue = false)] public bool? ExporterAvailable { get; set; }
+    [DataMember(Name = "pathChecks", EmitDefaultValue = false)] public NwcPathChecks? PathChecks { get; set; }
     [DataMember(Name = "dryRun", EmitDefaultValue = false)] public bool? DryRun { get; set; }
     [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool? RolledBack { get; set; }
     [DataMember(Name = "verification", EmitDefaultValue = false)] public ActionVerification? Verification { get; set; }

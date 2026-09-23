@@ -59,7 +59,8 @@ internal static class ActionCommandExecutor
             response.Error = exception.Message;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
-            PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
+            if (job.Command == "export-nwc") PluginLog.Warn("NWC export failed; path and exception details omitted from log.");
+            else PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }
         finally
         {
@@ -93,6 +94,7 @@ internal static class ActionCommandExecutor
         ActionJobContract action, ActionFailures failures, out bool viewOpened, bool deferDryRun = false)
     {
         viewOpened = false;
+        if (command == "export-nwc") return NwcExporter.Execute(document, action);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
