@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from functools import partial
 from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -118,28 +119,39 @@ def millimeters_to_feet(value: float) -> float:
     return value / 304.8
 
 
+async def _send_action(
+    execute,
+    host_provider,
+    command: str,
+    *,
+    document: str | None = None,
+    response_timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
+    **payload,
+) -> dict[str, Any]:
+    try:
+        instances = await host_provider().list_revit_instances()
+    except RevitChannelError as error:
+        raise ToolError(str(error)) from error
+    if len(instances) != 1:
+        raise ToolError("Actions require exactly one running Revit instance.")
+    if document is not None:
+        payload["targetDocument"] = document
+    job = ReadJob(
+        command,
+        {
+            "command": command,
+            **payload,
+            "targetProcessId": instances[0]["processId"],
+        },
+    )
+    return await execute(job, response_timeout_s, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
+
+
 def register_actions(mcp, execute, host_provider) -> None:
     if not env_flag("REVIT_MCP_ALLOW_WRITE", False):
         return
 
-    async def send(command: str, *, document: str | None = None, **payload) -> dict[str, Any]:
-        try:
-            instances = await host_provider().list_revit_instances()
-        except RevitChannelError as error:
-            raise ToolError(str(error)) from error
-        if len(instances) != 1:
-            raise ToolError("Actions require exactly one running Revit instance.")
-        if document is not None:
-            payload["targetDocument"] = document
-        job = ReadJob(
-            command,
-            {
-                "command": command,
-                **payload,
-                "targetProcessId": instances[0]["processId"],
-            },
-        )
-        return await execute(job, DEFAULT_TIMEOUT_SECONDS, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
+    send = partial(_send_action, execute, host_provider)
 
     def action(function):
         title = {

@@ -8,7 +8,7 @@ from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
 
-from revit_model_mcp.actions import millimeters_to_feet, register_actions
+from revit_model_mcp.actions import _send_action, millimeters_to_feet, register_actions
 from revit_model_mcp.revit_channel import (
     JobPickupStatus,
     ReadJob,
@@ -47,6 +47,7 @@ def test_stdio_action_gate(flag):
         )
         for name in ACTION_TOOLS.intersection(tools):
             tool = tools[name]
+            assert "response_timeout_s" not in tool.input_schema["properties"]
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
             assert tool.annotations.title == tool.title
@@ -66,6 +67,17 @@ def action_server():
     with patch.dict(os.environ, {"REVIT_MCP_ALLOW_WRITE": "1"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+@pytest.mark.parametrize("response_timeout_s", [None, 900])
+def test_action_response_timeout_reaches_channel(response_timeout_s):
+    import asyncio
+
+    _, execute, host = action_server()
+    timeout = {} if response_timeout_s is None else {"response_timeout_s": response_timeout_s}
+    asyncio.run(_send_action(execute, lambda: host, "select", elementIds=[1], **timeout))
+    execute.assert_awaited_once()
+    assert execute.await_args.args[1:] == (response_timeout_s or 120, 300, None)
 
 
 @pytest.mark.parametrize(

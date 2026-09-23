@@ -3,8 +3,10 @@
 Read-only by default. Actions are a separate tool set you enable on purpose.
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
-Action tools have no `document` or timeout arguments.
-They use the default timeouts and require exactly one instance returned by the transport.
+The action tools listed below accept `document`; none accepts `response_timeout_s`.
+New action tools that expose `response_timeout_s` accept integer values from 30 to 3600 seconds.
+Revit remains busy for the whole action duration.
+The listed tools use the default response timeout of 120 seconds and pickup timeout of 300 seconds, and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
 All IDs are unitless Revit element IDs.
 Revit 2022–2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
