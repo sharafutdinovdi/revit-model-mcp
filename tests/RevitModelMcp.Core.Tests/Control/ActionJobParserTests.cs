@@ -27,6 +27,17 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task Parse_SharedParameterInstanceDefaultsToTrue()
+    {
+        var result = ControlJobParser.Parse("""{"command":"edit-families","operations":[{"op":"add_shared_parameters","parameters":[{"name":"AssetId","group":"Data"}]}]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Operations[0].Parameters![0].Instance).IsTrue();
+
+        var explicitType = ControlJobParser.Parse("""{"command":"edit-families","operations":[{"op":"add_shared_parameters","parameters":[{"name":"AssetId","group":"Data","instance":false}]}]}""");
+        await Assert.That(explicitType.Action!.Operations[0].Parameters![0].Instance).IsFalse();
+    }
+
+    [Test]
     public async Task Parse_FamilyAudit_UsesReadRoutingAndKeepsAddressedDocument()
     {
         var result = ControlJobParser.Parse("""{"command":"family-audit","families":["Door"],"targetDocument":"Model"}""");

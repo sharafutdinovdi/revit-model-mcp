@@ -30,9 +30,7 @@ internal static class ActionCommandExecutor
         var failures = new ActionFailures();
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
-            if (arguments is not TaskDialogShowingEventArgs dialog) return;
-            if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
-                dialogsSuppressed.Add(dialog.Message);
+            SuppressTaskDialog(arguments, dialogsSuppressed);
         }
         application.DialogBoxShowing += SuppressDialog;
         try
@@ -83,9 +81,7 @@ internal static class ActionCommandExecutor
         var dialogsSuppressed = new List<string>();
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
-            if (arguments is not TaskDialogShowingEventArgs dialog) return;
-            if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
-                dialogsSuppressed.Add(dialog.Message);
+            SuppressTaskDialog(arguments, dialogsSuppressed);
         }
         application.DialogBoxShowing += SuppressDialog;
         try
@@ -100,7 +96,13 @@ internal static class ActionCommandExecutor
                 ReadCommandReader.ReadResponder(application), job.CorrelationId);
             var failures = new ActionFailures();
             var result = FamilyEditor.Execute(document, action, failures, application.Application);
-            var response = CommandResponse<FamilyEditData>.Ok(job.Command, result, stopwatch.ElapsedMilliseconds);
+            var failed = !result.Committed && result.FailedFamily is not null;
+            var error = failed ? result.Families.First(family => family.Status == "failed").Reason ?? "Family edit failed." : null;
+            var response = failed
+                ? CommandResponse<FamilyEditData>.Fail(job.Command, error!, stopwatch.ElapsedMilliseconds)
+                : CommandResponse<FamilyEditData>.Ok(job.Command, result, stopwatch.ElapsedMilliseconds);
+            response.Data = result;
+            response.Error = error;
             response.DialogsSuppressed = dialogsSuppressed;
             response.WarningsDismissed = failures.WarningsDismissed;
             output.Write(response);
@@ -118,6 +120,13 @@ internal static class ActionCommandExecutor
         {
             application.DialogBoxShowing -= SuppressDialog;
         }
+    }
+
+    private static void SuppressTaskDialog(DialogBoxShowingEventArgs arguments, List<string> dialogsSuppressed)
+    {
+        if (arguments is not TaskDialogShowingEventArgs dialog) return;
+        if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
+            dialogsSuppressed.Add(dialog.Message);
     }
 
     internal static Document ResolveDocument(UIApplication application, string? reference)

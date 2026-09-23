@@ -57,11 +57,12 @@ internal static class FamilyEditor
                     if (familyResult.Status == "changed" && !job.DryRun)
                     {
                         var loadedFamily = familyDocument.LoadFamily(document,
-                            new FamilyLoadOptions(job.OverwriteParameterValues, FamilySource.Project));
+                            new FamilyLoadOptions(job.OverwriteParameterValues, FamilySource.Project))
+                            ?? throw new InvalidOperationException("Revit did not load the edited family.");
                         familyResult.Loaded = true;
                         var requestedShared = job.Operations.LastOrDefault(operation => operation.Op == "set_shared")?.Shared;
                         if (requestedShared.HasValue &&
-                            loadedFamily?.get_Parameter(BuiltInParameter.FAMILY_SHARED)?.AsInteger() !=
+                            loadedFamily.get_Parameter(BuiltInParameter.FAMILY_SHARED)?.AsInteger() !=
                             (requestedShared.Value ? 1 : 0))
                         {
                             familyResult.Status = "failed";
@@ -182,6 +183,8 @@ internal static class FamilyEditor
                 if (definitions.Count > 1) throw new ArgumentException(
                     $"Shared parameter '{requested.Name}' is ambiguous in groups: {string.Join(", ", definitions.Select(item => item.Group))}.");
                 var definition = definitions[0].Definition;
+                if (!string.Equals(requested.Name, definition.Name, StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException($"Shared parameter GUID {definition.GUID} belongs to '{definition.Name}', not '{requested.Name}'.");
                 var property = typeof(GroupTypeId).GetProperty(requested.Group!, BindingFlags.Public | BindingFlags.Static);
                 if (property?.GetValue(null) is not ForgeTypeId groupType)
                     throw new ArgumentException($"Unknown parameter group: {requested.Group}.");

@@ -260,10 +260,12 @@ public sealed class FamilyEditOperationContract
 [DataContract]
 public sealed class SharedParameterSpec
 {
+    private bool? _instance;
+
     [DataMember(Name = "name")] public string? Name { get; set; }
     [DataMember(Name = "guid")] public string? Guid { get; set; }
     [DataMember(Name = "group")] public string? Group { get; set; }
-    [DataMember(Name = "instance")] public bool Instance { get; set; }
+    [DataMember(Name = "instance")] public bool Instance { get => _instance ?? true; set => _instance = value; }
 }
 
 [DataContract]

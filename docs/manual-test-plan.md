@@ -114,6 +114,9 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 - [ ] Run `set_shared` and confirm the flag in Family Category and Parameters. Check the reported loaded state.
 - [ ] Run `purge` on Revit 2023 and verify coverage `families-and-types`; on Revit 2026 verify `full`.
 - [ ] Verify a used parameter is kept with `usedBy`, an unused shared parameter requires `include_shared=true`, and a missing shared parameter file fails before any edit.
+- [ ] With `replace_family_parameter=true`, give a valid GUID and a different parameter name. Verify the edit fails and the original parameter and its values remain intact.
+- [ ] Cause the first family edit to fail with `stop_on_error=true`. Verify `success:false`, `committed:false`, `failedFamily`, and `rolledBack:true`; confirm the project is unchanged.
+- [ ] Audit enough families for the call to take over 60 seconds. Verify the complete audit returns `success:true` within the configured response timeout.
 
 Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstation allow-write file. Direct HTTP callers also need the bearer token.
 
