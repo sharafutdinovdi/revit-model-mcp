@@ -29,7 +29,8 @@ public enum ControlJobKind
     ListRelations,
     FamilyAudit,
     Action,
-    Invalid
+    Invalid,
+    CompareLinkDatums
 }
 
 public sealed class ControlJobParseResult
@@ -176,6 +177,7 @@ public sealed class ControlJobParseResult
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
             "family-audit" => ParseFamilyAudit(job),
+            "compare-link-datums" => ParseCompareLinkDatums(job),
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
             _ => Invalid(command, $"Unknown command: {command}.")
         };
@@ -194,6 +196,21 @@ public sealed class ControlJobParseResult
         var result = ControlJobParseResult.Create(ControlJobKind.FamilyAudit, "family-audit");
         result.Action = parsed.Action;
         return result;
+    }
+
+    private static ControlJobParseResult ParseCompareLinkDatums(ControlJobContract job)
+    {
+        const string command = "compare-link-datums";
+        try
+        {
+            var result = Create(ControlJobKind.CompareLinkDatums, command);
+            result.Action = new ActionJobContract { DatumOptions = ActionJobParser.ParseDatumOptions(job) };
+            return result;
+        }
+        catch (ArgumentException exception)
+        {
+            return Invalid(command, exception.Message);
+        }
     }
 
     private static ControlJobParseResult ParseParameterFill(ControlJobContract job)
@@ -304,7 +321,8 @@ public static class ControlJobParser
         {
             if (isNwcExport)
                 content = Regex.Replace(content, "\"parameters\"(?=\\s*:)", "\"nwcParameters\"");
-            var serializer = new DataContractJsonSerializer(typeof(ControlJobContract));
+            var serializer = new DataContractJsonSerializer(typeof(ControlJobContract),
+                new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true });
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
             var job = serializer.ReadObject(stream) as ControlJobContract;
             return job is null

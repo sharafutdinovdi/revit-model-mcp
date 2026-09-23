@@ -30,6 +30,7 @@ ACTION_COMMANDS = frozenset(
         "batch",
         "export-nwc",
         "edit-families",
+        "align-link-datums",
     }
 )
 

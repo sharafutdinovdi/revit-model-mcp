@@ -152,6 +152,8 @@ internal static class ActionCommandExecutor
     {
         viewOpened = false;
         if (command == "export-nwc") return NwcExporter.Execute(document, action);
+        if (command == "align-link-datums")
+            return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
@@ -311,7 +313,7 @@ internal static class ActionCommandExecutor
 #endif
     }
 
-    private static double Millimeters(double value) => UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters);
+    internal static double Millimeters(double value) => UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters);
 
     internal sealed class ActionFailures : IFailuresPreprocessor
     {

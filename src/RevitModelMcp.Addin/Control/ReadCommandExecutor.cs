@@ -50,6 +50,11 @@ internal static class ReadCommandExecutor
             }
             var document = application.ActiveUIDocument?.Document
                            ?? throw new InvalidOperationException("No active Revit document.");
+            if (job.Command == "compare-link-datums")
+            {
+                WriteSuccess(output, job.Command, LinkDatumReader.Read(document, job.Action!.DatumOptions!), stopwatch);
+                return;
+            }
             switch (job.Kind)
             {
                 case ControlJobKind.ModelHealth:

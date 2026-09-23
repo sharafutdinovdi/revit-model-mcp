@@ -145,6 +145,33 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task Parse_AlignLinkDatums_UsesDefaultsAndRejectsBatchStep()
+    {
+        var parsed = ControlJobParser.Parse("""{"command":"align-link-datums","link":"AR.rvt : 1"}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(parsed.Action!.DatumOptions!.Kinds).IsEquivalentTo(new[] { "grids", "levels" });
+        await Assert.That(parsed.Action.DatumOptions.ToleranceMm).IsEqualTo(0.5);
+        await Assert.That(parsed.Action.DatumOptions.CreateMissing).IsTrue();
+        var mapped = ControlJobParser.Parse("""{"command":"align-link-datums","link":"AR.rvt","nameMap":{"A":"Host A"}}""");
+        await Assert.That(mapped.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(mapped.Action!.DatumOptions!.NameMap["A"]).IsEqualTo("Host A");
+        var batch = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"align-link-datums","link":"AR.rvt"}]}""");
+        await Assert.That(batch.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Parse_AlignLinkDatums_RejectsInvalidOptions()
+    {
+        foreach (var payload in new[]
+        {
+            """{"command":"align-link-datums"}""",
+            """{"command":"align-link-datums","link":"A","kinds":["walls"]}""",
+            """{"command":"align-link-datums","link":"A","toleranceMm":0}"""
+        })
+            await Assert.That(ControlJobParser.Parse(payload).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     [Arguments("select")]
     [Arguments("show")]
     [Arguments("isolate")]

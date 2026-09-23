@@ -46,6 +46,10 @@ An HTTP endpoint also rejects jobs addressed to another process.
 | `source_id`, `source_name` | `sourceId`, `sourceName` |
 | `dx_mm`, `dy_mm`, `dz_mm`, `x_mm`, `y_mm` | `dxMm`, `dyMm`, `dzMm`, `xMm`, `yMm` |
 | `start_mm`, `end_mm`, `wall_type`, `height_mm`, `rotation_deg` | `startMm`, `endMm`, `wallType`, `heightMm`, `rotationDeg` |
+| `name_map`, `level_offset_mm`, `reuse_matching`, `tolerance_mm` | `nameMap`, `levelOffsetMm`, `reuseMatching`, `toleranceMm` |
+| `create_missing`, `level_type`, `grid_type`, `include_pinned`, `create_plan_views`, `plan_view_type` | `createMissing`, `levelType`, `gridType`, `includePinned`, `createPlanViews`, `planViewType` |
+
+`compare-link-datums` is a read job; `align-link-datums` is an action job. Their `data.items` use `aligned`, `differs` or `moved`, `missing_in_host` or `created`, `host_only`, `unsupported`, and action-only `skipped`. Distances are rounded to 0.1 mm and angles to 0.001 degrees. `data.summary` counts aligned, moved, created, host-only, unsupported and skipped items.
 
 `save_to` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
