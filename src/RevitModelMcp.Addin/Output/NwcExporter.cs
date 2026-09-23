@@ -17,7 +17,7 @@ internal static class NwcExporter
     {
         if (document.IsFamilyDocument) throw new ArgumentException("NWC export requires a project document.");
         if (!OptionalFunctionalityUtils.IsNavisworksExporterAvailable())
-            throw new InvalidOperationException($"Navisworks exporter is not installed for Revit {document.Application.VersionNumber} on this workstation.");
+            throw new InvalidOperationException($"Navisworks exporter is not available in Revit {document.Application.VersionNumber} on this workstation (not installed or failed to load at startup).");
 
         var job = action.Nwc;
         NwcPathValidator.Validate(job.Path);

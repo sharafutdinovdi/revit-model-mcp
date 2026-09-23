@@ -109,7 +109,7 @@ Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstatio
 
 ### NWC export
 
-- [ ] Remove or disable the year-matched Navisworks NWC exporter. `revit_export_nwc` reports `Navisworks exporter is not installed for Revit <year> on this workstation.`
+- [ ] Remove or disable the year-matched Navisworks NWC exporter, or reproduce an exporter startup failure. `revit_export_nwc` reports `Navisworks exporter is not available in Revit <year> on this workstation (not installed or failed to load at startup).`
 - [ ] With the exporter installed, run `dry_run=true` with a new absolute `.nwc` path. Check all effective options and `exporterAvailable:true`; confirm no file is created.
 - [ ] Export the full model with `coordinates="shared"`. Open it in Navisworks and verify alignment with an NWC of a linked model exported the same way.
 - [ ] Export a non-template 3D view with `scope="view"` and an enabled section box. Verify the NWC respects the section box.
