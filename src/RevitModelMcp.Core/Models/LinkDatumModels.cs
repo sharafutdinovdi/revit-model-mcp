@@ -34,14 +34,16 @@ namespace RevitModelMcp.Core.Models
         [DataMember(Name = "dryRun", EmitDefaultValue = false)] public bool? DryRun { get; set; }
         [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
 
-        public void UpdateSummary() => Summary = new LinkDatumSummary
+        public void UpdateSummary(bool action = false) => Summary = new LinkDatumSummary
         {
             Aligned = Items.Count(item => item.Status == "aligned"),
-            Moved = Items.Count(item => item.Status == "moved"),
-            Created = Items.Count(item => item.Status == "created"),
+            Differs = action ? null : Items.Count(item => item.Status == "differs"),
+            MissingInHost = action ? null : Items.Count(item => item.Status == "missing_in_host"),
+            Moved = action ? Items.Count(item => item.Status == "moved") : null,
+            Created = action ? Items.Count(item => item.Status == "created") : null,
             HostOnly = Items.Count(item => item.Status == "host_only"),
             Unsupported = Items.Count(item => item.Status == "unsupported"),
-            Skipped = Items.Count(item => item.Status == "skipped")
+            Skipped = action ? Items.Count(item => item.Status == "skipped") : null
         };
     }
 
@@ -57,11 +59,13 @@ namespace RevitModelMcp.Core.Models
     public sealed class LinkDatumSummary
     {
         [DataMember(Name = "aligned")] public int Aligned { get; set; }
-        [DataMember(Name = "moved")] public int Moved { get; set; }
-        [DataMember(Name = "created")] public int Created { get; set; }
+        [DataMember(Name = "differs", EmitDefaultValue = false)] public int? Differs { get; set; }
+        [DataMember(Name = "missingInHost", EmitDefaultValue = false)] public int? MissingInHost { get; set; }
+        [DataMember(Name = "moved", EmitDefaultValue = false)] public int? Moved { get; set; }
+        [DataMember(Name = "created", EmitDefaultValue = false)] public int? Created { get; set; }
         [DataMember(Name = "hostOnly")] public int HostOnly { get; set; }
         [DataMember(Name = "unsupported")] public int Unsupported { get; set; }
-        [DataMember(Name = "skipped")] public int Skipped { get; set; }
+        [DataMember(Name = "skipped", EmitDefaultValue = false)] public int? Skipped { get; set; }
     }
 
     [DataContract]
@@ -86,7 +90,8 @@ namespace RevitModelMcp.Core.Models
         [DataMember(Name = "after", EmitDefaultValue = false)] public DatumElevation? After { get; set; }
         [DataMember(Name = "dependentCount", EmitDefaultValue = false)] public int? DependentCount { get; set; }
         [DataMember(Name = "scopeBox")] public string? ScopeBox { get; set; }
-        [DataMember(Name = "workset", EmitDefaultValue = false)] public string? Workset { get; set; }
+        [DataMember(Name = "workset")] public string? Workset { get; set; }
+        [DataMember(Name = "planViewId", EmitDefaultValue = false)] public long? PlanViewId { get; set; }
     }
 
     [DataContract]
