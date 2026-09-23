@@ -37,6 +37,7 @@ EXPECTED_TOOLS = {
     "revit_list_warnings",
     "revit_list_relations",
     "revit_list_instances",
+    "revit_compare_link_datums",
 }
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],

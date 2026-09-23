@@ -26,6 +26,7 @@ ACTION_TOOLS = {
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
+    "revit_align_link_datums",
 }
 
 
@@ -47,7 +48,8 @@ def test_stdio_action_gate(flag):
         )
         for name in ACTION_TOOLS.intersection(tools):
             tool = tools[name]
-            assert "response_timeout_s" not in tool.input_schema["properties"]
+            if name != "revit_align_link_datums":
+                assert "response_timeout_s" not in tool.input_schema["properties"]
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
             assert tool.annotations.title == tool.title
@@ -67,6 +69,55 @@ def action_server():
     with patch.dict(os.environ, {"REVIT_MCP_ALLOW_WRITE": "1"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_align_link_datums_payload_and_timeout():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_align_link_datums",
+            {
+                "link": "AR.rvt : 1",
+                "kinds": ["grids"],
+                "name_map": {"A": "A1"},
+                "level_offset_mm": 150,
+                "dry_run": True,
+                "response_timeout_s": 600,
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.command == "align-link-datums"
+    assert job.payload["nameMap"] == {"A": "A1"}
+    assert job.payload["dryRun"] is True
+    assert execute.await_args.args[1] == 600
+
+
+def test_align_link_datums_rejects_invalid_timeout():
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(Exception):
+        asyncio.run(
+            server.call_tool("revit_align_link_datums", {"link": "AR.rvt", "response_timeout_s": 0})
+        )
+    execute.assert_not_awaited()
+
+
+def test_compare_link_datums_is_read_only():
+    import asyncio
+
+    from revit_model_mcp import server as revit_server
+
+    channel = AsyncMock(return_value={"success": True})
+    with patch.object(revit_server, "channel") as mock_channel:
+        mock_channel.execute = channel
+        asyncio.run(revit_server.revit_compare_link_datums("AR.rvt", name_map={"A": "A1"}))
+    job = channel.await_args.args[0]
+    assert job.command == "compare-link-datums"
+    assert job.payload["nameMap"] == {"A": "A1"}
 
 
 @pytest.mark.parametrize("response_timeout_s", [None, 900])

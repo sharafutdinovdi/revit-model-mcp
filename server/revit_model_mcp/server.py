@@ -264,9 +264,49 @@ def addressed_tool(function):
         "revit_links_status": "Links Status",
         "revit_shared_coordinates": "Shared Coordinates",
         "revit_parameter_fill_check": "Parameter Fill Check",
+        "revit_compare_link_datums": "Compare Link Datums",
     }[function.__name__]
     return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
         function
+    )
+
+
+@addressed_tool
+async def revit_compare_link_datums(
+    link: str,
+    kinds: list[str] | None = None,
+    name_map: dict[str, str] | None = None,
+    prefix: str = "",
+    suffix: str = "",
+    level_offset_mm: float = 0,
+    reuse_matching: bool = True,
+    tolerance_mm: float = 0.5,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Compare host grids and levels with one loaded Revit link. No model change is made.
+
+    A geometric match does not create a monitor relationship or later Coordination Review warnings.
+    """
+    return await _execute(
+        ReadJob(
+            "compare-link-datums",
+            {
+                "command": "compare-link-datums",
+                "link": link,
+                "kinds": kinds if kinds is not None else ["grids", "levels"],
+                "nameMap": name_map or {},
+                "prefix": prefix,
+                "suffix": suffix,
+                "levelOffsetMm": level_offset_mm,
+                "reuseMatching": reuse_matching,
+                "toleranceMm": tolerance_mm,
+            },
+        ),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
     )
 
 

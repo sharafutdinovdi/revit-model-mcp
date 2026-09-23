@@ -126,6 +126,14 @@ Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstatio
 
 ---
 
+### Link datum alignment
+
+- [ ] Open a host model and a loaded link with a known 25 mm grid shift and 150 mm level shift. `revit_compare_link_datums` reports those deltas without changing the host.
+- [ ] Run `revit_align_link_datums(dry_run=true)`. Shifted datums report `moved`; inspect the host and confirm it is unchanged.
+- [ ] Run the real alignment. Confirm grids and levels move to the link geometry; then use Revit Undo and confirm their original positions return.
+- [ ] Pin a shifted grid. With `include_pinned=false`, confirm `skipped` with reason `pinned` and no movement.
+- [ ] Give a coincident host grid a different name. Confirm the read result says `matchedBy:"geometry"` and the action does not create a duplicate.
+
 ## 5. Transports
 
 - [ ] **5.1 Local** (`REVIT_MCP_HOST=local`) on the workstation — all of §3 passes.

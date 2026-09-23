@@ -164,6 +164,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
             "revit_batch": "Run Action Batch",
+            "revit_align_link_datums": "Align Link Datums",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -176,6 +177,51 @@ def register_actions(mcp, execute, host_provider) -> None:
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
             ),
         )(function)
+
+    @action
+    async def revit_align_link_datums(
+        link: Name,
+        kinds: list[str] | None = None,
+        name_map: dict[str, str] | None = None,
+        prefix: str = "",
+        suffix: str = "",
+        level_offset_mm: Number = 0,
+        reuse_matching: bool = True,
+        tolerance_mm: PositiveLength = 0.5,
+        create_missing: bool = True,
+        level_type: str | None = None,
+        grid_type: str | None = None,
+        include_pinned: bool = False,
+        create_plan_views: bool = False,
+        plan_view_type: str | None = None,
+        dry_run: bool = False,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Align host grids and levels to a loaded link, with optional creation and rollback preview.
+
+        Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
+        """
+        return await send(
+            "align-link-datums",
+            link=link,
+            kinds=kinds if kinds is not None else ["grids", "levels"],
+            nameMap=name_map or {},
+            prefix=prefix,
+            suffix=suffix,
+            levelOffsetMm=level_offset_mm,
+            reuseMatching=reuse_matching,
+            toleranceMm=tolerance_mm,
+            createMissing=create_missing,
+            levelType=level_type,
+            gridType=grid_type,
+            includePinned=include_pinned,
+            createPlanViews=create_plan_views,
+            planViewType=plan_view_type,
+            dryRun=dry_run,
+            response_timeout_s=response_timeout_s,
+            document=document,
+        )
 
     @action
     async def revit_select(element_ids: ElementIds, document: Document = None) -> dict[str, Any]:

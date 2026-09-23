@@ -5,7 +5,7 @@ namespace RevitModelMcp.Core.Control;
 public static class ActionJobParser
 {
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "align-link-datums";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -34,13 +34,15 @@ public static class ActionJobParser
                 Parameter = job.Parameter,
                 Value = job.Value
             };
+            if (command == "align-link-datums")
+                action.DatumOptions = ParseDatumOptions(job);
             if (command == "batch")
             {
                 Require(job.Steps is { Count: > 0 and <= 50 }, "batch requires 1 to 50 steps.");
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch"),
+                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "align-link-datums"),
                         "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
@@ -137,6 +139,36 @@ public static class ActionJobParser
 
     private static bool Finite(params double[] values) => values.All(value => !double.IsNaN(value) && !double.IsInfinity(value));
 
+    public static LinkDatumJobOptions ParseDatumOptions(ControlJobContract job)
+    {
+        Require(!string.IsNullOrWhiteSpace(job.Link), "link is required.");
+        var kinds = job.Kinds ?? ["grids", "levels"];
+        Require(kinds.Count > 0 && kinds.All(kind => kind is "grids" or "levels") &&
+                kinds.Distinct().Count() == kinds.Count, "kinds must contain grids or levels without duplicates.");
+        var tolerance = job.ToleranceMm ?? 0.5;
+        var offset = job.LevelOffsetMm ?? 0;
+        Require(Finite(tolerance, offset) && tolerance > 0, "toleranceMm must be finite and positive; levelOffsetMm must be finite.");
+        Require(job.NameMap is null || job.NameMap.All(pair => !string.IsNullOrWhiteSpace(pair.Key) && !string.IsNullOrWhiteSpace(pair.Value)),
+            "nameMap names must not be blank.");
+        return new LinkDatumJobOptions
+        {
+            Link = job.Link!.Trim(),
+            Kinds = kinds,
+            NameMap = job.NameMap ?? [],
+            Prefix = job.Prefix ?? "",
+            Suffix = job.Suffix ?? "",
+            LevelOffsetMm = offset,
+            ReuseMatching = job.ReuseMatching ?? true,
+            ToleranceMm = tolerance,
+            CreateMissing = job.CreateMissing ?? true,
+            LevelType = job.LevelType,
+            GridType = job.GridType,
+            IncludePinned = job.IncludePinned ?? false,
+            CreatePlanViews = job.CreatePlanViews ?? false,
+            PlanViewType = job.PlanViewType
+        };
+    }
+
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new ArgumentException(message);
@@ -145,6 +177,7 @@ public static class ActionJobParser
 
 public sealed class ActionJobContract
 {
+    public LinkDatumJobOptions? DatumOptions { get; set; }
     public bool DryRun { get; set; }
     public List<ControlJobParseResult> Steps { get; set; } = [];
     public List<long> ElementIds { get; set; } = [];
@@ -168,8 +201,40 @@ public sealed class ActionJobContract
     public string? Value { get; set; }
 }
 
+public sealed class LinkDatumJobOptions
+{
+    public string Link { get; set; } = "";
+    public List<string> Kinds { get; set; } = ["grids", "levels"];
+    public Dictionary<string, string> NameMap { get; set; } = [];
+    public string Prefix { get; set; } = "";
+    public string Suffix { get; set; } = "";
+    public double LevelOffsetMm { get; set; }
+    public bool ReuseMatching { get; set; } = true;
+    public double ToleranceMm { get; set; } = 0.5;
+    public bool CreateMissing { get; set; } = true;
+    public string? LevelType { get; set; }
+    public string? GridType { get; set; }
+    public bool IncludePinned { get; set; }
+    public bool CreatePlanViews { get; set; }
+    public string? PlanViewType { get; set; }
+}
+
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "link")] public string? Link { get; set; }
+    [DataMember(Name = "kinds")] public List<string>? Kinds { get; set; }
+    [DataMember(Name = "nameMap")] public Dictionary<string, string>? NameMap { get; set; }
+    [DataMember(Name = "prefix")] public string? Prefix { get; set; }
+    [DataMember(Name = "suffix")] public string? Suffix { get; set; }
+    [DataMember(Name = "levelOffsetMm")] public double? LevelOffsetMm { get; set; }
+    [DataMember(Name = "reuseMatching")] public bool? ReuseMatching { get; set; }
+    [DataMember(Name = "toleranceMm")] public double? ToleranceMm { get; set; }
+    [DataMember(Name = "createMissing")] public bool? CreateMissing { get; set; }
+    [DataMember(Name = "levelType")] public string? LevelType { get; set; }
+    [DataMember(Name = "gridType")] public string? GridType { get; set; }
+    [DataMember(Name = "includePinned")] public bool? IncludePinned { get; set; }
+    [DataMember(Name = "createPlanViews")] public bool? CreatePlanViews { get; set; }
+    [DataMember(Name = "planViewType")] public string? PlanViewType { get; set; }
     [DataMember(Name = "dryRun")] public bool? DryRun { get; set; }
     [DataMember(Name = "steps")] public List<ControlJobContract>? Steps { get; set; }
     [DataMember(Name = "elementIds")] public List<long>? ElementIds { get; set; }
@@ -194,6 +259,12 @@ public sealed partial class ControlJobContract
 [DataContract]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "link", EmitDefaultValue = false)] public RevitModelMcp.Core.Models.LinkDatumLink? Link { get; set; }
+    [DataMember(Name = "toleranceMm", EmitDefaultValue = false)] public double? ToleranceMm { get; set; }
+    [DataMember(Name = "levelOffsetMm", EmitDefaultValue = false)] public double? LevelOffsetMm { get; set; }
+    [DataMember(Name = "items", EmitDefaultValue = false)] public List<RevitModelMcp.Core.Models.LinkDatumItem>? Items { get; set; }
+    [DataMember(Name = "summary", EmitDefaultValue = false)] public RevitModelMcp.Core.Models.LinkDatumSummary? Summary { get; set; }
+    [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
     [DataMember(Name = "dryRun", EmitDefaultValue = false)] public bool? DryRun { get; set; }
     [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool? RolledBack { get; set; }
     [DataMember(Name = "verification", EmitDefaultValue = false)] public ActionVerification? Verification { get; set; }

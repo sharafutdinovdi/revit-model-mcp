@@ -27,7 +27,8 @@ public enum ControlJobKind
     ListWarnings,
     ListRelations,
     Action,
-    Invalid
+    Invalid,
+    CompareLinkDatums
 }
 
 public sealed class ControlJobParseResult
@@ -173,6 +174,7 @@ public sealed class ControlJobParseResult
             "list-catalog" => UniversalJobParser.ParseCatalog(job),
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
+            "compare-link-datums" => ParseCompareLinkDatums(job),
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
             _ => Invalid(command, $"Unknown command: {command}.")
         };
@@ -181,6 +183,21 @@ public sealed class ControlJobParseResult
         result.TargetDocument = Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
         return result;
+    }
+
+    private static ControlJobParseResult ParseCompareLinkDatums(ControlJobContract job)
+    {
+        const string command = "compare-link-datums";
+        try
+        {
+            var result = Create(ControlJobKind.CompareLinkDatums, command);
+            result.Action = new ActionJobContract { DatumOptions = ActionJobParser.ParseDatumOptions(job) };
+            return result;
+        }
+        catch (ArgumentException exception)
+        {
+            return Invalid(command, exception.Message);
+        }
     }
 
     private static ControlJobParseResult ParseParameterFill(ControlJobContract job)
@@ -288,7 +305,8 @@ public static class ControlJobParser
 
         try
         {
-            var serializer = new DataContractJsonSerializer(typeof(ControlJobContract));
+            var serializer = new DataContractJsonSerializer(typeof(ControlJobContract),
+                new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true });
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
             var job = serializer.ReadObject(stream) as ControlJobContract;
             return job is null

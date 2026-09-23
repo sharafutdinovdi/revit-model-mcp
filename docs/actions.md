@@ -3,10 +3,10 @@
 Read-only by default. Actions are a separate tool set you enable on purpose.
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
-The action tools listed below accept `document`; none accepts `response_timeout_s`.
+The action tools listed below accept `document`; `revit_align_link_datums` also accepts `response_timeout_s=600`.
 New action tools that expose `response_timeout_s` accept integer values from 30 to 3600 seconds.
 Revit remains busy for the whole action duration.
-The listed tools use the default response timeout of 120 seconds and pickup timeout of 300 seconds, and require exactly one instance returned by the transport.
+Other listed tools use the default response timeout of 120 seconds. All actions use a pickup timeout of 300 seconds and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
 All IDs are unitless Revit element IDs.
 Revit 2022–2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
@@ -34,6 +34,9 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions with a single undo entry named `revit_batch`. |
+| `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `response_timeout_s=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
+
+Alignment uses one host-document transaction, with `dry_run` rolling it back after prospective results are read. Pinned and other-user-owned datums are skipped. Existing datums are never renamed or deleted, and grid extents and scope boxes are never changed. Moving levels also moves elements hosted on them; moved-level results include `dependentCount`. Created datums report their ID and workset. Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
 
 `type_name` and `wall_type` are required arguments that accept `null`.
 

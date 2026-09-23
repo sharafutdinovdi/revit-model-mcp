@@ -93,6 +93,8 @@ internal static class ActionCommandExecutor
         ActionJobContract action, ActionFailures failures, out bool viewOpened, bool deferDryRun = false)
     {
         viewOpened = false;
+        if (command == "align-link-datums")
+            return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
