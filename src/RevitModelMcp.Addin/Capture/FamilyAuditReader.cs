@@ -1,3 +1,4 @@
+using System.IO;
 using Autodesk.Revit.DB;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Families;
@@ -34,7 +35,7 @@ internal static class FamilyAuditReader
             try
             {
                 familyDocument = document.EditFamily(family);
-                result.Families.Add(ReadFamily(familyDocument));
+                result.Families.Add(ReadFamily(familyDocument, family.Name));
             }
             catch (Exception exception)
             {
@@ -64,14 +65,14 @@ internal static class FamilyAuditReader
     internal static string? SkipReason(Family family) => family.IsInPlace ? "in-place" :
         !family.IsEditable ? "not editable" : null;
 
-    internal static FamilyAuditFamily ReadFamily(Document familyDocument)
+    internal static FamilyAuditFamily ReadFamily(Document familyDocument, string? name = null)
     {
         var owner = familyDocument.OwnerFamily;
         var sharedFlag = owner?.get_Parameter(BuiltInParameter.FAMILY_SHARED);
         var candidates = FamilyPurge.Candidates(familyDocument);
         return new FamilyAuditFamily
         {
-            Name = owner?.Name ?? familyDocument.Title,
+            Name = name ?? Path.GetFileNameWithoutExtension(familyDocument.Title),
             Category = owner?.FamilyCategory?.Name,
             IsShared = sharedFlag?.AsInteger() == 1,
             SharedFlagEditable = sharedFlag is not null && !sharedFlag.IsReadOnly,

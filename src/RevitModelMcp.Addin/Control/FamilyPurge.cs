@@ -27,7 +27,7 @@ internal static class FamilyPurge
 
     internal static Dictionary<string, int> Counts(Document document, IEnumerable<ElementId> ids) =>
         ids.Select(document.GetElement).Where(element => element is not null)
-            .GroupBy(element => element!.Category?.Name ?? "Uncategorized")
+            .GroupBy(element => element!.Category?.Name ?? element.GetType().Name)
             .ToDictionary(group => group.Key, group => group.Count());
 
     internal static FamilyOperationResult Execute(Document document)

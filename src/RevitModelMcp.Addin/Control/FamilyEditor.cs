@@ -17,7 +17,7 @@ internal static class FamilyEditor
         {
             if (job.Families is not null) throw new ArgumentException("families must be absent in family mode.");
             var result = new FamilyEditData { Mode = "family", DryRun = job.DryRun };
-            result.Families.Add(Edit(document, document.OwnerFamily?.Name ?? document.Title, job, failures, application));
+            result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application));
             result.Committed = !job.DryRun && result.Families[0].Status != "failed";
             result.FailedFamily = result.Families[0].Status == "failed" ? result.Families[0].Name : null;
             return result;

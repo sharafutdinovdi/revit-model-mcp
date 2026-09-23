@@ -40,11 +40,20 @@ public sealed class ParameterUsageTests
     }
 
     [Test]
-    public async Task UnusedSharedHasDataCarrierRiskAndBuiltInIsNeverUnused()
+    public async Task UnusedSharedHasDataCarrierRiskAndBuiltInUsesSameUsageRule()
     {
         var result = ParameterUsage.Evaluate([Input("Tag", shared: true), Input("BuiltIn", builtIn: true)]);
         await Assert.That(result["Tag"].Used).IsFalse();
         await Assert.That(result["Tag"].DataCarrierRisk).IsTrue();
+        await Assert.That(result["BuiltIn"].Used).IsFalse();
+        await Assert.That(result["BuiltIn"].UsedBy).IsEmpty();
+    }
+
+    [Test]
+    public async Task BuiltInWithAssociationIsUsed()
+    {
+        var result = ParameterUsage.Evaluate([Input("BuiltIn", builtIn: true, associations: ["Length"])]);
         await Assert.That(result["BuiltIn"].Used).IsTrue();
+        await Assert.That(result["BuiltIn"].UsedBy).Contains("association");
     }
 }
