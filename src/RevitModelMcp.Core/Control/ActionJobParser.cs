@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using System.Security.Cryptography;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 
@@ -16,7 +17,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -63,8 +64,49 @@ public static class ActionJobParser
                 Families = job.Families,
                 Operations = job.Operations ?? [],
                 OverwriteParameterValues = job.OverwriteParameterValues ?? false,
-                StopOnError = job.StopOnError ?? true
+                StopOnError = job.StopOnError ?? true,
+                Document = job.Document ?? job.TargetDocument,
+                DocumentPath = job.Path,
+                Mode = job.Mode ?? "detached",
+                Worksets = job.Worksets ?? "all",
+                WorksetsOpenNames = job.WorksetsOpen,
+                Activate = job.Activate ?? false,
+                Audit = job.Audit ?? false,
+                Save = job.Save ?? false,
+                SaveAs = job.SaveAs,
+                Overwrite = job.Overwrite ?? false,
+                Compact = job.Compact ?? false,
+                Comment = job.Comment,
+                Relinquish = job.Relinquish ?? "all",
+                RelinquishFlags = job.RelinquishFlags,
+                SaveLocalBefore = job.SaveLocalBefore ?? true,
+                SaveLocalAfter = job.SaveLocalAfter ?? true,
+                ConfirmToken = job.ConfirmToken
             };
+            if (command == "open-document")
+            {
+                DocumentPathValidator.Validate(action.DocumentPath);
+                Require(action.Mode is "detached" or "detached_discard_worksets" or "local_copy" or "read_only_local", "mode is invalid.");
+                Require(!action.Audit, "audit must be false.");
+                Require(action.Worksets is "all" or "none" or "open" &&
+                    (action.Worksets != "open" || action.WorksetsOpenNames is { Count: > 0 } && action.WorksetsOpenNames.All(name => !string.IsNullOrWhiteSpace(name))),
+                    "worksets must be all, none or {open: [names]}.");
+            }
+            if (command is "close-document" or "save-document" or "sync-document")
+                Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
+            if (command == "save-document" && action.SaveAs is not null)
+            {
+                DocumentPathValidator.Validate(action.SaveAs);
+                Require(!DocumentPathValidator.SamePath(action.SaveAs, action.Document), "save_as must differ from the central path.");
+            }
+            if (command == "sync-document")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.Comment), "comment is required.");
+                Require(action.Relinquish is "all" or "none" or "custom" &&
+                    (action.Relinquish != "custom" || action.RelinquishFlags is not null &&
+                        action.RelinquishFlags.Keys.All(key => key is "borrowed" or "user_worksets" or "family_worksets" or "view_worksets" or "standard_worksets")),
+                    "relinquish is invalid.");
+            }
             if (command == "align-link-datums")
                 action.DatumOptions = ParseDatumOptions(job);
             if (command == "batch")
@@ -73,7 +115,7 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc" or "edit-families" or "family-audit" or "align-link-datums"),
+                    Require(stepCommand is "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
                         "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
@@ -252,8 +294,73 @@ public static class ActionJobParser
     }
 }
 
+public static class DocumentPathValidator
+{
+    public static void Validate(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("path is required.");
+        if (path!.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = path.Substring(6).Split('/');
+            if (parts.Length < 3 || parts.Any(string.IsNullOrWhiteSpace) || !parts[parts.Length - 1].EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Invalid RSN model path.");
+            return;
+        }
+        if (path.IndexOf("://", StringComparison.Ordinal) >= 0 ||
+            !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa path, or RSN .rvt path.");
+        if (!(path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/') &&
+            !path.StartsWith(@"\\", StringComparison.Ordinal))
+            throw new ArgumentException("path must be absolute local or UNC path.");
+    }
+
+    public static bool SamePath(string? first, string? second) =>
+        first is not null && second is not null &&
+        string.Equals(first.TrimEnd('\\', '/'), second.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+}
+
+public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
+{
+    private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private readonly Dictionary<string, (string Command, string Document, string Arguments, DateTimeOffset Expires)> _tokens = [];
+
+    public string Issue(string command, string document, string arguments)
+    {
+        var bytes = new byte[32];
+        using (var generator = RandomNumberGenerator.Create()) generator.GetBytes(bytes);
+        var token = BitConverter.ToString(bytes).Replace("-", string.Empty);
+        _tokens[token] = (command, document, arguments, _clock().AddMinutes(5));
+        return token;
+    }
+
+    public bool Consume(string token, string command, string document, string arguments)
+    {
+        if (!_tokens.TryGetValue(token, out var stored)) return false;
+        _tokens.Remove(token);
+        return stored.Expires > _clock() && stored.Command == command && stored.Document == document && stored.Arguments == arguments;
+    }
+}
+
+
 public sealed class ActionJobContract
 {
+    public string? Document { get; set; }
+    public string? DocumentPath { get; set; }
+    public string Mode { get; set; } = "detached";
+    public string Worksets { get; set; } = "all";
+    public List<string>? WorksetsOpenNames { get; set; }
+    public bool Activate { get; set; }
+    public bool Audit { get; set; }
+    public bool Save { get; set; }
+    public string? SaveAs { get; set; }
+    public bool Overwrite { get; set; }
+    public bool Compact { get; set; }
+    public string? Comment { get; set; }
+    public string Relinquish { get; set; } = "all";
+    public Dictionary<string, bool>? RelinquishFlags { get; set; }
+    public bool SaveLocalBefore { get; set; } = true;
+    public bool SaveLocalAfter { get; set; } = true;
+    public string? ConfirmToken { get; set; }
     public NwcExportJob Nwc { get; set; } = new();
     public LinkDatumJobOptions? DatumOptions { get; set; }
     public bool DryRun { get; set; }
@@ -325,6 +432,21 @@ public sealed class LinkDatumJobOptions
 
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "document")] public string? Document { get; set; }
+    [DataMember(Name = "mode")] public string? Mode { get; set; }
+    [DataMember(Name = "worksets")] public string? Worksets { get; set; }
+    [DataMember(Name = "worksetsOpen")] public List<string>? WorksetsOpen { get; set; }
+    [DataMember(Name = "activate")] public bool? Activate { get; set; }
+    [DataMember(Name = "audit")] public bool? Audit { get; set; }
+    [DataMember(Name = "save")] public bool? Save { get; set; }
+    [DataMember(Name = "saveAs")] public string? SaveAs { get; set; }
+    [DataMember(Name = "compact")] public bool? Compact { get; set; }
+    [DataMember(Name = "comment")] public string? Comment { get; set; }
+    [DataMember(Name = "relinquish")] public string? Relinquish { get; set; }
+    [DataMember(Name = "relinquishFlags")] public Dictionary<string, bool>? RelinquishFlags { get; set; }
+    [DataMember(Name = "saveLocalBefore")] public bool? SaveLocalBefore { get; set; }
+    [DataMember(Name = "saveLocalAfter")] public bool? SaveLocalAfter { get; set; }
+    [DataMember(Name = "confirmToken")] public string? ConfirmToken { get; set; }
     [DataMember(Name = "path")] public string? Path { get; set; }
     [DataMember(Name = "scope")] public string? Scope { get; set; }
     [DataMember(Name = "coordinates")] public string? Coordinates { get; set; }
@@ -407,6 +529,18 @@ public sealed class SharedParameterSpec
 [DataContract]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "title", EmitDefaultValue = false)] public string? Title { get; set; }
+    [DataMember(Name = "isWorkshared", EmitDefaultValue = false)] public bool? IsWorkshared { get; set; }
+    [DataMember(Name = "isDetached", EmitDefaultValue = false)] public bool? IsDetached { get; set; }
+    [DataMember(Name = "isCentral", EmitDefaultValue = false)] public bool? IsCentral { get; set; }
+    [DataMember(Name = "openedAs", EmitDefaultValue = false)] public string? OpenedAs { get; set; }
+    [DataMember(Name = "active", EmitDefaultValue = false)] public bool? Active { get; set; }
+    [DataMember(Name = "worksetsOpen", EmitDefaultValue = false)] public List<string>? WorksetsOpen { get; set; }
+    [DataMember(Name = "saved", EmitDefaultValue = false)] public bool? Saved { get; set; }
+    [DataMember(Name = "centralPath", EmitDefaultValue = false)] public string? CentralPath { get; set; }
+    [DataMember(Name = "needsConfirmation", EmitDefaultValue = false)] public bool? NeedsConfirmation { get; set; }
+    [DataMember(Name = "confirmationText", EmitDefaultValue = false)] public string? ConfirmationText { get; set; }
+    [DataMember(Name = "confirmToken", EmitDefaultValue = false)] public string? ConfirmToken { get; set; }
     [DataMember(Name = "path", EmitDefaultValue = false)] public string? Path { get; set; }
     [DataMember(Name = "bytes", EmitDefaultValue = false)] public long? Bytes { get; set; }
     [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }

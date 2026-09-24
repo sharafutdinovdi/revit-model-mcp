@@ -5,7 +5,7 @@ See the [privacy policy](privacy.md) for data handling, retention and contact in
 The model API is read-only by default.
 Action tools are absent unless `REVIT_MCP_ALLOW_WRITE=1`; action execution also requires the workstation gate file described in [actions](actions.md).
 `revit_export_nwc` may write to any valid absolute workstation path only when both action gates are enabled. It never transfers the NWC file to the client; logging omits the export path.
-The default surface covers ping, document and instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
+The default surface covers ping, active document information, the open document list, instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
@@ -28,6 +28,12 @@ Authentication and routing use the local OpenSSH configuration and agent.
 The default multiplexing socket directory has mode `0700` on macOS and Linux.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).
+
+## Document lifecycle safety
+
+Open, close, save and synchronize use both the server environment gate and the workstation `allow-write` gate. A central model opened through MCP defaults to detached mode. `local_copy` creates a new local file and leaves the central unchanged until an explicitly confirmed synchronization. Saving an open central model or saving under a known central path is refused.
+
+Save, sync and any close that can discard changes require a five-minute, single-use confirmation token. The first call only describes the operation. The client must show `confirmationText` and must not send the token back until the user explicitly agrees in chat. A failed verification or timeout can occur after Revit commits a change; inspect document state before a retry. Neither the token nor the action gate is a substitute for model backups and Revit permissions.
 
 ## Verify downloads
 

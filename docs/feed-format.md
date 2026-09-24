@@ -298,3 +298,11 @@ Snapshots use the [Snapshot contract](../src/RevitModelMcp.Core/Models/Snapshot.
 View dumps use `command:"views-dump"`, `status`, timestamps, `responder`, progress counts and a `views` list from [ViewDumpReport](../src/RevitModelMcp.Core/Models/ViewDumpReport.cs).
 They track opened/closed views and restoration of the original view.
 Legacy formats have no schema version and should not be treated as a stable external API.
+
+## Document action responses
+
+The read command `documents` returns an array of open document states, including background documents. It does not require an active document or the action gate.
+
+Document lifecycle commands use the normal command response envelope. `open-document` returns `title`, `path`, `isWorkshared`, `isDetached`, `isCentral`, `openedAs`, `active`, `worksetsOpen` and `elapsedMs` in `data`. Open responses also report any suppressed dialogs in the envelope's `dialogsSuppressed` field.
+
+A save, sync or close operation requiring confirmation returns `success:true` and `data.needsConfirmation:true`, `data.confirmationText` and `data.confirmToken`. This response reports a pending operation; it does not mean the operation ran. The follow-up must repeat all arguments and add `confirmToken`. Invalid, consumed, expired or mismatched tokens return an error without making a change. The token expires five minutes after issuance.

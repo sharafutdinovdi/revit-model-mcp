@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using Nice3point.Revit.Extensions;
@@ -26,17 +27,42 @@ internal static class ActionCommandExecutor
         var stopwatch = Stopwatch.StartNew();
         CommandResponse<ActionResultData> response;
         var dialogsSuppressed = new List<string>();
+        var openWarningsDismissed = new List<string>();
         var viewOpened = false;
         var failures = new ActionFailures();
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
             SuppressTaskDialog(arguments, dialogsSuppressed);
         }
+        void SuppressOpenWarnings(object? sender, FailuresProcessingEventArgs arguments)
+        {
+            var accessor = arguments.GetFailuresAccessor();
+            foreach (var warning in accessor.GetFailureMessages().Where(message => message.GetSeverity() == FailureSeverity.Warning))
+            {
+                openWarningsDismissed.Add(warning.GetDescriptionText());
+                accessor.DeleteWarning(warning);
+            }
+            arguments.SetProcessingResult(FailureProcessingResult.Continue);
+        }
         application.DialogBoxShowing += SuppressDialog;
+        if (job.Command == "open-document") application.Application.FailuresProcessing += SuppressOpenWarnings;
         try
         {
             if (!ActionsEnabled) throw new InvalidOperationException("actions disabled on the workstation");
             if (job.Error is not null) throw new ArgumentException(job.Error);
+            if (job.Command is "open-document" or "close-document" or "save-document" or "sync-document")
+            {
+                var documentAction = job.Action ?? throw new ArgumentException("Missing document arguments.");
+                documentAction.Document ??= job.TargetDocument;
+                var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
+                response = CommandResponse<ActionResultData>.Ok(job.Command, documentResult, stopwatch.ElapsedMilliseconds);
+                response.DialogsSuppressed = dialogsSuppressed;
+                response.WarningsDismissed = openWarningsDismissed;
+                response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
+                CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+                    ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+                return;
+            }
             var document = ResolveDocument(application, job.TargetDocument);
             var activeUiDocument = application.ActiveUIDocument;
             var uiDocument = activeUiDocument is not null
@@ -58,16 +84,29 @@ internal static class ActionCommandExecutor
         }
         catch (Exception exception)
         {
-            response = CommandResponse<ActionResultData>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
-            response.Error = exception.Message;
+            var error = job.Command is "open-document" or "close-document" or "save-document" or "sync-document"
+                ? exception.GetType().Name switch
+                {
+                    "CentralModelContentionException" => "The central model is locked or busy.",
+                    "CentralModelAccessDeniedException" => "Access to the central model was denied.",
+                    "RevitServerCommunicationException" => "Revit Server could not be reached.",
+                    "WrongUserException" => "The local model belongs to another user.",
+                    "CannotOpenBothCentralAndLocalException" => "The central and its local copy cannot be open together.",
+                    _ => exception.Message
+                }
+                : exception.Message;
+            response = CommandResponse<ActionResultData>.Fail(job.Command, error, stopwatch.ElapsedMilliseconds);
+            response.Error = error;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
-            if (job.Command == "export-nwc") PluginLog.Warn("NWC export failed; path and exception details omitted from log.");
+            if (job.Command is "export-nwc" or "open-document" or "close-document" or "save-document" or "sync-document")
+                PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }
         finally
         {
             application.DialogBoxShowing -= SuppressDialog;
+            if (job.Command == "open-document") application.Application.FailuresProcessing -= SuppressOpenWarnings;
         }
         response.DialogsSuppressed = dialogsSuppressed;
         if (job.Command == "show") response.ViewOpened = viewOpened;

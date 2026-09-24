@@ -7,6 +7,60 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task DocumentConfirmationTokens_AreSingleUseBoundAndExpire()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tokens = new DocumentConfirmationTokens(() => now);
+        var first = tokens.Issue("save-document", "document-1", "path=A");
+        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=B")).IsFalse();
+        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=A")).IsFalse();
+        var second = tokens.Issue("save-document", "document-1", "path=A");
+        await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A")).IsTrue();
+        await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A")).IsFalse();
+        var third = tokens.Issue("save-document", "document-1", "path=A");
+        now = now.AddMinutes(5);
+        await Assert.That(tokens.Consume(third, "save-document", "document-1", "path=A")).IsFalse();
+    }
+
+    [Test]
+    public async Task DocumentPaths_RejectCloudAndMalformedServerPaths()
+    {
+        DocumentPathValidator.Validate("RSN://server/folder/model.rvt");
+        DocumentPathValidator.Validate(@"C:\models\file.rvt");
+        DocumentPathValidator.Validate(@"C:\models\family.rfa");
+        foreach (var path in new[] { "RSN://server/model.rvt", "RSN://server//model.rvt", "BIM360://hub/model.rvt", "relative.rvt" })
+            await Assert.That(() => DocumentPathValidator.Validate(path)).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task DocumentActions_ValidateModesWorksetsAndSyncComment()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"open-document","path":"RSN://server/folder/model.rvt"}""").Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"open-document","path":"C:\\x\\a.rvt","worksets":"open","worksetsOpen":["A"]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        var sync = ControlJobParser.Parse("""{"command":"sync-document","document":"A","comment":"grids","relinquish":"custom","relinquishFlags":{"borrowed":true}}""");
+        await Assert.That(sync.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(sync.Action!.RelinquishFlags!["borrowed"]).IsTrue();
+        foreach (var json in new[]
+        {
+            """{"command":"open-document","path":"C:\\x\\a.rvt","mode":"central"}""",
+            """{"command":"open-document","path":"C:\\x\\a.rvt","worksets":"bad"}""",
+            """{"command":"sync-document","document":"A"}""",
+            """{"command":"save-document","document":"C:\\x\\a.rvt","saveAs":"C:\\x\\a.rvt"}"""
+        })
+            await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"save-document","document":"A"}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Documents_UsesReadRoutingWithoutAnActiveDocument()
+    {
+        var parsed = ControlJobParser.Parse("""{"command":"documents"}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Documents);
+        await Assert.That(ActionJobParser.IsAction("documents")).IsFalse();
+    }
+
+    [Test]
     public async Task Parse_NwcDefaultsMatchExporterDefaults()
     {
         var result = ControlJobParser.Parse("""{"command":"export-nwc","path":"C:\\x\\a.nwc"}""");

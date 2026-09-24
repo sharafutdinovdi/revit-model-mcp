@@ -220,6 +220,10 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_export_nwc": "Export Navisworks NWC",
             "revit_edit_families": "Edit Families",
             "revit_align_link_datums": "Align Link Datums",
+            "revit_open_document": "Open Document",
+            "revit_close_document": "Close Document",
+            "revit_save_document": "Save Document",
+            "revit_sync_document": "Synchronize Document",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -232,6 +236,90 @@ def register_actions(mcp, execute, host_provider) -> None:
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
             ),
         )(function)
+
+    @action
+    async def revit_open_document(
+        path: Name,
+        mode: Literal[
+            "detached", "detached_discard_worksets", "local_copy", "read_only_local"
+        ] = "detached",
+        worksets: Literal["all", "none"] | dict[str, list[Name]] = "all",
+        activate: bool = False,
+        audit: bool = False,
+    ) -> dict[str, Any]:
+        """Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."""
+        if isinstance(worksets, dict) and (set(worksets) != {"open"} or not worksets["open"]):
+            raise ToolError("worksets must be all, none or {'open': [names]}.")
+        if audit:
+            raise ToolError("audit must be false.")
+        return await send(
+            "open-document",
+            path=path,
+            mode=mode,
+            worksets="open" if isinstance(worksets, dict) else worksets,
+            worksetsOpen=worksets["open"] if isinstance(worksets, dict) else None,
+            activate=activate,
+            audit=audit,
+        )
+
+    @action
+    async def revit_close_document(
+        document: Name, save: bool = False, confirm_token: str | None = None
+    ) -> dict[str, Any]:
+        """Close a background document. Show confirmationText and retry with the token only after explicit chat approval."""
+        return await send(
+            "close-document", document=document, save=save, confirmToken=confirm_token
+        )
+
+    @action
+    async def revit_save_document(
+        document: Name,
+        save_as: str | None = None,
+        overwrite: bool = False,
+        compact: bool = False,
+        confirm_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Save only after showing confirmationText and receiving explicit chat approval for the token retry."""
+        return await send(
+            "save-document",
+            document=document,
+            saveAs=save_as,
+            overwrite=overwrite,
+            compact=compact,
+            confirmToken=confirm_token,
+        )
+
+    @action
+    async def revit_sync_document(
+        document: Name,
+        comment: Name,
+        relinquish: Literal["all", "none"] | dict[str, bool] = "all",
+        compact: bool = False,
+        save_local_before: bool = True,
+        save_local_after: bool = True,
+        confirm_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Synchronize only after showing confirmationText and receiving explicit chat approval for the token retry."""
+        allowed = {
+            "borrowed",
+            "user_worksets",
+            "family_worksets",
+            "view_worksets",
+            "standard_worksets",
+        }
+        if isinstance(relinquish, dict) and not set(relinquish) <= allowed:
+            raise ToolError("relinquish contains unknown options.")
+        return await send(
+            "sync-document",
+            document=document,
+            comment=comment,
+            relinquish="custom" if isinstance(relinquish, dict) else relinquish,
+            relinquishFlags=relinquish if isinstance(relinquish, dict) else None,
+            compact=compact,
+            saveLocalBefore=save_local_before,
+            saveLocalAfter=save_local_after,
+            confirmToken=confirm_token,
+        )
 
     @action
     async def revit_align_link_datums(
