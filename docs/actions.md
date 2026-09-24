@@ -47,11 +47,12 @@ Alignment uses one host-document transaction, with `dry_run` rolling it back aft
 
 ### NWC export options
 
-The API export uses only the options sent to `revit_export_nwc`; settings saved by the Navisworks exporter dialog are not used. The target must be a project document. The NWC file stays on the Revit workstation; no artifact is transferred to the client. This action cannot run inside `revit_batch`.
+The API export uses explicit arguments, then values from `settings_xml`, then the existing API defaults. The XML file must be on the Revit workstation. The target must be a project document. The NWC file stays on the Revit workstation; no artifact is transferred to the client. This action cannot run inside `revit_batch`.
 
 | Argument | Default | Revit API property |
 | --- | --- | --- |
 | `path` | required | `Document.Export` folder and name without `.nwc` |
+| `settings_xml` | `null` | Absolute path to an XML exported from Navisworks Settings on the Revit workstation |
 | `scope` | `model` | `ExportScope`: `model`, `view`, `selection` |
 | `view` | `null` | `ViewId`; non-template 3D view name or ID, required for `view` scope |
 | `element_ids` | `null` | `SetSelectedElementIds`; nonempty for `selection` scope |
@@ -73,7 +74,7 @@ The API export uses only the options sent to `revit_export_nwc`; settings saved 
 | `dry_run` | `false` | Validate without exporting |
 | `response_timeout_s` | `1800` | Channel response timeout, 30–3600 seconds |
 
-`path` must be an absolute drive or UNC path ending in `.nwc`, with an existing parent directory. Relative paths, `..` segments, device paths, invalid file names and existing files without `overwrite=true` are rejected. A dry run checks the path, exporter and resolved view or selection, then returns effective options without writing. `scope="view"` exports the specified 3D view with its section box. The RVT file reader's Embed textures, Strict sectioning and view conversion settings are outside this exporter API.
+`path` must be an absolute drive or UNC path ending in `.nwc`, with an existing parent directory. Relative paths, `..` segments, device paths, invalid file names and existing files without `overwrite=true` are rejected. A dry run checks the path, exporter and resolved view or selection, then returns effective options without writing. `scope="view"` exports the specified 3D view with its section box. The response `options` contains effective values and a `sources` object with `argument`, `xml` or `default` for each option. `revit_nwc_settings_check(settings_xml=...)` parses the same file without exporting and returns `values`, exporter-ID-to-API `mapping`, `notApplied` and `ignored`. The XML options `nwexportrevit_embed_textures`, `nwexportrevit_with_type_props`, `nwexportrevit_separate_custom_props` and `nwexportrevit_strict_sectioning` have no Revit API property and appear in `notApplied`. Unknown IDs appear in `ignored`. The mappings for parameter, scope and coordinate enum order await verification against an owner-exported XML file.
 
 ### Family edits
 

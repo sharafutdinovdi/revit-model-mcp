@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO;
+using RevitModelMcp.Core.Export;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
@@ -51,6 +53,12 @@ internal static class ReadCommandExecutor
             if (job.Kind == ControlJobKind.Documents)
             {
                 WriteSuccess(output, job.Command, DocumentActions.List(application), stopwatch);
+                return;
+            }
+            if (job.Kind == ControlJobKind.NwcSettingsCheck)
+            {
+                var xml = NwcSettingsXml.ReadFile(job.CoordinatorJob.SettingsXml!);
+                WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
             var document = job.Kind == ControlJobKind.ViewInfo

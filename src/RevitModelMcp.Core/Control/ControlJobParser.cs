@@ -31,6 +31,7 @@ public enum ControlJobKind
     ListRelations,
     FamilyAudit,
     Action,
+    NwcSettingsCheck,
     Invalid,
     CompareLinkDatums,
     Jobs
@@ -189,6 +190,9 @@ public sealed class ControlJobParseResult
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
             "family-audit" => ParseFamilyAudit(job),
+            "nwc-settings-check" => string.IsNullOrWhiteSpace(job.SettingsXml)
+                ? Invalid(command, "settingsXml is required.")
+                : Create(ControlJobKind.NwcSettingsCheck, command),
             "compare-link-datums" => ParseCompareLinkDatums(job),
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
             _ => Invalid(command, $"Unknown command: {command}.")
@@ -199,7 +203,7 @@ public sealed class ControlJobParseResult
         result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
         result.CancelJobId = job.CancelJobId;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
-        if (command == "family-audit") result.CoordinatorJob = job;
+        if (command is "family-audit" or "nwc-settings-check") result.CoordinatorJob = job;
         result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
         return result;

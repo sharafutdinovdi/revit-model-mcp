@@ -480,6 +480,9 @@ public sealed class ActionJobParserTests
     [Test]
     public async Task Parse_ViewVisibilityValidatesTemplateModeAndMasks()
     {
+        var visibility = ControlJobParser.Parse("""{"command":"set-view-visibility","view":"3D","worksets":{"hideMask":["HVAC*"]}}""");
+        await Assert.That(visibility.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(visibility.Action!.Visibility!.Worksets.HideMask).IsEquivalentTo(new[] { "HVAC*" });
         await Assert.That(ControlJobParser.Parse("""{"command":"set-view-visibility","view":"3D","categoryClasses":{"model":true},"templateMode":"detach"}""").Kind)
             .IsEqualTo(ControlJobKind.Action);
         await Assert.That(ControlJobParser.Parse("""{"command":"set-view-visibility","view":"3D","categoryClasses":{"model":true},"templateMode":"edit_all"}""").Kind)

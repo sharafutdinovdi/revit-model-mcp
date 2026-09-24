@@ -170,26 +170,29 @@ def test_nwc_export_defaults_and_options_reach_channel():
         "command": "export-nwc",
         "targetProcessId": 42,
         "path": "C:\\x\\a.nwc",
-        "scope": "model",
-        "view": None,
-        "elementIds": None,
-        "coordinates": "shared",
-        "parameters": "all",
-        "exportElementIds": True,
-        "convertElementProperties": False,
-        "exportParts": False,
-        "exportRoomAsAttribute": True,
-        "exportRoomGeometry": True,
-        "convertLights": False,
-        "convertLinkedCadFormats": True,
-        "exportLinks": False,
-        "exportUrls": True,
-        "divideFileIntoLevels": True,
-        "findMissingMaterials": True,
-        "facetingFactor": 1.0,
         "overwrite": False,
         "dryRun": False,
     }
+
+
+def test_nwc_xml_and_explicit_false_reach_channel():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_export_nwc",
+            {
+                "path": "C:\\x\\a.nwc",
+                "settings_xml": "C:\\x\\settings.xml",
+                "export_links": False,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["settingsXml"] == "C:\\x\\settings.xml"
+    assert payload["exportLinks"] is False
+    assert "parameters" not in payload
 
 
 def test_nwc_export_overrides_reach_channel():

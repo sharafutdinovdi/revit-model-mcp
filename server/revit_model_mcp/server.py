@@ -271,6 +271,7 @@ def addressed_tool(function):
         "revit_shared_coordinates": "Shared Coordinates",
         "revit_parameter_fill_check": "Parameter Fill Check",
         "revit_family_audit": "Audit Families",
+        "revit_nwc_settings_check": "Check NWC Settings",
         "revit_compare_link_datums": "Compare Link Datums",
     }[function.__name__]
     return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
@@ -346,6 +347,24 @@ async def revit_ping(
     Connection failures and timeouts raise errors; no partial result is returned.
     """
     return await _execute(ReadJob.ping(), timeout_seconds, pickup_timeout_seconds, document)
+
+
+@addressed_tool
+async def revit_nwc_settings_check(
+    settings_xml: str,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Parse a Navisworks exporter XML file on the Revit workstation without exporting."""
+    return await _execute(
+        ReadJob(
+            "nwc-settings-check", {"command": "nwc-settings-check", "settingsXml": settings_xml}
+        ),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
 
 
 @addressed_tool

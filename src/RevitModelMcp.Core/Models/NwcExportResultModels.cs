@@ -36,4 +36,5 @@ public sealed class NwcOptionsResult
     [DataMember(Name = "divide_file_into_levels")] public bool DivideFileIntoLevels { get; set; }
     [DataMember(Name = "find_missing_materials")] public bool FindMissingMaterials { get; set; }
     [DataMember(Name = "faceting_factor")] public double FacetingFactor { get; set; }
+    [DataMember(Name = "sources")] public Dictionary<string, string> Sources { get; set; } = [];
 }
