@@ -709,6 +709,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIn("The add-in picked up jobId=", str(raised.exception))
+        self.assertIn("may still execute", str(raised.exception))
         self.assertIn("increase timeout_seconds", str(raised.exception))
 
     async def test_propagates_plugin_error_and_cleans_response(self) -> None:

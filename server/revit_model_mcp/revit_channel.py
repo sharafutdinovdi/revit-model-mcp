@@ -528,7 +528,7 @@ class RevitReadChannel:
                     + (
                         "The action may have executed. Inspect the model before retrying."
                         if job.command in ACTION_COMMANDS
-                        else "The command may need more time; increase timeout_seconds and retry."
+                        else "The job may still execute; find it with revit_jobs and increase timeout_seconds before retrying."
                     )
                 )
 
