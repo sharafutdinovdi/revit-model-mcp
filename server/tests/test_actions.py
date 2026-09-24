@@ -117,6 +117,27 @@ def test_document_action_mapping_and_confirmation_shape():
     assert execute.await_args.args[0].payload["worksetsOpen"] == ["A"]
 
 
+def test_document_action_response_paths_are_redacted_when_enabled():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.return_value = {
+        "success": True,
+        "data": {
+            "title": "Tower",
+            "path": r"C:\Models\Tower_local.rvt",
+            "centralPath": r"RSN://srv/AR/Tower.rvt",
+        },
+    }
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        result = asyncio.run(
+            server.call_tool("revit_close_document", {"document": "Tower", "confirm_token": "tok"})
+        )
+    data = result.structured_content["data"]
+    assert data["path"] == "Tower_local.rvt"
+    assert data["centralPath"] == "Tower.rvt"
+
+
 def test_nwc_export_defaults_and_options_reach_channel():
     import asyncio
 
