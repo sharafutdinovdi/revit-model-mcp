@@ -86,7 +86,11 @@ def endpoint():
                 if command == "export-view"
                 else "pong"
             )
-            return self.reply(200, {"command": command, "success": True, "data": data})
+            result = {"command": command, "success": True, "data": data}
+            return self.reply(
+                200,
+                {"jobId": "job-1", "state": "done", "position": 0, "result": result},
+            )
 
         do_GET = handle_request
         do_POST = handle_request
@@ -120,6 +124,9 @@ def test_job_round_trip(endpoint):
     assert result["data"] == "pong"
     assert state["payload"]["command"] == "ping"
     assert len(state["payload"]["correlationId"]) == 32
+    assert len(state["payload"]["jobId"]) == 32
+    assert len(state["payload"]["clientId"]) == 32
+    assert state["payload"]["clientName"] == "unknown"
     assert state["requests"] == [
         ("GET", "/health", None),
         ("GET", "/health", None),
@@ -129,7 +136,7 @@ def test_job_round_trip(endpoint):
 
 
 @pytest.mark.parametrize(
-    "status, message", [(401, "bearer token"), (409, "busy"), (403, "allow-write")]
+    "status, message", [(401, "bearer token"), (429, "queue is full"), (403, "allow-write")]
 )
 def test_http_errors(endpoint, status, message):
     host, state = endpoint

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import functools
+import inspect
 import json
 import logging
 import os
 import uuid
 from dataclasses import dataclass, replace
-from typing import Any, Protocol
+from typing import Any, Protocol, get_type_hints
+
+from mcp.server.mcpserver import Context
 
 from revit_model_mcp.universal_jobs import aggregate_payload, query_payload
 
@@ -17,6 +22,45 @@ DEFAULT_PICKUP_TIMEOUT_SECONDS = 300
 ACTIVATION_TASK = os.environ.get("REVIT_MCP_ACTIVATE_TASK", "")
 CHANNEL_DIRECTORY = "RevitModelMcp"
 TRIGGER_FILE = "trigger.txt"
+CLIENT_ID = uuid.uuid4().hex
+_client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "revit_client_name", default="unknown"
+)
+
+
+def with_client_identity(function):
+    signature = inspect.signature(function)
+    hints = get_type_hints(function, include_extras=True)
+
+    @functools.wraps(function)
+    async def wrapped(*args, ctx: Context | None = None, **kwargs):
+        try:
+            params = ctx.session.client_params if ctx is not None else None
+        except ValueError:
+            params = None
+        name = getattr(getattr(params, "client_info", None), "name", None)
+        token = _client_name.set(name or "unknown")
+        try:
+            return await function(*args, **kwargs)
+        finally:
+            _client_name.reset(token)
+
+    wrapped.__signature__ = signature.replace(
+        parameters=[
+            *(
+                parameter.replace(annotation=hints.get(parameter.name, parameter.annotation))
+                for parameter in signature.parameters.values()
+            ),
+            inspect.Parameter(
+                "ctx", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=Context
+            ),
+        ],
+        return_annotation=hints.get("return", signature.return_annotation),
+    )
+    wrapped.__annotations__ = {**hints, "ctx": Context}
+    return wrapped
+
+
 ACTION_COMMANDS = frozenset(
     {
         "select",
@@ -76,6 +120,13 @@ class ReadJob:
     @classmethod
     def ping(cls) -> ReadJob:
         return cls("ping", {"command": "ping"})
+
+    @classmethod
+    def jobs(cls, cancel_job_id: str | None = None) -> ReadJob:
+        payload = {"command": "jobs"}
+        if cancel_job_id is not None:
+            payload["cancelJobId"] = _required_text(cancel_job_id, "cancel_job_id")
+        return cls("jobs", payload)
 
     @classmethod
     def document_info(cls) -> ReadJob:
@@ -387,7 +438,17 @@ class RevitReadChannel:
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
         correlation_id = uuid.uuid4().hex
-        job = replace(job, payload={**job.payload, "correlationId": correlation_id})
+        job_id = uuid.uuid4().hex
+        job = replace(
+            job,
+            payload={
+                **job.payload,
+                "correlationId": correlation_id,
+                "jobId": job_id,
+                "clientId": CLIENT_ID,
+                "clientName": _client_name.get(),
+            },
+        )
         temporary_name = f"mcp_{correlation_id}.tmp"
         response_name: str | None = None
         job_prepared = False
@@ -409,7 +470,7 @@ class RevitReadChannel:
                 raise JobPickupTimeoutError(
                     f"Job was not picked up within {pickup.elapsed_seconds:.1f} s; "
                     f"Revit activation attempts: {pickup.activation_attempts}; "
-                    f"{TRIGGER_FILE} {trigger_state}. The job was not deleted and may still execute later."
+                    f"jobId={job_id}; job file {trigger_state}. The job was not deleted and may still execute later."
                 )
 
             loop = asyncio.get_running_loop()
@@ -463,7 +524,7 @@ class RevitReadChannel:
 
             if result is None:
                 raise ResponseTimeoutError(
-                    f"The add-in picked up the job, but no result for {job.command} appeared within {timeout_seconds} s. "
+                    f"The add-in picked up jobId={job_id}, but no result for {job.command} appeared within {timeout_seconds} s. "
                     + (
                         "The action may have executed. Inspect the model before retrying."
                         if job.command in ACTION_COMMANDS

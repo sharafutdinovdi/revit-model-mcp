@@ -98,12 +98,13 @@ All other routes require `Authorization: Bearer <token>`.
 | Request | Result |
 | --- | --- |
 | `GET /health` | `ok`, `revitVersion`, `documentName`, `processId`, `startedUtc`, `readOnly` |
-| `POST /jobs?timeout=120` | File-channel job JSON in the body; final response JSON with HTTP 200 |
-| `GET /jobs/{id}` | HTTP 202 while pending; final response with HTTP 200; HTTP 404 after expiry |
+| `POST /jobs?timeout=120` | Enqueue a job; return its state, position and ID |
+| `GET /jobs/{id}` | State and position with HTTP 202 while pending; state and result with HTTP 200; HTTP 404 after expiry |
+| `POST /jobs/{id}/cancel` | JSON body `{"clientId":"<server GUID>"}` cancels that client's queued job; running actions finish |
 | `GET /views/{name}/image?pixel=1600` | PNG bytes from the same view exporter used by `revit_export_view` |
 
 POST waits default to 120 seconds and accept 0-600 seconds.
-HTTP 202 contains `jobId`; it means the accepted job is still queued or executing.
+HTTP 202 contains `jobId`, `state` and `position`; it means the accepted job is still queued or executing.
 A timeout or client disconnect does not cancel a job.
 Results expire ten minutes after completion.
 Do not resubmit an action after a timeout without checking its result and the model.
@@ -111,10 +112,10 @@ The Python client submits once with `timeout=0`, then polls within `timeout_seco
 `pickup_timeout_seconds` applies only to file transports.
 
 HTTP 401 means the token is missing or invalid.
-HTTP 409 means another HTTP or file job owns the channel.
+HTTP 429 with `error:queue_full` means this client already has 16 queued jobs; `retryAfterMs` gives a retry hint.
 HTTP 403 rejects action jobs when the workstation `allow-write` gate is absent.
 MCP action tools also require `REVIT_MCP_ALLOW_WRITE=1` in the Python process.
-HTTP jobs use the existing ExternalEvent and share the file channel's single-job rule.
+HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
 Jobs are limited to 1 MiB.
 
 View names must be URL-encoded; `pixel` accepts 1-4000.
@@ -243,7 +244,7 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 | --- | --- |
 | `ROOT\instance_<pid>.json` | Shared discovery heartbeat |
 | `ROOT\instances\<pid>\mcp_<uuid>.tmp` | Job before atomic publication |
-| `ROOT\instances\<pid>\trigger.txt` | Published job awaiting pickup |
+| `ROOT\instances\<pid>\job_<jobId>.json` | Published job awaiting pickup; legacy `trigger.txt` is also accepted |
 | `ROOT\instances\<pid>\response_<timestamp>_<command>_<correlationId>.json` | Atomic correlated response |
 | `ROOT\instances\<pid>\view_*.png` | Exported view before download |
 | `ROOT\instances\<pid>\latest.json`, `latest.txt`, `snapshot_*.json`, `views_dump_*` | Legacy snapshot and view-dump output in the same instance directory |
@@ -264,16 +265,16 @@ For v2 the server performs a bounded ping handshake with a fresh `correlationId`
 It checks the response correlation, `responder.processId` and unchanged heartbeat `startedUtc` before submitting the requested job.
 The handshake has a 60-second budget, including the SSH connection limiter.
 `pluginResponding=true` for v2 means this handshake succeeded.
-Busy and timed-out instances remain in discovery with `pluginResponding=false`.
+Timed-out instances remain in discovery with `pluginResponding=false`.
 Processes without a fresh heartbeat remain visible with empty document fields when no document filter is supplied.
 The server rejects execution on an unconfirmed channel.
 
 The selected PID, startup identity and directory remain fixed through polling, JSON/PNG reads and cleanup.
 Publication checks that the selected process still exists and that its v2 heartbeat identity is current.
-Atomic publication does not overwrite an existing trigger.
+Atomic publication does not overwrite another job file.
 Cleanup affects only the selected directory and the current job's files.
-Two MCP clients targeting the same PID still contend for one channel.
-Reading inactive documents and cancelling accepted actions are outside this protocol.
+Two MCP clients targeting the same PID enqueue independently. Each server process supplies its own `clientId`.
+Reading inactive documents remains outside this protocol. Queued actions can be cancelled; running actions finish.
 
 ### File protocol compatibility
 
@@ -336,7 +337,7 @@ Local mode uses the same file operations and polling without the SSH connection 
 
 Set `REVIT_MCP_ACTIVATE_TASK` to the name of an existing Windows scheduled task that activates Revit.
 After 60 seconds without pickup the next check can invoke that task once.
-Activation only occurs if `trigger.txt` still exists.
+Activation only occurs if the current job file still exists.
 The server checks the task result and reports activation failure separately.
 The task is optional and is never created by the server.
 The default pickup timeout is 300 seconds, followed by a separate 120-second response timeout.

@@ -226,12 +226,19 @@ internal static class UniversalJobParser
 public sealed class ExternalEventRequestQueue
 {
     private readonly object _sync = new();
-    private readonly Action _raise;
+    private readonly Func<bool> _raise;
+    private readonly Action? _markWaiting;
     private bool _executing;
     private bool _requested; // A single flag preserves requests received during Execute.
+    private bool _retryScheduled;
     public ExternalEventRequestQueue(Action raise)
+        : this(() => { raise(); return true; }, null)
+    {
+    }
+    public ExternalEventRequestQueue(Func<bool> raise, Action? markWaiting = null)
     {
         _raise = raise ?? throw new ArgumentNullException(nameof(raise));
+        _markWaiting = markWaiting;
     }
     public void Request()
     {
@@ -249,6 +256,7 @@ public sealed class ExternalEventRequestQueue
         if (shouldRaise)
         {
             RaisePendingRequest();
+            MarkWaitingIfDelayed();
         }
     }
 
@@ -283,6 +291,7 @@ public sealed class ExternalEventRequestQueue
             if (shouldRaise)
             {
                 RaisePendingRequest();
+                MarkWaitingIfDelayed();
             }
         }
     }
@@ -291,7 +300,23 @@ public sealed class ExternalEventRequestQueue
     {
         try
         {
-            _raise();
+            if (!_raise())
+            {
+                lock (_sync)
+                {
+                    if (_retryScheduled) return;
+                    _retryScheduled = true;
+                }
+                _ = Task.Delay(100).ContinueWith(_ =>
+                {
+                    lock (_sync) _retryScheduled = false;
+                    lock (_sync)
+                    {
+                        if (!_requested || _executing) return;
+                    }
+                    RaisePendingRequest();
+                }, TaskScheduler.Default);
+            }
         }
         catch
         {
@@ -301,6 +326,19 @@ public sealed class ExternalEventRequestQueue
             }
             throw;
         }
+    }
+
+    private void MarkWaitingIfDelayed()
+    {
+        if (_markWaiting is null) return;
+        _ = Task.Delay(500).ContinueWith(_ =>
+        {
+            lock (_sync)
+            {
+                if (!_requested || _executing) return;
+            }
+            _markWaiting();
+        }, TaskScheduler.Default);
     }
 }
 
@@ -339,7 +377,7 @@ public sealed class TriggerFileWatcher : IDisposable
         var directory = Path.GetDirectoryName(_triggerFilePath)
                         ?? throw new InvalidOperationException("The trigger.txt file has no parent directory.");
         Directory.CreateDirectory(directory);
-        _watcher = new FileSystemWatcher(directory, Path.GetFileName(_triggerFilePath))
+        _watcher = new FileSystemWatcher(directory, "*")
         {
             NotifyFilter = NotifyFilters.FileName
         };
@@ -367,13 +405,21 @@ public sealed class TriggerFileWatcher : IDisposable
             _watcher = null;
         }
     }
-    private void OnTriggerAppeared(object sender, FileSystemEventArgs args) => RequestSafely();
-    private void OnTriggerRenamed(object sender, RenamedEventArgs args) => RequestSafely();
+    private void OnTriggerAppeared(object sender, FileSystemEventArgs args)
+    {
+        if (IsJobFile(args.Name)) RequestSafely();
+    }
+    private void OnTriggerRenamed(object sender, RenamedEventArgs args)
+    {
+        if (IsJobFile(args.Name)) RequestSafely();
+    }
+    private bool IsJobFile(string? name) => name == Path.GetFileName(_triggerFilePath) ||
+        name is not null && name.StartsWith("job_", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal);
     private void RequestIfTriggerExists()
     {
         try
         {
-            if (File.Exists(_triggerFilePath))
+            if (File.Exists(_triggerFilePath) || Directory.GetFiles(Path.GetDirectoryName(_triggerFilePath)!, "job_*.json").Length > 0)
             {
                 _request();
             }
