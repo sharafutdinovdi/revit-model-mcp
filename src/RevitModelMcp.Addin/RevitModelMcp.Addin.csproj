@@ -30,4 +30,8 @@
     <ProjectReference Include="..\RevitModelMcp.Core\RevitModelMcp.Core.csproj"/>
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="Resources\Icons\*.png"/>
+  </ItemGroup>
+
 </Project>

@@ -141,8 +141,10 @@ public sealed class Application : ExternalApplication
     private void RegisterActivityPane()
     {
         ActivityPaneProvider.Register(Application);
-        var panel = Application.CreatePanel("MCP", "RevitModelMcp");
+        var panel = Application.CreatePanel("MCP");
         panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton)
+            .SetImage("/RevitModelMcp;component/Resources/Icons/Activity16.png")
+            .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Activity32.png")
             .SetToolTip(PaneText.RibbonToolTip);
     }
 
