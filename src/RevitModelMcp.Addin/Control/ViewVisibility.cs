@@ -1,5 +1,6 @@
 using Autodesk.Revit.DB;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
 
 namespace RevitModelMcp.Control;
@@ -7,7 +8,7 @@ namespace RevitModelMcp.Control;
 internal static class ViewVisibility
 {
     public static ActionResultData Execute(Document document, ViewVisibilityOptions options, bool dryRun,
-        ActionCommandExecutor.ActionFailures failures)
+        ActionCommandExecutor.ActionFailures failures, string clientName)
     {
         var source = ReadCommandReader.FindView(document, options.View)
             ?? throw new ArgumentException($"View '{options.View}' was not found.");
@@ -98,10 +99,21 @@ internal static class ViewVisibility
             }
             result.ViewId = RevitValueReader.GetId(target.Id);
             result.ViewName = target.Name;
+            var humanSummary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "set-view-visibility", DocumentTitle = document.Title,
+                Count = result.Changes.Count, ViewName = result.ViewName, DryRun = dryRun
+            });
+            var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
+            if (!dryRun) transaction.SetName(groupName);
             var status = dryRun ? transaction.RollBack() : transaction.Commit();
             if (status != (dryRun ? TransactionStatus.RolledBack : TransactionStatus.Committed))
                 throw new InvalidOperationException(failures.Message ?? "Visibility transaction failed.");
-            return new ActionResultData { Visibility = result, DryRun = dryRun, RolledBack = dryRun, Committed = !dryRun };
+            return new ActionResultData
+            {
+                Visibility = result, DryRun = dryRun, RolledBack = dryRun, Committed = !dryRun,
+                Summary = humanSummary, UndoName = dryRun ? null : groupName
+            };
         }
         catch
         {

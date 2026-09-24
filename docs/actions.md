@@ -230,7 +230,7 @@ After a timeout, inspect the model before retrying an action; the previous call 
 
 For confirmation, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document and arguments. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
 
-These operations require no open transaction and cannot be included in `revit_batch`. Read-only mode applies.
+These operations require no open transaction and cannot be included in `revit_batch`. Read-only mode applies. A committed open, close, save or sync carries a `summary` and appears in the MCP activity pane, but opens no undo entry: use Revit's own history for these document-level changes.
 
 ### Undo the last action
 

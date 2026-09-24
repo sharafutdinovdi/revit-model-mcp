@@ -18,7 +18,7 @@ internal static class ActivityRecorder
             Time = DateTimeOffset.Now,
             ClientName = job.ClientName,
             Command = job.Command,
-            Document = document?.Title ?? string.Empty,
+            Document = document?.Title ?? data?.Title ?? string.Empty,
             Summary = data?.Summary ?? response.Message ?? response.Error ?? string.Empty,
             DryRun = data?.DryRun ?? false,
             UndoEntryName = data?.UndoName,

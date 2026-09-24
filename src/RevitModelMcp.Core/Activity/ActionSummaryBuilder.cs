@@ -47,6 +47,12 @@ public static class ActionSummaryBuilder
             "edit-families" => $"{(context.DryRun ? "Would edit" : "Edited")} {Plural(context.Count, "family")} in {doc}.",
             "align-link-datums" => $"{(context.DryRun ? "Would align" : "Aligned")} link datums in {doc}.",
             "undo-last" => $"Requested undo of the last MCP action in {doc}.",
+            "open-document" => $"Opened '{doc}'{OpenedAsLabel(context.OpenedAs)}.",
+            "close-document" => context.Saved ? $"Saved and closed '{doc}'." : $"Closed '{doc}'.",
+            "save-document" => context.TargetPath is null ? $"Saved '{doc}'." : $"Saved '{doc}' as {context.TargetPath}.",
+            "sync-document" => $"Synchronized '{doc}' with its central model.",
+            "set-view-visibility" => $"{(context.DryRun ? "Would change" : "Changed")} {Plural(context.Count, "visibility setting")} on view '{context.ViewName}' in {doc}.",
+            "remove-links" => $"{(context.DryRun ? "Would remove" : "Removed")} {Plural(context.Count, "link")} in {doc}.",
             _ => $"Ran {context.Command} in {doc}."
         };
     }
@@ -72,6 +78,8 @@ public static class ActionSummaryBuilder
         string.IsNullOrWhiteSpace(context.TypeName) ? context.Family ?? "a family instance" : $"{context.Family}: {context.TypeName}";
 
     private static string WallTypeLabel(string? wallType) => string.IsNullOrWhiteSpace(wallType) ? "" : $" {wallType}";
+
+    private static string OpenedAsLabel(string? openedAs) => string.IsNullOrWhiteSpace(openedAs) ? "" : $" ({openedAs})";
 
     private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {PluralNoun(noun)}";
 

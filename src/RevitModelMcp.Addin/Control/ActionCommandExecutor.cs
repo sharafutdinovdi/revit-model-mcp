@@ -59,10 +59,13 @@ internal static class ActionCommandExecutor
                 var documentAction = job.Action ?? throw new ArgumentException("Missing document arguments.");
                 documentAction.Document ??= job.TargetDocument;
                 var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
+                documentResult.Summary = BuildDocumentSummary(job.Command, documentAction, documentResult);
                 response = CommandResponse<ActionResultData>.Ok(job.Command, documentResult, stopwatch.ElapsedMilliseconds);
                 response.DialogsSuppressed = dialogsSuppressed;
                 response.WarningsDismissed = openWarningsDismissed;
                 response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
+                if (documentResult.NeedsConfirmation != true)
+                    ActivityRecorder.RecordAction(job, null, documentResult, response);
                 CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                     ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
                 return;
@@ -209,9 +212,9 @@ internal static class ActionCommandExecutor
         if (command == "align-link-datums")
             return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures, clientName);
         if (command == "set-view-visibility")
-            return ViewVisibility.Execute(document, action.Visibility!, action.DryRun, failures);
+            return ViewVisibility.Execute(document, action.Visibility!, action.DryRun, failures, clientName);
         if (command == "remove-links")
-            return LinkRemoval.Execute(document, action.LinkRemoval!, action.DryRun, failures);
+            return LinkRemoval.Execute(document, action.LinkRemoval!, action.DryRun, failures, clientName);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
@@ -341,6 +344,19 @@ internal static class ActionCommandExecutor
             Parameter = action.Parameter,
             WallType = action.WallType,
             BatchStepCount = action.Steps.Count
+        });
+    }
+
+    private static string BuildDocumentSummary(string command, ActionJobContract action, ActionResultData data)
+    {
+        var title = data.Title ?? action.Document ?? "the document";
+        return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = command,
+            DocumentTitle = title,
+            OpenedAs = data.OpenedAs,
+            Saved = data.Saved == true,
+            TargetPath = command == "save-document" ? action.SaveAs : null
         });
     }
 
