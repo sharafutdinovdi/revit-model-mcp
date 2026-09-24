@@ -122,6 +122,10 @@ Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstatio
 
 ### NWC export
 
+- [ ] Export a real XML from Navisworks Settings on the owner’s workstation. Compare `nwexportrevit_element_params:0|1|2`, `nwexportrevit_section_extract:0|1|2` and `nwexportrevit_coordinates:0|1` against the displayed settings; correct the three mapping arrays in `NwcSettingsXml` if the order differs.
+- [ ] Run `revit_nwc_settings_check` with that XML. Confirm mapped values, `notApplied` for the four API-unsupported options, and `ignored` for unknown IDs. Confirm no NWC is created.
+- [ ] Run `revit_export_nwc` with `settings_xml` and `dry_run=true`, then override one XML value explicitly. Confirm `options.sources` reports `xml` and `argument` respectively and that unspecified values report `default`.
+
 - [ ] Remove or disable the year-matched Navisworks NWC exporter, or reproduce an exporter startup failure. `revit_export_nwc` reports `Navisworks exporter is not available in Revit <year> on this workstation (not installed or failed to load at startup).`
 - [ ] With the exporter installed, run `dry_run=true` with a new absolute `.nwc` path. Check all effective options and `exporterAvailable:true`; confirm no file is created.
 - [ ] Export the full model with `coordinates="shared"`. Open it in Navisworks and verify alignment with an NWC of a linked model exported the same way.

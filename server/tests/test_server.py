@@ -39,6 +39,7 @@ EXPECTED_TOOLS = {
     "revit_list_instances",
     "revit_family_audit",
     "revit_compare_link_datums",
+    "revit_nwc_settings_check",
 }
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
@@ -122,6 +123,12 @@ EXPECTED_PARAMETERS = {
     ],
     "revit_list_instances": ["document"],
     "revit_family_audit": ["families", "response_timeout_s", "document"],
+    "revit_nwc_settings_check": [
+        "settings_xml",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
 }
 
 
@@ -148,6 +155,16 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(job.payload["targetDocument"], "Model")
         self.assertEqual(response_timeout, 600)
         self.assertEqual(pickup_timeout, 300)
+
+    async def test_nwc_settings_check_routes_as_read(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool(
+                "revit_nwc_settings_check", {"settings_xml": "C:\\x\\settings.xml"}
+            )
+        job, _, _ = channel.calls[0]
+        self.assertEqual(job.command, "nwc-settings-check")
+        self.assertEqual(job.payload["settingsXml"], "C:\\x\\settings.xml")
 
     def test_server_version_matches_package_metadata(self) -> None:
         self.assertEqual(revit_server.mcp.version, package_version())

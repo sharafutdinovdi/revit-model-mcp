@@ -46,7 +46,8 @@ public static class ActionJobParser
                 Value = job.Value,
                 Nwc = new NwcExportJob
                 {
-                    Path = job.Path ?? string.Empty, Scope = job.Scope ?? "model", View = job.View,
+                    Path = job.Path ?? string.Empty, SettingsXml = job.SettingsXml, Scope = job.Scope ?? "model", View = job.View,
+                    ExplicitOptions = NwcExportJob.GetExplicitOptions(job),
                     Coordinates = job.Coordinates ?? "shared", Parameters = job.NwcParameters ?? "all",
                     ExportElementIds = job.ExportElementIds ?? true,
                     ConvertElementProperties = job.ConvertElementProperties ?? false,
@@ -169,8 +170,8 @@ public static class ActionJobParser
                 Require(export.Parameters is "all" or "elements" or "none", "parameters must be all, elements or none.");
                 Require(Finite(export.FacetingFactor) && export.FacetingFactor is > 0 and <= 100,
                     "facetingFactor must be greater than 0 and at most 100.");
-                Require(export.Scope != "view" || !string.IsNullOrWhiteSpace(export.View), "view is required for scope=view.");
-                Require(export.Scope != "selection" || action.ElementIds.Count > 0, "elementIds must be non-empty for scope=selection.");
+                Require(export.SettingsXml is not null || export.Scope != "view" || !string.IsNullOrWhiteSpace(export.View), "view is required for scope=view.");
+                Require(export.SettingsXml is not null || export.Scope != "selection" || action.ElementIds.Count > 0, "elementIds must be non-empty for scope=selection.");
                 Require(export.Scope != "selection" || action.ElementIds.All(id => id > 0), "Element IDs must be positive.");
             }
             var result = ControlJobParseResult.Create(ControlJobKind.Action, command);
@@ -286,6 +287,28 @@ public sealed class ActionJobContract
 public sealed class NwcExportJob
 {
     public string Path { get; set; } = string.Empty;
+    public string? SettingsXml { get; set; }
+    public HashSet<string> ExplicitOptions { get; set; } = [];
+    public static HashSet<string> GetExplicitOptions(ControlJobContract job)
+    {
+        var options = new HashSet<string>(StringComparer.Ordinal);
+        if (job.Scope is not null) options.Add("scope");
+        if (job.Coordinates is not null) options.Add("coordinates");
+        if (job.NwcParameters is not null) options.Add("parameters");
+        if (job.ExportElementIds.HasValue) options.Add("export_element_ids");
+        if (job.ConvertElementProperties.HasValue) options.Add("convert_element_properties");
+        if (job.ExportParts.HasValue) options.Add("export_parts");
+        if (job.ExportRoomAsAttribute.HasValue) options.Add("export_room_as_attribute");
+        if (job.ExportRoomGeometry.HasValue) options.Add("export_room_geometry");
+        if (job.ConvertLights.HasValue) options.Add("convert_lights");
+        if (job.ConvertLinkedCadFormats.HasValue) options.Add("convert_linked_cad_formats");
+        if (job.ExportLinks.HasValue) options.Add("export_links");
+        if (job.ExportUrls.HasValue) options.Add("export_urls");
+        if (job.DivideFileIntoLevels.HasValue) options.Add("divide_file_into_levels");
+        if (job.FindMissingMaterials.HasValue) options.Add("find_missing_materials");
+        if (job.FacetingFactor.HasValue) options.Add("faceting_factor");
+        return options;
+    }
     public string Scope { get; set; } = "model";
     public string? View { get; set; }
     public string Coordinates { get; set; } = "shared";
@@ -326,6 +349,7 @@ public sealed class LinkDatumJobOptions
 public sealed partial class ControlJobContract
 {
     [DataMember(Name = "path")] public string? Path { get; set; }
+    [DataMember(Name = "settingsXml")] public string? SettingsXml { get; set; }
     [DataMember(Name = "scope")] public string? Scope { get; set; }
     [DataMember(Name = "coordinates")] public string? Coordinates { get; set; }
     [DataMember(Name = "exportElementIds")] public bool? ExportElementIds { get; set; }

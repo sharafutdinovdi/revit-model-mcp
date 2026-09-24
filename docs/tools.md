@@ -12,6 +12,7 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
 | `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
+| `revit_nwc_settings_check` | `settings_xml` | Parse exporter XML on the Revit workstation without exporting; return values, mapping, notApplied and ignored. |
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields; return counts and optional sum/average. |

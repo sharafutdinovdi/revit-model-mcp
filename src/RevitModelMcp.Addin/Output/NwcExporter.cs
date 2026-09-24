@@ -21,6 +21,34 @@ internal static class NwcExporter
 
         var job = action.Nwc;
         NwcPathValidator.Validate(job.Path);
+        var xmlValues = job.SettingsXml is null
+            ? new Dictionary<string, object>()
+            : new Dictionary<string, object>(NwcSettingsXml.ReadFile(job.SettingsXml).Values);
+        foreach (var (key, value) in xmlValues)
+        {
+            if (job.ExplicitOptions.Contains(key)) continue;
+            switch (key)
+            {
+                case "scope": job.Scope = (string)value; break;
+                case "coordinates": job.Coordinates = (string)value; break;
+                case "parameters": job.Parameters = (string)value; break;
+                case "export_element_ids": job.ExportElementIds = (bool)value; break;
+                case "convert_element_properties": job.ConvertElementProperties = (bool)value; break;
+                case "export_parts": job.ExportParts = (bool)value; break;
+                case "export_room_as_attribute": job.ExportRoomAsAttribute = (bool)value; break;
+                case "export_room_geometry": job.ExportRoomGeometry = (bool)value; break;
+                case "convert_lights": job.ConvertLights = (bool)value; break;
+                case "convert_linked_cad_formats": job.ConvertLinkedCadFormats = (bool)value; break;
+                case "export_links": job.ExportLinks = (bool)value; break;
+                case "export_urls": job.ExportUrls = (bool)value; break;
+                case "divide_file_into_levels": job.DivideFileIntoLevels = (bool)value; break;
+                case "find_missing_materials": job.FindMissingMaterials = (bool)value; break;
+                case "faceting_factor": job.FacetingFactor = Convert.ToDouble(value); break;
+            }
+        }
+        if (job.Scope is not ("model" or "view" or "selection")) throw new ArgumentException("Invalid NWC scope.");
+        if (job.Scope == "selection" && action.ElementIds.Count == 0) throw new ArgumentException("elementIds must be non-empty for scope=selection.");
+        if (job.FacetingFactor is <= 0 or > 100 || double.IsNaN(job.FacetingFactor) || double.IsInfinity(job.FacetingFactor)) throw new ArgumentException("facetingFactor must be greater than 0 and at most 100.");
         var folder = Path.GetDirectoryName(job.Path)!;
         if (!Directory.Exists(folder)) throw new ArgumentException("path parent directory does not exist.");
         var targetExists = File.Exists(job.Path);
@@ -67,7 +95,14 @@ internal static class NwcExporter
                 ExportRoomGeometry = job.ExportRoomGeometry, ConvertLights = job.ConvertLights,
                 ConvertLinkedCadFormats = job.ConvertLinkedCadFormats, ExportLinks = job.ExportLinks,
                 ExportUrls = job.ExportUrls, DivideFileIntoLevels = job.DivideFileIntoLevels,
-                FindMissingMaterials = job.FindMissingMaterials, FacetingFactor = job.FacetingFactor
+                FindMissingMaterials = job.FindMissingMaterials, FacetingFactor = job.FacetingFactor,
+                Sources = new[] { "scope", "view", "element_ids", "coordinates", "parameters", "export_element_ids",
+                    "convert_element_properties", "export_parts", "export_room_as_attribute", "export_room_geometry",
+                    "convert_lights", "convert_linked_cad_formats", "export_links", "export_urls",
+                    "divide_file_into_levels", "find_missing_materials", "faceting_factor" }
+                    .ToDictionary(key => key, key => key == "view" ? (job.View is null ? "default" : "argument")
+                        : key == "element_ids" ? (action.ElementIds.Count == 0 ? "default" : "argument")
+                        : job.ExplicitOptions.Contains(key) ? "argument" : xmlValues.ContainsKey(key) ? "xml" : "default")
             },
             Overwritten = false
         };
