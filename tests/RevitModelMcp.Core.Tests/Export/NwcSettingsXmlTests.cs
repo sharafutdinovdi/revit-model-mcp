@@ -73,4 +73,14 @@ public sealed class NwcSettingsXmlTests
         const string xml = "<!DOCTYPE optionset [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><optionset>&x;</optionset>";
         await Assert.That(() => NwcSettingsXml.Parse(xml)).Throws<System.Xml.XmlException>();
     }
+
+    [Test]
+    public async Task ReadFile_RejectsDevicePathTraversalAndNonXmlExtension()
+    {
+        await Assert.That(() => NwcSettingsXml.ReadFile(@"\\?\C:\settings.xml")).Throws<ArgumentException>();
+        await Assert.That(() => NwcSettingsXml.ReadFile(@"\\.\C:\settings.xml")).Throws<ArgumentException>();
+        await Assert.That(() => NwcSettingsXml.ReadFile(@"C:\a\..\settings.xml")).Throws<ArgumentException>();
+        await Assert.That(() => NwcSettingsXml.ReadFile("settings.xml")).Throws<ArgumentException>();
+        await Assert.That(() => NwcSettingsXml.ReadFile(@"C:\x\settings.txt")).Throws<ArgumentException>();
+    }
 }
