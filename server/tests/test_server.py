@@ -27,6 +27,7 @@ EXPECTED_TOOLS = {
     "revit_document_info",
     "revit_list_views",
     "revit_view_summary",
+    "revit_view_info",
     "revit_export_view",
     "revit_view_elements",
     "revit_element_details",
@@ -88,6 +89,7 @@ EXPECTED_PARAMETERS = {
         "document",
     ],
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_view_info": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_export_view": ["view", "pixel_size", "save_to", "document"],
     "revit_view_elements": [
         "view",
@@ -135,6 +137,17 @@ class RecordingChannel:
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_view_info_maps_view_and_document(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool(
+                "revit_view_info", {"view": "3D NWC", "document": "Model"}
+            )
+        job, _, _ = channel.calls[0]
+        self.assertEqual(job.command, "view-info")
+        self.assertEqual(job.payload["view"], "3D NWC")
+        self.assertEqual(job.payload["targetDocument"], "Model")
+
     async def test_family_audit_is_read_only_and_uses_response_budget(self) -> None:
         channel = RecordingChannel()
         with patch.object(revit_server, "channel", channel):

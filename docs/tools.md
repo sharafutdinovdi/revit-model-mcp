@@ -18,6 +18,7 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
+| `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
 | `revit_export_view` | `view`, `pixel_size=1600`, `save_to=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
 | `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID. |
@@ -34,6 +35,8 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 
 `link` accepts one linked instance ID or a case-insensitive substring of its instance or type name; ambiguous and unloaded links fail. Comparison transforms link geometry into host coordinates and reports `aligned`, `differs`, `missing_in_host`, `host_only` or `unsupported`. A same-name host datum matches first; a coincident differently named datum may match by geometry. Distances are millimetres and angles are degrees.
 Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
+
+`revit_view_info` returns `id`, `name`, `type`, `isTemplate`, `template` with controlled parameter names, detail level, display style, discipline, phase and phase filter, scale, crop and 3D section box in millimetres. It also returns the background type and colours where supported, category class toggles, individually hidden categories, filter visibility and enabled flags, Revit link visibility, and active temporary mode flags. `worksets` is null outside workshared documents. Link graphic overrides are inspected on Revit 2024 and later; earlier versions report instance and category hiding.
 
 ### Family audit
 

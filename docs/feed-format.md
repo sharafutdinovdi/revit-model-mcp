@@ -48,6 +48,11 @@ An HTTP endpoint also rejects jobs addressed to another process.
 | `start_mm`, `end_mm`, `wall_type`, `height_mm`, `rotation_deg` | `startMm`, `endMm`, `wallType`, `heightMm`, `rotationDeg` |
 | `name_map`, `level_offset_mm`, `reuse_matching`, `tolerance_mm` | `nameMap`, `levelOffsetMm`, `reuseMatching`, `toleranceMm` |
 | `create_missing`, `level_type`, `grid_type`, `include_pinned`, `create_plan_views`, `plan_view_type` | `createMissing`, `levelType`, `gridType`, `includePinned`, `createPlanViews`, `planViewType` |
+| `hide_categories`, `show_categories`, `category_classes`, `hide_categories_by_type` | `hideCategories`, `showCategories`, `categoryClasses`, `hideCategoriesByType` |
+| `worksets`, `filters`, `template_mode` | `worksets:{hideMask,showMask}`, `filters`, `templateMode` |
+| `links`, `kinds`, `include_imported_cad` | `links` (always a list), `kinds`, `includeImportedCad` |
+
+The new command names are `view-info`, `set-view-visibility` and `remove-links`. The last two are action commands and require both write gates. View visibility action responses include `data.visibility` with `changes` (`setting`, `before`, `after`), `categoryFailures`, `matchedWorksets` and `affectedViews`. Link removal responses include `data.linkRemoval.removed` records with type ID, name, kind and instance count, plus an optional warning.
 
 `compare-link-datums` is a read job; `align-link-datums` is an action job. Their `data.items` use `aligned`, `differs` or `moved`, `missing_in_host` or `created`, `host_only`, `unsupported`, and action-only `skipped`. Distances are rounded to 0.1 mm and angles to 0.001 degrees. `data.summary` counts aligned, moved, created, host-only, unsupported and skipped items.
 

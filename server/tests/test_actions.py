@@ -29,6 +29,8 @@ ACTION_TOOLS = {
     "revit_export_nwc",
     "revit_edit_families",
     "revit_align_link_datums",
+    "revit_set_view_visibility",
+    "revit_remove_links",
 }
 
 
@@ -72,6 +74,46 @@ def action_server():
     with patch.dict(os.environ, {"REVIT_MCP_ALLOW_WRITE": "1"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_view_visibility_and_link_removal_argument_mapping():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_set_view_visibility",
+            {
+                "view": "NWC 3D",
+                "hide_categories_by_type": ["annotation"],
+                "worksets": {"hide_mask": ["HVAC*"], "show_mask": []},
+                "template_mode": "duplicate_view",
+                "dry_run": True,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "set-view-visibility"
+    assert payload["hideCategoriesByType"] == ["annotation"]
+    assert payload["worksets"] == {"hideMask": ["HVAC*"], "showMask": []}
+    assert payload["templateMode"] == "duplicate_view"
+    assert payload["dryRun"] is True
+
+    asyncio.run(
+        server.call_tool(
+            "revit_remove_links",
+            {
+                "links": "*",
+                "kinds": ["revit", "image"],
+                "include_imported_cad": True,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "remove-links"
+    assert payload["links"] == ["*"]
+    assert payload["kinds"] == ["revit", "image"]
+    assert payload["includeImportedCad"] is True
 
 
 def test_nwc_export_defaults_and_options_reach_channel():

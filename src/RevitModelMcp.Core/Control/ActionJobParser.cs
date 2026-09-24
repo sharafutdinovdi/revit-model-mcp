@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using System.Text.RegularExpressions;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 
@@ -16,7 +17,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "set-view-visibility" or "remove-links";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -65,6 +66,8 @@ public static class ActionJobParser
                 OverwriteParameterValues = job.OverwriteParameterValues ?? false,
                 StopOnError = job.StopOnError ?? true
             };
+            if (command == "set-view-visibility") action.Visibility = ParseVisibility(job);
+            if (command == "remove-links") action.LinkRemoval = ParseLinkRemoval(job);
             if (command == "align-link-datums")
                 action.DatumOptions = ParseDatumOptions(job);
             if (command == "batch")
@@ -216,6 +219,41 @@ public static class ActionJobParser
 
     private static bool Finite(params double[] values) => values.All(value => !double.IsNaN(value) && !double.IsInfinity(value));
 
+    public static ViewVisibilityOptions ParseVisibility(ControlJobContract job)
+    {
+        Require(!string.IsNullOrWhiteSpace(job.View), "view is required.");
+        Require(job.TemplateMode is null or "detach" or "edit_template" or "duplicate_view", "templateMode must be detach, edit_template or duplicate_view.");
+        var classes = job.CategoryClasses ?? [];
+        Require(classes.Keys.All(key => key is "model" or "annotation" or "analytical" or "import" or "point_clouds"), "Unknown category class.");
+        var types = job.HideCategoriesByType ?? [];
+        Require(types.All(type => type is "model" or "annotation" or "analytical" or "import" or "point_clouds"), "Unknown category type.");
+        Require((job.HideCategories ?? []).All(name => !string.IsNullOrWhiteSpace(name)) &&
+                (job.ShowCategories ?? []).All(name => !string.IsNullOrWhiteSpace(name)), "Category names must not be blank.");
+        Require((job.Filters ?? []).All(filter => !string.IsNullOrWhiteSpace(filter.Name)), "Filter names must not be blank.");
+        var hideMasks = job.Worksets?.HideMask ?? [];
+        var showMasks = job.Worksets?.ShowMask ?? [];
+        foreach (var mask in hideMasks.Concat(showMasks)) WorksetMask.Validate(mask);
+        Require((job.HideCategories?.Count ?? 0) + (job.ShowCategories?.Count ?? 0) + classes.Count + types.Count +
+                hideMasks.Count + showMasks.Count + (job.Filters?.Count ?? 0) > 0, "At least one visibility change is required.");
+        return new ViewVisibilityOptions
+        {
+            View = job.View!.Trim(), HideCategories = job.HideCategories ?? [], ShowCategories = job.ShowCategories ?? [],
+            CategoryClasses = classes, HideCategoriesByType = types, Worksets = job.Worksets ?? new(),
+            Filters = job.Filters ?? [], TemplateMode = job.TemplateMode
+        };
+    }
+
+    public static LinkRemovalOptions ParseLinkRemoval(ControlJobContract job)
+    {
+        var links = job.Links ?? [];
+        Require(links.Count > 0 && links.All(link => !string.IsNullOrWhiteSpace(link)), "links must contain names, IDs or '*'.");
+        Require(!links.Contains("*") || links.Count == 1, "The '*' link selector must be alone.");
+        var kinds = job.Kinds ?? ["revit", "cad", "point_cloud"];
+        Require(kinds.Count > 0 && kinds.All(kind => kind is "revit" or "cad" or "point_cloud" or "image") &&
+                kinds.Distinct().Count() == kinds.Count, "kinds must contain unique revit, cad, point_cloud or image values.");
+        return new LinkRemovalOptions { Links = links, Kinds = kinds, IncludeImportedCad = job.IncludeImportedCad ?? false };
+    }
+
     public static LinkDatumJobOptions ParseDatumOptions(ControlJobContract job)
     {
         Require(!string.IsNullOrWhiteSpace(job.Link), "link is required.");
@@ -254,6 +292,8 @@ public static class ActionJobParser
 
 public sealed class ActionJobContract
 {
+    public ViewVisibilityOptions? Visibility { get; set; }
+    public LinkRemovalOptions? LinkRemoval { get; set; }
     public NwcExportJob Nwc { get; set; } = new();
     public LinkDatumJobOptions? DatumOptions { get; set; }
     public bool DryRun { get; set; }
@@ -323,8 +363,116 @@ public sealed class LinkDatumJobOptions
     public string? PlanViewType { get; set; }
 }
 
+[DataContract]
+public sealed class WorksetMasks
+{
+    [DataMember(Name = "hideMask")] public List<string> HideMask { get; set; } = [];
+    [DataMember(Name = "showMask")] public List<string> ShowMask { get; set; } = [];
+}
+
+[DataContract]
+public sealed class VisibilityFilterOption
+{
+    [DataMember(Name = "name")] public string Name { get; set; } = "";
+    [DataMember(Name = "visible")] public bool Visible { get; set; }
+}
+
+public sealed class ViewVisibilityOptions
+{
+    public string View { get; set; } = "";
+    public List<string> HideCategories { get; set; } = [];
+    public List<string> ShowCategories { get; set; } = [];
+    public Dictionary<string, bool> CategoryClasses { get; set; } = [];
+    public List<string> HideCategoriesByType { get; set; } = [];
+    public WorksetMasks Worksets { get; set; } = new();
+    public List<VisibilityFilterOption> Filters { get; set; } = [];
+    public string? TemplateMode { get; set; }
+}
+
+public sealed class LinkRemovalOptions
+{
+    public List<string> Links { get; set; } = [];
+    public List<string> Kinds { get; set; } = ["revit", "cad", "point_cloud"];
+    public bool IncludeImportedCad { get; set; }
+}
+
+public static class WorksetMask
+{
+    public static void Validate(string mask)
+    {
+        if (string.IsNullOrWhiteSpace(mask)) throw new ArgumentException("Workset mask must not be blank.");
+        if (mask.StartsWith("regex:", StringComparison.OrdinalIgnoreCase))
+        {
+            try { _ = new Regex(mask.Substring(6), RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200)); }
+            catch (ArgumentException exception) { throw new ArgumentException($"Invalid workset regex: {exception.Message}"); }
+        }
+    }
+
+    public static bool Matches(string name, string mask)
+    {
+        Validate(mask);
+        var pattern = mask.StartsWith("regex:", StringComparison.OrdinalIgnoreCase)
+            ? mask.Substring(6) : "^" + Regex.Escape(mask).Replace(@"\*", ".*").Replace(@"\?", ".") + "$";
+        return Regex.IsMatch(name, pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(200));
+    }
+}
+
+public static class CategoryTypeExpansion
+{
+    public static List<string> Expand(IEnumerable<string> requestedTypes, IEnumerable<(string Name, string Type)> categories)
+    {
+        var types = requestedTypes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return categories.Where(category => types.Contains(category.Type))
+            .Select(category => category.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+}
+
+[DataContract]
+public sealed class VisibilityChange
+{
+    [DataMember(Name = "setting")] public string Setting { get; set; } = "";
+    [DataMember(Name = "before")] public string Before { get; set; } = "";
+    [DataMember(Name = "after")] public string After { get; set; } = "";
+}
+
+[DataContract]
+public sealed class ViewVisibilityResult
+{
+    [DataMember(Name = "viewId")] public long ViewId { get; set; }
+    [DataMember(Name = "viewName")] public string ViewName { get; set; } = "";
+    [DataMember(Name = "changes")] public List<VisibilityChange> Changes { get; set; } = [];
+    [DataMember(Name = "categoryFailures")] public List<string> CategoryFailures { get; set; } = [];
+    [DataMember(Name = "matchedWorksets")] public List<string> MatchedWorksets { get; set; } = [];
+    [DataMember(Name = "affectedViews")] public List<string> AffectedViews { get; set; } = [];
+}
+
+[DataContract]
+public sealed class RemovedLink
+{
+    [DataMember(Name = "id")] public long Id { get; set; }
+    [DataMember(Name = "name")] public string Name { get; set; } = "";
+    [DataMember(Name = "kind")] public string Kind { get; set; } = "";
+    [DataMember(Name = "instanceCount")] public int InstanceCount { get; set; }
+}
+
+[DataContract]
+public sealed class LinkRemovalResult
+{
+    [DataMember(Name = "removed")] public List<RemovedLink> Removed { get; set; } = [];
+    [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
+}
+
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "hideCategories")] public List<string>? HideCategories { get; set; }
+    [DataMember(Name = "showCategories")] public List<string>? ShowCategories { get; set; }
+    [DataMember(Name = "categoryClasses")] public Dictionary<string, bool>? CategoryClasses { get; set; }
+    [DataMember(Name = "hideCategoriesByType")] public List<string>? HideCategoriesByType { get; set; }
+    [DataMember(Name = "worksets")] public WorksetMasks? Worksets { get; set; }
+    [DataMember(Name = "filters")] public List<VisibilityFilterOption>? Filters { get; set; }
+    [DataMember(Name = "templateMode")] public string? TemplateMode { get; set; }
+    [DataMember(Name = "links")] public List<string>? Links { get; set; }
+    [DataMember(Name = "includeImportedCad")] public bool? IncludeImportedCad { get; set; }
     [DataMember(Name = "path")] public string? Path { get; set; }
     [DataMember(Name = "scope")] public string? Scope { get; set; }
     [DataMember(Name = "coordinates")] public string? Coordinates { get; set; }
@@ -407,6 +555,8 @@ public sealed class SharedParameterSpec
 [DataContract]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "visibility", EmitDefaultValue = false)] public ViewVisibilityResult? Visibility { get; set; }
+    [DataMember(Name = "linkRemoval", EmitDefaultValue = false)] public LinkRemovalResult? LinkRemoval { get; set; }
     [DataMember(Name = "path", EmitDefaultValue = false)] public string? Path { get; set; }
     [DataMember(Name = "bytes", EmitDefaultValue = false)] public long? Bytes { get; set; }
     [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }
