@@ -450,4 +450,15 @@ public sealed class ActionJobParserTests
         await Assert.That(ControlJobParser.Parse("""{"command":"remove-links","links":["*"],"kinds":["unknown"]}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
     }
+
+    [Test]
+    public async Task Parse_BatchRejectsViewVisibilityAndLinkRemovalSteps()
+    {
+        var visibilityBatch = ControlJobParser.Parse(
+            """{"command":"batch","steps":[{"command":"set-view-visibility","view":"3D","categoryClasses":{"model":true}}]}""");
+        await Assert.That(visibilityBatch.Kind).IsEqualTo(ControlJobKind.Invalid);
+        var linkRemovalBatch = ControlJobParser.Parse(
+            """{"command":"batch","steps":[{"command":"remove-links","links":["*"]}]}""");
+        await Assert.That(linkRemovalBatch.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
 }

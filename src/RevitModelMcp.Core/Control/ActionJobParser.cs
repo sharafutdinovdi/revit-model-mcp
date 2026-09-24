@@ -76,7 +76,7 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc" or "edit-families" or "family-audit" or "align-link-datums"),
+                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc" or "edit-families" or "family-audit" or "align-link-datums" or "set-view-visibility" or "remove-links"),
                         "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
