@@ -209,13 +209,13 @@ internal static class QueryFilterBuilder
         return result;
     }
 
-    private static string? GetBuiltInCategoryName(Category category)
+    internal static string? GetBuiltInCategoryName(Category category)
     {
         var builtInCategory = GetBuiltInCategory(category);
         return builtInCategory?.ToString();
     }
 
-    private static IEnumerable<string> GetRevitCategoryNames(Category category)
+    internal static IEnumerable<string> GetRevitCategoryNames(Category category)
     {
         yield return category.Name;
         var builtInCategory = GetBuiltInCategory(category);

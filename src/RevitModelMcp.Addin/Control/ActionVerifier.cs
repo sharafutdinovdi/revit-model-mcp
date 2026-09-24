@@ -60,7 +60,7 @@ internal static class ActionVerifier
     private static ActionFacts ParameterFacts(Document targetDocument, ActionJobContract action)
     {
         var element = RequiredElement(targetDocument, action.ElementId);
-        var parameter = element.FindParameter(action.Parameter!)
+        var parameter = ActionMutations.ResolveParameter(element, action.Parameter!)
                         ?? throw new ArgumentException($"Parameter '{action.Parameter}' was not found on the instance or type.");
         return new ActionFacts
         {

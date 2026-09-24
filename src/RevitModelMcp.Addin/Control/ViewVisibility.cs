@@ -2,6 +2,7 @@ using Autodesk.Revit.DB;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Naming;
 
 namespace RevitModelMcp.Control;
 
@@ -20,7 +21,8 @@ internal static class ViewVisibility
         foreach (var reference in requested)
         {
             if (ResolveCategory(reference, categories) is not null) continue;
-            var matches = ActionJobParser.ClosestFamilyNames(reference, categories.Select(category => category.Name));
+            var matches = ActionJobParser.ClosestFamilyNames(reference, categories.SelectMany(category =>
+                CategoryNames.Forms(QueryFilterBuilder.GetRevitCategoryNames(category), QueryFilterBuilder.GetBuiltInCategoryName(category))));
             throw new ArgumentException(matches.Count == 0
                 ? $"Unknown category '{reference}'."
                 : $"Unknown category '{reference}'. Close matches: {string.Join(", ", matches)}.");
@@ -147,9 +149,12 @@ internal static class ViewVisibility
         Record(result, $"categories.{category.Name}", before.ToString(), hidden.ToString());
     }
 
+    /// <summary>Resolves a category by ID, localized name, <c>BuiltInCategory</c> name or English label.</summary>
     private static Category? ResolveCategory(string reference, List<Category> categories) =>
-        categories.FirstOrDefault(category => string.Equals(category.Name, reference, StringComparison.OrdinalIgnoreCase)
-            || long.TryParse(reference, out var id) && RevitValueReader.GetId(category.Id) == id);
+        categories.FirstOrDefault(category => long.TryParse(reference, out var id) && RevitValueReader.GetId(category.Id) == id)
+        ?? categories.FirstOrDefault(category => string.Equals(category.Name, reference, StringComparison.OrdinalIgnoreCase))
+        ?? categories.FirstOrDefault(category => CategoryNames.Matches(reference,
+            QueryFilterBuilder.GetRevitCategoryNames(category), QueryFilterBuilder.GetBuiltInCategoryName(category)));
 
     private static string CategoryType(Category category) => category.CategoryType.ToString() switch
     {

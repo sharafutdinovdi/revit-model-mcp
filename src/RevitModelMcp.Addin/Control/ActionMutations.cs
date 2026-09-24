@@ -4,6 +4,7 @@ using Autodesk.Revit.DB.Structure;
 using Nice3point.Revit.Extensions;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Naming;
 
 namespace RevitModelMcp.Control;
 
@@ -61,7 +62,7 @@ internal static class ActionMutations
     {
         var element = CreateId(action.ElementId).ToElement(document)
                       ?? throw new ArgumentException($"Element {action.ElementId} was not found.");
-        var parameter = element.FindParameter(action.Parameter!)
+        var parameter = ResolveParameter(element, action.Parameter!)
                         ?? throw new ArgumentException($"Parameter '{action.Parameter}' was not found on the instance or type.");
         if (parameter.IsReadOnly) throw new InvalidOperationException($"Parameter '{action.Parameter}' is read-only.");
         var oldValue = ParameterValue(parameter);
@@ -81,6 +82,22 @@ internal static class ActionMutations
             NewValue = ParameterValue(parameter),
             ParameterScope = parameter.Element.Id == element.Id ? "instance" : "type"
         };
+    }
+
+    /// <summary>
+    /// Finds a parameter on the instance or its type by localized name, then by <c>BuiltInParameter</c> name or
+    /// the English label of a common built-in, so requests work in any Revit UI language.
+    /// </summary>
+    internal static Parameter? ResolveParameter(Element element, string name)
+    {
+        if (element.FindParameter(name) is { } byName) return byName;
+        var type = element.Document.GetElement(element.GetTypeId());
+        foreach (var candidate in ParameterNames.BuiltInCandidates(name))
+        {
+            if (!Enum.TryParse(candidate, out BuiltInParameter builtIn) || !Enum.IsDefined(typeof(BuiltInParameter), builtIn)) continue;
+            if ((element.get_Parameter(builtIn) ?? type?.get_Parameter(builtIn)) is { } parameter) return parameter;
+        }
+        return null;
     }
 
     private static double ParameterDouble(Parameter parameter, string text)

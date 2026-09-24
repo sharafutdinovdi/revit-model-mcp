@@ -4,6 +4,7 @@ using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Naming;
 using RevitModelMcp.Output;
 
 namespace RevitModelMcp.Control;
@@ -246,21 +247,17 @@ internal sealed class ViewElementsSession : IControlSession
         IReadOnlyList<string> requestedNames,
         out List<string> unknownNames)
     {
-        var requested = requestedNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var matchedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var categories = document.Settings.Categories.Cast<Category>().ToList();
         var ids = new List<ElementId>();
-        foreach (Category category in document.Settings.Categories)
+        unknownNames = [];
+        foreach (var name in requestedNames)
         {
-            if (!requested.Contains(category.Name))
-            {
-                continue;
-            }
-
-            ids.Add(category.Id);
-            matchedNames.Add(category.Name);
+            var category = categories.FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase))
+                ?? categories.FirstOrDefault(candidate => CategoryNames.Matches(name,
+                    QueryFilterBuilder.GetRevitCategoryNames(candidate), QueryFilterBuilder.GetBuiltInCategoryName(candidate)));
+            if (category is null) unknownNames.Add(name);
+            else if (!ids.Contains(category.Id)) ids.Add(category.Id);
         }
-
-        unknownNames = requestedNames.Where(name => !matchedNames.Contains(name)).ToList();
         return ids;
     }
 }

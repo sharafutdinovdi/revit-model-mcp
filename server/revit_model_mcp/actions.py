@@ -371,7 +371,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Change category, workset and filter visibility in one view; preview with dry_run."""
+        """Change category, workset and filter visibility in one view; preview with dry_run.
+        Categories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID.
+        """
         return await send(
             "set-view-visibility",
             view=view,
@@ -585,6 +587,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
     ) -> dict[str, Any]:
         """Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.
+        `parameter` accepts the Revit UI name, a BuiltInParameter name (ALL_MODEL_INSTANCE_COMMENTS) or the English name of a common built-in (Comments, Mark, Type Mark, Description, Level, Offset).
         dry_run executes and rolls back, returning the same verification block without changing the model.
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
