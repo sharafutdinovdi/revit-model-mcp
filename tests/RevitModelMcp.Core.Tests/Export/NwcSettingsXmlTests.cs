@@ -83,4 +83,46 @@ public sealed class NwcSettingsXmlTests
         await Assert.That(() => NwcSettingsXml.ReadFile("settings.xml")).Throws<ArgumentException>();
         await Assert.That(() => NwcSettingsXml.ReadFile(@"C:\x\settings.txt")).Throws<ArgumentException>();
     }
+
+    [Test]
+    public async Task Parse_WstringSelfReferencingEnumValue_ResolvesOrdinalFromValue()
+    {
+        const string xml = """
+            <optionset><option name="nwexportrevit_element_params"><data type="wstring">nwexportrevit_element_params:1</data></option></optionset>
+            """;
+        var result = NwcSettingsXml.Parse(xml);
+        await Assert.That(result.Values["parameters"]).IsEqualTo("elements");
+        await Assert.That(result.Invalid).IsEmpty();
+    }
+
+    [Test]
+    public async Task Parse_UnrecognizedEnumOrdinal_GoesToInvalidWithoutAbortingFile()
+    {
+        const string xml = """
+            <optionset>
+              <option name="nwexportrevit_element_params"><data type="wstring">nwexportrevit_element_params:99</data></option>
+              <option name="nwexportrevit_room"><data type="bool">true</data></option>
+            </optionset>
+            """;
+        var result = NwcSettingsXml.Parse(xml);
+        await Assert.That(result.Values.ContainsKey("parameters")).IsFalse();
+        await Assert.That((bool)result.Values["export_room_as_attribute"]).IsTrue();
+        await Assert.That(result.Invalid.Single().Id).IsEqualTo("nwexportrevit_element_params");
+        await Assert.That(result.Invalid.Single().Reason).IsEqualTo("unrecognized enum value for parameters");
+    }
+
+    [Test]
+    public async Task Parse_MalformedDataValue_GoesToInvalidWithoutAbortingFile()
+    {
+        const string xml = """
+            <optionset>
+              <option name="nwexportrevit_element_ids"><data type="int32">not-a-number</data></option>
+              <option name="nwexportrevit_room"><data type="bool">true</data></option>
+            </optionset>
+            """;
+        var result = NwcSettingsXml.Parse(xml);
+        await Assert.That((bool)result.Values["export_room_as_attribute"]).IsTrue();
+        await Assert.That(result.Invalid.Single().Id).IsEqualTo("nwexportrevit_element_ids");
+        await Assert.That(result.Invalid.Single().Value).IsEqualTo("not-a-number");
+    }
 }
