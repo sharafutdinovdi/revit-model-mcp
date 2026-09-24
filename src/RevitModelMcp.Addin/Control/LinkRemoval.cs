@@ -76,8 +76,8 @@ internal static class LinkRemoval
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
             if (!dryRun) transaction.SetName(groupName);
-            var status = dryRun ? transaction.RollBack() : transaction.Commit();
-            if (status != (dryRun ? TransactionStatus.RolledBack : TransactionStatus.Committed))
+            // A dry run commits inside the group so DocumentChanged reports its changes, then rolls the group back.
+            if (transaction.Commit() != TransactionStatus.Committed)
                 throw new InvalidOperationException(failures.Message ?? "Link removal transaction failed.");
             if (dryRun) group.RollBack();
             else

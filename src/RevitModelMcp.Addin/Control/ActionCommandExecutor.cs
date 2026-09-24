@@ -35,6 +35,7 @@ internal static class ActionCommandExecutor
         var failures = new ActionFailures();
         Document? document = null;
         ActionResultData? data = null;
+        ChangeCapture? changes = null;
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
             SuppressTaskDialog(arguments, dialogsSuppressed);
@@ -66,12 +67,13 @@ internal static class ActionCommandExecutor
                 response.WarningsDismissed = openWarningsDismissed;
                 response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
                 if (documentResult.NeedsConfirmation != true)
-                    ActivityRecorder.RecordAction(job, null, documentResult, response);
+                    ActivityRecorder.RecordAction(job, null, documentResult, response, null);
                 CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                     ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
                 return;
             }
             document = ResolveDocument(application, job.TargetDocument);
+            changes = ChangeCapture.Start(application.Application, document);
             var activeUiDocument = application.ActiveUIDocument;
             var uiDocument = activeUiDocument is not null
                              && activeUiDocument.Document.Title == document.Title
@@ -113,12 +115,13 @@ internal static class ActionCommandExecutor
         finally
         {
             application.DialogBoxShowing -= SuppressDialog;
+            changes?.Dispose();
             if (job.Command == "open-document") application.Application.FailuresProcessing -= SuppressOpenWarnings;
         }
         response.DialogsSuppressed = dialogsSuppressed;
         if (job.Command == "show") response.ViewOpened = viewOpened;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
-        ActivityRecorder.RecordAction(job, document, data, response);
+        ActivityRecorder.RecordAction(job, document, data, response, changes);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
@@ -129,6 +132,7 @@ internal static class ActionCommandExecutor
         var dialogsSuppressed = new List<string>();
         Document? document = null;
         FamilyEditData? result = null;
+        ChangeCapture? changes = null;
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
             SuppressTaskDialog(arguments, dialogsSuppressed);
@@ -141,6 +145,7 @@ internal static class ActionCommandExecutor
                 throw new InvalidOperationException("read-only mode");
             if (job.Error is not null) throw new ArgumentException(job.Error);
             document = ResolveDocument(application, job.TargetDocument);
+            changes = ChangeCapture.Start(application.Application, document);
             var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
             ActionJobParser.ValidateFamilyMode(action, document.IsFamilyDocument);
             var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
@@ -170,8 +175,9 @@ internal static class ActionCommandExecutor
         finally
         {
             application.DialogBoxShowing -= SuppressDialog;
+            changes?.Dispose();
         }
-        ActivityRecorder.RecordFamilyEdit(job, document, result, response!);
+        ActivityRecorder.RecordFamilyEdit(job, document, result, response!, changes);
     }
 
     private static void SuppressTaskDialog(DialogBoxShowingEventArgs arguments, List<string> dialogsSuppressed)
@@ -256,8 +262,11 @@ internal static class ActionCommandExecutor
                 data.Summary = BuildSummary(command, action, data, document.Title, ids);
                 if (action.DryRun && !deferDryRun)
                 {
-                    if (transaction.RollBack() != TransactionStatus.RolledBack)
-                        throw new InvalidOperationException("Could not roll back the dry run.");
+                    // Inside a group the dry run commits so DocumentChanged reports its would-be changes,
+                    // then the group rollback discards them. Without a group it simply rolls back.
+                    var expected = group is null ? TransactionStatus.RolledBack : TransactionStatus.Committed;
+                    if ((group is null ? transaction.RollBack() : transaction.Commit()) != expected)
+                        throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
                     data.RolledBack = true;
                     group?.RollBack();
                 }

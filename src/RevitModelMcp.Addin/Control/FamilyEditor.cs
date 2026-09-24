@@ -28,7 +28,9 @@ internal static class FamilyEditor
             if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family edit group.");
             try
             {
-                result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application));
+                // The family-mode group rolls a dry run back, so the edit commits inside it for DocumentChanged.
+                result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application,
+                    commitDryRun: true));
                 result.Committed = !job.DryRun && result.Families[0].Status != "failed";
                 result.FailedFamily = result.Families[0].Status == "failed" ? result.Families[0].Name : null;
                 result.Summary = summary;
@@ -154,7 +156,8 @@ internal static class FamilyEditor
     }
 
     private static FamilyEditFamily Edit(Document familyDocument, string name, ActionJobContract job,
-        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application)
+        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application,
+        bool commitDryRun = false)
     {
         var result = new FamilyEditFamily { Name = name, Status = "unchanged" };
         using var transaction = new Transaction(familyDocument, "revit_edit_families");
@@ -180,11 +183,8 @@ internal static class FamilyEditor
                     result.Status = "changed";
             }
             familyDocument.Regenerate();
-            if (job.DryRun)
-            {
-                _ = FamilyAuditReader.ReadFamily(familyDocument);
-                transaction.RollBack();
-            }
+            if (job.DryRun) _ = FamilyAuditReader.ReadFamily(familyDocument);
+            if (job.DryRun && !commitDryRun) transaction.RollBack();
             else if (transaction.Commit() != TransactionStatus.Committed)
                 throw new InvalidOperationException(failures.Message ?? "The family transaction was rolled back.");
             return result;

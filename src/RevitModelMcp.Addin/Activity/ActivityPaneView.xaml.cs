@@ -153,7 +153,7 @@ public partial class ActivityPaneView : UserControl
             State.LiveLane = ClientLane.For(live.ClientName);
             State.LiveTitle = live.State == JobState.WaitingRevit
                 ? PaneText.WaitingRevit
-                : ActivityTitleBuilder.BuildRunning(live.Command, PaneText.Language);
+                : ActivityTitleBuilder.BuildRunning(live.Command);
         }
         else
         {
@@ -262,24 +262,173 @@ public partial class ActivityPaneView : UserControl
         return null;
     }
 
-    private void OnMoreClick(object sender, MouseButtonEventArgs e)
+    private void OnShowAllClick(object sender, MouseButtonEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is ElementSection section) section.ShowAll();
+        if ((sender as FrameworkElement)?.DataContext is ActivityRowView row) row.ShowAll();
     }
 
+    /// <summary>Hover action on the row header: select and zoom to every element that still exists.</summary>
     private void OnShowClick(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not ActivityRowView row) return;
-        var ids = row.Entry.Changed.Concat(row.Entry.Created).Select(reference => reference.Id).ToList();
-        if (ids.Count == 0) return;
-        ShowElements(row.DocumentTitle, ids);
+        RunOnElements(row, row.SelectableItems.Select(item => item.Ref.Id).ToList(), ElementCommand.SelectAndZoom);
     }
 
-    private void OnElementClick(object sender, MouseButtonEventArgs e)
+    private void OnElementDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is not ActivityElementRefView reference) return;
-        if (!reference.IsSelectable) return;
-        ShowElements(reference.DocumentTitle, [reference.Ref.Id]);
+        if (sender is not ListBoxItem { DataContext: ActivityElementRefView { IsSelectable: true } reference } item) return;
+        if (FindRow(item) is not { } row) return;
+        RunOnElements(row, [reference.Ref.Id], ElementCommand.SelectAndZoom);
+        e.Handled = true;
+    }
+
+    private void OnElementListKeyDown(object sender, KeyEventArgs e)
+    {
+        if (sender is not ListBox { DataContext: ActivityRowView row } list) return;
+        if (e.Key == Key.Enter)
+            RunOnElements(row, SelectableIds(row, list), ElementCommand.SelectAndZoom);
+        else if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+            CopyIds(row, list);
+        else return;
+        e.Handled = true;
+    }
+
+    private void OnSelectClick(object sender, RoutedEventArgs e) => RunFromButton(sender, ElementCommand.Select);
+
+    private void OnZoomClick(object sender, RoutedEventArgs e) => RunFromButton(sender, ElementCommand.Zoom);
+
+    private void OnIsolateClick(object sender, RoutedEventArgs e) => RunFromButton(sender, ElementCommand.Isolate);
+
+    private void OnCopyClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ActivityRowView row) return;
+        CopyIds(row, ElementListFor((DependencyObject)sender));
+    }
+
+    private void RunFromButton(object sender, ElementCommand command)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ActivityRowView row) return;
+        RunOnElements(row, SelectableIds(row, ElementListFor((DependencyObject)sender)), command);
+    }
+
+    /// <summary>IDs of the selected selectable items, or of every element that still exists when none are selected.</summary>
+    private static List<long> SelectableIds(ActivityRowView row, ListBox? list)
+    {
+        var selected = list?.SelectedItems.OfType<ActivityElementRefView>().Where(item => item.IsSelectable).ToList() ?? [];
+        return (selected.Count > 0 ? selected : row.SelectableItems).Select(item => item.Ref.Id).ToList();
+    }
+
+    /// <summary>Copies the selected IDs, or all listed IDs when none are selected, as a comma-separated list.</summary>
+    private void CopyIds(ActivityRowView row, ListBox? list)
+    {
+        var selected = list?.SelectedItems.OfType<ActivityElementRefView>().ToList() ?? [];
+        var ids = (selected.Count > 0 ? selected : row.AllElementItems).Select(item => item.IdText).ToList();
+        if (ids.Count == 0) return;
+        try
+        {
+            Clipboard.SetText(string.Join(",", ids));
+            ShowNotice(row, PaneText.Copied(ids.Count));
+        }
+        catch (System.Runtime.InteropServices.COMException exception)
+        {
+            ShowNotice(row, exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// Selects, zooms to or isolates elements through the ExternalEvent handler. Works only while the entry's
+    /// document is the active document; otherwise the row explains why inline.
+    /// </summary>
+    private void RunOnElements(ActivityRowView row, List<long> ids, ElementCommand command)
+    {
+        if (ids.Count == 0)
+        {
+            ShowNotice(row, PaneText.NothingSelectable);
+            return;
+        }
+        var documentTitle = row.DocumentTitle;
+        ActivityHost.Dispatch(application =>
+        {
+            var uiDocument = application.ActiveUIDocument;
+            if (uiDocument is null || (!string.IsNullOrEmpty(documentTitle) && uiDocument.Document.Title != documentTitle))
+            {
+                Notify(row, PaneText.OpenDocumentToSelect);
+                return;
+            }
+            var document = uiDocument.Document;
+            var elementIds = ids.Select(ActionCommandExecutor.CreateId).Where(id => document.GetElement(id) is not null).ToList();
+            if (elementIds.Count == 0)
+            {
+                Notify(row, PaneText.NothingSelectable);
+                return;
+            }
+            try
+            {
+                switch (command)
+                {
+                    case ElementCommand.Select:
+                        uiDocument.Selection.SetElementIds(elementIds);
+                        break;
+                    case ElementCommand.SelectAndZoom:
+                        uiDocument.Selection.SetElementIds(elementIds);
+                        uiDocument.ShowElements(elementIds);
+                        break;
+                    case ElementCommand.Zoom:
+                        uiDocument.ShowElements(elementIds);
+                        break;
+                    case ElementCommand.Isolate:
+                        using (var transaction = new Autodesk.Revit.DB.Transaction(document, "Isolate MCP elements"))
+                        {
+                            transaction.Start();
+                            uiDocument.ActiveView.IsolateElementsTemporary(elementIds);
+                            transaction.Commit();
+                        }
+                        break;
+                }
+            }
+            catch (Autodesk.Revit.Exceptions.ApplicationException exception)
+            {
+                Notify(row, exception.Message);
+            }
+        });
+    }
+
+    private void Notify(ActivityRowView row, string text) => Dispatcher.InvokeAsync(() => ShowNotice(row, text));
+
+    /// <summary>Shows a short inline message under the row's element list and clears it after 3 seconds.</summary>
+    private void ShowNotice(ActivityRowView row, string text)
+    {
+        row.Notice = text;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            if (row.Notice == text) row.Notice = string.Empty;
+        };
+        timer.Start();
+    }
+
+    private static ListBox? ElementListFor(DependencyObject source)
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is FrameworkElement { Name: "Details" } details)
+                return FindNamed(details, "ElementList") as ListBox;
+        return null;
+    }
+
+    private static ActivityRowView? FindRow(DependencyObject source)
+    {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+            if (current is ListBox { DataContext: ActivityRowView row }) return row;
+        return null;
+    }
+
+    private enum ElementCommand
+    {
+        Select,
+        SelectAndZoom,
+        Zoom,
+        Isolate
     }
 
     private void OnUndoClick(object sender, RoutedEventArgs e)
@@ -312,18 +461,5 @@ public partial class ActivityPaneView : UserControl
     {
         if ((sender as FrameworkElement)?.DataContext is not QueueRowView row) return;
         ActivityHost.CancelJob?.Invoke(row.Job.JobId, row.Job.ClientId);
-    }
-
-    private static void ShowElements(string documentTitle, List<long> ids)
-    {
-        ActivityHost.Dispatch(application =>
-        {
-            var uiDocument = application.ActiveUIDocument;
-            if (uiDocument is null || (!string.IsNullOrEmpty(documentTitle) && uiDocument.Document.Title != documentTitle))
-                return;
-            var elementIds = ids.Select(ActionCommandExecutor.CreateId).ToList();
-            uiDocument.Selection.SetElementIds(elementIds);
-            uiDocument.ShowElements(elementIds);
-        });
     }
 }

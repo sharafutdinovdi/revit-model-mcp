@@ -18,6 +18,7 @@
 
             <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
             <local:CountToVisibilityConverter x:Key="CountToVisibility"/>
+            <local:StringToVisibilityConverter x:Key="StringToVisibility"/>
             <local:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility"/>
             <local:InverseBooleanConverter x:Key="InverseBoolean"/>
             <FontFamily x:Key="MonoFont">Cascadia Mono, Consolas</FontFamily>
@@ -119,44 +120,87 @@
                 </Setter>
             </Style>
 
-            <DataTemplate x:Key="ElementRowTemplate" DataType="{x:Type local:ActivityElementRefView}">
-                <Grid x:Name="ElementRow" Background="Transparent" Margin="0,1" MouseLeftButtonUp="OnElementClick">
+            <!-- Element list row: accent-tinted hover and selection; headers, deleted and dry-run created items are disabled. -->
+            <Style x:Key="ElementContainer" TargetType="ListBoxItem">
+                <EventSetter Event="MouseDoubleClick" Handler="OnElementDoubleClick"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Padding" Value="4,1"/>
+                <Setter Property="ToolTipService.ShowOnDisabled" Value="True"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListBoxItem">
+                            <Grid Background="Transparent">
+                                <Border x:Name="Highlight" Background="{DynamicResource RunningBrush}" Opacity="0" CornerRadius="2"/>
+                                <ContentPresenter Margin="{TemplateBinding Padding}"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Highlight" Property="Opacity" Value="0.08"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Highlight" Property="Opacity" Value="0.22"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsSelectable}" Value="False">
+                        <Setter Property="IsEnabled" Value="False"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+
+            <DataTemplate DataType="{x:Type local:ActivityElementRefView}">
+                <Grid ToolTip="{Binding ToolTip}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="ElementLabel" Text="{Binding Label}" TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding Label}"/>
+                    <TextBlock x:Name="ElementLabel" Text="{Binding Label}" TextTrimming="CharacterEllipsis"/>
                     <TextBlock Grid.Column="1" Text="{Binding IdText}" FontFamily="{StaticResource MonoFont}" FontSize="11"
                                Foreground="{DynamicResource TextMutedBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                 </Grid>
                 <DataTemplate.Triggers>
-                    <MultiDataTrigger>
-                        <MultiDataTrigger.Conditions>
-                            <Condition Binding="{Binding IsSelectable}" Value="True"/>
-                            <Condition Binding="{Binding IsMouseOver, ElementName=ElementRow}" Value="True"/>
-                        </MultiDataTrigger.Conditions>
-                        <Setter TargetName="ElementLabel" Property="TextDecorations" Value="Underline"/>
-                        <Setter TargetName="ElementRow" Property="Cursor" Value="Hand"/>
-                    </MultiDataTrigger>
                     <DataTrigger Binding="{Binding IsSelectable}" Value="False">
                         <Setter TargetName="ElementLabel" Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
                     </DataTrigger>
                 </DataTemplate.Triggers>
             </DataTemplate>
 
-            <DataTemplate x:Key="SectionTemplate" DataType="{x:Type local:ElementSection}">
-                <StackPanel Margin="0,2,0,6">
-                    <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,0,3">
-                        <Run Text="{Binding Header, Mode=OneWay}"/>
-                        <Run Text="{Binding Count, Mode=OneWay}"/>
-                    </TextBlock>
-                    <ItemsControl ItemsSource="{Binding Items}" ItemTemplate="{StaticResource ElementRowTemplate}"/>
-                    <TextBlock Text="{Binding MoreText}" Style="{StaticResource LinkText}" Margin="0,2,0,0"
-                               HorizontalAlignment="Left" MouseLeftButtonUp="OnMoreClick"
-                               Visibility="{Binding HasMore, Converter={StaticResource BoolToVisibility}}"/>
-                </StackPanel>
+            <DataTemplate DataType="{x:Type local:ElementSectionHeader}">
+                <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMutedBrush}" Margin="0,6,0,2">
+                    <Run Text="{Binding Header, Mode=OneWay}"/>
+                    <Run Text="{Binding Count, Mode=OneWay}"/>
+                </TextBlock>
             </DataTemplate>
+
+            <!-- Text action under an expanded element list. -->
+            <Style x:Key="ActionButton" TargetType="Button">
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Focusable" Value="False"/>
+                <Setter Property="Margin" Value="0,0,6,4"/>
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Chrome" BorderThickness="1" BorderBrush="{DynamicResource HairlineBrush}"
+                                    CornerRadius="3" Padding="8,2" Background="Transparent">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource RunningBrush}"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter TargetName="Chrome" Property="Opacity" Value="0.45"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
             <DataTemplate x:Key="RowTemplate" DataType="{x:Type local:ActivityRowView}">
                 <Grid>
@@ -190,7 +234,7 @@
 
                             <StackPanel x:Name="Actions" Grid.Column="1" Orientation="Horizontal" Margin="4,0,0,0"
                                         Visibility="Collapsed">
-                                <Button Style="{StaticResource IconButton}" ToolTip="{x:Static local:PaneText.Show}"
+                                <Button Style="{StaticResource IconButton}" ToolTip="{x:Static local:PaneText.SelectInRevit}"
                                         Click="OnShowClick"
                                         Visibility="{Binding CanShowAll, Converter={StaticResource BoolToVisibility}}">
                                     <Path Data="M1,6.5 A5.5,5.5 0 1 0 12,6.5 A5.5,5.5 0 1 0 1,6.5 M10.4,10.4 L14,14"
@@ -212,6 +256,7 @@
                                        Foreground="{DynamicResource TextMutedBrush}" Margin="8,0,0,0" VerticalAlignment="Center"/>
 
                             <Button Grid.Column="3" Style="{StaticResource IconButton}" Click="OnChevronClick"
+                                    ToolTip="Show changed elements"
                                     Visibility="{Binding HasElements, Converter={StaticResource BoolToVisibility}}">
                                 <Path x:Name="ChevronPath" Data="M0,0 L4,4 L8,0" Width="8" Height="5" StrokeThickness="1.4"
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
@@ -239,11 +284,14 @@
                                 </StackPanel>
 
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="6,0,0,0">
-                                    <TextBlock Text="{Binding ChangedChip}" Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,5,0"
+                                    <TextBlock Text="{Binding ChangedChip}" ToolTip="{Binding ChangedChipToolTip}"
+                                               Foreground="{DynamicResource TextMutedBrush}" Margin="0,0,5,0"
                                                Visibility="{Binding ChangedCount, Converter={StaticResource CountToVisibility}}"/>
-                                    <TextBlock Text="{Binding CreatedChip}" Foreground="{DynamicResource CreatedBrush}" Margin="0,0,5,0"
+                                    <TextBlock Text="{Binding CreatedChip}" ToolTip="{Binding CreatedChipToolTip}"
+                                               Foreground="{DynamicResource CreatedBrush}" Margin="0,0,5,0"
                                                Visibility="{Binding CreatedCount, Converter={StaticResource CountToVisibility}}"/>
-                                    <TextBlock Text="{Binding DeletedChip}" Foreground="{DynamicResource DeletedBrush}" Margin="0,0,5,0"
+                                    <TextBlock Text="{Binding DeletedChip}" ToolTip="{Binding DeletedChipToolTip}"
+                                               Foreground="{DynamicResource DeletedBrush}" Margin="0,0,5,0"
                                                Visibility="{Binding DeletedCount, Converter={StaticResource CountToVisibility}}"/>
                                 </StackPanel>
 
@@ -259,8 +307,31 @@
 
                         <StackPanel x:Name="Details" Margin="0,8,0,0" ClipToBounds="True"
                                     Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVisibility}}">
-                            <ItemsControl ItemsSource="{Binding Sections}" ItemTemplate="{StaticResource SectionTemplate}"
-                                          Focusable="False"/>
+                            <ListBox x:Name="ElementList" ItemsSource="{Binding Items}" SelectionMode="Extended"
+                                     ItemContainerStyle="{StaticResource ElementContainer}"
+                                     Background="Transparent" BorderThickness="0" Padding="0" MaxHeight="320"
+                                     Foreground="{DynamicResource TextPrimaryBrush}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     VirtualizingPanel.IsVirtualizing="True"
+                                     VirtualizingPanel.VirtualizationMode="Recycling"
+                                     VirtualizingPanel.ScrollUnit="Pixel"
+                                     KeyDown="OnElementListKeyDown"/>
+                            <TextBlock Text="{Binding ShowAllText}" Style="{StaticResource LinkText}" Margin="4,4,0,0"
+                                       HorizontalAlignment="Left" MouseLeftButtonUp="OnShowAllClick"
+                                       Visibility="{Binding HasMore, Converter={StaticResource BoolToVisibility}}"/>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Style="{StaticResource ActionButton}" Content="{x:Static local:PaneText.SelectInRevit}"
+                                        Click="OnSelectClick" IsEnabled="{Binding CanShowAll}"/>
+                                <Button Style="{StaticResource ActionButton}" Content="{x:Static local:PaneText.ZoomTo}"
+                                        Click="OnZoomClick" IsEnabled="{Binding CanShowAll}"/>
+                                <Button Style="{StaticResource ActionButton}" Content="{x:Static local:PaneText.CopyIds}"
+                                        Click="OnCopyClick"/>
+                                <Button Style="{StaticResource ActionButton}" Content="{x:Static local:PaneText.Isolate}"
+                                        Click="OnIsolateClick" IsEnabled="{Binding CanShowAll}"/>
+                            </WrapPanel>
+                            <TextBlock Text="{Binding Notice}" Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0"
+                                       TextWrapping="Wrap"
+                                       Visibility="{Binding Notice, Converter={StaticResource StringToVisibility}}"/>
                         </StackPanel>
                     </StackPanel>
                 </Grid>

@@ -108,7 +108,7 @@ With `stop_on_error=true`, the first failed family rolls back the whole project 
 `type_name` and `wall_type` are required arguments that accept `null`.
 
 `revit_move`, `revit_place_family`, `revit_create_wall`, `revit_set_parameter` and `revit_delete` accept a final `dry_run=false` argument.
-A dry run executes the mutation, reads its prospective result, and rolls back the transaction.
+A dry run executes the mutation, reads its prospective result, commits inside its transaction group and rolls the group back, so nothing persists and the activity pane can list the elements it would change.
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.
 `revit_isolate` has no `dry_run` argument; it uses temporary isolation only.
@@ -253,14 +253,38 @@ longer applies.
 
 The add-in keeps an in-memory ring buffer of the last 500 finished action jobs, also appended as JSON lines
 to `%LOCALAPPDATA%\RevitModelMcp\activity.log`: time, client, command, document, state (`done`, `failed` or
-`dry_run`), `summary`, the changed, created and deleted element IDs with category and name, the undo entry
-name, and whether it was later undone. Toggle the dockable pane with the "Activity" button on the RevitModelMcp
-ribbon tab; the pane caption and button follow the Revit UI language ("Журнал MCP" and "Журнал" in Russian).
-Rows are grouped by day, newest first, on a status rail: a localized title with the element count, time, client
-name in a stable client colour, document, and changed/created/deleted counts (`~N`, `+N`, `−N`), with
-"dry run", "undone" and "failed" tags; failed rows show the error message. Hovering a row reveals "Show"
-(select and zoom all touched elements) and, on the newest eligible row, "Undo". Expanding a row lists its
-changed, created and deleted elements (deleted elements are not clickable; others select and zoom on click).
+`dry_run`), `summary`, the changed, created and deleted elements with category, name and ID, their true
+totals, the undo entry name, and whether it was later undone.
+
+The element lists are exact. While a job runs a model transaction, the add-in subscribes to Revit's
+`DocumentChanged` event for the target document only and collects the added, modified and deleted element
+IDs of every transaction the job commits, including transactions Revit itself opens, such as a family load.
+An element created and deleted within the same job is not listed. Internal elements without a category are
+skipped, except views, sheets, levels and grids, so a view visibility change lists the view. Each list stores
+the first 5000 elements; counts and titles use the true totals. Dry runs commit inside their transaction
+group before the group is rolled back, so they list the elements they would change; their created elements
+are provisional.
+
+Toggle the dockable pane with the "Activity" button on the RevitModelMcp ribbon tab. The pane is English in
+every Revit UI language. Rows are grouped by day, newest first: "Today", "Yesterday", a weekday name within
+the last six days, then a date such as "Sep 21" (or "Sep 21, 2025" in an earlier year). Labels use the local
+calendar date of the entry and of now, so they follow midnight and daylight saving changes; the pane refreshes
+them when the date changes.
+
+Each row sits on a status rail: a title with the element count, time, client name in a stable client colour,
+document, and change chips `~N` (changed), `+N` (created) and `−N` (deleted), plus "dry run", "undone" and
+"failed" tags; failed rows show the error message. Hovering a row reveals "Select in Revit" (select and zoom
+to every element that still exists) and, on the newest eligible row, "Undo". A chevron appears on every row
+that has elements. Expanding it lists the elements under "Changed", "Created" and "Deleted" headers with
+counts, each as `Category · Name` with its ID. Long lists show the first 100 elements, then "Show all N".
+
+Click, Ctrl+click and Shift+click select elements in the list; double-click selects that element in Revit and
+zooms to it. "Select in Revit", "Zoom to" and "Isolate" (temporary isolation in the active view) act on the
+selected elements, or on every element that still exists when nothing is selected. "Copy IDs" copies the
+selected IDs, or all listed IDs, comma-separated; Ctrl+C does the same. Deleted elements and elements a dry run
+created are listed but cannot be selected. Selection works only while the entry's document is the active
+document; otherwise the row shows "Open this document to select elements".
+
 A live strip above the log names the running job and opens the queue of jobs still waiting on this Revit
 instance, each with a "Cancel" link. The API `summary` stays in English.
 `Document` is always `Document.Title`, a file name, never a directory, so nothing in the log needs path

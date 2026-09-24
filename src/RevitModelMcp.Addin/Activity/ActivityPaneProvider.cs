@@ -1,7 +1,6 @@
 using Autodesk.Revit.UI;
 using JetBrains.Annotations;
 using Nice3point.Revit.Toolkit.Decorators;
-using RevitModelMcp.Core.Activity;
 
 namespace RevitModelMcp.Activity;
 
@@ -12,9 +11,6 @@ internal static class ActivityPaneProvider
 
     public static void Register(UIControlledApplication application)
     {
-        PaneText.Language = application.ControlledApplication.Language == Autodesk.Revit.ApplicationServices.LanguageType.Russian
-            ? ActivityLanguage.Russian
-            : ActivityLanguage.English;
         PaneTheme.Register(application);
         DockablePaneProvider
             .Register(application, PaneId, PaneText.Caption)

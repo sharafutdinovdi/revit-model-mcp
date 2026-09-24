@@ -35,6 +35,16 @@ public sealed class ActivityEntry
     [DataMember(Name = "changed")] public List<ActivityElementRef> Changed { get; set; } = [];
     [DataMember(Name = "created")] public List<ActivityElementRef> Created { get; set; } = [];
     [DataMember(Name = "deleted")] public List<ActivityElementRef> Deleted { get; set; } = [];
+
+    /// <summary>True number of changed elements; <see cref="Changed"/> holds at most the first 5000.</summary>
+    [DataMember(Name = "changedTotal")] public int ChangedTotal { get; set; }
+    [DataMember(Name = "createdTotal")] public int CreatedTotal { get; set; }
+    [DataMember(Name = "deletedTotal")] public int DeletedTotal { get; set; }
+
+    public int ChangedCount => Math.Max(ChangedTotal, Changed.Count);
+    public int CreatedCount => Math.Max(CreatedTotal, Created.Count);
+    public int DeletedCount => Math.Max(DeletedTotal, Deleted.Count);
+
     [DataMember(Name = "undoEntryName", EmitDefaultValue = false)] public string? UndoEntryName { get; set; }
     [DataMember(Name = "dryRun")] public bool DryRun { get; set; }
     [DataMember(Name = "undone")] public bool Undone { get; set; }

@@ -63,6 +63,16 @@ internal static class UndoTracker
         }
     }
 
+    /// <summary>Restores a <see cref="Snapshot"/> after a job rolled back everything it committed.</summary>
+    public static void Restore((string? DocumentTitle, string? LastTransactionName) state)
+    {
+        lock (SyncRoot)
+        {
+            _documentTitle = state.DocumentTitle;
+            _lastCommittedName = state.LastTransactionName;
+        }
+    }
+
     public static void Reset()
     {
         lock (SyncRoot)
