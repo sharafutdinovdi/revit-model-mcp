@@ -34,13 +34,12 @@ public static class NwcSettingsXml
 
     public static NwcSettingsResult ReadFile(string path)
     {
-        if (string.IsNullOrWhiteSpace(path) || !System.Text.RegularExpressions.Regex.IsMatch(path, @"^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+[\\/])") || !path.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("settingsXml must be an absolute XML file path.", nameof(path));
-        if (path.Split(['\\', '/']).Contains(".."))
-            throw new ArgumentException("settingsXml must not contain parent-directory segments.", nameof(path));
+        var normalized = NwcPathValidator.EnsureAbsoluteNoTraversal(path, "settingsXml");
+        if (!normalized.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("settingsXml must have the .xml extension.", nameof(path));
         try
         {
-            return Parse(File.ReadAllText(path));
+            return Parse(File.ReadAllText(normalized));
         }
         catch (IOException)
         {
