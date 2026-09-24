@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import os
-from pathlib import PureWindowsPath
 from typing import Annotated, Any
 
 from mcp.server import MCPServer
@@ -11,7 +10,7 @@ from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, Field
 
 from revit_model_mcp import package_version
-from revit_model_mcp.actions import env_flag, register_actions
+from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
@@ -40,22 +39,6 @@ def create_host(value: str, token: str | None = None) -> SshPowerShellHost | Htt
 
 host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
 channel = RevitReadChannel(host)
-
-
-def redact_model_paths(value: Any) -> Any:
-    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
-        return value
-    if isinstance(value, dict):
-        return {
-            key: PureWindowsPath(item).name
-            if key in {"documentPath", "path", "centralPath"} and isinstance(item, str)
-            else redact_model_paths(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [redact_model_paths(item) for item in value]
-    return value
-
 
 READ_ONLY_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
 TimeoutSeconds = Annotated[

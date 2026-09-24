@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import partial
+from pathlib import PureWindowsPath
 from typing import Annotated, Any, Literal, Union
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -164,6 +165,22 @@ def env_flag(name: str, default: bool = False) -> bool:
     raise ValueError(f"{name} must be 1/0, true/false, yes/no or on/off.")
 
 
+def redact_model_paths(value: Any) -> Any:
+    """Reduce documentPath/path/centralPath strings to file names when REVIT_MCP_REDACT_PATHS is set."""
+    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
+        return value
+    if isinstance(value, dict):
+        return {
+            key: PureWindowsPath(item).name
+            if key in {"documentPath", "path", "centralPath"} and isinstance(item, str)
+            else redact_model_paths(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_model_paths(item) for item in value]
+    return value
+
+
 def millimeters_to_feet(value: float) -> float:
     """Convert a finite millimetre length to Revit internal feet for client calculations."""
     import math
@@ -198,7 +215,9 @@ async def _send_action(
             "targetProcessId": instances[0]["processId"],
         },
     )
-    return await execute(job, response_timeout_s, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
+    return redact_model_paths(
+        await execute(job, response_timeout_s, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
+    )
 
 
 def register_actions(mcp, execute, host_provider) -> None:
