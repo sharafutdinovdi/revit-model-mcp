@@ -47,6 +47,22 @@ internal static class UndoTracker
         lock (SyncRoot) return (_documentTitle, _lastCommittedName);
     }
 
+    /// <summary>
+    /// Overrides the tracked document/name right after this session's own commit or transaction-group
+    /// assimilate succeeds. <c>DocumentChanged</c> reports the name the underlying Transaction had at
+    /// commit time, never the descriptive name a TransactionGroup is renamed to just before Assimilate;
+    /// calling this immediately afterward keeps <c>revit_undo_last</c> comparing against the exact name
+    /// recorded in the activity log and returned to the client as <c>undoName</c>.
+    /// </summary>
+    public static void RecordOwnCommit(string documentTitle, string undoName)
+    {
+        lock (SyncRoot)
+        {
+            _documentTitle = documentTitle;
+            _lastCommittedName = undoName;
+        }
+    }
+
     public static void Reset()
     {
         lock (SyncRoot)

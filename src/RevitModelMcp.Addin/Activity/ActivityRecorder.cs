@@ -32,6 +32,9 @@ internal static class ActivityRecorder
             entry.Deleted = deleted;
         }
         ActivityLog.Record(entry);
+        var undoName = data?.UndoName;
+        if (document is not null && undoName is { Length: > 0 })
+            UndoTracker.RecordOwnCommit(document.Title, undoName);
     }
 
     public static void RecordFamilyEdit(ControlJobParseResult job, Document? document, FamilyEditData? data,
@@ -49,6 +52,9 @@ internal static class ActivityRecorder
             State = ResolveState(response.Success || response.Partial, data is null ? null : new ActionResultData { DryRun = data.DryRun })
         };
         ActivityLog.Record(entry);
+        var undoName = data?.UndoName;
+        if (document is not null && undoName is { Length: > 0 })
+            UndoTracker.RecordOwnCommit(document.Title, undoName);
     }
 
     private static string ResolveState(bool successOrPartial, ActionResultData? data)

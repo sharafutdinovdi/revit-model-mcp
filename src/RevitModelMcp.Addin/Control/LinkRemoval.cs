@@ -51,6 +51,8 @@ internal static class LinkRemoval
             if (!selected.Any(candidate => string.Equals(reference, candidate.Element.Name, StringComparison.OrdinalIgnoreCase)
                 || long.TryParse(reference, out var id) && id == RevitValueReader.GetId(candidate.Element.Id)))
                 throw new ArgumentException($"Link '{reference}' was not found among the selected kinds.");
+        using var group = new TransactionGroup(document, "MCP action");
+        if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the action transaction group.");
         using var transaction = new Transaction(document, "revit_remove_links");
         if (transaction.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the link removal transaction.");
         transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
@@ -77,6 +79,13 @@ internal static class LinkRemoval
             var status = dryRun ? transaction.RollBack() : transaction.Commit();
             if (status != (dryRun ? TransactionStatus.RolledBack : TransactionStatus.Committed))
                 throw new InvalidOperationException(failures.Message ?? "Link removal transaction failed.");
+            if (dryRun) group.RollBack();
+            else
+            {
+                group.SetName(groupName);
+                if (group.Assimilate() != TransactionStatus.Committed)
+                    throw new InvalidOperationException("Could not assimilate the action transaction group.");
+            }
             return new ActionResultData
             {
                 LinkRemoval = result, DryRun = dryRun, RolledBack = dryRun, Committed = !dryRun,
@@ -86,6 +95,7 @@ internal static class LinkRemoval
         catch
         {
             if (transaction.GetStatus() == TransactionStatus.Started) transaction.RollBack();
+            if (group.GetStatus() == TransactionStatus.Started) group.RollBack();
             throw;
         }
     }

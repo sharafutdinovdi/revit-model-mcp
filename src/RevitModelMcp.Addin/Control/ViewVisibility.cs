@@ -21,13 +21,17 @@ internal static class ViewVisibility
         {
             if (ResolveCategory(reference, categories) is not null) continue;
             var matches = ActionJobParser.ClosestFamilyNames(reference, categories.Select(category => category.Name));
-            throw new ArgumentException($"Unknown category '{reference}'. Close matches: {string.Join(", ", matches)}.");
+            throw new ArgumentException(matches.Count == 0
+                ? $"Unknown category '{reference}'."
+                : $"Unknown category '{reference}'. Close matches: {string.Join(", ", matches)}.");
         }
         var template = document.GetElement(source.ViewTemplateId) as View;
         if (template is null && options.TemplateMode == "edit_template")
             throw new ArgumentException("The view has no template to edit.");
         if (template is not null && options.TemplateMode is null && TemplateControlsVisibility(template))
             throw new ArgumentException("The view has a template. Choose template_mode: detach, edit_template, or duplicate_view before changing visibility or worksets.");
+        using var group = new TransactionGroup(document, "MCP action");
+        if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the action transaction group.");
         using var transaction = new Transaction(document, "revit_set_view_visibility");
         if (transaction.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the visibility transaction.");
         transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
@@ -109,6 +113,13 @@ internal static class ViewVisibility
             var status = dryRun ? transaction.RollBack() : transaction.Commit();
             if (status != (dryRun ? TransactionStatus.RolledBack : TransactionStatus.Committed))
                 throw new InvalidOperationException(failures.Message ?? "Visibility transaction failed.");
+            if (dryRun) group.RollBack();
+            else
+            {
+                group.SetName(groupName);
+                if (group.Assimilate() != TransactionStatus.Committed)
+                    throw new InvalidOperationException("Could not assimilate the action transaction group.");
+            }
             return new ActionResultData
             {
                 Visibility = result, DryRun = dryRun, RolledBack = dryRun, Committed = !dryRun,
@@ -118,6 +129,7 @@ internal static class ViewVisibility
         catch
         {
             if (transaction.GetStatus() == TransactionStatus.Started) transaction.RollBack();
+            if (group.GetStatus() == TransactionStatus.Started) group.RollBack();
             throw;
         }
     }

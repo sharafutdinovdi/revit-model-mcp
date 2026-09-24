@@ -24,6 +24,9 @@ internal static class AlignLinkDatums
         var linkDocument = instance.GetLinkDocument()!;
         var transform = instance.GetTotalTransform();
         var movedLevels = false;
+        using var group = new TransactionGroup(document, "MCP action");
+        if (group.Start() != TransactionStatus.Started)
+            throw new InvalidOperationException("Could not start the action transaction group.");
         using var transaction = new Transaction(document, "revit_align_link_datums");
         if (transaction.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction.");
@@ -155,12 +158,16 @@ internal static class AlignLinkDatums
             {
                 if (transaction.RollBack() != TransactionStatus.RolledBack)
                     throw new InvalidOperationException("Could not roll back the dry run.");
+                group.RollBack();
             }
             else
             {
                 transaction.SetName(groupName);
                 if (transaction.Commit() != TransactionStatus.Committed)
                     throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
+                group.SetName(groupName);
+                if (group.Assimilate() != TransactionStatus.Committed)
+                    throw new InvalidOperationException("Could not assimilate the action transaction group.");
             }
             var result = new ActionResultData
             {
@@ -188,6 +195,7 @@ internal static class AlignLinkDatums
         catch
         {
             if (transaction.GetStatus() == TransactionStatus.Started) transaction.RollBack();
+            if (group.GetStatus() == TransactionStatus.Started) group.RollBack();
             throw;
         }
     }
