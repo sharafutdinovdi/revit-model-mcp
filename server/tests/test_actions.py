@@ -403,6 +403,9 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
     sent = json.loads(host.prepare_job.await_args.args[1])
     correlation_id = sent.pop("correlationId")
     assert len(correlation_id) == 32
+    assert len(sent.pop("jobId")) == 32
+    assert len(sent.pop("clientId")) == 32
+    assert sent.pop("clientName") == "unknown"
     assert host.wait_for_new_response.await_args.args[3] == correlation_id
     assert sent == {
         **payload,

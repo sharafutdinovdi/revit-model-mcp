@@ -48,6 +48,28 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "correlationId", Order = 13, EmitDefaultValue = false)]
     public string? CorrelationId { get; set; }
 
+    [DataMember(Name = "client", Order = 14, EmitDefaultValue = false)]
+    public ClientIdentity? Client { get; set; }
+
+    [DataMember(Name = "jobId", Order = 15, EmitDefaultValue = false)]
+    public string? JobId { get; set; }
+
+    [DataMember(Name = "queuedMs", Order = 16, EmitDefaultValue = false)]
+    public long? QueuedMs { get; set; }
+
+    [DataMember(Name = "retryAfterMs", Order = 17, EmitDefaultValue = false)]
+    public int? RetryAfterMs { get; set; }
+
+    [OnSerializing]
+    private void AddJobMetadata(StreamingContext context)
+    {
+        var metadata = JobResponseMetadata.Current;
+        if (metadata is null || JobId is not null) return;
+        Client = metadata.Client;
+        JobId = metadata.JobId;
+        QueuedMs = metadata.QueuedMs;
+    }
+
     private List<string>? warningsDismissed;
 
     public static CommandResponse<T> Ok(string command, T data, long elapsedMs, string? message = null)
@@ -100,6 +122,44 @@ public sealed class CommandResponse<T>
     {
         return Fail(command, $"Element with id {id} was not found.", elapsedMs);
     }
+}
+
+[DataContract]
+public sealed record ClientIdentity
+{
+    [DataMember(Name = "name")] public string Name { get; init; } = "unknown";
+    [DataMember(Name = "id")] public string Id { get; init; } = "unknown";
+}
+
+public sealed record JobResponseMetadata(ClientIdentity Client, string JobId, long QueuedMs)
+{
+    [ThreadStatic] public static JobResponseMetadata? Current;
+}
+
+[DataContract]
+public sealed record JobListData
+{
+    [DataMember(Name = "jobs")] public List<JobSummary> Jobs { get; init; } = [];
+    [DataMember(Name = "cancellation", EmitDefaultValue = false)] public JobCancellationInfo? Cancellation { get; init; }
+}
+
+[DataContract]
+public sealed record JobSummary
+{
+    [DataMember(Name = "jobId")] public string JobId { get; init; } = string.Empty;
+    [DataMember(Name = "clientName")] public string ClientName { get; init; } = string.Empty;
+    [DataMember(Name = "command")] public string Command { get; init; } = string.Empty;
+    [DataMember(Name = "state")] public string State { get; init; } = string.Empty;
+    [DataMember(Name = "position")] public int Position { get; init; }
+    [DataMember(Name = "ageMs")] public long AgeMs { get; init; }
+}
+
+[DataContract]
+public sealed record JobCancellationInfo
+{
+    [DataMember(Name = "cancelled")] public bool Cancelled { get; init; }
+    [DataMember(Name = "state", EmitDefaultValue = false)] public string? State { get; init; }
+    [DataMember(Name = "message")] public string Message { get; init; } = string.Empty;
 }
 
 public static class ReadCommandResponseFactory

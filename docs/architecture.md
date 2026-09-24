@@ -26,22 +26,22 @@ flowchart LR
 
 1. Under its existing job lock, the server discovers processes and heartbeats in ROOT and selects one target.
 2. It pins the PID, `startedUtc` identity and `ROOT\instances\<pid>` directory, then confirms the v2 channel with a bounded correlated ping.
-3. It verifies the selected process and identity again, writes a unique `mcp_<uuid>.tmp` and atomically moves it to that directory's `trigger.txt` without overwriting.
+3. It verifies the selected process and identity again, writes a unique `mcp_<uuid>.tmp` and atomically moves it to `job_<jobId>.json` in that directory.
 4. The instance's watcher requests an ExternalEvent; a 10-second timer provides a fallback check.
-5. Revit checks the PID and claims the trigger in its API context. Directed reads recheck the active document; actions resolve the addressed open document.
+5. The watcher moves the job into a thread-safe scheduler and removes its file. Revit checks the PID and active document in its API context; actions resolve the addressed open document.
 6. Readers atomically write correlated responses in the same directory. Paged sessions request further ExternalEvent callbacks until complete.
 7. The server polls that fixed directory and validates response correlation and PID. It copies exported PNGs and cleans only the current job's files there.
 
 Jobs contain a `command` and command-specific fields.
 Successful responses contain `command`, `success` and `data`.
-Responses also carry timing and responder metadata.
+Responses also carry timing, responder and client metadata, `jobId` and `queuedMs`.
 See the [response contracts](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs).
 The server gives each job a fresh `correlationId`; v2 responses must echo it.
 Late responses from other jobs are ignored.
-HTTP assigns a `jobId` and polls `/jobs/{id}`; completed results expire after ten minutes.
+The server assigns a `jobId` and a process-wide `clientId`; `clientName` comes from MCP initialize. HTTP polls `/jobs/{id}`. Completed results expire after ten minutes.
 The asyncio lock serializes calls within one server process only.
 Clients targeting different PIDs use separate directories.
-Clients targeting the same PID still contend for one channel.
+Clients targeting the same PID have separate FIFO queues. The scheduler rotates between clients and executes one job or read-session slice per ExternalEvent.
 
 ## Revit context and model access
 
@@ -68,7 +68,7 @@ Missing, malformed or expired heartbeats leave the process visible with `pluginR
 For v2, a fresh heartbeat is a pre-check; `pluginResponding=true` requires a bounded ping confirming correlation, responder PID and unchanged startup identity.
 Busy or timed-out handshakes never remove a process from discovery.
 
-Each instance watches only its own `ROOT\instances\<pid>\trigger.txt`.
+Each instance watches `job_*.json` and legacy `trigger.txt` in its own `ROOT\instances\<pid>` directory.
 Responses, atomic temporary files, PNGs, `latest.json`, `latest.txt`, `snapshot_*.json` and `views_dump_*` share that per-PID directory.
 Startup moves any stale working trigger aside before the watcher starts.
 Cleanup never targets another instance's directory, and later discovery cannot redirect an outstanding job.
@@ -89,8 +89,8 @@ See [transport compatibility](transport.md#file-protocol-compatibility).
 
 ## Failure behavior
 
-A pre-existing trigger produces a busy error.
-A pickup timeout leaves the pending trigger in place.
+A seventeenth queued job from one client returns `queue_full` with `retryAfterMs`.
+A pickup timeout leaves the pending job file in place.
 The job can execute after the caller receives that timeout.
 A response timeout means pickup occurred but no new response was found within the response budget.
 Network polling retries transient SSH and command timeout failures.

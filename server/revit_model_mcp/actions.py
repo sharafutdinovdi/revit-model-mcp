@@ -13,6 +13,7 @@ from revit_model_mcp.revit_channel import (
     DEFAULT_TIMEOUT_SECONDS,
     ReadJob,
     RevitChannelError,
+    with_client_identity,
 )
 
 ElementId = Annotated[int, Field(strict=True, gt=0, le=9223372036854775807)]
@@ -231,7 +232,7 @@ def register_actions(mcp, execute, host_provider) -> None:
                 idempotentHint=function.__name__
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
             ),
-        )(function)
+        )(with_client_identity(function))
 
     @action
     async def revit_align_link_datums(

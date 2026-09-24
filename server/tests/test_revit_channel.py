@@ -268,7 +268,9 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        responses = await host.prepare_job("mcp_test.tmp", '{"command":"ping"}', "ping")
+        responses = await host.prepare_job(
+            "mcp_test.tmp", '{"command":"ping","jobId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}', "ping"
+        )
         self.assertEqual(responses, {"response_old_ping.json"})
         host._run.assert_awaited_once()
         script = host._run.await_args.args[0]
@@ -277,19 +279,22 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("WriteAllBytes", script)
         self.assertIn("[IO.File]::Move", script)
 
-    async def test_prepare_keeps_revit_and_busy_errors_distinct(self) -> None:
+    async def test_prepare_rejects_stopped_revit_and_accepts_next_job(self) -> None:
         host = SshPowerShellHost()
         host._instance = {"processId": 42}
         host._run = AsyncMock(
             side_effect=[
                 '{"revitRunning":false,"responses":[],"published":false,"channelBusy":false}',
-                '{"revitRunning":true,"responses":[],"published":false,"channelBusy":true}',
+                '{"revitRunning":true,"responses":[],"published":true}',
             ]
         )
         with self.assertRaisesRegex(RevitNotRunningError, "Revit is not running"):
-            await host.prepare_job("first.tmp", "{}", "ping")
-        with self.assertRaisesRegex(RevitChannelError, "RevitModelMcp channel is busy"):
-            await host.prepare_job("second.tmp", "{}", "ping")
+            await host.prepare_job(
+                "first.tmp", '{"command":"ping","jobId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}', "ping"
+            )
+        await host.prepare_job(
+            "second.tmp", '{"command":"ping","jobId":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}', "ping"
+        )
         self.assertEqual(host._run.await_count, 2)
 
     async def test_finishes_job_with_one_remote_command(self) -> None:
@@ -690,7 +695,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         message = str(raised.exception)
         self.assertIn("Job was not picked up within 7.2 s", message)
         self.assertIn("Revit activation attempts: 1", message)
-        self.assertIn("trigger.txt is still present", message)
+        self.assertIn("job file is still present", message)
         self.assertIn("may still execute later", message)
         self.assertNotIn("trigger.txt", remote.deleted_names)
 
@@ -703,7 +708,8 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                 ReadJob.view_elements("Level 1 Plan", limit=100), timeout_seconds=9
             )
 
-        self.assertIn("The add-in picked up the job", str(raised.exception))
+        self.assertIn("The add-in picked up jobId=", str(raised.exception))
+        self.assertIn("may still execute", str(raised.exception))
         self.assertIn("increase timeout_seconds", str(raised.exception))
 
     async def test_propagates_plugin_error_and_cleans_response(self) -> None:
@@ -1218,15 +1224,23 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
             for status in statuses:
                 Path(root, f"instance_{status['processId']}.json").write_text(json.dumps(status))
             first, second = [host._for_instance(status) for status in statuses]
-            await first.prepare_job("one.tmp", '{"command":"ping"}', "ping")
-            await second.prepare_job("two.tmp", '{"command":"ping"}', "ping")
-            self.assertTrue(Path(root, "instances", "42", "trigger.txt").exists())
-            self.assertTrue(Path(root, "instances", "84", "trigger.txt").exists())
-            self.assertFalse(Path(root, "trigger.txt").exists())
-            with self.assertRaisesRegex(RevitChannelError, "busy"):
-                await first.prepare_job("contender.tmp", "{}", "ping")
-            self.assertFalse(Path(root, "instances", "42", "contender.tmp").exists())
-            Path(root, "instances", "42", "trigger.txt").unlink()
+            first_id = "a" * 32
+            second_id = "b" * 32
+            contender_id = "c" * 32
+            await first.prepare_job(
+                "one.tmp", json.dumps({"command": "ping", "jobId": first_id}), "ping"
+            )
+            await second.prepare_job(
+                "two.tmp", json.dumps({"command": "ping", "jobId": second_id}), "ping"
+            )
+            self.assertTrue(Path(root, "instances", "42", f"job_{first_id}.json").exists())
+            self.assertTrue(Path(root, "instances", "84", f"job_{second_id}.json").exists())
+            self.assertFalse(Path(root, f"job_{first_id}.json").exists())
+            await first.prepare_job(
+                "contender.tmp", json.dumps({"command": "ping", "jobId": contender_id}), "ping"
+            )
+            self.assertTrue(Path(root, "instances", "42", f"job_{contender_id}.json").exists())
+            Path(root, "instances", "42", f"job_{contender_id}.json").unlink()
             self.assertTrue((await first.wait_until_trigger_is_gone(5)).taken)
             for process_id in (42, 84):
                 directory = Path(root, "instances", str(process_id))
@@ -1257,10 +1271,10 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(
                 Path(root, "instances", "84", "response_20260916_ping_fresh.json").exists()
             )
-            self.assertTrue(Path(root, "instances", "84", "trigger.txt").exists())
+            self.assertTrue(Path(root, "instances", "84", f"job_{second_id}.json").exists())
             self.assertTrue(any("$_.Id -eq 42" in script for script in scripts))
 
-            Path(root, "instances", "84", "trigger.txt").unlink()
+            Path(root, "instances", "84", f"job_{second_id}.json").unlink()
             Path(root, "instances", "42", "instance_999.json").write_text(
                 json.dumps(instance_status(999))
             )
@@ -1276,7 +1290,7 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                 process_id = selected._instance["processId"]
                 directory = Path(root, "instances", str(process_id))
                 published.append((process_id, payload))
-                directory.joinpath("trigger.txt").unlink()
+                directory.joinpath(f"job_{payload['jobId']}.json").unlink()
                 directory.joinpath(
                     f"response_now_{command}_{payload['correlationId']}.json"
                 ).write_text(
@@ -1309,3 +1323,53 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len({payload["correlationId"] for _, payload in published}), 4)
             self.assertFalse(list(Path(root, "instances", "42").glob("response_now_*")))
             self.assertFalse(list(Path(root, "instances", "84").glob("response_now_*")))
+
+
+def test_two_server_processes_complete_jobs_on_simulated_host(tmp_path):
+    import subprocess
+    import sys
+    import time
+
+    worker = r"""
+import asyncio, json, pathlib, sys
+from revit_model_mcp.revit_channel import JobPickupStatus, ReadJob, RevitReadChannel
+root = pathlib.Path(sys.argv[1])
+class SimulatedHost:
+    async def select_job(self, job): return self, job
+    async def prepare_job(self, name, content, command):
+        self.job_id = json.loads(content)["jobId"]
+        root.joinpath("job_" + self.job_id + ".json").write_text(content)
+        return set()
+    async def wait_until_trigger_is_gone(self, timeout_seconds):
+        while root.joinpath("job_" + self.job_id + ".json").exists():
+            await asyncio.sleep(.01)
+        return JobPickupStatus(True, 0, False, 0)
+    async def wait_for_new_response(self, command, known_names, timeout_seconds, correlation_id=None):
+        name = "response_" + self.job_id + ".json"
+        while not root.joinpath(name).exists(): await asyncio.sleep(.01)
+        return name
+    async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+        return root.joinpath(response_name).read_text(), None
+    async def delete_files(self, names): pass
+asyncio.run(RevitReadChannel(SimulatedHost()).execute(ReadJob.ping()))
+"""
+    workers = [subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]) for _ in range(2)]
+    try:
+        deadline = time.monotonic() + 10
+        while len(list(tmp_path.glob("job_*.json"))) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        jobs = list(tmp_path.glob("job_*.json"))
+        assert len(jobs) == 2
+        payloads = [json.loads(path.read_text()) for path in jobs]
+        assert payloads[0]["clientId"] != payloads[1]["clientId"]
+        for path, payload in zip(jobs, payloads):
+            path.unlink()
+            tmp_path.joinpath(f"response_{payload['jobId']}.json").write_text(
+                json.dumps({"command": "ping", "success": True, "data": "pong"})
+            )
+        assert all(process.wait(timeout=10) == 0 for process in workers)
+    finally:
+        for process in workers:
+            if process.poll() is None:
+                process.kill()
+                process.wait()

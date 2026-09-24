@@ -9,7 +9,7 @@ Its default channel is `%LOCALAPPDATA%\RevitModelMcp`.
 
 | Location | Contents |
 |---|---|
-| Channel directory | `trigger.txt`, `mcp_<uuid>.tmp`, `response_<timestamp>_<command>.json`, `view_<timestamp>_<id>.png`, `instance_<processId>.json` and heartbeat `.tmp` files |
+| Channel directory | `job_<jobId>.json`, legacy `trigger.txt`, `mcp_<uuid>.tmp`, `response_<timestamp>_<command>.json`, `view_<timestamp>_<id>.png`, `instance_<processId>.json` and heartbeat `.tmp` files |
 | Channel directory, legacy snapshots | `latest.json`, `latest.txt`, `snapshot_yyyyMMdd_HHmmss.json` |
 | Channel directory, legacy view dumps | `views_dump_yyyyMMdd_HHmmss_fff.json` and matching `.txt`; a numeric suffix avoids existing names |
 | `%LOCALAPPDATA%\RevitModelMcp\settings.json` | HTTP listener settings and persistent bearer token |
@@ -27,6 +27,8 @@ HTTP stores completed response JSON in memory; exported PNGs still use the chann
 MCP tools translate snake_case arguments into channel JSON fields.
 The request `{"command":"ping"}` checks connectivity without an active model.
 Read jobs may contain `targetDocument`; actions add `targetProcessId` from instance discovery.
+Every server job contains a GUID `jobId`, a per-process GUID `clientId`, and `clientName` from MCP initialize (or `unknown`).
+The response envelope adds `client:{name,id}`, `jobId`, and `queuedMs`.
 `family-audit` contains `families` only in project mode. `edit-families` contains `operations` and may contain `families`; the addressed Revit document determines the mode.
 `targetDocument` matches a case-insensitive substring of the active document title or path basename in the add-in.
 An HTTP endpoint also rejects jobs addressed to another process.
@@ -34,6 +36,7 @@ An HTTP endpoint also rejects jobs addressed to another process.
 | MCP arguments | JSON fields |
 |---|---|
 | `document` | `targetDocument` |
+| `cancel_job_id` | `cancelJobId` for the `jobs` read command |
 | `element_id` | `id` for `element-details`; `elementId` for `set-parameter` |
 | `element_ids` | `elementIds` |
 | `dry_run` | `dryRun` (optional boolean, defaults to false) |

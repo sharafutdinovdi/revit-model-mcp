@@ -526,5 +526,28 @@ public sealed class ControlJobParserTests
         }
     }
 
+    [Test]
+    public async Task ExternalEventQueue_RejectedRaiseRetriesWithoutFallbackTimer()
+    {
+        var attempts = 0;
+        var raisedAgain = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queue = new ExternalEventRequestQueue(() =>
+        {
+            attempts++;
+            if (attempts == 2) raisedAgain.TrySetResult(true);
+            return attempts > 1;
+        });
+        queue.Request();
+        await raisedAgain.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.That(attempts).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task CancelRequestReadsClientIdentityWithoutCommand()
+    {
+        var parsed = ControlJobParser.Parse("{\"clientId\":\"client-1\"}");
+        await Assert.That(parsed.ClientId).IsEqualTo("client-1");
+    }
+
     private sealed record TestView(long Id, string Name);
 }

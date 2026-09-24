@@ -37,7 +37,13 @@ public sealed class Application : ExternalApplication
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         _eventHandler = new ControlExternalEventHandler(_controlChannel);
         _externalEvent = Autodesk.Revit.UI.ExternalEvent.Create(_eventHandler);
-        _requestQueue = new ExternalEventRequestQueue(() => _externalEvent.Raise());
+        _requestQueue = new ExternalEventRequestQueue(() =>
+        {
+            var result = _externalEvent.Raise();
+            if (result is ExternalEventRequest.Denied or ExternalEventRequest.TimedOut)
+                _controlChannel.Scheduler.MarkWaiting();
+            return result is ExternalEventRequest.Accepted or ExternalEventRequest.Pending;
+        }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
         Directory.CreateDirectory(Output.SnapshotFileWriter.OutputDirectory);
         if (File.Exists(TriggerFilePath))
@@ -113,6 +119,7 @@ public sealed class Application : ExternalApplication
     {
         try
         {
+            _controlChannel.ScanPendingFiles();
             // Raise is allowed on the watcher thread; Revit API calls run only inside Execute.
             _requestQueue?.Request();
         }
@@ -292,7 +299,7 @@ internal sealed class ControlExternalEventHandler : IExternalEventHandler
             () =>
             {
                 _controlChannel.Tick(application);
-                if (_controlChannel.HasActiveSession)
+                if (_controlChannel.HasPendingWork)
                 {
                     // The batch session requests the next Execute independently of Idling.
                     requestQueue.Request();

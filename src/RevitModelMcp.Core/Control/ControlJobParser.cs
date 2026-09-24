@@ -30,7 +30,8 @@ public enum ControlJobKind
     FamilyAudit,
     Action,
     Invalid,
-    CompareLinkDatums
+    CompareLinkDatums,
+    Jobs
 }
 
 public sealed class ControlJobParseResult
@@ -46,6 +47,10 @@ public sealed class ControlJobParseResult
     public ControlJobKind Kind { get; }
     public string Command { get; }
     public string? CorrelationId { get; internal set; }
+    public string? JobId { get; internal set; }
+    public string ClientId { get; internal set; } = "unknown";
+    public string ClientName { get; internal set; } = "unknown";
+    public string? CancelJobId { get; internal set; }
     public IReadOnlyList<string> Views { get; internal set; } = Array.Empty<string>();
     public string? View { get; internal set; }
     public string? ViewType { get; internal set; }
@@ -148,7 +153,9 @@ public sealed class ControlJobParseResult
         {
             return new ControlJobParseResult(ControlJobKind.Invalid, "invalid", "The command field is required.")
             {
-                CorrelationId = job.CorrelationId
+                CorrelationId = job.CorrelationId,
+                ClientId = string.IsNullOrWhiteSpace(job.ClientId) ? "unknown" : job.ClientId!,
+                ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!
             };
         }
 
@@ -160,6 +167,7 @@ public sealed class ControlJobParseResult
             "views-dump" when views.Count == 0 => Invalid(command, "The views-dump command requires a non-empty views list."),
             "views-dump" => ViewsDump(views),
             "ping" => Create(ControlJobKind.Ping, command),
+            "jobs" => Create(ControlJobKind.Jobs, command),
             "model-health" => Create(ControlJobKind.ModelHealth, command),
             "links-status" => Create(ControlJobKind.LinksStatus, command),
             "shared-coordinates" => Create(ControlJobKind.SharedCoordinates, command),
@@ -182,6 +190,10 @@ public sealed class ControlJobParseResult
             _ => Invalid(command, $"Unknown command: {command}.")
         };
         result.CorrelationId = job.CorrelationId;
+        result.JobId = job.JobId;
+        result.ClientId = string.IsNullOrWhiteSpace(job.ClientId) ? "unknown" : job.ClientId!;
+        result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
+        result.CancelJobId = job.CancelJobId;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
         if (command == "family-audit") result.CoordinatorJob = job;
         result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
@@ -367,6 +379,14 @@ public static class ControlJobParser
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "jobId", EmitDefaultValue = false)]
+    public string? JobId { get; set; }
+    [DataMember(Name = "clientId", EmitDefaultValue = false)]
+    public string? ClientId { get; set; }
+    [DataMember(Name = "clientName", EmitDefaultValue = false)]
+    public string? ClientName { get; set; }
+    [DataMember(Name = "cancelJobId", EmitDefaultValue = false)]
+    public string? CancelJobId { get; set; }
     [DataMember(Name = "correlationId", EmitDefaultValue = false)]
     public string? CorrelationId { get; set; }
     [DataMember(Name = "parameters", EmitDefaultValue = false)]

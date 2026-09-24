@@ -19,6 +19,7 @@ from revit_model_mcp.ssh_host import SshPowerShellHost
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
+    "revit_jobs",
     "revit_model_health",
     "revit_links_status",
     "revit_shared_coordinates",
@@ -135,6 +136,14 @@ class RecordingChannel:
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_jobs_tool_passes_cancellation_without_write_gate(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_jobs", {"cancel_job_id": "job-1"})
+        job, _, _ = channel.calls[0]
+        self.assertEqual(job.command, "jobs")
+        self.assertEqual(job.payload["cancelJobId"], "job-1")
+
     async def test_family_audit_is_read_only_and_uses_response_budget(self) -> None:
         channel = RecordingChannel()
         with patch.object(revit_server, "channel", channel):
@@ -514,3 +523,44 @@ def test_discovery_unions_heartbeats_with_all_running_processes():
     assert _parse_instance_package(package, "unique.rvt", now)[0]["processId"] == 42
     package["processes"] = [{"processId": 84}]
     assert [item["processId"] for item in _parse_instance_package(package, "", now)] == [84]
+
+
+def test_client_name_comes_from_initialize_context():
+    import asyncio
+    from types import SimpleNamespace
+
+    from mcp.server.mcpserver import Context
+
+    from revit_model_mcp.revit_channel import JobPickupStatus, RevitReadChannel
+
+    class Host:
+        async def select_job(self, job):
+            return self, job
+
+        async def prepare_job(self, name, content, command):
+            self.payload = json.loads(content)
+            return set()
+
+        async def wait_until_trigger_is_gone(self, timeout_seconds):
+            return JobPickupStatus(True, 0, False, 0)
+
+        async def wait_for_new_response(
+            self, command, known_names, timeout_seconds, correlation_id=None
+        ):
+            return "response_ping.json"
+
+        async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+            return json.dumps({"command": "ping", "success": True, "data": "pong"}), None
+
+        async def delete_files(self, names):
+            pass
+
+    host = Host()
+    session = SimpleNamespace(
+        client_params=SimpleNamespace(client_info=SimpleNamespace(name="codex"))
+    )
+    context = Context(request_context=SimpleNamespace(session=session))
+    with patch.object(revit_server, "channel", RevitReadChannel(host)):
+        asyncio.run(revit_server.mcp.call_tool("revit_ping", {}, context=context))
+    assert host.payload["clientName"] == "codex"
+    assert len(host.payload["clientId"]) == 32

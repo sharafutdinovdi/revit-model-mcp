@@ -99,7 +99,7 @@ class HttpHost:
         if status == 202:
             self._job_id = self._pending_id(body)
         elif status == 200:
-            self._response = body.decode("utf-8-sig")
+            self._response = self._completed_result(body)
         else:
             raise ResponseParseError(f"Unexpected job submission status: {status}.")
         return set()
@@ -134,7 +134,7 @@ class HttpHost:
                 timeout=min(10, remaining),
             )
             if status == 200:
-                self._response = body.decode("utf-8-sig")
+                self._response = self._completed_result(body)
                 break
             if status != 202:
                 raise ResponseParseError(f"Unexpected job result status: {status}.")
@@ -206,6 +206,16 @@ class HttpHost:
             raise ResponseParseError("The pending HTTP response did not contain a job id.")
         return job_id
 
+    @classmethod
+    def _completed_result(cls, body: bytes) -> str:
+        envelope = cls._json(body)
+        result = envelope.get("result")
+        if isinstance(result, dict):
+            return json.dumps(result, ensure_ascii=False)
+        if not isinstance(result, str):
+            raise ResponseParseError("The completed HTTP job has no JSON result.")
+        return result
+
     async def _request(
         self,
         method: str,
@@ -238,7 +248,7 @@ class HttpHost:
                 messages = {
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
                     403: "Revit denied this request. Actions require the workstation allow-write gate and REVIT_MCP_ALLOW_WRITE=1 in the MCP server.",
-                    409: "Revit is busy with another job. Wait for it to finish before retrying.",
+                    429: "Revit job queue is full for this client; retry after a short wait.",
                     404: "Revit job or endpoint not found; completed results expire after ten minutes.",
                 }
                 raise RevitChannelError(
@@ -249,7 +259,9 @@ class HttpHost:
                     getattr(error, "reason", None), TimeoutError
                 ):
                     raise RevitChannelError(
-                        f"Revit HTTP request timed out at {self.host}. A submitted job may still execute; "
+                        f"Revit HTTP request timed out at {self.host}; "
+                        f"jobId={self._job_id or self._payload.get('jobId', 'unknown')}. "
+                        "A submitted job may still execute; "
                         "inspect the model before retrying an action."
                     ) from None
                 raise RevitChannelError(

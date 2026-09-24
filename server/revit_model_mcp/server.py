@@ -21,6 +21,7 @@ from revit_model_mcp.revit_channel import (
     ReadJob,
     RevitChannelError,
     RevitReadChannel,
+    with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
@@ -247,6 +248,7 @@ def addressed_tool(function):
     )
     title = {
         "revit_ping": "Check Revit Connection",
+        "revit_jobs": "List Revit Jobs",
         "revit_document_info": "Document Info",
         "revit_list_catalog": "List Catalog",
         "revit_aggregate_elements": "Aggregate Elements",
@@ -268,7 +270,24 @@ def addressed_tool(function):
         "revit_compare_link_datums": "Compare Link Datums",
     }[function.__name__]
     return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
-        function
+        with_client_identity(function)
+    )
+
+
+@addressed_tool
+async def revit_jobs(
+    cancel_job_id: str | None = None,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """List queued and running jobs in the selected Revit process.
+
+    Supply cancel_job_id to cancel one of this server process's own jobs.
+    A running action finishes without interruption.
+    """
+    return await _execute(
+        ReadJob.jobs(cancel_job_id), timeout_seconds, pickup_timeout_seconds, document
     )
 
 
