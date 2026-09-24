@@ -385,18 +385,29 @@ class PipeJobHost:
             raise RevitChannelError("A jobId is required before submitting a pipe job.")
         self._job_id = job_id
         self._result = None
-        for attempt in range(2):
-            # Watch first: the final push may follow the submit reply immediately.
+        # Watch first: the final push may follow the submit reply immediately.
+        self._future = self._connection.watch(job_id)
+        try:
+            reply = await self._connection.request({"type": "submit", "job": payload})
+        except PipeDisconnectedError:
+            # The connection may have died before the write ever reached Revit (safe to
+            # resubmit), or after Revit already queued the job but before the "submitted"
+            # reply came back (resubmitting would fail with duplicate_job_id and would wrongly
+            # report a job that is actually running). Reconnect and ask `status` first so a
+            # job Revit already accepted is resumed instead of rejected or run twice.
+            self._connection = await self._parent.connection(self._instance)
             self._future = self._connection.watch(job_id)
-            try:
-                reply = await self._connection.request({"type": "submit", "job": payload})
-                break
-            except PipeDisconnectedError:
-                if attempt:
-                    raise
-                # A connection can close while idle. The add-in rejects a repeated jobId,
-                # so resubmitting on a new connection never runs the job twice.
-                self._connection = await self._parent.connection(self._instance)
+            status_reply = await self._connection.request({"type": "status", "jobId": job_id})
+            if status_reply.get("type") == "status":
+                if status_reply.get("state") in FINISHED_STATES and "result" in status_reply:
+                    self._connection.forget(job_id)
+                    result = status_reply["result"]
+                    if not isinstance(result, dict):
+                        raise ResponseParseError("The finished pipe job has no JSON result.")
+                    self._result = json.dumps(result, ensure_ascii=False)
+                return set()
+            # Not found: the original submit never reached Revit; resubmitting is safe.
+            reply = await self._connection.request({"type": "submit", "job": payload})
         if reply.get("type") == "error":
             self._connection.forget(job_id)
             raise RevitChannelError(_error_text(reply))

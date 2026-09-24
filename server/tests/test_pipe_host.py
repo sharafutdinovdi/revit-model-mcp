@@ -50,9 +50,15 @@ def write_heartbeat(directory: Path, protocols: list[str] | None) -> None:
 class FakeRevit:
     """Loopback TCP stand-in for the add-in pipe: the same newline-delimited pipe/1 messages."""
 
-    def __init__(self, drop_after_submit: int = 0, close_after_result: bool = False) -> None:
+    def __init__(
+        self,
+        drop_after_submit: int = 0,
+        close_after_result: bool = False,
+        drop_before_submitted_reply: bool = False,
+    ) -> None:
         self.drop_after_submit = drop_after_submit
         self.close_after_result = close_after_result
+        self.drop_before_submitted_reply = drop_before_submitted_reply
         self.received: list[tuple[int, dict[str, Any]]] = []
         self.jobs: dict[str, dict[str, Any]] = {}
         self.connections = 0
@@ -113,6 +119,9 @@ class FakeRevit:
                 elif kind == "submit":
                     job = message["job"]
                     self.jobs[job["jobId"]] = job
+                    if self.drop_before_submitted_reply:
+                        self.drop_before_submitted_reply = False
+                        return
                     await send(
                         {
                             "type": "submitted",
@@ -137,7 +146,18 @@ class FakeRevit:
                     if self.close_after_result:
                         return
                 elif kind == "status":
-                    job = self.jobs[message["jobId"]]
+                    job = self.jobs.get(message["jobId"])
+                    if job is None:
+                        await send(
+                            {
+                                "type": "error",
+                                "id": message["id"],
+                                "error": "not_found",
+                                "jobId": message["jobId"],
+                                "message": "Job not found or expired.",
+                            }
+                        )
+                        continue
                     await send(
                         {
                             "type": "status",
@@ -241,7 +261,8 @@ def test_reconnects_after_the_pipe_closes(tmp_path: Path) -> None:
 
     assert revit.connections == 2
     assert revit.messages(1) == ["hello", "submit"]
-    assert revit.messages(2) == ["hello", "submit"]
+    assert revit.messages(2)[0] == "hello"
+    assert revit.messages(2)[-1] == "submit"
 
 
 def test_running_job_resumes_through_status_after_disconnect(tmp_path: Path) -> None:
@@ -257,6 +278,25 @@ def test_running_job_resumes_through_status_after_disconnect(tmp_path: Path) -> 
     result, revit = asyncio.run(scenario())
 
     assert result["success"] is True
+    assert revit.messages(2) == ["hello", "status"]
+    submitted = revit.received[1][1]["job"]["jobId"]
+    assert revit.received[-1][1]["jobId"] == submitted
+
+
+def test_lost_submit_reply_resumes_instead_of_reporting_duplicate_job_id(tmp_path: Path) -> None:
+    write_heartbeat(tmp_path, [PIPE_PROTOCOL, "file/2"])
+
+    async def scenario() -> tuple[dict[str, Any], FakeRevit]:
+        async with FakeRevit(drop_before_submitted_reply=True) as revit:
+            host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
+            result = await RevitReadChannel(host).execute(ReadJob.ping(), timeout_seconds=5)
+            await host.aclose()
+            return result, revit
+
+    result, revit = asyncio.run(scenario())
+
+    assert result["success"] is True
+    assert revit.messages(1) == ["hello", "submit"]
     assert revit.messages(2) == ["hello", "status"]
     submitted = revit.received[1][1]["job"]["jobId"]
     assert revit.received[-1][1]["jobId"] == submitted
