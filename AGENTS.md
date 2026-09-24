@@ -74,8 +74,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 
 ## Hard rules
 
-- Keep MCP actions behind both `REVIT_MCP_ALLOW_WRITE=1` and the workstation `allow-write` gate.
-- Never widen defaults toward writing; direct HTTP actions still require authentication and the workstation gate.
+- Actions are enabled by default; every change is one named undo entry, listed in the activity pane and reported in `summary`; read-only mode must stay available.
+- Direct HTTP actions still require authentication and are refused while the workstation read-only gate is present.
 - Never log model paths when redaction is on, or expose secrets and confidential model data in commits or logs.
 - Never include Revit API assemblies in artifacts.
 - Keep transports loopback-first; remote exposure requires explicit configuration.

@@ -49,6 +49,8 @@ public sealed class FamilyEditData
     [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool RolledBack { get; set; }
     [DataMember(Name = "failedFamily")] public string? FailedFamily { get; set; }
     [DataMember(Name = "families")] public List<FamilyEditFamily> Families { get; set; } = [];
+    [DataMember(Name = "summary", EmitDefaultValue = false)] public string? Summary { get; set; }
+    [DataMember(Name = "undoName", EmitDefaultValue = false)] public string? UndoName { get; set; }
 }
 
 [DataContract]

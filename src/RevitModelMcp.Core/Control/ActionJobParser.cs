@@ -16,7 +16,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job)
     {
@@ -73,7 +73,7 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc" or "edit-families" or "family-audit" or "align-link-datums"),
+                    Require(IsAction(stepCommand) && stepCommand is not ("show" or "batch" or "export-nwc" or "edit-families" or "family-audit" or "align-link-datums" or "undo-last"),
                         "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
@@ -422,7 +422,7 @@ public sealed class ActionResultData
     [DataMember(Name = "toleranceMm", EmitDefaultValue = false)] public double? ToleranceMm { get; set; }
     [DataMember(Name = "levelOffsetMm", EmitDefaultValue = false)] public double? LevelOffsetMm { get; set; }
     [DataMember(Name = "items", EmitDefaultValue = false)] public List<RevitModelMcp.Core.Models.LinkDatumItem>? Items { get; set; }
-    [DataMember(Name = "summary", EmitDefaultValue = false)] public RevitModelMcp.Core.Models.LinkDatumSummary? Summary { get; set; }
+    [DataMember(Name = "datumSummary", EmitDefaultValue = false)] public RevitModelMcp.Core.Models.LinkDatumSummary? DatumSummary { get; set; }
     [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
     [DataMember(Name = "dryRun", EmitDefaultValue = false)] public bool? DryRun { get; set; }
     [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool? RolledBack { get; set; }
@@ -431,6 +431,7 @@ public sealed class ActionResultData
     [DataMember(Name = "undoName", EmitDefaultValue = false)] public string? UndoName { get; set; }
     [DataMember(Name = "committed", EmitDefaultValue = false)] public bool? Committed { get; set; }
     [DataMember(Name = "failedStep")] public int? FailedStep { get; set; }
+    [DataMember(Name = "summary", EmitDefaultValue = false)] public string? Summary { get; set; }
 
     [DataMember(Name = "count", EmitDefaultValue = false)] public int? Count { get; set; }
     [DataMember(Name = "id", EmitDefaultValue = false)] public long? Id { get; set; }

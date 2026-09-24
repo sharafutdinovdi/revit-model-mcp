@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from functools import partial
 from typing import Annotated, Any, Literal, Union
 
 from mcp.server.mcpserver.exceptions import ToolError
@@ -202,10 +201,25 @@ async def _send_action(
 
 
 def register_actions(mcp, execute, host_provider) -> None:
-    if not env_flag("REVIT_MCP_ALLOW_WRITE", False):
-        return
+    read_only = env_flag("REVIT_MCP_READ_ONLY", False)
 
-    send = partial(_send_action, execute, host_provider)
+    async def send(
+        command: str,
+        *,
+        document: str | None = None,
+        response_timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
+        **payload,
+    ) -> dict[str, Any]:
+        if read_only:
+            return {"success": False, "command": command, "error": "read-only mode"}
+        return await _send_action(
+            execute,
+            host_provider,
+            command,
+            document=document,
+            response_timeout_s=response_timeout_s,
+            **payload,
+        )
 
     def action(function):
         title = {
@@ -221,6 +235,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_export_nwc": "Export Navisworks NWC",
             "revit_edit_families": "Edit Families",
             "revit_align_link_datums": "Align Link Datums",
+            "revit_undo_last": "Undo Last Action",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -233,6 +248,17 @@ def register_actions(mcp, execute, host_provider) -> None:
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
             ),
         )(with_client_identity(function))
+
+    @action
+    async def revit_undo_last(document: Document = None) -> dict[str, Any]:
+        """Undo the last MCP action in Revit, through Revit's own undo command.
+
+        Allowed only when the target document is active, no command is pending in Revit, and
+        Revit's last undo entry is still the one this session recorded. Otherwise the action
+        result carries a clear refusal reason instead of running.
+        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        """
+        return await send("undo-last", document=document)
 
     @action
     async def revit_align_link_datums(
@@ -446,7 +472,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export NWC on the Revit workstation. Requires the Navisworks exporter and both action gates. The file stays on the workstation; dialog settings do not apply."""
+        """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; dialog settings do not apply."""
         if scope == "view" and not view:
             raise ToolError("view is required for scope=view.")
         if scope == "selection" and not element_ids:
@@ -505,7 +531,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         """Edit an open family in place or named project families in one load cycle each.
 
         In project mode, pass exact family names or ["*"]. A dry run rolls back all changes.
-        The workstation write gate and REVIT_MCP_ALLOW_WRITE=1 are both required.
+        Refused in read-only mode.
         """
         if families is not None and "*" in families and families != ["*"]:
             raise ToolError("The '*' family selector must be alone.")

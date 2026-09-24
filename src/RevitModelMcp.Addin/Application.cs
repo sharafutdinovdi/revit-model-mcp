@@ -6,8 +6,10 @@ using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using JetBrains.Annotations;
+using Nice3point.Revit.Extensions;
 using Nice3point.Revit.Toolkit;
 using Nice3point.Revit.Toolkit.External;
+using RevitModelMcp.Activity;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
@@ -62,6 +64,10 @@ public sealed class Application : ExternalApplication
             Application.ControlledApplication.VersionNumber);
         Application.ViewActivated += OnViewActivated;
         Application.ControlledApplication.DocumentClosing += OnDocumentClosing;
+        Application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+        ActivityHost.Scheduler = _controlChannel.Scheduler;
+        ActivityHost.CancelJob = _controlChannel.CancelJob;
+        RegisterActivityPane();
         _activeDocument = RevitContext.UiApplication?.ActiveUIDocument?.Document;
         _instanceHeartbeat.Start(_activeDocument);
         try
@@ -82,6 +88,8 @@ public sealed class Application : ExternalApplication
     {
         Application.ViewActivated -= OnViewActivated;
         Application.ControlledApplication.DocumentClosing -= OnDocumentClosing;
+        Application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
+        ActivityHost.Reset();
         _activeDocument = null;
         _instanceHeartbeat?.Dispose();
         _instanceHeartbeat = null;
@@ -95,6 +103,14 @@ public sealed class Application : ExternalApplication
         _requestQueue = null;
         _eventHandler = null;
         PluginLog.Shutdown();
+    }
+
+    private void RegisterActivityPane()
+    {
+        ActivityPaneProvider.Register(Application);
+        var panel = Application.CreatePanel("Activity", "RevitModelMcp");
+        panel.AddPushButton<ShowActivityPaneCommand>("MCP\nActivity")
+            .SetToolTip("Show or hide the MCP activity pane: recent actions, their undo entries and the job queue.");
     }
 
     private void OnViewActivated(object? sender, ViewActivatedEventArgs args)
@@ -114,6 +130,8 @@ public sealed class Application : ExternalApplication
             _httpChannel?.UpdateDocument(null);
         }
     }
+
+    private void OnDocumentChanged(object? sender, DocumentChangedEventArgs args) => UndoTracker.OnDocumentChanged(args);
 
     private void RequestExecution()
     {
