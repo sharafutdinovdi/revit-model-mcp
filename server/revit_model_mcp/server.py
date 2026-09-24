@@ -379,17 +379,19 @@ async def revit_document_info(
 
 @addressed_tool
 async def revit_documents(
+    include_linked: bool = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """List every open document in one Revit process, including background documents.
 
-    Returns title, path, isActive, isFamilyDocument, isWorkshared, isDetached,
-    isModified, openedByMcp and centralPath when available. An empty process returns [].
+    Linked documents are excluded unless include_linked is set. Returns title, path, isActive,
+    isLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath
+    when available. An empty process returns [].
     """
     return await _execute(
-        ReadJob("documents", {"command": "documents"}),
+        ReadJob("documents", {"command": "documents", "includeLinked": include_linked}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
