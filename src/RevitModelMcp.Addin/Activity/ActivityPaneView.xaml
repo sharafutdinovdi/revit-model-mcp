@@ -5,134 +5,314 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
+             FontFamily="Segoe UI" FontSize="12"
              d:DesignHeight="600" d:DesignWidth="340">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
         <local:CountToVisibilityConverter x:Key="CountToVisibility"/>
+        <local:ZeroCountToVisibilityConverter x:Key="ZeroCountToVisibility"/>
+        <local:StringToVisibilityConverter x:Key="StringToVisibility"/>
+
+        <!-- Light-theme defaults. ActivityPaneView.xaml.cs overwrites these brush entries to follow
+             Revit's UI theme (light on Revit 2022-2023, light or dark on Revit 2024+). -->
+        <SolidColorBrush x:Key="PaneBackgroundBrush" Color="#FAFAFA"/>
+        <SolidColorBrush x:Key="RowHoverBrush" Color="#F0F0F0"/>
+        <SolidColorBrush x:Key="PaneForegroundBrush" Color="#1F1F1F"/>
+        <SolidColorBrush x:Key="PaneMutedBrush" Color="#6E6E6E"/>
+        <SolidColorBrush x:Key="PaneBorderBrush" Color="#E0E0E0"/>
+        <SolidColorBrush x:Key="BadgeBackgroundBrush" Color="#E4E9F2"/>
+        <SolidColorBrush x:Key="BadgeForegroundBrush" Color="#34495E"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#2F80ED"/>
+        <SolidColorBrush x:Key="StatusDoneBrush" Color="#2E7D32"/>
+        <SolidColorBrush x:Key="StatusFailedBrush" Color="#C62828"/>
+        <SolidColorBrush x:Key="StatusDryRunBrush" Color="#9E9E9E"/>
+        <SolidColorBrush x:Key="StatusActiveBrush" Color="#2F80ED"/>
 
         <Style x:Key="LinkButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Padding" Value="0,0,10,0"/>
-            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+        </Style>
+
+        <!-- Pulses opacity for any row bound to a truthy IsActive (running/queued). -->
+        <Style x:Key="ActiveStatusDot" TargetType="TextBlock">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                 From="1.0" To="0.25" Duration="0:0:0.8"
+                                                 AutoReverse="True" RepeatBehavior="Forever"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Chevron-only expander used to reveal an activity row's changed/created/deleted elements. -->
+        <Style x:Key="ChevronExpander" TargetType="Expander">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <StackPanel>
+                            <ToggleButton HorizontalAlignment="Left" Cursor="Hand" Focusable="False"
+                                          Background="Transparent" BorderThickness="0" Padding="0"
+                                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Path x:Name="Chevron" Data="M0,0 L4,4 L8,0" Width="8" Height="5"
+                                                  Stroke="{DynamicResource PaneMutedBrush}" StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                  VerticalAlignment="Center" Margin="0,0,4,0"
+                                                  RenderTransformOrigin="0.5,0.5">
+                                                <Path.RenderTransform>
+                                                    <RotateTransform Angle="-90"/>
+                                                </Path.RenderTransform>
+                                            </Path>
+                                            <TextBlock Text="Details" FontSize="10" Foreground="{DynamicResource PaneMutedBrush}"/>
+                                        </StackPanel>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="Chevron" Property="RenderTransform">
+                                                    <Setter.Value>
+                                                        <RotateTransform Angle="0"/>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter
+                                Visibility="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Converter={StaticResource BoolToVisibility}}"/>
+                        </StackPanel>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
-    <Grid Margin="8">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <Grid Background="{DynamicResource PaneBackgroundBrush}">
+        <Grid Margin="10,8">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <TextBlock x:Name="ReadOnlyBadge" Grid.Row="0" Text="Read-only" FontWeight="Bold"
-                   Foreground="White" Background="#B00020" Padding="6,2" Margin="0,0,0,8"
-                   HorizontalAlignment="Left" Visibility="Collapsed"/>
+            <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="MCP activity" FontWeight="SemiBold" FontSize="13"
+                           Foreground="{DynamicResource PaneForegroundBrush}"/>
+                <Border Grid.Column="1" Background="{DynamicResource AccentBrush}" CornerRadius="8"
+                        Padding="6,1" VerticalAlignment="Center"
+                        Visibility="{Binding QueueRows.Count, Converter={StaticResource CountToVisibility}}">
+                    <TextBlock Text="{Binding QueueRows.Count}" FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                </Border>
+            </Grid>
 
-        <Expander Grid.Row="1" Header="Queue" Margin="0,0,0,8" IsExpanded="True"
-                  Visibility="{Binding QueueRows.Count, Converter={StaticResource CountToVisibility}}">
-            <ItemsControl ItemsSource="{Binding QueueRows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Grid Margin="0,3">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" FontSize="11" TextTrimming="CharacterEllipsis">
-                                <Run Text="{Binding ClientBadge, Mode=OneWay}" FontWeight="SemiBold"/>
-                                <Run Text=" · "/>
-                                <Run Text="{Binding Command, Mode=OneWay}" FontFamily="Consolas"/>
-                                <Run Text=" · "/>
-                                <Run Text="{Binding PositionText, Mode=OneWay}" Foreground="Gray"/>
-                            </TextBlock>
-                            <Button Grid.Column="1" Content="Cancel" Style="{StaticResource LinkButton}"
-                                    Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}"
-                                    Click="OnCancelClick"/>
-                        </Grid>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </Expander>
+            <TextBlock x:Name="ReadOnlyBadge" Grid.Row="1" Text="Read-only" FontWeight="Bold"
+                       Foreground="White" Background="#B00020" Padding="6,2" Margin="0,0,0,8"
+                       HorizontalAlignment="Left" Visibility="Collapsed"/>
 
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Rows}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border BorderBrush="#22808080" BorderThickness="0,0,0,1" Padding="0,6">
-                            <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding StatusGlyph}" Margin="0,0,5,0">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#2E7D32"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
-                                                        <Setter Property="Foreground" Value="#C62828"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Grid.Column="1" Text="{Binding TimeText}" FontFamily="Consolas"
-                                               FontSize="10" Foreground="Gray" Margin="0,0,6,0"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding ClientBadge}" FontWeight="SemiBold"
-                                               FontSize="11" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" FontSize="10" Foreground="Gray"/>
-                                </Grid>
-                                <TextBlock Text="{Binding Command}" FontFamily="Consolas" FontSize="10" Foreground="#7F808080"/>
-                                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontSize="12" Margin="0,2,0,0"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <Button Content="Show all" Style="{StaticResource LinkButton}"
-                                            Visibility="{Binding CanShowAll, Converter={StaticResource BoolToVisibility}}"
-                                            Click="OnShowAllClick"/>
-                                    <Button Content="Undo" Style="{StaticResource LinkButton}"
-                                            Visibility="{Binding CanUndo, Converter={StaticResource BoolToVisibility}}"
-                                            Click="OnUndoClick"/>
-                                </StackPanel>
-                                <Expander Header="Details" FontSize="10" Margin="0,2,0,0"
-                                          Visibility="{Binding HasElements, Converter={StaticResource BoolToVisibility}}">
-                                    <StackPanel Margin="14,2,0,0">
-                                        <ItemsControl ItemsSource="{Binding ChangedRefs}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Content="{Binding Label}" Style="{StaticResource LinkButton}"
-                                                            HorizontalContentAlignment="Left"
-                                                            FontFamily="Consolas" Click="OnElementClick"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <ItemsControl ItemsSource="{Binding CreatedRefs}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Button Content="{Binding Label}" Style="{StaticResource LinkButton}"
-                                                            HorizontalContentAlignment="Left"
-                                                            FontFamily="Consolas" Click="OnElementClick"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <ItemsControl ItemsSource="{Binding DeletedRefs}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <TextBlock Text="{Binding Label}" FontFamily="Consolas"
-                                                               FontSize="10" Foreground="Gray" Margin="0,0,0,2"/>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+            <Expander Grid.Row="2" Margin="0,0,0,8" IsExpanded="True"
+                      Visibility="{Binding QueueRows.Count, Converter={StaticResource CountToVisibility}}">
+                <Expander.Header>
+                    <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource PaneMutedBrush}">
+                        <Run Text="Queue ("/>
+                        <Run Text="{Binding QueueRows.Count, Mode=OneWay}"/>
+                        <Run Text=")"/>
+                    </TextBlock>
+                </Expander.Header>
+                <ItemsControl ItemsSource="{Binding QueueRows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="&#9679;" FontSize="8" Margin="0,0,6,0" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ActiveStatusDot}">
+                                            <Setter Property="Foreground" Value="{DynamicResource PaneMutedBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource StatusActiveBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Grid.Column="1" FontSize="11" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource PaneForegroundBrush}">
+                                    <Run Text="{Binding ClientBadge, Mode=OneWay}" FontWeight="SemiBold"/>
+                                    <Run Text=" · "/>
+                                    <Run Text="{Binding Command, Mode=OneWay}" FontFamily="Consolas" FontSize="10"/>
+                                    <Run Text=" · "/>
+                                    <Run Text="{Binding PositionText, Mode=OneWay}" Foreground="{DynamicResource PaneMutedBrush}"/>
+                                </TextBlock>
+                                <Button Grid.Column="2" Content="Cancel" Style="{StaticResource LinkButton}"
+                                        Visibility="{Binding CanCancel, Converter={StaticResource BoolToVisibility}}"
+                                        Click="OnCancelClick"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Expander>
+
+            <Grid Grid.Row="3">
+                <TextBlock Text="No MCP activity yet" Foreground="{DynamicResource PaneMutedBrush}" FontSize="12"
+                           Margin="2,10,0,0"
+                           Visibility="{Binding Rows.Count, Converter={StaticResource ZeroCountToVisibility}}"/>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              Visibility="{Binding Rows.Count, Converter={StaticResource CountToVisibility}}">
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="RowBorder" BorderBrush="{DynamicResource PaneBorderBrush}"
+                                        BorderThickness="0,0,0,1" Padding="4,7" Background="Transparent">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Grid.Column="0" Text="{Binding StatusGlyph}" FontSize="11"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ActiveStatusDot}">
+                                                        <Setter Property="Foreground" Value="{DynamicResource StatusDoneBrush}"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource StatusFailedBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsDryRun}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource StatusDryRunBrush}"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource StatusActiveBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+
+                                            <TextBlock Grid.Column="1" Text="{Binding TimeText}" FontFamily="Consolas"
+                                                       FontSize="10" Foreground="{DynamicResource PaneMutedBrush}"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                                            <Border Grid.Column="2" Background="{DynamicResource BadgeBackgroundBrush}"
+                                                    CornerRadius="7" Padding="6,1" Margin="0,0,6,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding ClientBadge}" FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{DynamicResource BadgeForegroundBrush}"/>
+                                            </Border>
+
+                                            <TextBlock Grid.Column="3" Text="{Binding Title}" FontSize="12"
+                                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource PaneForegroundBrush}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsUndone}" Value="True">
+                                                                <Setter Property="TextDecorations" Value="Strikethrough"/>
+                                                                <Setter Property="Foreground" Value="{DynamicResource PaneMutedBrush}"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+
+                                        <TextBlock Text="{Binding MetaText}" FontSize="10" Margin="17,2,0,0"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource PaneMutedBrush}"
+                                                   Visibility="{Binding MetaText, Converter={StaticResource StringToVisibility}}"/>
+
+                                        <StackPanel x:Name="ActionsPanel" Orientation="Horizontal" Margin="17,4,0,0"
+                                                    Visibility="Collapsed">
+                                            <Button Content="Show all" Style="{StaticResource LinkButton}"
+                                                    Visibility="{Binding CanShowAll, Converter={StaticResource BoolToVisibility}}"
+                                                    Click="OnShowAllClick"/>
+                                            <Button Content="Undo" Style="{StaticResource LinkButton}"
+                                                    Visibility="{Binding CanUndo, Converter={StaticResource BoolToVisibility}}"
+                                                    Click="OnUndoClick"/>
+                                        </StackPanel>
+
+                                        <Expander x:Name="DetailsExpander" Style="{StaticResource ChevronExpander}" Margin="17,4,0,0"
+                                                  Visibility="{Binding HasElements, Converter={StaticResource BoolToVisibility}}">
+                                            <StackPanel Margin="12,4,0,0">
+                                                <ItemsControl ItemsSource="{Binding ChangedRefs}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Style="{StaticResource LinkButton}"
+                                                                    HorizontalContentAlignment="Left" Click="OnElementClick">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding IdText}" FontFamily="Consolas" FontSize="11"/>
+                                                                    <TextBlock Text="{Binding Label}" FontSize="11" Margin="6,0,0,0"/>
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <ItemsControl ItemsSource="{Binding CreatedRefs}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button Style="{StaticResource LinkButton}"
+                                                                    HorizontalContentAlignment="Left" Click="OnElementClick">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding IdText}" FontFamily="Consolas" FontSize="11"/>
+                                                                    <TextBlock Text="{Binding Label}" FontSize="11" Margin="6,0,0,0"/>
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <ItemsControl ItemsSource="{Binding DeletedRefs}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                                <TextBlock Text="{Binding IdText}" FontFamily="Consolas" FontSize="11"
+                                                                           Foreground="{DynamicResource PaneMutedBrush}"/>
+                                                                <TextBlock Text="{Binding Label}" FontSize="11" Margin="6,0,0,0"
+                                                                           Foreground="{DynamicResource PaneMutedBrush}"/>
+                                                            </StackPanel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Expander>
                                     </StackPanel>
-                                </Expander>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <Trigger SourceName="RowBorder" Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="RowBorder" Property="Background" Value="{DynamicResource RowHoverBrush}"/>
+                                        <Setter TargetName="ActionsPanel" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                    <Trigger SourceName="DetailsExpander" Property="IsExpanded" Value="True">
+                                        <Setter TargetName="ActionsPanel" Property="Visibility" Value="Visible"/>
+                                    </Trigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
     </Grid>
 </UserControl>

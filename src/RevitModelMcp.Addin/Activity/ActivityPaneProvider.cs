@@ -11,6 +11,7 @@ internal static class ActivityPaneProvider
 
     public static void Register(UIControlledApplication application)
     {
+        PaneTheme.Register(application);
         DockablePaneProvider
             .Register(application, PaneId, "MCP activity")
             .SetConfiguration(data =>
