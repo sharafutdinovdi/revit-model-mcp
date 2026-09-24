@@ -75,6 +75,10 @@ ACTION_COMMANDS = frozenset(
         "export-nwc",
         "edit-families",
         "align-link-datums",
+        "open-document",
+        "close-document",
+        "save-document",
+        "sync-document",
     }
 )
 

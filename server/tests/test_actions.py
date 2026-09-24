@@ -29,6 +29,10 @@ ACTION_TOOLS = {
     "revit_export_nwc",
     "revit_edit_families",
     "revit_align_link_datums",
+    "revit_open_document",
+    "revit_close_document",
+    "revit_save_document",
+    "revit_sync_document",
 }
 
 
@@ -72,6 +76,45 @@ def action_server():
     with patch.dict(os.environ, {"REVIT_MCP_ALLOW_WRITE": "1"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_document_action_mapping_and_confirmation_shape():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.return_value = {
+        "success": True,
+        "data": {
+            "needsConfirmation": True,
+            "confirmationText": "Synchronize Tower with central.",
+            "confirmToken": "random-token",
+        },
+    }
+    first = asyncio.run(
+        server.call_tool("revit_sync_document", {"document": "Tower", "comment": "grids"})
+    )
+    assert "confirmationText" in str(first)
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "sync-document"
+    assert payload["targetDocument"] == "Tower"
+    assert payload["comment"] == "grids"
+    assert payload["confirmToken"] is None
+    asyncio.run(
+        server.call_tool(
+            "revit_sync_document",
+            {"document": "Tower", "comment": "grids", "confirm_token": "random-token"},
+        )
+    )
+    assert execute.await_args.args[0].payload["confirmToken"] == "random-token"
+
+    asyncio.run(
+        server.call_tool(
+            "revit_open_document",
+            {"path": "RSN://srv/AR/House.rvt", "worksets": {"open": ["A"]}},
+        )
+    )
+    assert execute.await_args.args[0].payload["worksets"] == "open"
+    assert execute.await_args.args[0].payload["worksetsOpen"] == ["A"]
 
 
 def test_nwc_export_defaults_and_options_reach_channel():

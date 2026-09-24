@@ -208,6 +208,24 @@ Explicit re-tests for things that broke or surprised us:
 
 ---
 
+## Document lifecycle validation
+
+- [ ] Call `revit_documents` with no active model, then with active and background models; check every state field and `openedByMcp`.
+
+Use disposable local and Revit Server test models. Check each operation in Revit 2022 through 2027 where available.
+
+- [ ] Open a non-workshared file in the background, then activate another document and close it.
+- [ ] Open local and RSN central models with both detached modes. Confirm the central file remains unchanged.
+- [ ] Create a local copy and verify its destination under `%LOCALAPPDATA%\RevitModelMcp\locals`; refuse an existing destination.
+- [ ] Open all, no and named worksets; verify the returned `worksetsOpen` names.
+- [ ] Reject a cloud path, malformed RSN path, and `read_only_local` on a central or writable file.
+- [ ] Confirm that an active document cannot be closed and a document with an open transaction cannot be closed, saved or synchronized.
+- [ ] Request save, sync and close-with-loss without a token. Confirm no change occurs. Retry after chat approval and verify the exact change.
+- [ ] Retry a consumed, expired or argument-mismatched token and verify no change.
+- [ ] Refuse a detached sync, a family sync and any save-as destination matching a known central path.
+- [ ] Hold the central lock during sync and verify a clear error without indefinite waiting.
+- [ ] Record suppressed dialogs and warnings from a disposable model open; confirm unrelated failures remain visible.
+
 ## 9. Reporting
 
 For the run, produce a short results table: environment, release tag, per-section pass/fail counts, and a list of filed issues. Optionally record a **clean demo video** — but arrange the UI first (see the preferences note): open a real 3D/model view in Revit (not just the project browser), size Claude and Revit panels so both are legible, then start the screen recording. Ask the owner to set the layout before recording.

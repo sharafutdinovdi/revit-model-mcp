@@ -186,5 +186,21 @@ Model changes and temporary isolation use individual transactions named after th
 Warnings at commit are dismissed and reported on successful actions.
 Errors permit one `FixElements` or `SetValue` resolution when Revit allows it; unresolved or repeated errors roll back the transaction.
 Selection and navigation use UI calls without model transactions.
-The tools do not save the model.
+The element editing tools do not save the model. Document lifecycle tools below can save it after confirmation.
 After a timeout, inspect the model before retrying an action; the previous call may have executed.
+
+## Document lifecycle
+
+`revit_documents` is a read tool that lists all documents in one Revit process, including background documents. Each row reports `title`, `path`, `isActive`, `isFamilyDocument`, `isWorkshared`, `isDetached`, `isModified`, `openedByMcp` and `centralPath` when available. It works even when no document is active.
+
+`revit_open_document` opens a local or UNC `.rvt`/`.rfa` file, or `RSN://server/folder/model.rvt`. It defaults to `mode="detached"` and opens in the background. `activate=true` opens it in the Revit UI. The other modes are `detached_discard_worksets`, `local_copy` and `read_only_local`. A local copy is created under `%LOCALAPPDATA%\RevitModelMcp\locals`; an existing destination is refused. `read_only_local` accepts only a non-central file with the read-only file attribute. Cloud paths are outside this contract. `worksets` accepts `"all"`, `"none"` or `{"open":["Name"]}`. `audit` must be false.
+
+`revit_close_document` closes a background document. The active document cannot be closed through this tool. `save=false` is the default. Closing a modified document without saving needs confirmation, except an MCP-opened detached document that has not been saved to central. Closing with `save=true` always needs confirmation.
+
+`revit_save_document` always needs confirmation. It accepts `save_as`, `overwrite=false` and `compact=false`. Saving an open central model is refused. A detached workshared document saved under a new path becomes a central model; a destination matching a known central path is refused.
+
+`revit_sync_document` always needs confirmation and a non-empty `comment`. It rejects detached and family documents. `relinquish` is `"all"`, `"none"` or a map of `borrowed`, `user_worksets`, `family_worksets`, `view_worksets` and `standard_worksets` booleans. `compact=false`; `save_local_before` and `save_local_after` default to true. The central lock callback does not wait for a lock.
+
+For confirmation, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document and arguments. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
+
+These operations require no open transaction and cannot be included in `revit_batch`. Both action gates apply.

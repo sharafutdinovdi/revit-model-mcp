@@ -48,7 +48,7 @@ def redact_model_paths(value: Any) -> Any:
     if isinstance(value, dict):
         return {
             key: PureWindowsPath(item).name
-            if key in {"documentPath", "path"} and isinstance(item, str)
+            if key in {"documentPath", "path", "centralPath"} and isinstance(item, str)
             else redact_model_paths(item)
             for key, item in value.items()
         }
@@ -220,6 +220,8 @@ mcp = MCPServer(
     version=package_version(),
     instructions=(
         "Read-only by default. Actions are a separate tool set you enable on purpose. "
+        "For save, sync and close-with-loss, show confirmationText to the user and retry "
+        "with confirm_token only after the user explicitly agrees in chat. "
         "For universal model analysis, call revit_list_catalog first, "
         "revit_aggregate_elements second, and revit_query_elements only when rows are needed."
     ),
@@ -250,6 +252,7 @@ def addressed_tool(function):
         "revit_ping": "Check Revit Connection",
         "revit_jobs": "List Revit Jobs",
         "revit_document_info": "Document Info",
+        "revit_documents": "Open Documents",
         "revit_list_catalog": "List Catalog",
         "revit_aggregate_elements": "Aggregate Elements",
         "revit_query_elements": "Query Elements",
@@ -359,6 +362,25 @@ async def revit_document_info(
     """
     return await _execute(
         ReadJob.document_info(), timeout_seconds, pickup_timeout_seconds, document
+    )
+
+
+@addressed_tool
+async def revit_documents(
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """List every open document in one Revit process, including background documents.
+
+    Returns title, path, isActive, isFamilyDocument, isWorkshared, isDetached,
+    isModified, openedByMcp and centralPath when available. An empty process returns [].
+    """
+    return await _execute(
+        ReadJob("documents", {"command": "documents"}),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
     )
 
 

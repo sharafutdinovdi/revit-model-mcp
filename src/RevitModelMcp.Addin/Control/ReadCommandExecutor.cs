@@ -48,6 +48,11 @@ internal static class ReadCommandExecutor
                 LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
                 return;
             }
+            if (job.Kind == ControlJobKind.Documents)
+            {
+                WriteSuccess(output, job.Command, DocumentActions.List(application), stopwatch);
+                return;
+            }
             var document = application.ActiveUIDocument?.Document
                            ?? throw new InvalidOperationException("No active Revit document.");
             if (job.Command == "compare-link-datums")

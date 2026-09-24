@@ -26,6 +26,7 @@ EXPECTED_TOOLS = {
     "revit_parameter_fill_check",
     "revit_ping",
     "revit_document_info",
+    "revit_documents",
     "revit_list_views",
     "revit_view_summary",
     "revit_export_view",
@@ -44,6 +45,7 @@ EXPECTED_TOOLS = {
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_documents": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_list_catalog": ["section", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_aggregate_elements": [
         "group_by",
@@ -143,6 +145,16 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         job, _, _ = channel.calls[0]
         self.assertEqual(job.command, "jobs")
         self.assertEqual(job.payload["cancelJobId"], "job-1")
+
+    async def test_documents_lists_background_models_as_read(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_documents", {})
+        job, response_timeout, pickup_timeout = channel.calls[0]
+        self.assertEqual(job.command, "documents")
+        self.assertEqual(job.payload, {"command": "documents"})
+        self.assertEqual(response_timeout, 120)
+        self.assertEqual(pickup_timeout, 300)
 
     async def test_family_audit_is_read_only_and_uses_response_budget(self) -> None:
         channel = RecordingChannel()
