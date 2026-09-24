@@ -261,10 +261,13 @@ internal static class ActionCommandExecutor
         var newest = ActivityLog.Newest();
         var (trackedDocumentTitle, lastTransactionName) = UndoTracker.Snapshot();
         var isActiveDocument = uiDocument is not null && string.Equals(trackedDocumentTitle, document.Title, StringComparison.Ordinal);
-        var hasPendingCommand = document.IsModifiable;
+        var undoCommandId = RevitCommandId.LookupPostableCommandId(PostableCommand.Undo);
+        // document.IsModifiable only reflects an open transaction, which is never the case at this call
+        // site; CanPostCommand is what actually reflects a pending interactive Revit command.
+        var hasPendingCommand = uiDocument is not null && !uiDocument.Application.CanPostCommand(undoCommandId);
         if (!UndoEligibility.IsAllowed(isActiveDocument, hasPendingCommand, newest?.UndoEntryName, lastTransactionName, out var reason))
             throw new InvalidOperationException(reason);
-        uiDocument!.Application.PostCommand(RevitCommandId.LookupPostableCommandId(PostableCommand.Undo));
+        uiDocument!.Application.PostCommand(undoCommandId);
         return new ActionResultData
         {
             Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext

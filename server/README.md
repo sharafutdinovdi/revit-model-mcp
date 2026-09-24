@@ -1,7 +1,7 @@
 # Revit Model MCP server
 
-The Python package exposes Revit tools over MCP stdio, read-only by default.
-Optional actions require `REVIT_MCP_ALLOW_WRITE=1` and a workstation `allow-write` gate.
+The Python package exposes Revit tools over MCP stdio; actions run by default.
+Set `REVIT_MCP_READ_ONLY=1` and the workstation `read-only` gate to disable them without hiding the action tools.
 It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
 
 ## Install and run
@@ -61,7 +61,7 @@ mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 | Variable | Default | Behavior |
 |---|---|---|
 | `REVIT_MCP_HOST` | `local` | Local PowerShell, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_ALLOW_WRITE` | Unset | Only `1` registers the action tools, including `revit_batch`, `revit_export_nwc`, `revit_edit_families` and `revit_align_link_datums` at server startup; the workstation gate is also required. |
+| `REVIT_MCP_READ_ONLY` | Unset | `1` refuses action calls, including `revit_batch`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation gate is checked independently. |
 | `REVIT_MCP_TOKEN` | Unset | HTTP bearer token from workstation settings. `--token` overrides it. |
 | `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
 | `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |

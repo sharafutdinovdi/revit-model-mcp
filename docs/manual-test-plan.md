@@ -118,7 +118,7 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 - [ ] Cause the first family edit to fail with `stop_on_error=true`. Verify `success:false`, `committed:false`, `failedFamily`, and `rolledBack:true`; confirm the project is unchanged.
 - [ ] Audit enough families for the call to take over 60 seconds. Verify the complete audit returns `success:true` within the configured response timeout.
 
-Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstation allow-write file. Direct HTTP callers also need the bearer token.
+Actions run by default; either `REVIT_MCP_READ_ONLY=1` **or** the workstation `read-only` file independently switches them off. Direct HTTP callers also need the bearer token.
 
 ### NWC export
 
@@ -130,7 +130,7 @@ Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstatio
 - [ ] Export once with `parameters="all"` and once with `parameters="none"`. Verify element properties disappear in the second NWC.
 - [ ] Export to an existing file without `overwrite`. Verify the error and confirm the original file bytes are unchanged.
 
-- [ ] **4.0 Enumerate**: start the server with write enabled and run `tools/list` — record the exact action tool names and count. Known action set from the demo recording (README "In action"): open a view, select element(s), isolate, place a family instance, move an element, and cleanup/undo. Fill the table with the real names.
+- [ ] **4.0 Enumerate**: start the server and run `tools/list` — record the exact action tool names and count. Known action set from the demo recording (README "In action"): open a view, select element(s), isolate, place a family instance, move an element, and cleanup/undo. Fill the table with the real names.
 
 | Action tool (fill from tools/list) | Test | Verify | Cleanup | [ ] |
 |---|---|---|---|---|
@@ -142,7 +142,7 @@ Actions require **both gates**: `REVIT_MCP_ALLOW_WRITE=1` **and** the workstatio
 | delete / cleanup | delete the test instance | element gone | model back to baseline | [ ] |
 | _(others)_ | | | | [ ] |
 
-- [ ] **4.1 Gate negative test**: with only `REVIT_MCP_ALLOW_WRITE=1` but **no** allow-write file (or vice-versa), an action is **refused**. Read tools still work.
+- [ ] **4.1 Gate negative test**: with `REVIT_MCP_READ_ONLY=1`, or the workstation `read-only` file present, an action is **refused** with `read-only mode`; the tool stays listed and read tools still work.
 - [ ] **4.2 HTTP token gate**: a direct HTTP action without the bearer token is refused; `/health` works without token.
 - [ ] **4.3 Transaction safety**: every action wraps a Revit transaction; a failed action leaves the model unchanged (no partial edits).
 - [ ] **4.4 Model restored**: after the action suite, the model matches its pre-test baseline (re-run `revit_aggregate_elements`).

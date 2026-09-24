@@ -13,7 +13,7 @@ Its default channel is `%LOCALAPPDATA%\RevitModelMcp`.
 | Channel directory, legacy snapshots | `latest.json`, `latest.txt`, `snapshot_yyyyMMdd_HHmmss.json` |
 | Channel directory, legacy view dumps | `views_dump_yyyyMMdd_HHmmss_fff.json` and matching `.txt`; a numeric suffix avoids existing names |
 | `%LOCALAPPDATA%\RevitModelMcp\settings.json` | HTTP listener settings and persistent bearer token |
-| `%LOCALAPPDATA%\RevitModelMcp\allow-write` | Workstation action gate; file existence enables actions |
+| `%LOCALAPPDATA%\RevitModelMcp\read-only` | Workstation action gate; file existence switches actions to read-only mode |
 | Windows Documents folder, `RevitModelMcp\Logs` | `RevitModelMcp-yyyyMMdd.log`, with numbered size rotations |
 | `%TEMP%\RevitModelMcp\Logs` | Log fallback when Documents is unavailable |
 

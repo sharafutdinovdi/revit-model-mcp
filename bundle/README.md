@@ -11,7 +11,7 @@ The optional HTTP bearer token field is sensitive and maps to `REVIT_MCP_TOKEN`.
 See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/) for workstation configuration.
 
 Path redaction defaults to enabled.
-Actions default to disabled and also require the workstation `allow-write` file.
+Actions run by default; check Read-only mode to disable them without hiding the action tools.
 Redaction leaves model names, parameter values, errors and exported image `localPath` values visible.
 
 ## Privacy policy

@@ -247,7 +247,7 @@ class HttpHost:
                 error.close()
                 messages = {
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
-                    403: "Revit denied this request. Actions require the workstation allow-write gate and REVIT_MCP_ALLOW_WRITE=1 in the MCP server.",
+                    403: "Revit denied this request. Actions are refused while the workstation is in read-only mode.",
                     429: "Revit job queue is full for this client; retry after a short wait.",
                     404: "Revit job or endpoint not found; completed results expire after ten minutes.",
                 }

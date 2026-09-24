@@ -136,7 +136,7 @@ def test_job_round_trip(endpoint):
 
 
 @pytest.mark.parametrize(
-    "status, message", [(401, "bearer token"), (429, "queue is full"), (403, "allow-write")]
+    "status, message", [(401, "bearer token"), (429, "queue is full"), (403, "read-only mode")]
 )
 def test_http_errors(endpoint, status, message):
     host, state = endpoint
