@@ -23,6 +23,52 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task DocumentConfirmationBinding_IssueThenConfirm_SucceedsDespiteUnrelatedFieldChanges()
+    {
+        var tokens = new DocumentConfirmationTokens();
+        var issueAction = new ActionJobContract
+        {
+            Document = "Tower", Save = true, Comment = "grids",
+            ElementIds = [1, 2, 3], DryRun = false
+        };
+        var identity = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt", "Tower.rvt");
+        var arguments = DocumentConfirmationBinding.Arguments(issueAction, @"C:\Models\Tower.rvt", isModified: true);
+        var token = tokens.Issue("save-document", identity, arguments);
+
+        // The confirming call carries fields that never enter the fingerprint (a fresh element
+        // selection here stands in for the request's transport metadata, which lives entirely
+        // outside ActionJobContract) plus the confirm_token itself, but the same business arguments.
+        var confirmAction = new ActionJobContract
+        {
+            Document = "Tower", Save = true, Comment = "grids",
+            ElementIds = [9, 8], DryRun = false,
+            ConfirmToken = token
+        };
+        var confirmIdentity = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt", "Tower.rvt");
+        var confirmArguments = DocumentConfirmationBinding.Arguments(confirmAction, @"C:\Models\Tower.rvt", isModified: true);
+
+        await Assert.That(tokens.Consume(token, "save-document", confirmIdentity, confirmArguments)).IsTrue();
+    }
+
+    [Test]
+    public async Task DocumentConfirmationBinding_Identity_NormalizesPathCaseAndTrailingSeparators()
+    {
+        var first = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt\", "Tower.rvt");
+        var second = DocumentConfirmationBinding.Identity(@"c:\models\tower.rvt", "Tower.rvt");
+        await Assert.That(first).IsEqualTo(second);
+    }
+
+    [Test]
+    public async Task DocumentConfirmationBinding_Arguments_ChangesWhenBusinessFieldChanges()
+    {
+        var action = new ActionJobContract { Document = "Tower", Save = true };
+        var baseline = DocumentConfirmationBinding.Arguments(action, @"C:\Models\Tower.rvt", isModified: true);
+        action.Save = false;
+        var changed = DocumentConfirmationBinding.Arguments(action, @"C:\Models\Tower.rvt", isModified: true);
+        await Assert.That(baseline).IsNotEqualTo(changed);
+    }
+
+    [Test]
     public async Task DocumentPaths_RejectCloudAndMalformedServerPaths()
     {
         DocumentPathValidator.Validate("RSN://server/folder/model.rvt");

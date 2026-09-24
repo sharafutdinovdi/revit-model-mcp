@@ -52,7 +52,7 @@ internal static class ReadCommandExecutor
             }
             if (job.Kind == ControlJobKind.Documents)
             {
-                WriteSuccess(output, job.Command, DocumentActions.List(application), stopwatch);
+                WriteSuccess(output, job.Command, DocumentActions.List(application, job.IncludeLinked), stopwatch);
                 return;
             }
             if (job.Kind == ControlJobKind.NwcSettingsCheck)

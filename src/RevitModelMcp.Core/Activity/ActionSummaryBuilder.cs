@@ -16,6 +16,8 @@ public sealed class ActionSummaryContext
     public bool Saved { get; init; }
     public string? TargetPath { get; init; }
     public string? ViewName { get; init; }
+    public bool NeedsConfirmation { get; init; }
+    public string? ConfirmationText { get; init; }
 }
 
 /// <summary>
@@ -29,6 +31,7 @@ public static class ActionSummaryBuilder
     public static string BuildSummary(ActionSummaryContext context)
     {
         if (context is null) throw new ArgumentNullException(nameof(context));
+        if (context.NeedsConfirmation) return $"Needs confirmation: {context.ConfirmationText}";
         var doc = string.IsNullOrWhiteSpace(context.DocumentTitle) ? "the model" : context.DocumentTitle;
         return context.Command switch
         {

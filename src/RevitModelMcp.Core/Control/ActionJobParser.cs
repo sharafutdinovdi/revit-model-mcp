@@ -380,6 +380,36 @@ public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = nul
     }
 }
 
+/// <summary>
+/// Builds the confirmation identity and argument fingerprint for a document action from stable,
+/// content-based facts only (never a transient object identity, and never confirm_token or transport
+/// metadata such as jobId/clientId/correlationId/timeouts). Paths are normalised so the issuing call
+/// and the confirming call bind to the same values even when Revit hands back a different managed
+/// wrapper for the same open document.
+/// </summary>
+public static class DocumentConfirmationBinding
+{
+    public static string Identity(string? pathName, string title) =>
+        string.IsNullOrWhiteSpace(pathName)
+            ? "title:" + title.Trim().ToUpperInvariant()
+            : "path:" + NormalizePath(pathName);
+
+    public static string Arguments(ActionJobContract action, string? pathName, bool isModified)
+    {
+        var relinquishFlags = action.RelinquishFlags;
+        return string.Join("|", action.Document, action.Save, action.SaveAs, action.Overwrite,
+            action.Compact, action.Comment, action.Relinquish,
+            relinquishFlags is null
+                ? string.Empty
+                : string.Join(",", relinquishFlags.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}")),
+            action.SaveLocalBefore, action.SaveLocalAfter,
+            NormalizePath(pathName), isModified);
+    }
+
+    private static string NormalizePath(string? path) =>
+        path is { Length: > 0 } ? path.Trim().TrimEnd('\\', '/').ToUpperInvariant() : string.Empty;
+}
+
 
 public sealed class ActionJobContract
 {

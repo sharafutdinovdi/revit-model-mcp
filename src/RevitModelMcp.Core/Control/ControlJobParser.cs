@@ -78,6 +78,7 @@ public sealed class ControlJobParseResult
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
     public int? TargetProcessId { get; internal set; }
+    public bool IncludeLinked { get; internal set; }
     public ActionJobContract? Action { get; internal set; }
     public string? Error { get; }
     public Exception? Cause { get; }
@@ -106,6 +107,13 @@ public sealed class ControlJobParseResult
     {
         var result = Create(kind, command);
         result.View = view;
+        return result;
+    }
+
+    private static ControlJobParseResult Documents(bool includeLinked)
+    {
+        var result = Create(ControlJobKind.Documents, "documents");
+        result.IncludeLinked = includeLinked;
         return result;
     }
 
@@ -176,7 +184,7 @@ public sealed class ControlJobParseResult
             "shared-coordinates" => Create(ControlJobKind.SharedCoordinates, command),
             "parameter-fill-check" => ParseParameterFill(job),
             "document-info" => Create(ControlJobKind.DocumentInfo, command),
-            "documents" => Create(ControlJobKind.Documents, command),
+            "documents" => Documents(job.IncludeLinked ?? false),
             "list-views" => ListViews(job.ViewType, job.NameContains),
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
             "view-info" => RequireView(ControlJobKind.ViewInfo, command, view),
@@ -467,6 +475,8 @@ public sealed partial class ControlJobContract
     public string? TargetDocument { get; set; }
     [DataMember(Name = "targetProcessId")]
     public int? TargetProcessId { get; set; }
+    [DataMember(Name = "includeLinked")]
+    public bool? IncludeLinked { get; set; }
 }
 
 [DataContract]

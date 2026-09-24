@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
@@ -26,19 +25,22 @@ internal static class DocumentActions
         };
     }
 
-    internal static List<DocumentState> List(UIApplication application) =>
-        application.Application.Documents.Cast<Document>().Select(document => new DocumentState
-        {
-            Title = document.Title,
-            Path = document.PathName,
-            IsActive = ReferenceEquals(application.ActiveUIDocument?.Document, document),
-            IsFamilyDocument = document.IsFamilyDocument,
-            IsWorkshared = document.IsWorkshared,
-            IsDetached = document.IsDetached,
-            IsModified = document.IsModified,
-            OpenedByMcp = Opened.ContainsKey(document),
-            CentralPath = CentralPath(document)
-        }).ToList();
+    internal static List<DocumentState> List(UIApplication application, bool includeLinked) =>
+        application.Application.Documents.Cast<Document>()
+            .Where(document => includeLinked || !document.IsLinked)
+            .Select(document => new DocumentState
+            {
+                Title = document.Title,
+                Path = document.PathName,
+                IsActive = document.Equals(application.ActiveUIDocument?.Document),
+                IsLinked = document.IsLinked,
+                IsFamilyDocument = document.IsFamilyDocument,
+                IsWorkshared = document.IsWorkshared,
+                IsDetached = document.IsDetached,
+                IsModified = document.IsModified,
+                OpenedByMcp = Opened.ContainsKey(document),
+                CentralPath = CentralPath(document)
+            }).ToList();
 
     private static ActionResultData Open(UIApplication application, ActionJobContract action)
     {
@@ -112,7 +114,7 @@ internal static class DocumentActions
 
     private static ActionResultData Close(UIApplication application, Document document, ActionJobContract action)
     {
-        if (ReferenceEquals(application.ActiveUIDocument?.Document, document))
+        if (document.Equals(application.ActiveUIDocument?.Document))
             throw new InvalidOperationException("Cannot close the active document; activate another document first.");
         if (action.Save && (IsCentral(document) || document.IsDetached && string.IsNullOrWhiteSpace(document.PathName)))
             throw new InvalidOperationException("Save the detached document under a new path before closing with save=true; an open central model cannot be saved.");
@@ -125,11 +127,15 @@ internal static class DocumentActions
         }
         else if (action.ConfirmToken is not null)
             throw new InvalidOperationException("Confirmation token does not match the current document state.");
+        // Capture everything needed for the result, and stop touching the managed wrapper, before
+        // Close() invalidates it; Revit throws when any later call (including a dictionary lookup
+        // that hashes the Document) reaches an already-closed document.
         var title = document.Title;
+        var path = document.PathName;
+        Opened.Remove(document);
         if (!document.Close(action.Save))
             throw new InvalidOperationException($"Revit did not close '{title}'.");
-        Opened.Remove(document);
-        return new ActionResultData { Title = title, Saved = action.Save };
+        return new ActionResultData { Title = title, Path = path, Saved = action.Save };
     }
 
     private static ActionResultData Save(UIApplication application, Document document, ActionJobContract action)
@@ -217,12 +223,8 @@ internal static class DocumentActions
 
     private static ActionResultData? Confirm(string command, Document document, ActionJobContract action, string description)
     {
-        var identity = RuntimeHelpers.GetHashCode(document).ToString();
-        var arguments = string.Join("|", action.Document, action.Save, action.SaveAs, action.Overwrite,
-            action.Compact, action.Comment, action.Relinquish,
-            action.RelinquishFlags is null ? "" : string.Join(",", action.RelinquishFlags.OrderBy(pair => pair.Key).Select(pair => $"{pair.Key}={pair.Value}")),
-            action.SaveLocalBefore, action.SaveLocalAfter,
-            document.PathName, document.IsModified);
+        var identity = DocumentConfirmationBinding.Identity(document.PathName, document.Title);
+        var arguments = DocumentConfirmationBinding.Arguments(action, document.PathName, document.IsModified);
         if (action.ConfirmToken is null)
             return new ActionResultData { NeedsConfirmation = true, ConfirmationText = description,
                 ConfirmToken = ConfirmationStore.Tokens.Issue(command, identity, arguments) };
@@ -246,6 +248,8 @@ internal sealed class DocumentState
     public string Path { get; set; } = "";
     [DataMember(Name = "isActive")]
     public bool IsActive { get; set; }
+    [DataMember(Name = "isLinked")]
+    public bool IsLinked { get; set; }
     [DataMember(Name = "isFamilyDocument")]
     public bool IsFamilyDocument { get; set; }
     [DataMember(Name = "isWorkshared")]

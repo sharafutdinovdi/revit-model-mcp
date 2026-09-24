@@ -357,7 +357,9 @@ internal static class ActionCommandExecutor
             DocumentTitle = title,
             OpenedAs = data.OpenedAs,
             Saved = data.Saved == true,
-            TargetPath = command == "save-document" ? action.SaveAs : null
+            TargetPath = command == "save-document" ? action.SaveAs : null,
+            NeedsConfirmation = data.NeedsConfirmation == true,
+            ConfirmationText = data.ConfirmationText
         });
     }
 
