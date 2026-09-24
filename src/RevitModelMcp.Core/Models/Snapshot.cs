@@ -96,6 +96,37 @@ public sealed class InstanceStatus
 
     [DataMember(Name = "httpPort", Order = 8)]
     public int? HttpPort { get; set; }
+
+    [DataMember(Name = "discoveryVersion", Order = 9)]
+    public int DiscoveryVersion { get; set; } = 3;
+
+    [DataMember(Name = "instanceId", Order = 10)]
+    public string InstanceId { get; set; } = string.Empty;
+
+    [DataMember(Name = "pipeName", Order = 11, EmitDefaultValue = false)]
+    public string? PipeName { get; set; }
+
+    [DataMember(Name = "protocols", Order = 12)]
+    public List<string> Protocols { get; set; } = new();
+
+    [DataMember(Name = "documents", Order = 13)]
+    public List<InstanceDocument> Documents { get; set; } = new();
+}
+
+[DataContract]
+public sealed class InstanceDocument
+{
+    [DataMember(Name = "title", Order = 1)]
+    public string Title { get; set; } = string.Empty;
+
+    [DataMember(Name = "path", Order = 2)]
+    public string Path { get; set; } = string.Empty;
+
+    [DataMember(Name = "isActive", Order = 3)]
+    public bool IsActive { get; set; }
+
+    [DataMember(Name = "isFamilyDocument", Order = 4)]
+    public bool IsFamilyDocument { get; set; }
 }
 
 [DataContract]

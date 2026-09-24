@@ -2,12 +2,54 @@
 
 `REVIT_MCP_HOST` selects `local`, `ssh:<alias>`, `http://host:port` or `https://host:port`.
 `--host` overrides it.
+`local`, the default, talks to the add-in over a per-process named pipe and falls back to the file channel.
+For a remote client, run the whole server on the workstation over SSH stdio; see [remote setups](#remote-setups).
 HTTP connects directly to the add-in and requires no SSH server or remote file transfer.
 The MCP client still communicates with the Python server over stdio.
 
+## Named pipe
+
+Each add-in listens on `\\.\pipe\RevitModelMcp.<pid>` from startup.
+The pipe needs no port, URL reservation or settings, and it coexists with other MCP servers in the same Revit.
+Its ACL admits only the Windows user running Revit, and the add-in drops clients that connect from another computer.
+The heartbeat advertises `pipe/1` only after the pipe listens.
+
+`REVIT_MCP_HOST=local` reads the heartbeats in the channel directory directly.
+It uses the pipe when the selected instance lists `pipe/1` in `protocols`.
+Otherwise, or when the pipe cannot be opened, it uses the local file channel.
+Instance selection follows the file channel rules below.
+The server keeps one connection per Revit process and checks that `hello` returns the heartbeat's `pid` and `instanceId`.
+
+### Protocol pipe/1
+
+Messages are UTF-8 JSON objects, one per line.
+Requests are limited to 1 MiB; a longer line gets a `message_rejected` error and closes the connection.
+Replies carry command results and have no size limit.
+A request may carry `id`; its reply echoes it.
+`hello` must come first on every connection.
+
+| Request | Reply |
+| --- | --- |
+| `{"type":"hello","protocol":"pipe/1","clientId":"…","clientName":"…"}` | `{"type":"hello","instanceId","pid","revitVersion","documents"}` |
+| `{"type":"submit","job":{…}}` | `{"type":"submitted","jobId","state","position"}` |
+| `{"type":"status","jobId":"…"}` | `{"type":"status","jobId","state","position","result"}`; `result` only when finished |
+| `{"type":"cancel","jobId":"…"}` | `{"type":"cancel","jobId","cancelled","state","message"}` |
+
+`job` is the same JSON object as a file job, and its `clientId` must equal the `hello` client ID.
+For every job it submitted, a connection receives `{"type":"job","jobId","state","position"}` when the state changes.
+It then receives one final `{"type":"job","jobId","state","result"}` with `state` `done`, `failed` or `cancelled` and the command response in `result`.
+Failures return `{"type":"error","id","error","message"}`.
+Codes include `hello_required`, `client_mismatch`, `invalid_job`, `invalid_message`, `duplicate_job_id`, `actions_disabled` and `queue_full` with `retryAfterMs`.
+
+Pipe, HTTP and file jobs share one per-Revit scheduler.
+A disconnect cancels that connection's queued jobs; a running job, and above all a running action, always finishes.
+A client that reconnects with the same `clientId` can send `status` for its unfinished job to get the result and resume its pushes.
+Results expire ten minutes after completion.
+`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `save_to` or a new temporary directory.
+
 ## HTTP configuration
 
-HTTP is opt-in and off by default; a default deployment uses only the local file channel.
+HTTP is opt-in and off by default; a default deployment uses only the named pipe and the local file channel.
 On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json`:
 
 ```json
@@ -135,9 +177,39 @@ An occupied port disables HTTP for the later instance and produces a log message
 
 ## Remote setups
 
-For a corporate PC without administrator rights, use option 2 with IT-provisioned Tailscale or option 3 with existing SSH access.
+The recommended remote setup runs the whole server on the workstation and carries MCP stdio through SSH.
+For a corporate PC without administrator rights and without sshd, use option 2 with IT-provisioned Tailscale.
 Never expose the endpoint on the office LAN.
 If neither service is available, IT must provision a route first; this add-in cannot bypass that requirement.
+
+### Recommended: server over SSH stdio
+
+Install the server once on the Windows workstation, under the account that runs Revit:
+
+```powershell
+uv tool install revit-model-mcp
+```
+
+Register the client with `ssh` as the command, replacing `windows-fi` with the host alias from the client's SSH configuration:
+
+```json
+{
+  "mcpServers": {
+    "revit-model-mcp": {
+      "command": "ssh",
+      "args": ["windows-fi", "revit-model-mcp", "--redact-paths"]
+    }
+  }
+}
+```
+
+The remote server runs with its default `REVIT_MCP_HOST=local`, so it reaches Revit through the named pipe.
+MCP messages flow through the SSH session; no PowerShell process starts per job and no port opens.
+Set other server variables in the workstation user's environment, because the client's `env` block does not cross SSH.
+The SSH account must be the Windows user running Revit: the pipe ACL admits only that user.
+Key-based authentication avoids a password prompt that would block stdio.
+
+`ssh:<alias>` in option 4 remains the fallback when the server cannot run on the workstation.
 
 ### 1. Same LAN
 
@@ -276,6 +348,25 @@ Cleanup affects only the selected directory and the current job's files.
 Two MCP clients targeting the same PID enqueue independently. Each server process supplies its own `clientId`.
 Reading inactive documents remains outside this protocol. Queued actions can be cancelled; running actions finish.
 
+### Discovery heartbeat
+
+The add-in rewrites `ROOT\instance_<pid>.json` atomically every five seconds.
+Discovery version 3 keeps the v2 fields and adds the pipe and the open documents:
+
+| Field | Meaning |
+| --- | --- |
+| `processId`, `revitVersion`, `startedUtc`, `updatedUtc` | Process identity and heartbeat time |
+| `documentTitle`, `documentPath` | Active document, empty when none is active |
+| `fileChannelVersion` | `2` |
+| `httpPort` | Bound HTTP port, or null |
+| `discoveryVersion` | `3` |
+| `instanceId` | GUID generated once per Revit process lifetime |
+| `pipeName` | `RevitModelMcp.<pid>`; absent when the pipe failed to start |
+| `protocols` | `pipe/1` when listening, always `file/2`, and `http/1` when HTTP is bound |
+| `documents` | Every open non-linked document: `title`, `path`, `isActive`, `isFamilyDocument` |
+
+`revit_list_instances` returns these fields in local pipe mode; path redaction also covers `documents[].path`.
+
 ### File protocol compatibility
 
 Update the server **before** updating the add-in.
@@ -294,10 +385,11 @@ The channel relies on Windows file permissions.
 ## Local host
 
 `REVIT_MCP_HOST=local` is the default.
-The server invokes `powershell.exe -NoProfile -NonInteractive -EncodedCommand` on Windows.
-The process checks Revit, publishes jobs and reads responses under the current Windows account.
-This mode requires PowerShell and a running Revit instance with the add-in loaded.
-macOS and Linux clients use HTTP or SSH to reach Windows.
+The server reads heartbeats from the channel directory and prefers the [named pipe](#named-pipe).
+For add-ins without `pipe/1`, it invokes `powershell.exe -NoProfile -NonInteractive -EncodedCommand` on Windows.
+That process checks Revit, publishes jobs and reads responses under the current Windows account.
+Local mode requires a running Revit instance with the add-in loaded, and PowerShell for the file channel.
+macOS and Linux clients run the server on Windows over SSH stdio, or use HTTP or `ssh:<alias>`.
 
 ## SSH host
 
@@ -352,7 +444,8 @@ See [server configuration](../server/README.md#configuration).
 
 ## Client registration
 
-With the loopback SSH tunnel above running, register the endpoint from the clone root:
+For a remote workstation, register the [server over SSH stdio](#recommended-server-over-ssh-stdio).
+With the loopback SSH tunnel above running, register the HTTP endpoint from the clone root:
 
 ```sh
 claude mcp add revit-model-mcp -e REVIT_MCP_HOST=http://127.0.0.1:53110 -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$PWD/server" revit-model-mcp
@@ -365,17 +458,20 @@ For the SSH file channel, use `-e REVIT_MCP_HOST=ssh:revit-host` instead; no HTT
 
 ```mermaid
 flowchart LR
-    Client[MCP client] <-->|stdio| Server[Python server]
+    Client[MCP client] <-->|stdio, optionally through SSH| Server[Python server]
+    Server <-->|named pipe pipe/1| Pipe[Add-in pipe listener]
     Server <-->|local PowerShell or SSH| Channel[Windows file channel]
-    Channel <-->|ExternalEvent| Revit[Revit add-in]
     Server <-->|HTTP + bearer token| Endpoint[Add-in HTTP listener]
-    Endpoint <-->|ExternalEvent| Revit
+    Pipe --> Scheduler[Job scheduler]
+    Channel --> Scheduler
+    Endpoint --> Scheduler
+    Scheduler <-->|ExternalEvent| Revit[Revit API]
 ```
 
-The server submits jobs over HTTP or writes them to the Windows file channel.
-The add-in processes both through the same ExternalEvent and accepts one job at a time.
-HTTP returns JSON and PNG directly; local and SSH modes keep their file-based responses.
-A heartbeat identifies each Revit instance and its active document.
+The server submits jobs over the named pipe or HTTP, or writes them to the Windows file channel.
+All three feed one scheduler; the add-in runs one job at a time through ExternalEvent.
+The pipe and HTTP return JSON directly; the file channel keeps its file-based responses.
+A heartbeat identifies each Revit instance, its open documents and its protocols.
 The default tools read model data and export images.
 Opt-in actions use the same channel and execute in the Revit API context.
 See [how it works](how-it-works.md), [architecture](architecture.md) and the [feed format](feed-format.md).
