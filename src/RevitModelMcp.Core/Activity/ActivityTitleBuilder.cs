@@ -34,11 +34,15 @@ public static class ActivityTitleBuilder
         ["set-view-visibility"] = new("Changed view visibility", "Changing view visibility", null)
     };
 
-    /// <summary>Title of a recorded activity row; counts are the elements the entry touched.</summary>
+    /// <summary>
+    /// Title of a recorded activity row. Uses the action's own target count when the entry has one, so a
+    /// job that touches dependents as a side effect (moving a link along with the dimensions that follow
+    /// it) still reads by what was asked for ("Moved 1 element"), not by everything Revit changed.
+    /// </summary>
     public static string Build(ActivityEntry entry)
     {
         if (entry is null) throw new ArgumentNullException(nameof(entry));
-        var count = entry.ChangedCount + entry.CreatedCount + entry.DeletedCount;
+        var count = entry.ActionCount ?? entry.ChangedCount + entry.CreatedCount + entry.DeletedCount;
         var finished = !entry.DryRun && entry.State is not ("failed" or "dry_run" or "queued" or "running");
         return Format(entry.Command, count, finished);
     }

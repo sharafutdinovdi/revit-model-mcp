@@ -261,11 +261,15 @@ totals, the undo entry name, and whether it was later undone.
 The element lists are exact. While a job runs a model transaction, the add-in subscribes to Revit's
 `DocumentChanged` event for the target document only and collects the added, modified and deleted element
 IDs of every transaction the job commits, including transactions Revit itself opens, such as a family load.
-An element created and deleted within the same job is not listed. Internal elements without a category are
-skipped, except views, sheets, levels and grids, so a view visibility change lists the view. Each list stores
-the first 5000 elements; counts and titles use the true totals. Dry runs commit inside their transaction
-group before the group is rolled back, so they list the elements they would change; their created elements
-are provisional.
+An element added and later deleted within the same job cancels out and is not listed, whether or not it has
+a category; this also drops it from Changed if it was reported as changed before being deleted. Internal
+elements without a category are otherwise skipped, except views, sheets, levels and grids, so a view
+visibility change lists the view. Each list stores the first 5000 elements; the chip counts and the expanded
+lists use the true totals, including dependents such as dimensions that move with an element. The row title
+instead uses the action's own target count (for example "Moved 1 element" for a single moved link, even
+though its dependent dimensions also changed), falling back to the true totals when a command has no
+well-defined target count. Dry runs commit inside their transaction group before the group is rolled back,
+so they list the elements they would change; their created elements are provisional.
 
 Toggle the dockable pane with the "Activity" button on the RevitModelMcp ribbon tab. The pane is English in
 every Revit UI language. Rows are grouped by day, newest first: "Today", "Yesterday", a weekday name within

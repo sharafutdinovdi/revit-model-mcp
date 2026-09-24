@@ -41,6 +41,14 @@ public sealed class ActivityEntry
     [DataMember(Name = "createdTotal")] public int CreatedTotal { get; set; }
     [DataMember(Name = "deletedTotal")] public int DeletedTotal { get; set; }
 
+    /// <summary>
+    /// Elements the action itself targeted (for example the ids a <c>move</c> job was asked to move),
+    /// distinct from <see cref="ChangedCount"/>/<see cref="CreatedCount"/>/<see cref="DeletedCount"/>,
+    /// which also include dependents Revit touches as a side effect. Drives the row title; null when the
+    /// command has no well-defined target count (dry runs still populate it the same as a real run).
+    /// </summary>
+    [DataMember(Name = "actionCount", EmitDefaultValue = false)] public int? ActionCount { get; set; }
+
     public int ChangedCount => Math.Max(ChangedTotal, Changed.Count);
     public int CreatedCount => Math.Max(CreatedTotal, Created.Count);
     public int DeletedCount => Math.Max(DeletedTotal, Deleted.Count);

@@ -13,6 +13,8 @@ namespace RevitModelMcp.Activity;
 /// target document while the capture is open belongs to the job, including Revit-named ones such as the
 /// transaction <c>LoadFamily</c> opens. Dry runs commit inside a transaction group and roll the group back,
 /// so their would-be changes are reported too; elements a dry run creates are described while they exist.
+/// The per-id set arithmetic (an id added and later deleted within the job cancels out; an id that ends up
+/// Created or Deleted drops out of Changed) lives in the Revit-independent <see cref="ChangeMerge"/>.
 /// </summary>
 internal sealed class ChangeCapture : IDisposable
 {
@@ -20,8 +22,8 @@ internal sealed class ChangeCapture : IDisposable
 
     private readonly RevitApplication _application;
     private readonly Document _document;
-    private readonly Dictionary<long, Kind> _kinds = new();
-    private readonly List<long> _order = [];
+    private readonly ChangeMerge _merge = new();
+    private readonly HashSet<long> _noise = new();
     private readonly Dictionary<long, ActivityElementRef> _described = new();
 
     private ChangeCapture(RevitApplication application, Document document)
@@ -30,14 +32,6 @@ internal sealed class ChangeCapture : IDisposable
         _document = document;
         UndoStateAtStart = UndoTracker.Snapshot();
         _application.DocumentChanged += OnDocumentChanged;
-    }
-
-    private enum Kind
-    {
-        None,
-        Changed,
-        Created,
-        Deleted
     }
 
     /// <summary>Undo tracking state before the job, restored when the job's changes are rolled back.</summary>
@@ -50,9 +44,9 @@ internal sealed class ChangeCapture : IDisposable
     /// <summary>Writes the captured element lists (first <see cref="MaxRefs"/> of each) and true totals to the entry.</summary>
     public void Fill(ActivityEntry entry)
     {
-        entry.Changed = Refs(Kind.Changed, out var changedTotal);
-        entry.Created = Refs(Kind.Created, out var createdTotal);
-        entry.Deleted = Refs(Kind.Deleted, out var deletedTotal);
+        entry.Changed = Refs(ChangeKind.Changed, out var changedTotal);
+        entry.Created = Refs(ChangeKind.Created, out var createdTotal);
+        entry.Deleted = Refs(ChangeKind.Deleted, out var deletedTotal);
         entry.ChangedTotal = changedTotal;
         entry.CreatedTotal = createdTotal;
         entry.DeletedTotal = deletedTotal;
@@ -69,10 +63,16 @@ internal sealed class ChangeCapture : IDisposable
 
     private void Added(ElementId id)
     {
-        var element = _document.GetElement(id);
-        if (IsNoise(element)) return;
         var value = RevitValueReader.GetId(id);
-        Set(value, Kind.Created);
+        var element = _document.GetElement(id);
+        // Always tracked, even when noise, so a later delete of the same id in this job (Revit creates
+        // and deletes transient, often categoryless, helper elements inside some jobs) cancels it out.
+        _merge.Add(value);
+        if (IsNoise(element))
+        {
+            _noise.Add(value);
+            return;
+        }
         // A dry run rolls created elements back before the entry is recorded, so describe them now.
         if (_described.Count < MaxRefs * 3 && element is not null) _described[value] = Describe(value, element);
     }
@@ -80,34 +80,27 @@ internal sealed class ChangeCapture : IDisposable
     private void Modified(ElementId id)
     {
         var value = RevitValueReader.GetId(id);
-        if (_kinds.TryGetValue(value, out var kind) && kind != Kind.None) return;
-        if (IsNoise(_document.GetElement(id))) return;
-        Set(value, Kind.Changed);
-    }
-
-    private void Deleted(long value)
-    {
-        if (_kinds.TryGetValue(value, out var kind) && kind == Kind.Created)
+        if (_merge.KindOf(value) != ChangeKind.None) return;
+        if (IsNoise(_document.GetElement(id)))
         {
-            Set(value, Kind.None);
+            _noise.Add(value);
             return;
         }
-        Set(value, Kind.Deleted);
+        _merge.Modify(value);
     }
 
-    private void Set(long value, Kind kind)
-    {
-        if (!_kinds.ContainsKey(value)) _order.Add(value);
-        _kinds[value] = kind;
-    }
+    private void Deleted(long value) => _merge.Delete(value);
 
-    private List<ActivityElementRef> Refs(Kind kind, out int total)
+    private List<ActivityElementRef> Refs(ChangeKind kind, out int total)
     {
         var refs = new List<ActivityElementRef>();
         total = 0;
-        foreach (var value in _order)
+        foreach (var value in _merge.Ids(kind))
         {
-            if (_kinds[value] != kind) continue;
+            // Deletions of noise elements never added or modified in this job cannot be checked for
+            // category (the element is already gone) and are reported as before; noise elements that were
+            // created or changed in this job stay hidden from the counts and lists.
+            if (kind != ChangeKind.Deleted && _noise.Contains(value)) continue;
             total++;
             if (refs.Count >= MaxRefs) continue;
             if (!_described.TryGetValue(value, out var reference))

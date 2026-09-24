@@ -29,6 +29,16 @@ public sealed class ActivityTitleTests
     }
 
     [Test]
+    public async Task Build_UsesActionCount_IgnoringDependentChanges()
+    {
+        // Moving one link instance also modifies the 26 dimensions that follow it; the title reads by
+        // what the action targeted, not by everything Revit touched as a side effect.
+        var entry = Entry("move", changed: 27);
+        entry.ActionCount = 1;
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Moved 1 element");
+    }
+
+    [Test]
     public async Task Build_WithoutRecordedElements_OmitsCount()
     {
         var title = ActivityTitleBuilder.Build(Entry("select"));

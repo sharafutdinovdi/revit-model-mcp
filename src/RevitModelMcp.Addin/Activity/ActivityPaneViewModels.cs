@@ -72,9 +72,9 @@ public sealed class ActivityRowView(ActivityEntry entry) : Observable
     public string ChangedChip => $"~{ChangedCount}";
     public string CreatedChip => $"+{CreatedCount}";
     public string DeletedChip => $"\u2212{DeletedCount}";
-    public string ChangedChipToolTip => $"{ChangedCount} changed";
-    public string CreatedChipToolTip => $"{CreatedCount} created";
-    public string DeletedChipToolTip => $"{DeletedCount} deleted";
+    public string ChangedChipToolTip => $"{ChangedCount} elements affected, including dependents";
+    public string CreatedChipToolTip => $"{CreatedCount} elements affected, including dependents";
+    public string DeletedChipToolTip => $"{DeletedCount} elements affected, including dependents";
     public bool HasElements => ChangedCount + CreatedCount + DeletedCount > 0;
     public bool CanShowAll => SelectableItems.Any();
 

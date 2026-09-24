@@ -21,6 +21,7 @@ internal static class ActivityRecorder
             Summary = data?.Summary ?? response.Message ?? response.Error ?? string.Empty,
             DryRun = dryRun,
             UndoEntryName = data?.UndoName,
+            ActionCount = data?.Count,
             State = ResolveState(response.Success || response.Partial, dryRun)
         }, document, data?.UndoName, data?.RolledBack == true, changes);
     }
@@ -38,6 +39,7 @@ internal static class ActivityRecorder
             Summary = data?.Summary ?? response.Message ?? response.Error ?? string.Empty,
             DryRun = dryRun,
             UndoEntryName = data?.UndoName,
+            ActionCount = data?.Families.Count(family => family.Status != "skipped"),
             State = ResolveState(response.Success || response.Partial, dryRun)
         }, document, data?.UndoName, data?.RolledBack == true, changes);
     }
