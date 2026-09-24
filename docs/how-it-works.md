@@ -24,10 +24,10 @@ The [feed format](feed-format.md) documents paths and response fields.
 
 The default tools read model data or export a view to PNG.
 Exports and diagnostics write files outside the Revit model.
-Actions appear in MCP only when the Python process starts with `REVIT_MCP_ALLOW_WRITE=1`.
-The add-in also requires `%LOCALAPPDATA%\RevitModelMcp\allow-write` for every action.
-Deleting that gate file disables action execution without restarting Revit.
-The MCP environment gate controls tool registration; direct HTTP callers are checked against the token and workstation gate.
+Actions run by default; a committed change assimilates into one named, undoable Revit change and reports a `summary`.
+Set `REVIT_MCP_READ_ONLY=1` in the Python process, or create `%LOCALAPPDATA%\RevitModelMcp\read-only` on the workstation, to refuse actions without hiding the tools.
+Removing the gate file re-enables action execution without restarting Revit.
+Either gate is checked independently; direct HTTP callers are checked against the token and the workstation gate.
 
 Selection and navigation use UI calls.
 Model changes and temporary isolation run in individual transactions.

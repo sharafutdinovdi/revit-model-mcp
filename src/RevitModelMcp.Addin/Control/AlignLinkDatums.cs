@@ -1,5 +1,6 @@
 using Autodesk.Revit.DB;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 
@@ -8,7 +9,7 @@ namespace RevitModelMcp.Control;
 internal static class AlignLinkDatums
 {
     public static ActionResultData Execute(Document document, LinkDatumJobOptions options, bool dryRun,
-        ActionCommandExecutor.ActionFailures failures)
+        ActionCommandExecutor.ActionFailures failures, string clientName)
     {
         var comparison = LinkDatumReader.Read(document, options);
         var createLevels = options.CreateMissing && comparison.Items.Any(item => item.Kind == "level" && item.Status == "missing_in_host");
@@ -143,20 +144,33 @@ internal static class AlignLinkDatums
                 comparison.Warning = (comparison.Warning is null ? "" : comparison.Warning + " ") +
                     "Some aligned datums did not verify within tolerance.";
             comparison.UpdateSummary(action: true);
+            var humanSummary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "align-link-datums",
+                DocumentTitle = document.Title,
+                DryRun = dryRun
+            });
+            var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
             if (dryRun)
             {
                 if (transaction.RollBack() != TransactionStatus.RolledBack)
                     throw new InvalidOperationException("Could not roll back the dry run.");
             }
-            else if (transaction.Commit() != TransactionStatus.Committed)
-                throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
+            else
+            {
+                transaction.SetName(groupName);
+                if (transaction.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
+            }
             var result = new ActionResultData
             {
                 Link = comparison.Link,
                 ToleranceMm = comparison.ToleranceMm,
                 LevelOffsetMm = comparison.LevelOffsetMm,
                 Items = comparison.Items,
-                Summary = comparison.Summary,
+                DatumSummary = comparison.Summary,
+                Summary = humanSummary,
+                UndoName = dryRun ? null : groupName,
                 Warning = comparison.Warning,
                 DryRun = dryRun,
                 RolledBack = dryRun

@@ -29,8 +29,8 @@
           "default": "0"
         },
         {
-          "name": "REVIT_MCP_ALLOW_WRITE",
-          "description": "Dangerous opt-in: set to 1 to enable actions that modify or delete model elements. Also requires the workstation allow-write gate. Disabled by default.",
+          "name": "REVIT_MCP_READ_ONLY",
+          "description": "Set to 1 to disable actions that modify or delete model elements without hiding the action tools. Actions run by default.",
           "default": "0"
         }
       ]

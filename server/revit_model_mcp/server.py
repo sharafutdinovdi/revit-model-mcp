@@ -206,11 +206,16 @@ mcp = MCPServer(
     "Revit Model Reader",
     version=package_version(),
     instructions=(
-        "Read-only by default. Actions are a separate tool set you enable on purpose. "
-        "For save, sync and close-with-loss, show confirmationText to the user and retry "
-        "with confirm_token only after the user explicitly agrees in chat. "
-        "For universal model analysis, call revit_list_catalog first, "
-        "revit_aggregate_elements second, and revit_query_elements only when rows are needed."
+        "Actions are enabled by default: every change runs inside a single named Revit undo entry, is "
+        "listed in the add-in's MCP activity pane, and comes back with a `summary` sentence and the "
+        "changed element IDs. Before running an action, describe it to the user. After it runs, relay "
+        "`summary` and the changed element IDs to the user. Only the last action can be undone, with "
+        "revit_undo_last, and only while it is still the most recent change in Revit. Never call a "
+        "save, sync, or close-with-loss tool without the user's explicit confirmation in chat. Set "
+        "REVIT_MCP_READ_ONLY=1 in this server's environment, or add the workstation read-only file, to "
+        "disable actions without hiding them; they then return `read-only mode` instead of running. "
+        "For universal model analysis, call revit_list_catalog first, revit_aggregate_elements second, "
+        "and revit_query_elements only when rows are needed."
     ),
 )
 

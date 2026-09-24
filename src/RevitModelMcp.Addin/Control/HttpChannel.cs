@@ -109,7 +109,7 @@ internal sealed class HttpChannel : IDisposable
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
                     ["startedUtc"] = SnapshotFileWriter.StartedUtc,
-                    ["readOnly"] = !ActionCommandExecutor.ActionsEnabled
+                    ["readOnly"] = ActionCommandExecutor.ReadOnlyMode
                 }).ConfigureAwait(false);
                 return;
             }
@@ -269,9 +269,9 @@ internal sealed class HttpChannel : IDisposable
 
     private async Task<HttpJob?> SubmitAsync(HttpListenerContext context, ControlJobParseResult command, string payload)
     {
-        if (ActionJobParser.IsAction(command.Command) && !ActionCommandExecutor.ActionsEnabled)
+        if (ActionJobParser.IsAction(command.Command) && ActionCommandExecutor.ReadOnlyMode)
         {
-            await JsonAsync(context, 403, new() { ["error"] = "actions disabled on the workstation", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+            await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
             return null;
         }
         var submitted = _channel.SubmitHttp(command, payload, out var completion);

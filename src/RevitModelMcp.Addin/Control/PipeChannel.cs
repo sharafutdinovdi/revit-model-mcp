@@ -215,8 +215,8 @@ internal sealed class PipeChannel : IDisposable
             return command.Kind == ControlJobKind.Invalid
                 ? Error(request.Id, "invalid_job", command.Error ?? "Invalid job.")
                 : Error(request.Id, "client_mismatch", "The job clientId must match the hello clientId.");
-        if (ActionJobParser.IsAction(command.Command) && !ActionCommandExecutor.ActionsEnabled)
-            return Error(request.Id, "actions_disabled", "actions disabled on the workstation");
+        if (ActionJobParser.IsAction(command.Command) && ActionCommandExecutor.ReadOnlyMode)
+            return Error(request.Id, "read_only", "read-only mode");
         var submitted = _channel.SubmitHttp(command, request.Job, out var completion);
         if (submitted.Job is null || completion is null)
         {

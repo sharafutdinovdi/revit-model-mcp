@@ -200,7 +200,7 @@ def _error_text(reply: dict[str, Any]) -> str:
     code = reply.get("error")
     messages = {
         "queue_full": "Revit job queue is full for this client; retry after a short wait.",
-        "actions_disabled": "Revit denied this request. Actions require the workstation allow-write gate and REVIT_MCP_ALLOW_WRITE=1 in the MCP server.",
+        "read_only": "Revit denied this request. The workstation is in read-only mode.",
     }
     return messages.get(code, f"Revit rejected the pipe request ({code}): {reply.get('message')}")
 

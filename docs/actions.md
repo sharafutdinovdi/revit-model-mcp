@@ -1,7 +1,16 @@
-# Actions (opt-in)
+# Actions (enabled by default)
 
-Read-only by default. Actions are a separate tool set you enable on purpose.
+Actions run unless read-only mode is active: `REVIT_MCP_READ_ONLY=1` in the Python server environment, or the
+workstation `%LOCALAPPDATA%\RevitModelMcp\read-only` file. Action tools stay listed either way; a refused call
+returns `success:false` and `error:"read-only mode"` instead of running. See [Read-only mode](#read-only-mode).
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
+
+Every action result carries a `summary`: one human sentence describing what changed, how many elements, and in
+which document, alongside `verification`. A committed mutation assimilates its transaction into a single named
+Revit undo entry, `MCP (<clientName>): <short summary>` (at most 60 characters), visible in Revit's Undo list and
+in the add-in's "MCP activity" dockable pane (ribbon: RevitModelMcp tab, Activity panel, "MCP Activity" button).
+`select` and `show` make no document change and get no undo entry, but still appear in the activity pane.
+See [Undo the last action](#undo-the-last-action) for `revit_undo_last`.
 
 The action tools listed below accept `document`. `revit_export_nwc`, `revit_edit_families` and `revit_align_link_datums` also accept `response_timeout_s` from 30 to 3600 seconds.
 Revit remains busy for the whole action duration.
@@ -32,12 +41,13 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
-| `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions with a single undo entry named `revit_batch`. |
+| `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. |
 | `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `response_timeout_s=1800` | Edit open family or named project families; one load cycle per family. |
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `response_timeout_s=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
 | `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=["revit","cad","point_cloud"]`, `include_imported_cad=false`, `dry_run=false` | Remove selected link types and their instances. Cannot be used in a batch. |
+| `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
 `category_classes` maps `model`, `annotation`, `analytical`, `import` and `point_clouds` to booleans (`true` means hidden). `hide_categories_by_type` accepts those class names and hides each matching category. `worksets` has `hide_mask` and `show_mask` lists; masks are case-insensitive globs (`*`, `?`) or regular expressions prefixed with `regex:`. The response lists matched worksets, before/after values and categories Revit could not hide. `filters` contains `{name, visible}` records. When a template is applied, choose `template_mode`: `detach` clears it on this view, `edit_template` changes it for all views using the template and lists them, or `duplicate_view` creates a copy without it. A missing mode is rejected.
 
@@ -135,7 +145,7 @@ For example, setting Comments on element 123 returns:
 }
 ```
 
-A successful batch assimilates its transactions into one undo entry named `revit_batch`.
+A successful batch assimilates its transactions into one undo entry named `MCP (<clientName>): <short summary>`; a dry run assimilates nothing and `undoName` is absent.
 The first failed step rolls back the entire batch; every attempted step, including the failing one, carries `rolledBack:true`.
 An `Assimilate` failure is reported on the last step with `failedStep` pointing at it.
 All steps are validated before execution; an invalid later step rejects the whole batch without executing anything and without `failedStep`.
@@ -161,21 +171,29 @@ Inside `revit_batch`, a missing family surfaces only as `steps[].error` text; `c
 For `Family: Type`, `type_name=null` uses the embedded type; a conflicting `type_name` is rejected.
 For a family name alone, `type_name=null` selects the first loaded type.
 
-Both gates must be enabled:
+### Read-only mode
 
-1. Set `REVIT_MCP_ALLOW_WRITE=1` in the Python server process environment and restart the server.
-   With any other value or no value, MCP `list_tools` does not include the action tools.
-2. Create `%LOCALAPPDATA%\RevitModelMcp\allow-write` on the Revit workstation:
+Actions run by default. Either gate below independently switches Revit into read-only mode, with the action
+tools still listed and returning `success:false`, `error:"read-only mode"` instead of running:
+
+1. Set `REVIT_MCP_READ_ONLY=1` in the Python server process environment and restart the server.
+   Every action call short-circuits before it reaches Revit, including `revit_undo_last`.
+2. Create `%LOCALAPPDATA%\RevitModelMcp\read-only` on the Revit workstation:
 
    ```powershell
    New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\RevitModelMcp" | Out-Null
-   New-Item -ItemType File -Force "$env:LOCALAPPDATA\RevitModelMcp\allow-write" | Out-Null
+   New-Item -ItemType File -Force "$env:LOCALAPPDATA\RevitModelMcp\read-only" | Out-Null
    ```
 
-The add-in checks the gate file for every action, including selection and navigation.
-Without it, the response contains `success:false` and `error:"actions disabled on the workstation"`.
-Removing the file disables actions immediately; restarting Revit is unnecessary.
+The add-in checks the gate file for every action, including selection and navigation, and shows a "Read-only"
+badge in the MCP activity pane while it is present.
+Removing the file re-enables actions immediately; restarting Revit is unnecessary.
 The gate stays in the default local application data directory even if the transport uses `REVIT_MCP_CHANNEL_DIR`.
+Direct HTTP action jobs are refused the same way, with HTTP status 403.
+
+Earlier versions required `REVIT_MCP_ALLOW_WRITE=1` and a workstation `allow-write` file before any action ran, and
+hid action tools otherwise. That opt-in gate is removed: actions run by default now, and the two settings above
+are an opt-out instead.
 
 Actions address the process ID reported by the transport.
 Coordinates use model axes and the named level's project elevation.
@@ -188,8 +206,10 @@ ElementId and read-only parameters cannot be set.
 
 Responses from the action executor include `activeView`, including action errors.
 Transport rejection and target-mismatch responses may omit action metadata.
-Model changes and temporary isolation use individual transactions named after the tool.
-`revit_batch` wraps the per-step transactions in a `TransactionGroup` named `revit_batch` and assimilates them into one undo entry.
+A committed single action or batch runs inside a `TransactionGroup` assimilated into one undo entry named
+`MCP (<clientName>): <short summary>`, truncated to 60 characters; `clientName` comes from the calling MCP
+client's `initialize` handshake, or `unknown`. `select`, `show`, `export-nwc` and `revit_compare_link_datums`
+make no document change and open no such group.
 Warnings at commit are dismissed and reported on successful actions.
 Errors permit one `FixElements` or `SetValue` resolution when Revit allows it; unresolved or repeated errors roll back the transaction.
 Selection and navigation use UI calls without model transactions.
@@ -210,4 +230,34 @@ After a timeout, inspect the model before retrying an action; the previous call 
 
 For confirmation, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document and arguments. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
 
-These operations require no open transaction and cannot be included in `revit_batch`. Both action gates apply.
+These operations require no open transaction and cannot be included in `revit_batch`. Read-only mode applies.
+
+### Undo the last action
+
+`revit_undo_last` undoes the most recent MCP action through Revit's own Undo command
+(`PostableCommand.Undo`), never by reversing the mutation programmatically. It is allowed only when all of
+the following hold, tracked from Revit's `DocumentChanged` event:
+
+- the addressed document is the active document;
+- no command is currently pending in Revit;
+- the name Revit reports for its last undo entry still equals the name recorded for the most recent
+  activity entry.
+
+Otherwise it refuses with a clear reason, for example `the last change in Revit is not ours: Move Elements`
+when the user made an unrelated edit since the last MCP action, or `there is no recorded MCP action to
+undo` when nothing has run yet. Only the single most recent action is covered; there is no redo and no
+undo of an older entry. The same button appears on the newest row of the activity pane, disabled once it no
+longer applies.
+
+### MCP activity pane
+
+The add-in keeps an in-memory ring buffer of the last 500 finished action jobs, also appended as JSON lines
+to `%LOCALAPPDATA%\RevitModelMcp\activity.log`: time, client, command, document, state (`done`, `failed` or
+`dry_run`), `summary`, the changed, created and deleted element IDs with category and name, the undo entry
+name, and whether it was later undone. Toggle the "MCP activity" dockable pane from the RevitModelMcp ribbon
+tab. It shows, newest first: a status icon, time, client badge, command and summary per row; an expandable
+detail listing changed/created/deleted elements (deleted elements are not clickable; others select and zoom
+on click); a "Show all" button per row; an "Undo" button on the newest eligible row; and, above the log, a
+live queue section for jobs still waiting on this Revit instance, each with a "Cancel" button.
+`Document` is always `Document.Title`, a file name, never a directory, so nothing in the log needs path
+redaction.

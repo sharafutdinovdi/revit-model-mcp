@@ -3,8 +3,8 @@
   "name": "revit-model-mcp",
   "display_name": "Revit Model MCP",
   "version": "0.0.0",
-  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, read-only by default, and act in it only when two explicit gates are on. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
-  "long_description": "Actions are opt-in and require both the client setting and the workstation allow-write file. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
+  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP; actions that change the model run by default, gated by workstation confirmation. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
+  "long_description": "Actions run by default and assimilate into one named, undoable Revit change; check Read-only mode to disable them without hiding the tools. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
   "author": {
     "name": "Dinar Sharafutdinov"
   },
@@ -33,7 +33,7 @@
       "env": {
         "REVIT_MCP_HOST": "${user_config.REVIT_MCP_HOST}",
         "REVIT_MCP_REDACT_PATHS": "${user_config.REVIT_MCP_REDACT_PATHS}",
-        "REVIT_MCP_ALLOW_WRITE": "${user_config.REVIT_MCP_ALLOW_WRITE}",
+        "REVIT_MCP_READ_ONLY": "${user_config.REVIT_MCP_READ_ONLY}",
         "REVIT_MCP_TOKEN": "${user_config.REVIT_MCP_TOKEN}"
       }
     }
@@ -135,10 +135,10 @@
       "description": "Hide directories in response path fields. Model names, parameter values, errors and exported image localPath values remain visible.",
       "default": true
     },
-    "REVIT_MCP_ALLOW_WRITE": {
+    "REVIT_MCP_READ_ONLY": {
       "type": "boolean",
-      "title": "Allow actions (dangerous)",
-      "description": "Dangerous: enables actions that can change the Revit model. Also requires the workstation allow-write file. Leave disabled for read-only use.",
+      "title": "Read-only mode",
+      "description": "Disable actions that can change the Revit model without hiding the action tools; calls return read-only mode instead of running. Actions run by default when this is off.",
       "default": false
     },
     "REVIT_MCP_TOKEN": {

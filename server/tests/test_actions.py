@@ -35,26 +35,25 @@ ACTION_TOOLS = {
     "revit_sync_document",
     "revit_set_view_visibility",
     "revit_remove_links",
+    "revit_undo_last",
 }
 
 
-@pytest.mark.parametrize("flag", [None, "0", "true", "1"])
-def test_stdio_action_gate(flag):
+@pytest.mark.parametrize("read_only", [None, "0", "1", "true"])
+def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
     import asyncio
 
     async def check():
         env = os.environ.copy()
-        env.pop("REVIT_MCP_ALLOW_WRITE", None)
-        if flag is not None:
-            env["REVIT_MCP_ALLOW_WRITE"] = flag
+        env.pop("REVIT_MCP_READ_ONLY", None)
+        if read_only is not None:
+            env["REVIT_MCP_READ_ONLY"] = read_only
         parameters = StdioServerParameters(command="revit-model-mcp", args=[], env=env)
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             result = await client.list_tools()
         tools = {tool.name: tool for tool in result.tools}
-        assert ACTION_TOOLS.intersection(tools) == (
-            ACTION_TOOLS if flag in {"1", "true"} else set()
-        )
-        for name in ACTION_TOOLS.intersection(tools):
+        assert ACTION_TOOLS.issubset(tools)
+        for name in ACTION_TOOLS:
             tool = tools[name]
             assert ("response_timeout_s" in tool.input_schema["properties"]) is (
                 name in {"revit_export_nwc", "revit_edit_families", "revit_align_link_datums"}
@@ -70,12 +69,28 @@ def test_stdio_action_gate(flag):
     asyncio.run(check())
 
 
-def action_server():
+def test_stdio_read_only_blocks_execution_without_hiding_tools():
+    import asyncio
+
+    async def check():
+        env = os.environ.copy()
+        env["REVIT_MCP_READ_ONLY"] = "1"
+        parameters = StdioServerParameters(command="revit-model-mcp", args=[], env=env)
+        async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
+            listed = await client.list_tools()
+            assert "revit_select" in {tool.name for tool in listed.tools}
+            result = await client.call_tool("revit_select", {"element_ids": []})
+        assert "read-only mode" in str(result)
+
+    asyncio.run(check())
+
+
+def action_server(read_only=False):
     server = MCPServer("actions-test")
     execute = AsyncMock(return_value={"success": True, "data": {}, "activeView": "Level 1"})
     host = AsyncMock()
     host.list_revit_instances.return_value = [{"processId": 42}]
-    with patch.dict(os.environ, {"REVIT_MCP_ALLOW_WRITE": "1"}):
+    with patch.dict(os.environ, {"REVIT_MCP_READ_ONLY": "1" if read_only else "0"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
 
@@ -291,6 +306,27 @@ def test_align_link_datums_payload_and_timeout():
     assert job.payload["nameMap"] == {"A": "A1"}
     assert job.payload["dryRun"] is True
     assert execute.await_args.args[1] == 600
+
+
+def test_undo_last_sends_command_without_extra_arguments():
+    import asyncio
+
+    server, execute, host = action_server()
+    asyncio.run(server.call_tool("revit_undo_last", {"document": "Model"}))
+    job = execute.await_args.args[0]
+    assert job.command == "undo-last"
+    assert job.payload["targetDocument"] == "Model"
+    host.list_revit_instances.assert_awaited_once()
+
+
+def test_undo_last_in_read_only_mode_never_reaches_channel():
+    import asyncio
+
+    server, execute, host = action_server(read_only=True)
+    result = asyncio.run(server.call_tool("revit_undo_last", {}))
+    assert "read-only mode" in str(result)
+    execute.assert_not_awaited()
+    host.list_revit_instances.assert_not_awaited()
 
 
 def test_align_link_datums_rejects_invalid_timeout():
@@ -650,10 +686,9 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
     assert tool.annotations.idempotent_hint is False
 
 
-def test_in_process_action_titles_with_true(monkeypatch):
+def test_in_process_action_titles():
     import asyncio
 
-    monkeypatch.setenv("REVIT_MCP_ALLOW_WRITE", "true")
     server = MCPServer("action-titles")
     register_actions(server, AsyncMock(), lambda: AsyncMock())
     tools = asyncio.run(server.list_tools())

@@ -5,7 +5,9 @@ using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
 using Nice3point.Revit.Extensions;
+using RevitModelMcp.Activity;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
@@ -14,8 +16,8 @@ namespace RevitModelMcp.Control;
 
 internal static class ActionCommandExecutor
 {
-    internal static bool ActionsEnabled => File.Exists(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "allow-write"));
+    internal static bool ReadOnlyMode => File.Exists(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "read-only"));
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
@@ -30,6 +32,8 @@ internal static class ActionCommandExecutor
         var openWarningsDismissed = new List<string>();
         var viewOpened = false;
         var failures = new ActionFailures();
+        Document? document = null;
+        ActionResultData? data = null;
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
             SuppressTaskDialog(arguments, dialogsSuppressed);
@@ -48,7 +52,7 @@ internal static class ActionCommandExecutor
         if (job.Command == "open-document") application.Application.FailuresProcessing += SuppressOpenWarnings;
         try
         {
-            if (!ActionsEnabled) throw new InvalidOperationException("actions disabled on the workstation");
+            if (ReadOnlyMode) throw new InvalidOperationException("read-only mode");
             if (job.Error is not null) throw new ArgumentException(job.Error);
             if (job.Command is "open-document" or "close-document" or "save-document" or "sync-document")
             {
@@ -63,18 +67,17 @@ internal static class ActionCommandExecutor
                     ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
                 return;
             }
-            var document = ResolveDocument(application, job.TargetDocument);
+            document = ResolveDocument(application, job.TargetDocument);
             var activeUiDocument = application.ActiveUIDocument;
             var uiDocument = activeUiDocument is not null
                              && activeUiDocument.Document.Title == document.Title
                              && activeUiDocument.Document.PathName == document.PathName
                 ? activeUiDocument : null;
             var action = job.Action ?? throw new ArgumentException("Missing action arguments.");
-            ActionResultData data;
             if (job.Command == "batch")
-                data = BatchActionExecutor.Execute(document, uiDocument, action, failures);
+                data = BatchActionExecutor.Execute(document, uiDocument, action, failures, job.ClientName);
             else
-                data = ExecuteStep(document, uiDocument, job.Command, action, failures, out viewOpened);
+                data = ExecuteStep(document, uiDocument, job.Command, action, failures, job.ClientName, out viewOpened);
             response = data.Committed == false && data.FailedStep.HasValue
                 ? CommandResponse<ActionResultData>.Fail(job.Command, data.Steps!.Last().Error!, stopwatch.ElapsedMilliseconds)
                 : CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
@@ -111,6 +114,7 @@ internal static class ActionCommandExecutor
         response.DialogsSuppressed = dialogsSuppressed;
         if (job.Command == "show") response.ViewOpened = viewOpened;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
+        ActivityRecorder.RecordAction(job, document, data, response);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
@@ -119,26 +123,29 @@ internal static class ActionCommandExecutor
     {
         var stopwatch = Stopwatch.StartNew();
         var dialogsSuppressed = new List<string>();
+        Document? document = null;
+        FamilyEditData? result = null;
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
             SuppressTaskDialog(arguments, dialogsSuppressed);
         }
         application.DialogBoxShowing += SuppressDialog;
+        CommandResponse<FamilyEditData>? response = null;
         try
         {
-            if (!ActionsEnabled)
-                throw new InvalidOperationException("actions disabled on the workstation");
+            if (ReadOnlyMode)
+                throw new InvalidOperationException("read-only mode");
             if (job.Error is not null) throw new ArgumentException(job.Error);
-            var document = ResolveDocument(application, job.TargetDocument);
+            document = ResolveDocument(application, job.TargetDocument);
             var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
             ActionJobParser.ValidateFamilyMode(action, document.IsFamilyDocument);
             var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                 ReadCommandReader.ReadResponder(application), job.CorrelationId);
             var failures = new ActionFailures();
-            var result = FamilyEditor.Execute(document, action, failures, application.Application);
+            result = FamilyEditor.Execute(document, action, failures, application.Application, job.ClientName);
             var failed = !result.Committed && result.FailedFamily is not null;
             var error = failed ? result.Families.First(family => family.Status == "failed").Reason ?? "Family edit failed." : null;
-            var response = failed
+            response = failed
                 ? CommandResponse<FamilyEditData>.Fail(job.Command, error!, stopwatch.ElapsedMilliseconds)
                 : CommandResponse<FamilyEditData>.Ok(job.Command, result, stopwatch.ElapsedMilliseconds);
             response.Data = result;
@@ -149,7 +156,7 @@ internal static class ActionCommandExecutor
         }
         catch (Exception exception)
         {
-            var response = CommandResponse<object>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
+            response = CommandResponse<FamilyEditData>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
             response.Error = exception.Message;
             response.DialogsSuppressed = dialogsSuppressed;
             CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
@@ -160,6 +167,7 @@ internal static class ActionCommandExecutor
         {
             application.DialogBoxShowing -= SuppressDialog;
         }
+        ActivityRecorder.RecordFamilyEdit(job, document, result, response!);
     }
 
     private static void SuppressTaskDialog(DialogBoxShowingEventArgs arguments, List<string> dialogsSuppressed)
@@ -187,12 +195,19 @@ internal static class ActionCommandExecutor
     }
 
     internal static ActionResultData ExecuteStep(Document document, UIDocument? uiDocument, string command,
-        ActionJobContract action, ActionFailures failures, out bool viewOpened, bool deferDryRun = false)
+        ActionJobContract action, ActionFailures failures, string clientName, out bool viewOpened,
+        bool deferDryRun = false, bool wrapGroup = true)
     {
         viewOpened = false;
-        if (command == "export-nwc") return NwcExporter.Execute(document, action);
+        if (command == "undo-last") return ExecuteUndoLast(document, uiDocument);
+        if (command == "export-nwc")
+        {
+            var exportResult = NwcExporter.Execute(document, action);
+            exportResult.Summary = BuildSummary(command, action, exportResult, document.Title, null);
+            return exportResult;
+        }
         if (command == "align-link-datums")
-            return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures);
+            return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures, clientName);
         if (command == "set-view-visibility")
             return ViewVisibility.Execute(document, action.Visibility!, action.DryRun, failures);
         if (command == "remove-links")
@@ -208,58 +223,130 @@ internal static class ActionCommandExecutor
                 uiDocument!.ShowElements(ids);
             }
             if (command == "select" || action.Select) uiDocument!.Selection.SetElementIds(ids);
-            return new ActionResultData { Count = uiDocument!.Selection.GetElementIds().Count };
+            var viewData = new ActionResultData { Count = uiDocument!.Selection.GetElementIds().Count };
+            viewData.Summary = BuildSummary(command, action, viewData, document.Title, ids);
+            return viewData;
         }
 
-        using var transaction = new Transaction(document, "revit_" + command.Replace('-', '_'));
-        if (transaction.Start() != TransactionStatus.Started)
-            throw new InvalidOperationException("Could not start the action transaction.");
-        transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
-            .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
+        var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
+        if (group is not null && group.Start() != TransactionStatus.Started)
+            throw new InvalidOperationException("Could not start the action transaction group.");
         try
         {
-            var before = ActionVerifier.CaptureBefore(document, command, action, ids);
-            var data = Mutate(document, command, action, ids);
-            data.DryRun = action.DryRun;
-            data.Verification ??= new ActionVerification();
-            data.Verification.Before = before;
-            if (command == "delete")
-                before!.Dependents = data.Verification.Changed!.Except(before.Requested!).ToList();
-            document.Regenerate();
-            ActionVerifier.CaptureAfter(document, command, action, data);
-            if (action.DryRun && !deferDryRun)
+            using var transaction = new Transaction(document, "revit_" + command.Replace('-', '_'));
+            if (transaction.Start() != TransactionStatus.Started)
+                throw new InvalidOperationException("Could not start the action transaction.");
+            transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
+                .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
+            try
             {
-                if (transaction.RollBack() != TransactionStatus.RolledBack)
-                    throw new InvalidOperationException("Could not roll back the dry run.");
-                data.RolledBack = true;
+                var before = ActionVerifier.CaptureBefore(document, command, action, ids);
+                var data = Mutate(document, command, action, ids);
+                data.DryRun = action.DryRun;
+                data.Verification ??= new ActionVerification();
+                data.Verification.Before = before;
+                if (command == "delete")
+                    before!.Dependents = data.Verification.Changed!.Except(before.Requested!).ToList();
+                document.Regenerate();
+                ActionVerifier.CaptureAfter(document, command, action, data);
+                data.Summary = BuildSummary(command, action, data, document.Title, ids);
+                if (action.DryRun && !deferDryRun)
+                {
+                    if (transaction.RollBack() != TransactionStatus.RolledBack)
+                        throw new InvalidOperationException("Could not roll back the dry run.");
+                    data.RolledBack = true;
+                    group?.RollBack();
+                }
+                else
+                {
+                    if (transaction.Commit() != TransactionStatus.Committed)
+                        throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
+                    data.Verification.After = null;
+                    try
+                    {
+                        ActionVerifier.CaptureAfter(document, command, action, data);
+                    }
+                    catch (Exception exception)
+                    {
+                        data.Verification.Error = "Post-commit verification failed: " + exception.Message;
+                        PluginLog.Error(data.Verification.Error, exception);
+                    }
+                    if (group is not null)
+                    {
+                        var groupName = ActionSummaryBuilder.BuildGroupName(clientName, data.Summary);
+                        group.SetName(groupName);
+                        if (group.Assimilate() != TransactionStatus.Committed)
+                            throw new InvalidOperationException("Could not assimilate the action transaction group.");
+                        data.UndoName = groupName;
+                    }
+                }
+                return data;
             }
-            else
+            catch
             {
-                if (transaction.Commit() != TransactionStatus.Committed)
-                    throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
-                data.Verification.After = null;
-                try
-                {
-                    ActionVerifier.CaptureAfter(document, command, action, data);
-                }
-                catch (Exception exception)
-                {
-                    data.Verification.Error = "Post-commit verification failed: " + exception.Message;
-                    PluginLog.Error(data.Verification.Error, exception);
-                }
+                if (transaction.GetStatus() == TransactionStatus.Started) transaction.RollBack();
+                throw;
             }
-            return data;
         }
         catch
         {
-            if (transaction.GetStatus() == TransactionStatus.Started) transaction.RollBack();
+            if (group is not null && group.GetStatus() == TransactionStatus.Started) group.RollBack();
             throw;
         }
+        finally
+        {
+            group?.Dispose();
+        }
+    }
+
+    internal static ActionResultData ExecuteUndoLast(Document document, UIDocument? uiDocument)
+    {
+        var newest = ActivityLog.Newest();
+        var (trackedDocumentTitle, lastTransactionName) = UndoTracker.Snapshot();
+        var isActiveDocument = uiDocument is not null && string.Equals(trackedDocumentTitle, document.Title, StringComparison.Ordinal);
+        var undoCommandId = RevitCommandId.LookupPostableCommandId(PostableCommand.Undo);
+        // document.IsModifiable only reflects an open transaction, which is never the case at this call
+        // site; CanPostCommand is what actually reflects a pending interactive Revit command.
+        var hasPendingCommand = uiDocument is not null && !uiDocument.Application.CanPostCommand(undoCommandId);
+        if (!UndoEligibility.IsAllowed(isActiveDocument, hasPendingCommand, newest?.UndoEntryName, lastTransactionName, out var reason))
+            throw new InvalidOperationException(reason);
+        uiDocument!.Application.PostCommand(undoCommandId);
+        return new ActionResultData
+        {
+            Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "undo-last", DocumentTitle = document.Title
+            })
+        };
+    }
+
+    private static string BuildSummary(string command, ActionJobContract action, ActionResultData data,
+        string documentTitle, List<ElementId>? ids)
+    {
+        var count = command switch
+        {
+            "move" or "select" or "isolate" => ids?.Count ?? 0,
+            "show" => data.Count ?? ids?.Count ?? 0,
+            "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
+            _ => 0
+        };
+        return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = command,
+            DocumentTitle = documentTitle,
+            Count = count,
+            DryRun = action.DryRun,
+            Family = action.Family,
+            TypeName = action.TypeName,
+            Parameter = action.Parameter,
+            WallType = action.WallType,
+            BatchStepCount = action.Steps.Count
+        });
     }
 
     public static void WriteError(UIApplication application, string command, string message, DateTimeOffset startedAt, string? correlationId = null)
     {
-        var error = ActionsEnabled ? message : "actions disabled on the workstation";
+        var error = ReadOnlyMode ? "read-only mode" : message;
         var response = CommandResponse<ActionResultData>.Fail(command, error, 0);
         response.Error = error;
         response.DialogsSuppressed = [];
@@ -268,6 +355,7 @@ internal static class ActionCommandExecutor
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, command,
             ReadCommandReader.ReadResponder(application), correlationId).Write(response);
     }
+
 
     private static bool OpenViewForElements(UIDocument uiDocument, List<ElementId> ids)
     {

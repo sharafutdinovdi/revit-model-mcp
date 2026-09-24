@@ -2,9 +2,11 @@
 
 See the [privacy policy](privacy.md) for data handling, retention and contact information.
 
-The model API is read-only by default.
-Action tools are absent unless `REVIT_MCP_ALLOW_WRITE=1`; action execution also requires the workstation gate file described in [actions](actions.md).
-`revit_export_nwc` may write to any valid absolute workstation path only when both action gates are enabled. It never transfers the NWC file to the client; logging omits the export path.
+The model read API is always available.
+Action tools are enabled by default; either `REVIT_MCP_READ_ONLY=1` in the Python server environment or the
+workstation `%LOCALAPPDATA%\RevitModelMcp\read-only` file switches them to read-only mode without hiding them,
+described in [actions](actions.md).
+`revit_export_nwc` may write to any valid absolute workstation path unless read-only mode is active. It never transfers the NWC file to the client; logging omits the export path.
 The default surface covers ping, active document information, the open document list, instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.
@@ -20,8 +22,8 @@ The token is never logged.
 All HTTP routes except `/health` require it; health exposes the active document name and process information.
 There is no built-in TLS: put remote access behind a tunnel or a TLS proxy.
 Set `REVIT_MCP_HTTP_ENABLED=0` in Revit's environment or `httpEnabled=false` in settings to disable the listener entirely.
-MCP action calls require both gates over every transport.
-Direct HTTP action jobs require the bearer token and workstation gate; the Python registration flag does not apply to direct callers.
+MCP action calls are refused in read-only mode over every transport.
+Direct HTTP action jobs require the bearer token and are refused with HTTP 403 while the workstation read-only file is present; the Python server's `REVIT_MCP_READ_ONLY` setting does not apply to direct callers.
 
 The named pipe `\\.\pipe\RevitModelMcp.<pid>` has a protected ACL that grants access only to the Windows user running Revit.
 Other local users and services running under other accounts cannot open it unless an administrator changes that ACL.
@@ -38,7 +40,7 @@ See [transport](transport.md) and [security reporting](../SECURITY.md).
 
 ## Document lifecycle safety
 
-Open, close, save and synchronize use both the server environment gate and the workstation `allow-write` gate. A central model opened through MCP defaults to detached mode. `local_copy` creates a new local file and leaves the central unchanged until an explicitly confirmed synchronization. Saving an open central model or saving under a known central path is refused.
+Open, close, save and synchronize are refused in read-only mode, same as every other action. A central model opened through MCP defaults to detached mode. `local_copy` creates a new local file and leaves the central unchanged until an explicitly confirmed synchronization. Saving an open central model or saving under a known central path is refused.
 
 Save, sync and any close that can discard changes require a five-minute, single-use confirmation token. The first call only describes the operation. The client must show `confirmationText` and must not send the token back until the user explicitly agrees in chat. A failed verification or timeout can occur after Revit commits a change; inspect document state before a retry. Neither the token nor the action gate is a substitute for model backups and Revit permissions.
 

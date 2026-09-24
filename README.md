@@ -116,8 +116,8 @@ See the [full tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/
 
 <a id="actions-opt-in"></a>
 
-Actions are opt-in: both `REVIT_MCP_ALLOW_WRITE=1` in the server and the workstation `allow-write` file are required.
-Model mutations support `dry_run` previews and return `verification`; `revit_batch` groups actions into one undo entry.
+Actions are enabled by default: opt out with `REVIT_MCP_READ_ONLY=1` in the server, or the workstation `read-only` file.
+Model mutations support `dry_run` previews and return `verification` and a human-readable `summary`; a committed action assimilates into one named Revit undo entry, visible in the add-in's "MCP activity" pane; `revit_undo_last` undoes it while it is still Revit's last change.
 See [actions](https://sharafutdinovdi.github.io/revit-model-mcp/actions/) for gates, exceptions and verification failures.
 
 ## Remote workstations
@@ -145,7 +145,7 @@ See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transpor
 ## Security
 
 The default tools read the model without model-changing transactions; exports and channel operations write files outside it.
-MCP actions require both gates, while direct HTTP callers require the bearer token and workstation gate.
+MCP actions are refused in read-only mode, while direct HTTP callers require the bearer token and are refused while the workstation read-only file is present.
 `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields, but names, parameter values, errors, channel files and exported image `localPath` values remain visible.
 See [security details](https://sharafutdinovdi.github.io/revit-model-mcp/security/) for authentication and privacy boundaries, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 

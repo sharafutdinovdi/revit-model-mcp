@@ -62,7 +62,7 @@ On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json`
 ```
 
 The token is per Windows user and persists across restarts.
-Settings and the `allow-write` file remain in this default directory even when `REVIT_MCP_CHANNEL_DIR` overrides the file channel.
+Settings and the `read-only` file remain in this default directory even when `REVIT_MCP_CHANNEL_DIR` overrides the file channel.
 The add-in creates and restricts the file with a protected NTFS ACL granting full control only to the current Windows user.
 Keep the token private and transfer it to the client's secret store through a trusted channel.
 The add-in never logs it.
@@ -155,8 +155,8 @@ The Python client submits once with `timeout=0`, then polls within `timeout_seco
 
 HTTP 401 means the token is missing or invalid.
 HTTP 429 with `error:queue_full` means this client already has 16 queued jobs; `retryAfterMs` gives a retry hint.
-HTTP 403 rejects action jobs when the workstation `allow-write` gate is absent.
-MCP action tools also require `REVIT_MCP_ALLOW_WRITE=1` in the Python process.
+HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
+MCP action tools are refused with `read-only mode` when `REVIT_MCP_READ_ONLY=1` in the Python process.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
 Jobs are limited to 1 MiB.
 

@@ -3,6 +3,7 @@ using System.Reflection;
 using Autodesk.Revit.DB;
 using Nice3point.Revit.Toolkit.Options;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 
@@ -11,22 +12,52 @@ namespace RevitModelMcp.Control;
 internal static class FamilyEditor
 {
     internal static FamilyEditData Execute(Document document, ActionJobContract job,
-        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application)
+        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application,
+        string clientName)
     {
         if (document.IsFamilyDocument)
         {
             if (job.Families is not null) throw new ArgumentException("families must be absent in family mode.");
             var result = new FamilyEditData { Mode = "family", DryRun = job.DryRun };
-            result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application));
-            result.Committed = !job.DryRun && result.Families[0].Status != "failed";
-            result.FailedFamily = result.Families[0].Status == "failed" ? result.Families[0].Name : null;
-            return result;
+            var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "edit-families", DocumentTitle = document.Title, Count = 1, DryRun = job.DryRun
+            });
+            var groupName = ActionSummaryBuilder.BuildGroupName(clientName, summary);
+            using var group = new TransactionGroup(document, groupName);
+            if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family edit group.");
+            try
+            {
+                result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application));
+                result.Committed = !job.DryRun && result.Families[0].Status != "failed";
+                result.FailedFamily = result.Families[0].Status == "failed" ? result.Families[0].Name : null;
+                result.Summary = summary;
+                if (result.Committed)
+                {
+                    group.SetName(groupName);
+                    if (group.Assimilate() != TransactionStatus.Committed)
+                        throw new InvalidOperationException("Could not commit the family edit.");
+                    result.UndoName = groupName;
+                }
+                else
+                {
+                    group.RollBack();
+                    result.RolledBack = true;
+                    result.Families[0].RolledBack = true;
+                }
+                return result;
+            }
+            catch
+            {
+                if (group.GetStatus() == TransactionStatus.Started) group.RollBack();
+                throw;
+            }
         }
         if (job.Families is null) throw new ArgumentException("families is required in project mode.");
         if (document.IsModifiable) throw new InvalidOperationException("Close the project transaction before editing families.");
         var data = new FamilyEditData { Mode = "project", DryRun = job.DryRun };
-        using var group = new TransactionGroup(document, "revit_edit_families");
-        if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family edit group.");
+        using var projectGroup = new TransactionGroup(document, "MCP action");
+        if (projectGroup.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family edit group.");
         try
         {
             foreach (var (name, family) in FamilyAuditReader.SelectFamilies(document, job.Families))
@@ -92,23 +123,32 @@ internal static class FamilyEditor
                     if (job.StopOnError) break;
                 }
             }
+            var editedCount = data.Families.Count(family => family.Status != "skipped");
+            var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "edit-families", DocumentTitle = document.Title, Count = editedCount, DryRun = job.DryRun
+            });
+            data.Summary = summary;
             if (job.DryRun || data.FailedFamily is not null && job.StopOnError)
             {
-                group.RollBack();
+                projectGroup.RollBack();
                 data.RolledBack = true;
                 foreach (var family in data.Families) family.RolledBack = true;
             }
             else
             {
-                if (group.Assimilate() != TransactionStatus.Committed)
+                var groupName = ActionSummaryBuilder.BuildGroupName(clientName, summary);
+                projectGroup.SetName(groupName);
+                if (projectGroup.Assimilate() != TransactionStatus.Committed)
                     throw new InvalidOperationException("Could not commit the family edits.");
                 data.Committed = true;
+                data.UndoName = groupName;
             }
             return data;
         }
         catch
         {
-            if (group.GetStatus() == TransactionStatus.Started) group.RollBack();
+            if (projectGroup.GetStatus() == TransactionStatus.Started) projectGroup.RollBack();
             throw;
         }
     }

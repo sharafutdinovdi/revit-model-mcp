@@ -45,6 +45,27 @@ EXPECTED_TOOLS = {
     "revit_compare_link_datums",
     "revit_nwc_settings_check",
 }
+ACTION_TOOL_NAMES = {
+    "revit_select",
+    "revit_show",
+    "revit_isolate",
+    "revit_move",
+    "revit_place_family",
+    "revit_create_wall",
+    "revit_set_parameter",
+    "revit_delete",
+    "revit_batch",
+    "revit_export_nwc",
+    "revit_edit_families",
+    "revit_align_link_datums",
+    "revit_open_document",
+    "revit_close_document",
+    "revit_save_document",
+    "revit_sync_document",
+    "revit_set_view_visibility",
+    "revit_remove_links",
+    "revit_undo_last",
+}
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
@@ -204,27 +225,39 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
     def test_server_version_matches_package_metadata(self) -> None:
         self.assertEqual(revit_server.mcp.version, package_version())
 
+    def test_instructions_state_the_confirmation_rule(self) -> None:
+        instructions = revit_server.mcp.instructions
+        self.assertIn("summary", instructions)
+        self.assertIn("explicit confirmation", instructions)
+        self.assertIn("REVIT_MCP_READ_ONLY", instructions)
+        self.assertIn("revit_undo_last", instructions)
+
     async def test_stdio_server_starts_and_lists_tools_without_revit(self) -> None:
         parameters = StdioServerParameters(
             command="revit-model-mcp",
             args=[],
             cwd=str(REPOSITORY_ROOT),
-            env={key: value for key, value in os.environ.items() if key != "REVIT_MCP_ALLOW_WRITE"},
+            env=dict(os.environ),
         )
 
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             result = await client.list_tools()
 
         tools = {tool.name: tool for tool in result.tools}
-        self.assertEqual(set(tools), EXPECTED_TOOLS)
-        for tool in tools.values():
+        self.assertEqual(set(tools), EXPECTED_TOOLS | ACTION_TOOL_NAMES)
+        read_tools = {name: tool for name, tool in tools.items() if name in EXPECTED_TOOLS}
+        for tool in read_tools.values():
             self.assertTrue(tool.title)
             self.assertLessEqual(len(tool.title), 40)
             self.assertEqual(tool.annotations.title, tool.title)
             self.assertIs(tool.annotations.read_only_hint, True)
         self.assertTrue(
-            all(tool.annotations and tool.annotations.read_only_hint for tool in tools.values())
+            all(
+                tool.annotations and tool.annotations.read_only_hint for tool in read_tools.values()
+            )
         )
+        action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
+        self.assertTrue(all(not tool.annotations.read_only_hint for tool in action_tools.values()))
         self.assertIn(
             "Call revit_list_views next",
             tools["revit_document_info"].description,
@@ -508,19 +541,19 @@ if __name__ == "__main__":
     ],
 )
 def test_env_flag(monkeypatch, default, value, expected):
-    monkeypatch.delenv("REVIT_MCP_ALLOW_WRITE", raising=False)
+    monkeypatch.delenv("REVIT_MCP_READ_ONLY", raising=False)
     if value is not None:
-        monkeypatch.setenv("REVIT_MCP_ALLOW_WRITE", value)
-    assert revit_server.env_flag("REVIT_MCP_ALLOW_WRITE", default) is (
+        monkeypatch.setenv("REVIT_MCP_READ_ONLY", value)
+    assert revit_server.env_flag("REVIT_MCP_READ_ONLY", default) is (
         default if expected is None else expected
     )
 
 
 @pytest.mark.parametrize("value", ["", "enabled", "2"])
 def test_env_flag_rejects_invalid_values(monkeypatch, value):
-    monkeypatch.setenv("REVIT_MCP_ALLOW_WRITE", value)
-    with pytest.raises(ValueError, match="REVIT_MCP_ALLOW_WRITE must be"):
-        revit_server.env_flag("REVIT_MCP_ALLOW_WRITE", False)
+    monkeypatch.setenv("REVIT_MCP_READ_ONLY", value)
+    with pytest.raises(ValueError, match="REVIT_MCP_READ_ONLY must be"):
+        revit_server.env_flag("REVIT_MCP_READ_ONLY", False)
 
 
 def test_redaction_accepts_boolean_string(monkeypatch):
