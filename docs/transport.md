@@ -190,14 +190,14 @@ Install the server once on the Windows workstation, under the account that runs 
 uv tool install revit-model-mcp
 ```
 
-Register the client with `ssh` as the command, replacing `windows-fi` with the host alias from the client's SSH configuration:
+Register the client with `ssh` as the command, replacing `revit-pc` with the host alias from the client's SSH configuration:
 
 ```json
 {
   "mcpServers": {
     "revit-model-mcp": {
       "command": "ssh",
-      "args": ["windows-fi", "revit-model-mcp", "--redact-paths"]
+      "args": ["revit-pc", "revit-model-mcp", "--redact-paths"]
     }
   }
 }

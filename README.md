@@ -131,13 +131,13 @@ Install it there once with `uv tool install revit-model-mcp`, then register `ssh
   "mcpServers": {
     "revit-model-mcp": {
       "command": "ssh",
-      "args": ["windows-fi", "revit-model-mcp", "--redact-paths"]
+      "args": ["revit-pc", "revit-model-mcp", "--redact-paths"]
     }
   }
 }
 ```
 
-Replace `windows-fi` with the workstation's SSH host alias.
+Replace `revit-pc` with the workstation's SSH host alias.
 MCP stdio flows through the SSH session and the remote server uses the named pipe, so no port opens.
 `REVIT_MCP_HOST=ssh:<alias>` (file channel over SSH) and HTTP through an SSH tunnel remain available; HTTP requires a bearer token except for `/health` and binds to loopback by default.
 See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/).
