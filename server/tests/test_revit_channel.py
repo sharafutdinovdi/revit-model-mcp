@@ -25,7 +25,9 @@ from revit_model_mcp.revit_channel import (
     RevitNotRunningError,
     RevitReadChannel,
     SshUnavailableError,
+    matches_document,
     parse_response,
+    resolve_instance,
 )
 from revit_model_mcp.ssh_host import (
     ACTIVATION_DELAY_SECONDS,
@@ -993,6 +995,43 @@ def instance_status(process_id=42, title="Structural", **extra):
     }
 
 
+class MatchesDocumentAndResolveInstanceTests(unittest.TestCase):
+    def test_matches_document_searches_v3_documents_list(self):
+        instance = {
+            "processId": 1,
+            "documentTitle": "",
+            "documentPath": "",
+            "documents": [
+                {"title": "Structural.rvt", "path": r"C:\Models\Structural.rvt", "isActive": True},
+                {
+                    "title": "Architectural.rvt",
+                    "path": r"C:\Models\Architectural.rvt",
+                    "isActive": False,
+                },
+            ],
+        }
+        self.assertTrue(matches_document(instance, "structural"))
+        self.assertTrue(matches_document(instance, "Architectural.rvt"))
+        self.assertFalse(matches_document(instance, "Mechanical"))
+
+    def test_resolve_instance_single_instance_always_wins(self):
+        instance = {"processId": 42}
+        self.assertEqual(resolve_instance([instance], None), instance)
+        self.assertEqual(resolve_instance([instance], "Anything"), instance)
+
+    def test_resolve_instance_no_document_lists_running_instances(self):
+        with self.assertRaisesRegex(
+            RevitChannelError, r"pid 1 \(Structural\); pid 2 \(Architectural\)"
+        ):
+            resolve_instance(
+                [
+                    {"processId": 1, "documentTitle": "Structural"},
+                    {"processId": 2, "documentTitle": "Architectural"},
+                ],
+                None,
+            )
+
+
 class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_directed_reads_pin_pid_identity_and_directory(self):
         host = SshPowerShellHost()
@@ -1032,15 +1071,26 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
                         )
                 prepare.assert_not_awaited()
 
-    async def test_actions_require_one_process_even_with_unique_document(self):
+    async def test_actions_resolve_a_unique_document_match_across_processes(self):
+        host = SshPowerShellHost()
+        host._discover_instances = AsyncMock(
+            return_value=[instance_status(), {"processId": 84, "pluginResponding": False}]
+        )
+        with patch.object(SshPowerShellHost, "_handshake", AsyncMock()) as handshake:
+            selected, job = await host.select_job(
+                ReadJob("delete", {"command": "delete", "targetDocument": "Structural"})
+            )
+        handshake.assert_awaited_once()
+        self.assertEqual(job.payload["targetProcessId"], 42)
+        self.assertIn(r"instances\42", selected._directory)
+
+    async def test_actions_require_one_process_without_a_document(self):
         host = SshPowerShellHost()
         host._discover_instances = AsyncMock(
             return_value=[instance_status(), {"processId": 84, "pluginResponding": False}]
         )
         with self.assertRaisesRegex(RevitChannelError, "exactly one"):
-            await host.select_job(
-                ReadJob("delete", {"command": "delete", "targetDocument": "Structural"})
-            )
+            await host.select_job(ReadJob("delete", {"command": "delete"}))
 
     async def test_legacy_single_instance_and_mixed_versions(self):
         legacy = instance_status()

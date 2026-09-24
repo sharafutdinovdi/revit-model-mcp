@@ -364,31 +364,56 @@ def _unique_texts(values: list[str]) -> list[str]:
 def matches_document(instance: dict[str, Any], document: str) -> bool:
     needle = document.strip().casefold()
     filename = str(instance.get("documentPath", "")).replace("\\", "/").rsplit("/", 1)[-1]
-    return any(
-        needle in str(value).casefold()
-        for value in (instance.get("documentTitle", instance.get("documentName", "")), filename)
-    )
+    candidates = [instance.get("documentTitle", instance.get("documentName", "")), filename]
+    documents = instance.get("documents")
+    if isinstance(documents, list):
+        for entry in documents:
+            if not isinstance(entry, dict):
+                continue
+            entry_path = str(entry.get("path", "")).replace("\\", "/").rsplit("/", 1)[-1]
+            candidates.extend([entry.get("title", ""), entry_path])
+    return any(needle in str(value).casefold() for value in candidates)
+
+
+def _describe_instance(instance: dict[str, Any]) -> str:
+    documents = instance.get("documents")
+    if isinstance(documents, list) and documents:
+        names = ", ".join(
+            str(doc.get("title") or doc.get("path") or "?")
+            for doc in documents
+            if isinstance(doc, dict)
+        )
+    else:
+        names = str(instance.get("documentTitle") or instance.get("documentName") or "no document")
+    return f"pid {instance.get('processId')} ({names or 'no document'})"
+
+
+def resolve_instance(instances: list[dict[str, Any]], document: str | None) -> dict[str, Any]:
+    """Pick one running instance: unambiguous with a single instance regardless of document text;
+    otherwise match by document, or fall back to requiring exactly one instance."""
+    if len(instances) == 1:
+        return instances[0]
+    if not document:
+        details = "; ".join(_describe_instance(item) for item in instances) or "none running"
+        raise RevitChannelError(
+            "Actions and undirected reads require exactly one running Revit instance. "
+            f"Use revit_list_instances and a unique document for directed reads. Running instances: {details}."
+        )
+    matches = [item for item in instances if matches_document(item, document)]
+    if not matches:
+        raise RevitChannelError(
+            "No running Revit instance has a matching active document. Use revit_list_instances."
+        )
+    if len(matches) != 1:
+        raise RevitChannelError(
+            "The document reference is ambiguous across Revit instances. Use a unique title or file name."
+        )
+    return matches[0]
 
 
 def select_instance(instances: list[dict[str, Any]], job: ReadJob) -> dict[str, Any]:
     document = job.payload.get("targetDocument")
-    if job.command in ACTION_COMMANDS or not document:
-        if len(instances) != 1:
-            raise RevitChannelError(
-                "Actions and undirected reads require exactly one running Revit instance. Use revit_list_instances and a unique document for directed reads."
-            )
-        selected = instances[0]
-    else:
-        matches = [item for item in instances if matches_document(item, document)]
-        if not matches:
-            raise RevitChannelError(
-                "No running Revit instance has a matching active document. Use revit_list_instances."
-            )
-        if len(matches) != 1:
-            raise RevitChannelError(
-                "The document reference is ambiguous across Revit instances. Use a unique title or file name."
-            )
-        selected = matches[0]
+    selected = resolve_instance(instances, document)
     if job.payload.get("targetProcessId", selected["processId"]) != selected["processId"]:
         raise RevitChannelError(
             "The selected Revit process changed before submission. Retry discovery."

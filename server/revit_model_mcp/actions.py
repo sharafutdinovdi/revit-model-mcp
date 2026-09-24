@@ -13,6 +13,7 @@ from revit_model_mcp.revit_channel import (
     DEFAULT_TIMEOUT_SECONDS,
     ReadJob,
     RevitChannelError,
+    resolve_instance,
     with_client_identity,
 )
 
@@ -200,10 +201,9 @@ async def _send_action(
 ) -> dict[str, Any]:
     try:
         instances = await host_provider().list_revit_instances()
+        selected = resolve_instance(instances, document)
     except RevitChannelError as error:
         raise ToolError(str(error)) from error
-    if len(instances) != 1:
-        raise ToolError("Actions require exactly one running Revit instance.")
     if document is not None:
         payload["targetDocument"] = document
     job = ReadJob(
@@ -211,7 +211,7 @@ async def _send_action(
         {
             "command": command,
             **payload,
-            "targetProcessId": instances[0]["processId"],
+            "targetProcessId": selected["processId"],
         },
     )
     return redact_model_paths(
