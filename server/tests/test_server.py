@@ -14,6 +14,7 @@ from mcp.client.stdio import stdio_client
 
 from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
+from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -366,7 +367,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     def test_host_configuration(self) -> None:
-        self.assertTrue(revit_server.create_host("local").local)
+        local = revit_server.create_host("local")
+        self.assertIsInstance(local, LocalPipeHost)
+        self.assertTrue(local.fallback.local)
         remote = revit_server.create_host("ssh:revit-host")
         self.assertFalse(remote.local)
         self.assertEqual(remote.host, "revit-host")

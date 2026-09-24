@@ -13,6 +13,7 @@ from pydantic import AliasChoices, Field
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, register_actions
 from revit_model_mcp.http_host import HttpHost
+from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     DEFAULT_HOST,
@@ -26,11 +27,14 @@ from revit_model_mcp.revit_channel import (
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 
-def create_host(value: str, token: str | None = None) -> SshPowerShellHost | HttpHost:
+def create_host(
+    value: str, token: str | None = None
+) -> LocalPipeHost | SshPowerShellHost | HttpHost:
     if value.startswith(("http://", "https://")):
         return HttpHost(value, token)
     if value == "local":
-        return SshPowerShellHost("local", local=True)
+        # Named pipe when the add-in advertises pipe/1, otherwise the local file channel.
+        return LocalPipeHost(SshPowerShellHost("local", local=True))
     if value.startswith("ssh:") and value[4:]:
         return SshPowerShellHost(value[4:])
     raise ValueError(
@@ -845,7 +849,10 @@ def main() -> None:
     parser.add_argument(
         "--host",
         default=default_host,
-        help="local, ssh:<alias>, http://host:port or https://host:port; overrides REVIT_MCP_HOST.",
+        help=(
+            "local (named pipe, file channel fallback), ssh:<alias> (file channel over SSH), "
+            "http://host:port or https://host:port; overrides REVIT_MCP_HOST."
+        ),
     )
     parser.add_argument(
         "--redact-paths",

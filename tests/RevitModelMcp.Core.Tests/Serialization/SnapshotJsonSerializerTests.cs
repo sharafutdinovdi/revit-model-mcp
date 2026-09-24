@@ -21,7 +21,15 @@ public sealed class SnapshotJsonSerializerTests
             DocumentPath = @"C:\\Models\\SampleModel.rvt",
             UpdatedUtc = "2026-08-17T09:15:30.0000000Z",
             StartedUtc = "2026-08-17T09:00:00.0000000Z",
-            HttpPort = httpPort
+            HttpPort = httpPort,
+            InstanceId = "0f8fad5bd9cb469fa16570867728950e",
+            PipeName = "RevitModelMcp.4242",
+            Protocols = ["pipe/1", "file/2"],
+            Documents =
+            [
+                new InstanceDocument { Title = "SampleModel", Path = @"C:\Models\SampleModel.rvt", IsActive = true },
+                new InstanceDocument { Title = "Door", IsFamilyDocument = true }
+            ]
         };
 
         using var json = JsonDocument.Parse(InstanceStatusJsonSerializer.Serialize(status));
@@ -40,6 +48,15 @@ public sealed class SnapshotJsonSerializerTests
         await Assert.That(root.GetProperty("documentTitle").GetString()).IsEqualTo("SampleModel");
         await Assert.That(root.GetProperty("documentPath").GetString()).IsEqualTo(@"C:\\Models\\SampleModel.rvt");
         await Assert.That(root.GetProperty("updatedUtc").GetString()).IsEqualTo("2026-08-17T09:15:30.0000000Z");
+        await Assert.That(root.GetProperty("discoveryVersion").GetInt32()).IsEqualTo(3);
+        await Assert.That(root.GetProperty("instanceId").GetString()).IsEqualTo(status.InstanceId);
+        await Assert.That(root.GetProperty("pipeName").GetString()).IsEqualTo("RevitModelMcp.4242");
+        await Assert.That(root.GetProperty("protocols")[0].GetString()).IsEqualTo("pipe/1");
+        var documents = root.GetProperty("documents");
+        await Assert.That(documents.GetArrayLength()).IsEqualTo(2);
+        await Assert.That(documents[0].GetProperty("path").GetString()).IsEqualTo(@"C:\Models\SampleModel.rvt");
+        await Assert.That(documents[0].GetProperty("isActive").GetBoolean()).IsTrue();
+        await Assert.That(documents[1].GetProperty("isFamilyDocument").GetBoolean()).IsTrue();
     }
 
     [Test]

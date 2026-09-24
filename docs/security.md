@@ -23,8 +23,15 @@ Set `REVIT_MCP_HTTP_ENABLED=0` in Revit's environment or `httpEnabled=false` in 
 MCP action calls require both gates over every transport.
 Direct HTTP action jobs require the bearer token and workstation gate; the Python registration flag does not apply to direct callers.
 
+The named pipe `\\.\pipe\RevitModelMcp.<pid>` has a protected ACL that grants access only to the Windows user running Revit.
+Other local users and services running under other accounts cannot open it unless an administrator changes that ACL.
+The add-in also drops any pipe client that connects from another computer.
+The pipe needs no token: holding the Revit user's credentials already grants access to the file channel and the model.
+Pipe requests are limited to 1 MiB, and action jobs still require the workstation gate.
+
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
+Running the server on the workstation over SSH stdio needs the same account as Revit and opens no additional port.
 The default multiplexing socket directory has mode `0700` on macOS and Linux.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).

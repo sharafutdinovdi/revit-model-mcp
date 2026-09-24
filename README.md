@@ -72,6 +72,7 @@ For manual Claude Desktop registration, add to its MCP configuration:
 ```
 
 From a clone, `uv run --directory server revit-model-mcp` runs the same server without installing the package.
+With `REVIT_MCP_HOST=local` the server reaches each Revit through its own named pipe, restricted to the Windows user running Revit; no port or URL reservation is needed.
 For macOS or Linux clients, configure a [remote workstation](#remote-workstations).
 
 ### Check
@@ -122,8 +123,24 @@ See [actions](https://sharafutdinovdi.github.io/revit-model-mcp/actions/) for ga
 ## Remote workstations
 
 Local Windows clients use `REVIT_MCP_HOST=local` under the Revit user's account.
-Remote clients can use an SSH tunnel to the workstation's loopback endpoint.
-HTTP requires a bearer token except for `/health` and binds to loopback by default; see [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/).
+Remote clients run the whole server on the workstation over SSH, as the same Windows user that runs Revit.
+Install it there once with `uv tool install revit-model-mcp`, then register `ssh` as the command:
+
+```json
+{
+  "mcpServers": {
+    "revit-model-mcp": {
+      "command": "ssh",
+      "args": ["windows-fi", "revit-model-mcp", "--redact-paths"]
+    }
+  }
+}
+```
+
+Replace `windows-fi` with the workstation's SSH host alias.
+MCP stdio flows through the SSH session and the remote server uses the named pipe, so no port opens.
+`REVIT_MCP_HOST=ssh:<alias>` (file channel over SSH) and HTTP through an SSH tunnel remain available; HTTP requires a bearer token except for `/health` and binds to loopback by default.
+See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/).
 
 ## Security
 
