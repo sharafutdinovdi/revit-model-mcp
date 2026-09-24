@@ -21,6 +21,7 @@ internal static class ActionCommandExecutor
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
+        ActivityPaneAutoShow.EnsureShown();
         if (job.Command == "edit-families")
         {
             ExecuteFamilies(application, job, startedAt);

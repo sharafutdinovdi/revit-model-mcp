@@ -92,10 +92,13 @@ public sealed class Application : ExternalApplication
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
         _instanceHeartbeat.Start(_activeDocument, _documents);
+        var showActivityPaneOnAction = true;
         try
         {
+            var httpSettings = HttpSettings.Load();
+            showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
             _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
-                Application.ControlledApplication.VersionNumber, HttpSettings.Load());
+                Application.ControlledApplication.VersionNumber, httpSettings);
             _httpChannel.UpdateDocument(_activeDocument?.Title);
             _httpChannel.Start();
             _instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);
@@ -104,6 +107,7 @@ public sealed class Application : ExternalApplication
         {
             PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
         }
+        ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
     }
 
     public override void OnShutdown()
@@ -116,6 +120,7 @@ public sealed class Application : ExternalApplication
         Application.ControlledApplication.DocumentSavedAs -= OnDocumentListChanged;
         Application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
         ActivityHost.Reset();
+        ActivityPaneAutoShow.Reset();
         _activeDocument = null;
         _instanceHeartbeat?.Dispose();
         _instanceHeartbeat = null;

@@ -382,6 +382,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "httpBind", Order = 2)] public string HttpBind { get; set; } = "127.0.0.1";
     [DataMember(Name = "httpPort", Order = 3)] public int HttpPort { get; set; } = 53110;
     [DataMember(Name = "token", Order = 4)] public string Token { get; set; } = string.Empty;
+    [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
 
     [OnDeserializing]
     private void SetDefaults(StreamingContext context)
@@ -390,6 +391,7 @@ internal sealed record HttpSettings
         HttpBind = "127.0.0.1";
         HttpPort = 53110;
         Token = string.Empty;
+        ShowActivityPaneOnAction = true;
     }
 
     public static HttpSettings Load(string? directory = null)
