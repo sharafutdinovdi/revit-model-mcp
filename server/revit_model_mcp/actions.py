@@ -225,6 +225,8 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_close_document": "Close Document",
             "revit_save_document": "Save Document",
             "revit_sync_document": "Synchronize Document",
+            "revit_set_view_visibility": "Set View Visibility",
+            "revit_remove_links": "Remove Links",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -320,6 +322,57 @@ def register_actions(mcp, execute, host_provider) -> None:
             saveLocalBefore=save_local_before,
             saveLocalAfter=save_local_after,
             confirmToken=confirm_token,
+        )
+
+    @action
+    async def revit_set_view_visibility(
+        view: Name,
+        hide_categories: list[str | int] | None = None,
+        show_categories: list[str | int] | None = None,
+        category_classes: dict[str, bool] | None = None,
+        hide_categories_by_type: list[str] | None = None,
+        worksets: dict[str, list[str]] | None = None,
+        filters: list[dict[str, Any]] | None = None,
+        template_mode: Literal["detach", "edit_template", "duplicate_view"] | None = None,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Change category, workset and filter visibility in one view; preview with dry_run."""
+        return await send(
+            "set-view-visibility",
+            view=view,
+            hideCategories=[str(value) for value in hide_categories] if hide_categories else None,
+            showCategories=[str(value) for value in show_categories] if show_categories else None,
+            categoryClasses=category_classes,
+            hideCategoriesByType=hide_categories_by_type,
+            worksets={
+                "hideMask": worksets.get("hide_mask", []),
+                "showMask": worksets.get("show_mask", []),
+            }
+            if worksets
+            else None,
+            filters=filters,
+            templateMode=template_mode,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_remove_links(
+        links: list[str | int] | Literal["*"],
+        kinds: list[Literal["revit", "cad", "point_cloud", "image"]] | None = None,
+        include_imported_cad: bool = False,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Delete selected link types and their instances; preview with dry_run."""
+        return await send(
+            "remove-links",
+            links=[str(value) for value in ([links] if isinstance(links, str) else links)],
+            kinds=kinds,
+            includeImportedCad=include_imported_cad,
+            dryRun=dry_run,
+            document=document,
         )
 
     @action

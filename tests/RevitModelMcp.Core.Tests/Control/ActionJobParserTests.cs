@@ -468,4 +468,40 @@ public sealed class ActionJobParserTests
         var result = ControlJobParser.Parse($$"""{"command":"batch","steps":[{{steps}}]}""");
         await Assert.That(result.Kind).IsEqualTo(expected);
     }
+
+    [Test]
+    public async Task WorksetMask_MatchesGlobAndRegexIgnoringCase()
+    {
+        await Assert.That(WorksetMask.Matches("HVAC Supply", "hvac*")).IsTrue();
+        await Assert.That(WorksetMask.Matches("HVAC Supply", "regex:^hvac\\s+sup")).IsTrue();
+        await Assert.That(WorksetMask.Matches("Structure", "hvac*")).IsFalse();
+    }
+
+    [Test]
+    public async Task Parse_ViewVisibilityValidatesTemplateModeAndMasks()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"set-view-visibility","view":"3D","categoryClasses":{"model":true},"templateMode":"detach"}""").Kind)
+            .IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"set-view-visibility","view":"3D","categoryClasses":{"model":true},"templateMode":"edit_all"}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"set-view-visibility","view":"3D","worksets":{"hideMask":["regex:["]}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task CategoryTypeExpansion_ExpandsOnlyRequestedTypes()
+    {
+        var categories = new[] { ("Walls", "model"), ("Text", "annotation"), ("Imports", "import") };
+        await Assert.That(CategoryTypeExpansion.Expand(["annotation", "import"], categories))
+            .IsEquivalentTo(new[] { "Text", "Imports" });
+    }
+
+    [Test]
+    public async Task Parse_RemoveLinksValidatesKinds()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"remove-links","links":["*"],"kinds":["revit","image"]}""").Kind)
+            .IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"remove-links","links":["*"],"kinds":["unknown"]}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
 }

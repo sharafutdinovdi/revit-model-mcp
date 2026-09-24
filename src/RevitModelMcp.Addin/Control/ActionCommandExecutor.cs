@@ -193,6 +193,10 @@ internal static class ActionCommandExecutor
         if (command == "export-nwc") return NwcExporter.Execute(document, action);
         if (command == "align-link-datums")
             return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures);
+        if (command == "set-view-visibility")
+            return ViewVisibility.Execute(document, action.Visibility!, action.DryRun, failures);
+        if (command == "remove-links")
+            return LinkRemoval.Execute(document, action.LinkRemoval!, action.DryRun, failures);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);

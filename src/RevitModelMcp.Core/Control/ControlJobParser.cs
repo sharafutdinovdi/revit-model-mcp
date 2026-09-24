@@ -19,6 +19,7 @@ public enum ControlJobKind
     ParameterFillCheck,
     ListViews,
     ViewSummary,
+    ViewInfo,
     ViewElements,
     ElementDetails,
     ViewWarnings,
@@ -177,6 +178,7 @@ public sealed class ControlJobParseResult
             "documents" => Create(ControlJobKind.Documents, command),
             "list-views" => ListViews(job.ViewType, job.NameContains),
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
+            "view-info" => RequireView(ControlJobKind.ViewInfo, command, view),
             "view-elements" => ParseViewElements(command, view, categories, job.Offset, job.Limit),
             "element-details" => ParseElementDetails(command, job.Id),
             "view-warnings" => RequireView(ControlJobKind.ViewWarnings, command, view),
@@ -335,6 +337,8 @@ public static class ControlJobParser
         {
             if (isNwcExport)
                 content = Regex.Replace(content, "\"parameters\"(?=\\s*:)", "\"nwcParameters\"");
+            if (Regex.IsMatch(content, "\"command\"\\s*:\\s*\"set-view-visibility\""))
+                content = Regex.Replace(content, "\"worksets\"(?=\\s*:)", "\"visibilityWorksets\"");
             var serializer = new DataContractJsonSerializer(typeof(ControlJobContract),
                 new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true });
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));

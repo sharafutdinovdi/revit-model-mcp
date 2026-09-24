@@ -258,6 +258,7 @@ def addressed_tool(function):
         "revit_query_elements": "Query Elements",
         "revit_list_views": "List Views",
         "revit_view_summary": "View Summary",
+        "revit_view_info": "View Info",
         "revit_export_view": "Export View to PNG",
         "revit_view_elements": "View Elements",
         "revit_element_details": "Element Details",
@@ -650,6 +651,19 @@ async def revit_list_views(
         timeout_seconds,
         pickup_timeout_seconds,
         document,
+    )
+
+
+@addressed_tool
+async def revit_view_info(
+    view: ViewName,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Inspect one view's template, display, categories, worksets, filters and links."""
+    return await _execute(
+        ReadJob.view_info(view), timeout_seconds, pickup_timeout_seconds, document
     )
 
 

@@ -225,6 +225,13 @@ Use disposable local and Revit Server test models. Check each operation in Revit
 - [ ] Refuse a detached sync, a family sync and any save-as destination matching a known central path.
 - [ ] Hold the central lock during sync and verify a clear error without indefinite waiting.
 - [ ] Record suppressed dialogs and warnings from a disposable model open; confirm unrelated failures remain visible.
+## View preparation smoke test
+
+- [ ] In a detached workshared model, call `revit_view_info` by name and ID. Check the template controls, 3D background, section box, hidden categories, worksets, filters and links against the Revit UI.
+- [ ] Run `revit_set_view_visibility` with `dry_run=true`; confirm before/after values and no persisted changes. Repeat on an assigned template without `template_mode` (expect rejection), then with each mode and inspect affected views.
+- [ ] Hide category types and named categories, and hide worksets with both glob and `regex:` masks. Confirm unmatched category suggestions and per-category failures.
+- [ ] Run `revit_remove_links` with `dry_run=true`, then on a disposable detached copy. Verify type and instance counts, untouched imported CAD by default, and the central-connected refusal and local-copy sync warning.
+- [ ] Repeat link inspection on Revit 2022–2023 and 2024+ to check the override fallback and `GetLinkOverrides` path.
 
 ## 9. Reporting
 

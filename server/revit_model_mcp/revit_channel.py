@@ -79,6 +79,8 @@ ACTION_COMMANDS = frozenset(
         "close-document",
         "save-document",
         "sync-document",
+        "set-view-visibility",
+        "remove-links",
     }
 )
 
@@ -151,6 +153,10 @@ class ReadJob:
             "view-summary",
             {"command": "view-summary", "view": _required_text(view, "view")},
         )
+
+    @classmethod
+    def view_info(cls, view: str) -> ReadJob:
+        return cls("view-info", {"command": "view-info", "view": _required_text(view, "view")})
 
     @classmethod
     def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> ReadJob:
