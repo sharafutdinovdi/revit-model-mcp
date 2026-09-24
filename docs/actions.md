@@ -8,7 +8,7 @@ Transaction warnings are dismissed and reported in `warningsDismissed` (omitted 
 Every action result carries a `summary`: one human sentence describing what changed, how many elements, and in
 which document, alongside `verification`. A committed mutation assimilates its transaction into a single named
 Revit undo entry, `MCP (<clientName>): <short summary>` (at most 60 characters), visible in Revit's Undo list and
-in the add-in's "MCP activity" dockable pane (ribbon: RevitModelMcp tab, Activity panel, "MCP Activity" button).
+in the add-in's "MCP activity" dockable pane (ribbon: RevitModelMcp tab, MCP panel, "Activity" button).
 `select` and `show` make no document change and get no undo entry, but still appear in the activity pane.
 See [Undo the last action](#undo-the-last-action) for `revit_undo_last`.
 
@@ -186,7 +186,7 @@ tools still listed and returning `success:false`, `error:"read-only mode"` inste
    ```
 
 The add-in checks the gate file for every action, including selection and navigation, and shows a "Read-only"
-badge in the MCP activity pane while it is present.
+bar at the top of the MCP activity pane while it is present.
 Removing the file re-enables actions immediately; restarting Revit is unnecessary.
 The gate stays in the default local application data directory even if the transport uses `REVIT_MCP_CHANNEL_DIR`.
 Direct HTTP action jobs are refused the same way, with HTTP status 403.
@@ -254,10 +254,14 @@ longer applies.
 The add-in keeps an in-memory ring buffer of the last 500 finished action jobs, also appended as JSON lines
 to `%LOCALAPPDATA%\RevitModelMcp\activity.log`: time, client, command, document, state (`done`, `failed` or
 `dry_run`), `summary`, the changed, created and deleted element IDs with category and name, the undo entry
-name, and whether it was later undone. Toggle the "MCP activity" dockable pane from the RevitModelMcp ribbon
-tab. It shows, newest first: a status icon, time, client badge, command and summary per row; an expandable
-detail listing changed/created/deleted elements (deleted elements are not clickable; others select and zoom
-on click); a "Show all" button per row; an "Undo" button on the newest eligible row; and, above the log, a
-live queue section for jobs still waiting on this Revit instance, each with a "Cancel" button.
+name, and whether it was later undone. Toggle the dockable pane with the "Activity" button on the RevitModelMcp
+ribbon tab; the pane caption and button follow the Revit UI language ("Журнал MCP" and "Журнал" in Russian).
+Rows are grouped by day, newest first, on a status rail: a localized title with the element count, time, client
+name in a stable client colour, document, and changed/created/deleted counts (`~N`, `+N`, `−N`), with
+"dry run", "undone" and "failed" tags; failed rows show the error message. Hovering a row reveals "Show"
+(select and zoom all touched elements) and, on the newest eligible row, "Undo". Expanding a row lists its
+changed, created and deleted elements (deleted elements are not clickable; others select and zoom on click).
+A live strip above the log names the running job and opens the queue of jobs still waiting on this Revit
+instance, each with a "Cancel" link. The API `summary` stays in English.
 `Document` is always `Document.Title`, a file name, never a directory, so nothing in the log needs path
 redaction.

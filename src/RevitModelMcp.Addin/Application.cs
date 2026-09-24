@@ -141,9 +141,9 @@ public sealed class Application : ExternalApplication
     private void RegisterActivityPane()
     {
         ActivityPaneProvider.Register(Application);
-        var panel = Application.CreatePanel("Activity", "RevitModelMcp");
-        panel.AddPushButton<ShowActivityPaneCommand>("MCP\nActivity")
-            .SetToolTip("Show or hide the MCP activity pane: recent actions, their undo entries and the job queue.");
+        var panel = Application.CreatePanel("MCP", "RevitModelMcp");
+        panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton)
+            .SetToolTip(PaneText.RibbonToolTip);
     }
 
     private void OnViewActivated(object? sender, ViewActivatedEventArgs args)

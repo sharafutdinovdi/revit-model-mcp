@@ -1,25 +1,29 @@
 using Autodesk.Revit.UI;
 using JetBrains.Annotations;
 using Nice3point.Revit.Toolkit.Decorators;
+using RevitModelMcp.Core.Activity;
 
 namespace RevitModelMcp.Activity;
 
-/// <summary>Registers the "MCP activity" dockable pane during application startup.</summary>
+/// <summary>Registers the MCP activity dockable pane during application startup.</summary>
 internal static class ActivityPaneProvider
 {
     public static readonly DockablePaneId PaneId = new(new Guid("6F1D9A2E-6B3E-4C7A-9C7E-7C6C6E2B6F31"));
 
     public static void Register(UIControlledApplication application)
     {
+        PaneText.Language = application.ControlledApplication.Language == Autodesk.Revit.ApplicationServices.LanguageType.Russian
+            ? ActivityLanguage.Russian
+            : ActivityLanguage.English;
         PaneTheme.Register(application);
         DockablePaneProvider
-            .Register(application, PaneId, "MCP activity")
+            .Register(application, PaneId, PaneText.Caption)
             .SetConfiguration(data =>
             {
                 data.FrameworkElement = new ActivityPaneView();
                 data.InitialState = new DockablePaneState
                 {
-                    MinimumWidth = 320,
+                    MinimumWidth = 300,
                     DockPosition = DockPosition.Right
                 };
             });
