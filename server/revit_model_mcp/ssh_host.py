@@ -114,16 +114,20 @@ class SshPowerShellHost:
 
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
         instances = await self._discover_instances()
-        for instance in instances:
-            if document and not matches_document(instance, document):
-                continue
+        candidates = [
+            item for item in instances if not document or matches_document(item, document)
+        ]
+
+        async def ping(instance: dict[str, object]) -> None:
             if instance.get("fileChannelVersion") == 2:
                 try:
-                    await self._for_instance(instance)._handshake()
+                    await self._for_instance(instance)._handshake(timeout=5.0)
                     instance["pluginResponding"] = True
                 except RevitChannelError:
                     instance["pluginResponding"] = False
-        return [item for item in instances if not document or matches_document(item, document)]
+
+        await asyncio.gather(*(ping(instance) for instance in candidates))
+        return candidates
 
     async def select_job(self, job: ReadJob) -> tuple[SshPowerShellHost, ReadJob]:
         instances = await self._discover_instances()
@@ -157,18 +161,18 @@ class SshPowerShellHost:
                 "The selected Revit instance identity changed or its heartbeat expired. Retry discovery."
             )
 
-    async def _handshake(self) -> None:
+    async def _handshake(self, timeout: float | None = None) -> None:
+        resolved_timeout = HANDSHAKE_TIMEOUT_SECONDS if timeout is None else timeout
+
         async def confirm() -> None:
             job = ReadJob(
                 "ping", {"command": "ping", "targetProcessId": self._instance["processId"]}
             )
-            await RevitReadChannel(self)._execute_serial(
-                job, HANDSHAKE_TIMEOUT_SECONDS, HANDSHAKE_TIMEOUT_SECONDS
-            )
+            await RevitReadChannel(self)._execute_serial(job, resolved_timeout, resolved_timeout)
             await self._verify_identity()
 
         try:
-            await asyncio.wait_for(confirm(), HANDSHAKE_TIMEOUT_SECONDS)
+            await asyncio.wait_for(confirm(), resolved_timeout)
         except TimeoutError as error:
             raise RevitChannelError(
                 "The selected file channel is unconfirmed: handshake timed out; its ping may still execute later."
@@ -570,7 +574,16 @@ def _parse_instance_package(
                 "updatedUtc": status["updatedUtc"],
                 **{
                     key: status[key]
-                    for key in ("fileChannelVersion", "startedUtc", "httpPort")
+                    for key in (
+                        "fileChannelVersion",
+                        "startedUtc",
+                        "httpPort",
+                        "discoveryVersion",
+                        "instanceId",
+                        "pipeName",
+                        "protocols",
+                        "documents",
+                    )
                     if key in status
                 },
             }

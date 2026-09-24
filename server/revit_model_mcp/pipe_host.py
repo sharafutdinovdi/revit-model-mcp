@@ -282,17 +282,17 @@ class LocalPipeHost:
         instances = self.heartbeats()
         if not instances or any(PIPE_PROTOCOL not in _protocols(item) for item in instances):
             return await self.fallback.list_revit_instances(document)
-        result = []
-        for instance in instances:
-            if document and not matches_document(instance, document):
-                continue
+        matched = [item for item in instances if not document or matches_document(item, document)]
+
+        async def ping(instance: dict[str, Any]) -> dict[str, Any]:
             try:
-                await self.connection(instance)
+                await asyncio.wait_for(self.connection(instance), timeout=5.0)
                 instance["pluginResponding"] = True
-            except RevitChannelError:
+            except (RevitChannelError, TimeoutError):
                 instance["pluginResponding"] = False
-            result.append(instance)
-        return result
+            return instance
+
+        return list(await asyncio.gather(*(ping(instance) for instance in matched)))
 
     async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]:
         instances = self.heartbeats()
