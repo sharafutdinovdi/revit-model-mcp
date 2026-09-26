@@ -157,6 +157,7 @@ public sealed class Application : ExternalApplication
 
     private void OnDocumentClosing(object? sender, DocumentClosingEventArgs args)
     {
+        ConfirmationStore.DocumentClosing(args.Document);
         if (ReferenceEquals(args.Document, _activeDocument))
         {
             // The heartbeat must clear a closed active document without waiting for a view switch.
@@ -201,7 +202,11 @@ public sealed class Application : ExternalApplication
         return documents;
     }
 
-    private void OnDocumentChanged(object? sender, DocumentChangedEventArgs args) => UndoTracker.OnDocumentChanged(args);
+    private void OnDocumentChanged(object? sender, DocumentChangedEventArgs args)
+    {
+        ConfirmationStore.DocumentChanged(args.GetDocument());
+        UndoTracker.OnDocumentChanged(args);
+    }
 
     private void RequestExecution()
     {

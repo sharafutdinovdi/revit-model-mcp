@@ -11,15 +11,15 @@ public sealed class ActionJobParserTests
     {
         var now = DateTimeOffset.UtcNow;
         var tokens = new DocumentConfirmationTokens(() => now);
-        var first = tokens.Issue("save-document", "document-1", "path=A");
-        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=B")).IsFalse();
-        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=A")).IsFalse();
-        var second = tokens.Issue("save-document", "document-1", "path=A");
-        await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A")).IsTrue();
-        await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A")).IsFalse();
-        var third = tokens.Issue("save-document", "document-1", "path=A");
+        var first = tokens.Issue("save-document", "document-1", "path=A", "state-1");
+        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=B", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
+        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
+        var second = tokens.Issue("save-document", "document-1", "path=A", "state-1");
+        await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Valid);
+        await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
+        var third = tokens.Issue("save-document", "document-1", "path=A", "state-1");
         now = now.AddMinutes(5);
-        await Assert.That(tokens.Consume(third, "save-document", "document-1", "path=A")).IsFalse();
+        await Assert.That(tokens.Consume(third, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
     }
 
     [Test]
@@ -36,7 +36,8 @@ public sealed class ActionJobParserTests
         };
         var identity = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt", "Tower.rvt");
         var arguments = DocumentConfirmationBinding.Arguments(issueAction, @"C:\Models\Tower.rvt", isModified: true);
-        var token = tokens.Issue("save-document", identity, arguments);
+        var state = DocumentConfirmationBinding.State(Guid.NewGuid(), 3, Guid.NewGuid(), 7);
+        var token = tokens.Issue("save-document", identity, arguments, state);
 
         // The confirming call carries fields that never enter the fingerprint (a fresh element
         // selection here stands in for the request's transport metadata, which lives entirely
@@ -53,7 +54,31 @@ public sealed class ActionJobParserTests
         var confirmIdentity = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt", "Tower.rvt");
         var confirmArguments = DocumentConfirmationBinding.Arguments(confirmAction, @"C:\Models\Tower.rvt", isModified: true);
 
-        await Assert.That(tokens.Consume(token, "save-document", confirmIdentity, confirmArguments)).IsTrue();
+        await Assert.That(tokens.Consume(token, "save-document", confirmIdentity, confirmArguments, state)).IsEqualTo(DocumentConfirmationResult.Valid);
+    }
+
+    [Test]
+    public async Task DocumentConfirmationBinding_StateChangeRejectsConfirmation()
+    {
+        var versionGuid = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var initial = DocumentConfirmationBinding.State(versionGuid, 3, sessionId, 7);
+        var changedVersion = DocumentConfirmationBinding.State(Guid.NewGuid(), 3, sessionId, 7);
+        var changedSaves = DocumentConfirmationBinding.State(versionGuid, 4, sessionId, 7);
+        var changedSession = DocumentConfirmationBinding.State(versionGuid, 3, Guid.NewGuid(), 7);
+        var changedCount = DocumentConfirmationBinding.State(versionGuid, 3, sessionId, 8);
+        var tokens = new DocumentConfirmationTokens();
+
+        await Assert.That(initial).IsNotEqualTo(changedVersion);
+        await Assert.That(initial).IsNotEqualTo(changedSaves);
+        await Assert.That(initial).IsNotEqualTo(changedSession);
+        await Assert.That(initial).IsNotEqualTo(changedCount);
+        foreach (var changed in new[] { changedVersion, changedSaves, changedSession, changedCount })
+        {
+            var token = tokens.Issue("save-document", "document-1", "path=A", initial);
+            await Assert.That(tokens.Consume(token, "save-document", "document-1", "path=A", changed))
+                .IsEqualTo(DocumentConfirmationResult.DocumentChanged);
+        }
     }
 
     [Test]

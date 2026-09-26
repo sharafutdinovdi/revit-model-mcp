@@ -124,14 +124,12 @@ internal static class DocumentActions
         if (action.Save && (IsCentral(document) || document.IsDetached && string.IsNullOrWhiteSpace(document.PathName)))
             throw new InvalidOperationException("Save the detached document under a new path before closing with save=true; an open central model cannot be saved.");
         var exempt = !action.Save && document.IsDetached && Opened.ContainsKey(document) && !IsCentral(document);
-        if (action.Save || document.IsModified && !exempt)
+        if (action.Save || document.IsModified && !exempt || action.ConfirmToken is not null)
         {
             var operation = action.Save ? "Save and close" : "Close without saving and discard changes in";
             var confirmation = Confirm("close-document", document, action, $"{operation} '{document.Title}' ({document.PathName}).");
             if (confirmation is not null) return confirmation;
         }
-        else if (action.ConfirmToken is not null)
-            throw new InvalidOperationException("Confirmation token does not match the current document state.");
         // Capture everything needed for the result, and stop touching the managed wrapper, before
         // Close() invalidates it; Revit throws when any later call (including a dictionary lookup
         // that hashes the Document) reaches an already-closed document.
@@ -234,14 +232,18 @@ internal static class DocumentActions
     {
         var identity = DocumentConfirmationBinding.Identity(document.PathName, document.Title);
         var arguments = DocumentConfirmationBinding.Arguments(action, document.PathName, document.IsModified);
+        var state = ConfirmationStore.State(document);
         if (action.ConfirmToken is null)
             return new ActionResultData
             {
                 NeedsConfirmation = true,
                 ConfirmationText = description,
-                ConfirmToken = ConfirmationStore.Tokens.Issue(command, identity, arguments)
+                ConfirmToken = ConfirmationStore.Tokens.Issue(command, identity, arguments, state)
             };
-        if (!ConfirmationStore.Tokens.Consume(action.ConfirmToken, command, identity, arguments))
+        var result = ConfirmationStore.Tokens.Consume(action.ConfirmToken, command, identity, arguments, state);
+        if (result == DocumentConfirmationResult.DocumentChanged)
+            throw new InvalidOperationException("The document changed after the preview; request a new confirmation.");
+        if (result != DocumentConfirmationResult.Valid)
             throw new InvalidOperationException("Confirmation token is invalid, expired or does not match the arguments.");
         return null;
     }

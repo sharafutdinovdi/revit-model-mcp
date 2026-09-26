@@ -372,24 +372,31 @@ public static class DocumentPathValidator
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
 {
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
-    private readonly Dictionary<string, (string Command, string Document, string Arguments, DateTimeOffset Expires)> _tokens = [];
+    private readonly Dictionary<string, (string Command, string Document, string Arguments, string State, DateTimeOffset Expires)> _tokens = [];
 
-    public string Issue(string command, string document, string arguments)
+    public string Issue(string command, string document, string arguments, string state)
     {
         var bytes = new byte[32];
         using (var generator = RandomNumberGenerator.Create()) generator.GetBytes(bytes);
         var token = BitConverter.ToString(bytes).Replace("-", string.Empty);
-        _tokens[token] = (command, document, arguments, _clock().AddMinutes(5));
+        _tokens[token] = (command, document, arguments, state, _clock().AddMinutes(5));
         return token;
     }
 
-    public bool Consume(string token, string command, string document, string arguments)
+    public DocumentConfirmationResult Consume(string token, string command, string document, string arguments, string state)
     {
-        if (!_tokens.TryGetValue(token, out var stored)) return false;
+        if (!_tokens.TryGetValue(token, out var stored)) return DocumentConfirmationResult.Invalid;
         _tokens.Remove(token);
-        return stored.Expires > _clock() && stored.Command == command && stored.Document == document && stored.Arguments == arguments;
+        if (stored.Expires <= _clock() || stored.Command != command)
+            return DocumentConfirmationResult.Invalid;
+        if (stored.State != state) return DocumentConfirmationResult.DocumentChanged;
+        return stored.Document == document && stored.Arguments == arguments
+            ? DocumentConfirmationResult.Valid
+            : DocumentConfirmationResult.Invalid;
     }
 }
+
+public enum DocumentConfirmationResult { Invalid, Valid, DocumentChanged }
 
 /// <summary>
 /// Builds the confirmation identity and argument fingerprint for a document action from stable,
@@ -400,6 +407,9 @@ public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = nul
 /// </summary>
 public static class DocumentConfirmationBinding
 {
+    public static string State(Guid versionGuid, int numberOfSaves, Guid sessionId, long changeCount) =>
+        $"{versionGuid:N}:{numberOfSaves}:{sessionId:N}:{changeCount}";
+
     public static string Identity(string? pathName, string title) =>
         string.IsNullOrWhiteSpace(pathName)
             ? "title:" + title.Trim().ToUpperInvariant()
