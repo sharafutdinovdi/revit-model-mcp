@@ -253,6 +253,9 @@ longer applies.
 
 ### MCP activity pane
 
+![MCP activity pane in the dark Revit theme](screenshots/activity-pane-dark.png)
+![An expanded activity row with changed, created and deleted elements](screenshots/activity-pane-expanded.png)
+
 The add-in keeps an in-memory ring buffer of the last 500 finished action jobs, also appended as JSON lines
 to `%LOCALAPPDATA%\RevitModelMcp\activity.log`: time, client, command, document, state (`done`, `failed` or
 `dry_run`), `summary`, the changed, created and deleted elements with category, name and ID, their true
@@ -273,7 +276,7 @@ element IDs, aligned host datums, removed link types and instances, or the affec
 include incidental dependents unless the action result reports them explicitly, as deletion does. IDs created
 during a dry run are provisional.
 
-Toggle the dockable pane with the "Activity" button on the RevitModelMcp ribbon tab. The pane is English in
+Toggle the dockable pane with the "Activity" button in the MCP panel on Revit's Add-Ins tab. The pane is English in
 every Revit UI language. Rows are grouped by day, newest first: "Today", "Yesterday", a weekday name within
 the last six days, then a date such as "Sep 21" (or "Sep 21, 2025" in an earlier year). Labels use the local
 calendar date of the entry and of now, so they follow midnight and daylight saving changes; the pane refreshes
