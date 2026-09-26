@@ -53,7 +53,7 @@ Category names in `hide_categories` and `show_categories` accept the Revit UI na
 
 `category_classes` maps `model`, `annotation`, `analytical`, `import` and `point_clouds` to booleans (`true` means hidden). `hide_categories_by_type` accepts those class names and hides each matching category. `worksets` has `hide_mask` and `show_mask` lists; masks are case-insensitive globs (`*`, `?`) or regular expressions prefixed with `regex:`. The response lists matched worksets, before/after values and categories Revit could not hide. `filters` contains `{name, visible}` records. When a template is applied, choose `template_mode`: `detach` clears it on this view, `edit_template` changes it for all views using the template and lists them, or `duplicate_view` creates a copy without it. A missing mode is rejected.
 
-Link removal refuses central-connected workshared documents. A local copy is allowed with a warning that sync propagates deletion. Non-linked CAD imports remain unless `include_imported_cad=true`. `dry_run` applies the proposed changes within a transaction and rolls it back.
+Link removal refuses central-connected workshared documents. A local copy is allowed with a warning that sync propagates deletion. Non-linked CAD imports remain unless `include_imported_cad=true`. A real removal returns `warning: "Removing links cannot be undone in Revit; Undo will not restore them."` The warning is set before deletion. `revit_undo_last` refuses after link removal for this reason. `dry_run` applies the proposed changes within a transaction and rolls it back without committing.
 
 Alignment uses one host-document transaction, with `dry_run` rolling it back after prospective results are read. Pinned and other-user-owned datums are skipped. Existing datums are never renamed or deleted, and grid extents and scope boxes are never changed. Moving levels also moves elements hosted on them; moved-level results include `dependentCount`. Created datums report their ID and workset. Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
 
@@ -110,7 +110,7 @@ With `stop_on_error=true`, the first failed family rolls back the whole project 
 `type_name` and `wall_type` are required arguments that accept `null`.
 
 `revit_move`, `revit_place_family`, `revit_create_wall`, `revit_set_parameter` and `revit_delete` accept a final `dry_run=false` argument.
-A dry run executes the mutation, reads its prospective result, commits inside its transaction group and rolls the group back, so nothing persists and the activity pane can list the elements it would change.
+A dry run executes the mutation, reads its prospective result, and rolls back its transaction. Dry runs never commit. The activity pane lists elements reported by the action result.
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.
 `revit_isolate` has no `dry_run` argument; it uses temporary isolation only.
@@ -152,7 +152,7 @@ The first failed step rolls back the entire batch; every attempted step, includi
 An `Assimilate` failure is reported on the last step with `failedStep` pointing at it.
 All steps are validated before execution; an invalid later step rejects the whole batch without executing anything and without `failedStep`.
 Results include zero-based `index`, `command`, `success` and `data` or `error` per attempted step, plus `undoName`, `committed` and `failedStep` (null on success).
-A batch dry run executes every step against preceding steps' changes, then rolls back the group and restores the original selection.
+A batch dry run previews each step against the unchanged model, rolls back each step's transaction and the batch group, and restores the original selection. A later step cannot use an element created by an earlier preview step.
 A per-step `dry_run:true` inside a real batch is accepted and previews only that step.
 Verification describes each step's immediate result; subsequent steps may change those elements again.
 Batches accept 1–50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
@@ -243,7 +243,7 @@ the following hold, tracked from Revit's `DocumentChanged` event:
 - the addressed document is the active document;
 - no command is currently pending in Revit;
 - the name Revit reports for its last undo entry still equals the name recorded for the most recent
-  activity entry.
+  activity entry. Link removal is excluded because Revit cannot restore removed links through Undo.
 
 Otherwise it refuses with a clear reason, for example `the last change in Revit is not ours: Move Elements`
 when the user made an unrelated edit since the last MCP action, or `there is no recorded MCP action to
@@ -258,7 +258,7 @@ to `%LOCALAPPDATA%\RevitModelMcp\activity.log`: time, client, command, document,
 `dry_run`), `summary`, the changed, created and deleted elements with category, name and ID, their true
 totals, the undo entry name, and whether it was later undone.
 
-The element lists are exact. While a job runs a model transaction, the add-in subscribes to Revit's
+For committed jobs, the element lists are exact. While a job runs a model transaction, the add-in subscribes to Revit's
 `DocumentChanged` event for the target document only and collects the added, modified and deleted element
 IDs of every transaction the job commits, including transactions Revit itself opens, such as a family load.
 An element added and later deleted within the same job cancels out and is not listed, whether or not it has
@@ -268,8 +268,10 @@ visibility change lists the view. Each list stores the first 5000 elements; the 
 lists use the true totals, including dependents such as dimensions that move with an element. The row title
 instead uses the action's own target count (for example "Moved 1 element" for a single moved link, even
 though its dependent dimensions also changed), falling back to the true totals when a command has no
-well-defined target count. Dry runs commit inside their transaction group before the group is rolled back,
-so they list the elements they would change; their created elements are provisional.
+well-defined target count. Dry runs never commit, so their element lists come from the action result: requested
+element IDs, aligned host datums, removed link types and instances, or the affected view. These lists do not
+include incidental dependents unless the action result reports them explicitly, as deletion does. IDs created
+during a dry run are provisional.
 
 Toggle the dockable pane with the "Activity" button on the RevitModelMcp ribbon tab. The pane is English in
 every Revit UI language. Rows are grouped by day, newest first: "Today", "Yesterday", a weekday name within

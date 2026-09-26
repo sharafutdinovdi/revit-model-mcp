@@ -31,9 +31,7 @@ internal static class FamilyEditor
             if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family edit group.");
             try
             {
-                // The family-mode group rolls a dry run back, so the edit commits inside it for DocumentChanged.
-                result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application,
-                    commitDryRun: true));
+                result.Families.Add(Edit(document, Path.GetFileNameWithoutExtension(document.Title), job, failures, application));
                 result.Committed = !job.DryRun && result.Families[0].Status != "failed";
                 result.FailedFamily = result.Families[0].Status == "failed" ? result.Families[0].Name : null;
                 result.Summary = summary;
@@ -46,6 +44,7 @@ internal static class FamilyEditor
                 }
                 else
                 {
+                    // Dry runs must never commit: some deletions are irreversible.
                     group.RollBack();
                     result.RolledBack = true;
                     result.Families[0].RolledBack = true;
@@ -116,6 +115,7 @@ internal static class FamilyEditor
                 }
                 if (familyResult.Status == "failed" || job.DryRun)
                 {
+                    // Dry runs must never commit: some deletions are irreversible.
                     familyGroup.RollBack();
                     familyResult.RolledBack = true;
                 }
@@ -139,6 +139,7 @@ internal static class FamilyEditor
             data.Summary = summary;
             if (job.DryRun || data.FailedFamily is not null && job.StopOnError)
             {
+                // Dry runs must never commit: some deletions are irreversible.
                 projectGroup.RollBack();
                 data.RolledBack = true;
                 foreach (var family in data.Families) family.RolledBack = true;
@@ -162,8 +163,7 @@ internal static class FamilyEditor
     }
 
     private static FamilyEditFamily Edit(Document familyDocument, string name, ActionJobContract job,
-        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application,
-        bool commitDryRun = false)
+        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application)
     {
         var result = new FamilyEditFamily { Name = name, Status = "unchanged" };
         using var transaction = new Transaction(familyDocument, "revit_edit_families");
@@ -190,7 +190,12 @@ internal static class FamilyEditor
             }
             familyDocument.Regenerate();
             if (job.DryRun) _ = FamilyAuditReader.ReadFamily(familyDocument);
-            if (job.DryRun && !commitDryRun) transaction.RollBack();
+            if (job.DryRun)
+            {
+                // Dry runs must never commit: some deletions are irreversible.
+                if (transaction.RollBack() != TransactionStatus.RolledBack)
+                    throw new InvalidOperationException("Could not roll back the family dry run.");
+            }
             else if (transaction.Commit() != TransactionStatus.Committed)
                 throw new InvalidOperationException(failures.Message ?? "The family transaction was rolled back.");
             return result;

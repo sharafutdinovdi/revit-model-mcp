@@ -28,14 +28,14 @@ internal static class BatchActionExecutor
                 result.Steps.Add(entry);
                 try
                 {
-                    // Batch previews retain earlier changes until the entire group rolls back.
                     var stepAction = step.Action!;
                     var originalDryRun = stepAction.DryRun;
                     try
                     {
                         stepAction.DryRun |= action.DryRun;
+                        // Dry runs must never commit: some deletions are irreversible.
                         entry.Data = ActionCommandExecutor.ExecuteStep(document, uiDocument, step.Command, stepAction,
-                            failures, clientName, out _, deferDryRun: action.DryRun, wrapGroup: false);
+                            failures, clientName, out _, wrapGroup: false);
                     }
                     finally
                     {
@@ -59,7 +59,11 @@ internal static class BatchActionExecutor
                 BatchStepCount = result.Steps.Count
             });
             result.Summary = summary;
-            if (action.DryRun) RollBack();
+            if (action.DryRun)
+            {
+                // Dry runs must never commit: some deletions are irreversible.
+                RollBack();
+            }
             else
             {
                 var groupName = ActionSummaryBuilder.BuildGroupName(clientName, summary);

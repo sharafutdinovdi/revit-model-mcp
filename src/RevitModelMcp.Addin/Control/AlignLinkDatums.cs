@@ -154,13 +154,18 @@ internal static class AlignLinkDatums
                 DryRun = dryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
-            // A dry run commits inside the group so DocumentChanged reports its changes, then rolls the group back.
-            if (!dryRun) transaction.SetName(groupName);
-            if (transaction.Commit() != TransactionStatus.Committed)
-                throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
-            if (dryRun) group.RollBack();
+            if (dryRun)
+            {
+                // Dry runs must never commit: some deletions are irreversible.
+                if (transaction.RollBack() != TransactionStatus.RolledBack)
+                    throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
+                group.RollBack();
+            }
             else
             {
+                transaction.SetName(groupName);
+                if (transaction.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
                 group.SetName(groupName);
                 if (group.Assimilate() != TransactionStatus.Committed)
                     throw new InvalidOperationException("Could not assimilate the action transaction group.");

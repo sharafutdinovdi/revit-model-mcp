@@ -206,7 +206,7 @@ internal static class ActionCommandExecutor
 
     internal static ActionResultData ExecuteStep(Document document, UIDocument? uiDocument, string command,
         ActionJobContract action, ActionFailures failures, string clientName, out bool viewOpened,
-        bool deferDryRun = false, bool wrapGroup = true)
+        bool wrapGroup = true)
     {
         viewOpened = false;
         if (command == "undo-last") return ExecuteUndoLast(document, uiDocument);
@@ -259,13 +259,14 @@ internal static class ActionCommandExecutor
                     before!.Dependents = data.Verification.Changed!.Except(before.Requested!).ToList();
                 document.Regenerate();
                 ActionVerifier.CaptureAfter(document, command, action, data);
+                if (action.DryRun && command is ("move" or "set-parameter"))
+                    data.Verification.Changed = command == "move"
+                        ? ids.Select(RevitValueReader.GetId).ToList() : [action.ElementId];
                 data.Summary = BuildSummary(command, action, data, document.Title, ids);
-                if (action.DryRun && !deferDryRun)
+                if (action.DryRun)
                 {
-                    // Inside a group the dry run commits so DocumentChanged reports its would-be changes,
-                    // then the group rollback discards them. Without a group it simply rolls back.
-                    var expected = group is null ? TransactionStatus.RolledBack : TransactionStatus.Committed;
-                    if ((group is null ? transaction.RollBack() : transaction.Commit()) != expected)
+                    // Dry runs must never commit: some deletions are irreversible.
+                    if (transaction.RollBack() != TransactionStatus.RolledBack)
                         throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
                     data.RolledBack = true;
                     group?.RollBack();
@@ -315,6 +316,8 @@ internal static class ActionCommandExecutor
     internal static ActionResultData ExecuteUndoLast(Document document, UIDocument? uiDocument)
     {
         var newest = ActivityLog.Newest();
+        if (newest?.Command == "remove-links" && newest.UndoEntryName is not null)
+            throw new InvalidOperationException(LinkRemoval.UndoWarning);
         var (trackedDocumentTitle, lastTransactionName) = UndoTracker.Snapshot();
         var isActiveDocument = uiDocument is not null && string.Equals(trackedDocumentTitle, document.Title, StringComparison.Ordinal);
         var undoCommandId = RevitCommandId.LookupPostableCommandId(PostableCommand.Undo);

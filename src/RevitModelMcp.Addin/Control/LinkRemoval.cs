@@ -8,15 +8,18 @@ namespace RevitModelMcp.Control;
 
 internal static class LinkRemoval
 {
+    internal const string UndoWarning = "Removing links cannot be undone in Revit; Undo will not restore them.";
+
     public static ActionResultData Execute(Document document, LinkRemovalOptions options, bool dryRun,
         ActionCommandExecutor.ActionFailures failures, string clientName)
     {
         var local = IsLocalCopy(document);
         if (document.IsWorkshared && !document.IsDetached && !local)
             throw new InvalidOperationException("Link removal is refused on a central-connected workshared document. Open a detached document or local copy.");
-        var result = new LinkRemovalResult();
+        var result = new LinkRemovalResult { Warning = dryRun ? null : UndoWarning };
         if (document.IsWorkshared && local && !document.IsDetached)
-            result.Warning = "Synchronizing this local copy would propagate link removal to the central model.";
+            result.Warning = (result.Warning is null ? "" : result.Warning + " ") +
+                "Synchronizing this local copy would propagate link removal to the central model.";
         var candidates = new List<(Element Element, string Kind, int InstanceCount)>();
         if (options.Kinds.Contains("revit"))
         {
@@ -59,6 +62,7 @@ internal static class LinkRemoval
             .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
         try
         {
+            var removedIds = new List<long>();
             foreach (var candidate in selected)
             {
                 var record = new RemovedLink
@@ -68,7 +72,7 @@ internal static class LinkRemoval
                     Kind = candidate.Kind,
                     InstanceCount = candidate.InstanceCount
                 };
-                document.Delete(candidate.Element.Id);
+                removedIds.AddRange(document.Delete(candidate.Element.Id).Select(RevitValueReader.GetId));
                 result.Removed.Add(record);
             }
             var humanSummary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -79,13 +83,18 @@ internal static class LinkRemoval
                 DryRun = dryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
-            if (!dryRun) transaction.SetName(groupName);
-            // A dry run commits inside the group so DocumentChanged reports its changes, then rolls the group back.
-            if (transaction.Commit() != TransactionStatus.Committed)
-                throw new InvalidOperationException(failures.Message ?? "Link removal transaction failed.");
-            if (dryRun) group.RollBack();
+            if (dryRun)
+            {
+                // Dry runs must never commit: some deletions are irreversible.
+                if (transaction.RollBack() != TransactionStatus.RolledBack)
+                    throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
+                group.RollBack();
+            }
             else
             {
+                transaction.SetName(groupName);
+                if (transaction.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException(failures.Message ?? "Link removal transaction failed.");
                 group.SetName(groupName);
                 if (group.Assimilate() != TransactionStatus.Committed)
                     throw new InvalidOperationException("Could not assimilate the action transaction group.");
@@ -93,6 +102,8 @@ internal static class LinkRemoval
             return new ActionResultData
             {
                 LinkRemoval = result,
+                Warning = result.Warning,
+                Verification = dryRun ? new ActionVerification { Changed = removedIds.Distinct().ToList() } : null,
                 DryRun = dryRun,
                 RolledBack = dryRun,
                 Committed = !dryRun,

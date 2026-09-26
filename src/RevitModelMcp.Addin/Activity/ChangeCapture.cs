@@ -11,8 +11,7 @@ namespace RevitModelMcp.Activity;
 /// Collects the exact elements one MCP job changes, from <c>Application.DocumentChanged</c> for the job's
 /// target document. Jobs run one at a time on the Revit API thread, so every transaction committed in the
 /// target document while the capture is open belongs to the job, including Revit-named ones such as the
-/// transaction <c>LoadFamily</c> opens. Dry runs commit inside a transaction group and roll the group back,
-/// so their would-be changes are reported too; elements a dry run creates are described while they exist.
+/// transaction <c>LoadFamily</c> opens. Dry-run entries use action results instead of this capture.
 /// The per-id set arithmetic (an id added and later deleted within the job cancels out; an id that ends up
 /// Created or Deleted drops out of Changed) lives in the Revit-independent <see cref="ChangeMerge"/>.
 /// </summary>
@@ -73,7 +72,7 @@ internal sealed class ChangeCapture : IDisposable
             _noise.Add(value);
             return;
         }
-        // A dry run rolls created elements back before the entry is recorded, so describe them now.
+        // Describe created elements while they still exist, before a later transaction removes them.
         if (_described.Count < MaxRefs * 3 && element is not null) _described[value] = Describe(value, element);
     }
 

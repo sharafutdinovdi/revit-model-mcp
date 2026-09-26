@@ -126,7 +126,8 @@ public partial class ActivityPaneView : UserControl
                 _rowsById[entry.Id] = row;
                 Rows.Insert(Math.Min(index, Rows.Count), row);
             }
-            row.Refresh(index == 0 && !entry.Undone && !string.IsNullOrEmpty(entry.UndoEntryName));
+            row.Refresh(index == 0 && !entry.Undone && entry.Command != "remove-links" &&
+                !string.IsNullOrEmpty(entry.UndoEntryName));
         }
     }
 

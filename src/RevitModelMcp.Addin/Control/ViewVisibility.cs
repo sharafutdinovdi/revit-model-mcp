@@ -114,13 +114,18 @@ internal static class ViewVisibility
                 DryRun = dryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
-            if (!dryRun) transaction.SetName(groupName);
-            // A dry run commits inside the group so DocumentChanged reports its changes, then rolls the group back.
-            if (transaction.Commit() != TransactionStatus.Committed)
-                throw new InvalidOperationException(failures.Message ?? "Visibility transaction failed.");
-            if (dryRun) group.RollBack();
+            if (dryRun)
+            {
+                // Dry runs must never commit: some deletions are irreversible.
+                if (transaction.RollBack() != TransactionStatus.RolledBack)
+                    throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
+                group.RollBack();
+            }
             else
             {
+                transaction.SetName(groupName);
+                if (transaction.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException(failures.Message ?? "Visibility transaction failed.");
                 group.SetName(groupName);
                 if (group.Assimilate() != TransactionStatus.Committed)
                     throw new InvalidOperationException("Could not assimilate the action transaction group.");
