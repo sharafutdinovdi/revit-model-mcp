@@ -87,10 +87,15 @@ internal static class DocumentActions
         stopwatch.Stop();
         return new ActionResultData
         {
-            Title = document.Title, Path = document.PathName, IsWorkshared = document.IsWorkshared,
-            IsDetached = document.IsDetached, IsCentral = IsCentral(document), OpenedAs = action.Mode,
+            Title = document.Title,
+            Path = document.PathName,
+            IsWorkshared = document.IsWorkshared,
+            IsDetached = document.IsDetached,
+            IsCentral = IsCentral(document),
+            OpenedAs = action.Mode,
             Active = ReferenceEquals(application.ActiveUIDocument?.Document, document),
-            WorksetsOpen = WorksetNames(document), ElapsedMs = stopwatch.ElapsedMilliseconds
+            WorksetsOpen = WorksetNames(document),
+            ElapsedMs = stopwatch.ElapsedMilliseconds
         };
     }
 
@@ -188,8 +193,10 @@ internal static class DocumentActions
         transactionOptions.SetLockCallback(new NoWaitForCentralLock());
         var syncOptions = new SynchronizeWithCentralOptions
         {
-            Comment = action.Comment, Compact = action.Compact,
-            SaveLocalBefore = action.SaveLocalBefore, SaveLocalAfter = action.SaveLocalAfter
+            Comment = action.Comment,
+            Compact = action.Compact,
+            SaveLocalBefore = action.SaveLocalBefore,
+            SaveLocalAfter = action.SaveLocalAfter
         };
         syncOptions.SetRelinquishOptions(RelinquishOptions(action.Relinquish ?? "all", action.RelinquishFlags));
         try { document.SynchronizeWithCentral(transactionOptions, syncOptions); }
@@ -205,8 +212,10 @@ internal static class DocumentActions
         bool Enabled(string key) => values!.TryGetValue(key, out var value) && value;
         return new RelinquishOptions(false)
         {
-            CheckedOutElements = Enabled("borrowed"), UserWorksets = Enabled("user_worksets"),
-            FamilyWorksets = Enabled("family_worksets"), ViewWorksets = Enabled("view_worksets"),
+            CheckedOutElements = Enabled("borrowed"),
+            UserWorksets = Enabled("user_worksets"),
+            FamilyWorksets = Enabled("family_worksets"),
+            ViewWorksets = Enabled("view_worksets"),
             StandardWorksets = Enabled("standard_worksets")
         };
     }
@@ -226,8 +235,12 @@ internal static class DocumentActions
         var identity = DocumentConfirmationBinding.Identity(document.PathName, document.Title);
         var arguments = DocumentConfirmationBinding.Arguments(action, document.PathName, document.IsModified);
         if (action.ConfirmToken is null)
-            return new ActionResultData { NeedsConfirmation = true, ConfirmationText = description,
-                ConfirmToken = ConfirmationStore.Tokens.Issue(command, identity, arguments) };
+            return new ActionResultData
+            {
+                NeedsConfirmation = true,
+                ConfirmationText = description,
+                ConfirmToken = ConfirmationStore.Tokens.Issue(command, identity, arguments)
+            };
         if (!ConfirmationStore.Tokens.Consume(action.ConfirmToken, command, identity, arguments))
             throw new InvalidOperationException("Confirmation token is invalid, expired or does not match the arguments.");
         return null;

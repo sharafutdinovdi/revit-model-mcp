@@ -48,9 +48,13 @@ public static class ActionJobParser
                 Value = job.Value,
                 Nwc = new NwcExportJob
                 {
-                    Path = job.Path ?? string.Empty, SettingsXml = job.SettingsXml, Scope = job.Scope ?? "model", View = job.View,
+                    Path = job.Path ?? string.Empty,
+                    SettingsXml = job.SettingsXml,
+                    Scope = job.Scope ?? "model",
+                    View = job.View,
                     ExplicitOptions = NwcExportJob.GetExplicitOptions(job),
-                    Coordinates = job.Coordinates ?? "shared", Parameters = job.NwcParameters ?? "all",
+                    Coordinates = job.Coordinates ?? "shared",
+                    Parameters = job.NwcParameters ?? "all",
                     ExportElementIds = job.ExportElementIds ?? true,
                     ConvertElementProperties = job.ConvertElementProperties ?? false,
                     ExportParts = job.ExportParts ?? false,
@@ -58,10 +62,12 @@ public static class ActionJobParser
                     ExportRoomGeometry = job.ExportRoomGeometry ?? true,
                     ConvertLights = job.ConvertLights ?? false,
                     ConvertLinkedCadFormats = job.ConvertLinkedCadFormats ?? true,
-                    ExportLinks = job.ExportLinks ?? false, ExportUrls = job.ExportUrls ?? true,
+                    ExportLinks = job.ExportLinks ?? false,
+                    ExportUrls = job.ExportUrls ?? true,
                     DivideFileIntoLevels = job.DivideFileIntoLevels ?? true,
                     FindMissingMaterials = job.FindMissingMaterials ?? true,
-                    FacetingFactor = job.FacetingFactor ?? 1.0, Overwrite = job.Overwrite ?? false
+                    FacetingFactor = job.FacetingFactor ?? 1.0,
+                    Overwrite = job.Overwrite ?? false
                 },
                 Families = job.Families,
                 Operations = job.Operations ?? [],
@@ -280,9 +286,14 @@ public static class ActionJobParser
                 hideMasks.Count + showMasks.Count + (job.Filters?.Count ?? 0) > 0, "At least one visibility change is required.");
         return new ViewVisibilityOptions
         {
-            View = job.View!.Trim(), HideCategories = job.HideCategories ?? [], ShowCategories = job.ShowCategories ?? [],
-            CategoryClasses = classes, HideCategoriesByType = types, Worksets = job.VisibilityWorksets ?? new(),
-            Filters = job.Filters ?? [], TemplateMode = job.TemplateMode
+            View = job.View!.Trim(),
+            HideCategories = job.HideCategories ?? [],
+            ShowCategories = job.ShowCategories ?? [],
+            CategoryClasses = classes,
+            HideCategoriesByType = types,
+            Worksets = job.VisibilityWorksets ?? new(),
+            Filters = job.Filters ?? [],
+            TemplateMode = job.TemplateMode
         };
     }
 

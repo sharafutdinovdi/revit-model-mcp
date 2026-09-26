@@ -267,8 +267,11 @@ internal sealed class ControlChannel
             {
                 Jobs = _scheduler.ActiveJobs().Select(job => new JobSummary
                 {
-                    JobId = job.JobId, ClientName = job.ClientName, Command = job.Command,
-                    State = StateName(job.State), Position = job.Position,
+                    JobId = job.JobId,
+                    ClientName = job.ClientName,
+                    Command = job.Command,
+                    State = StateName(job.State),
+                    Position = job.Position,
                     AgeMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds)
                 }).ToList(),
                 Cancellation = cancellation is null ? null : new JobCancellationInfo

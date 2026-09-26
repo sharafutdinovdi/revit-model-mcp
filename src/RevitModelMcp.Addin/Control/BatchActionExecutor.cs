@@ -53,7 +53,9 @@ internal static class BatchActionExecutor
             }
             var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "batch", DocumentTitle = document.Title, DryRun = action.DryRun,
+                Command = "batch",
+                DocumentTitle = document.Title,
+                DryRun = action.DryRun,
                 BatchStepCount = result.Steps.Count
             });
             result.Summary = summary;

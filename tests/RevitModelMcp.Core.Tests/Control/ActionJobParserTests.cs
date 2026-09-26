@@ -28,8 +28,11 @@ public sealed class ActionJobParserTests
         var tokens = new DocumentConfirmationTokens();
         var issueAction = new ActionJobContract
         {
-            Document = "Tower", Save = true, Comment = "grids",
-            ElementIds = [1, 2, 3], DryRun = false
+            Document = "Tower",
+            Save = true,
+            Comment = "grids",
+            ElementIds = [1, 2, 3],
+            DryRun = false
         };
         var identity = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt", "Tower.rvt");
         var arguments = DocumentConfirmationBinding.Arguments(issueAction, @"C:\Models\Tower.rvt", isModified: true);
@@ -40,8 +43,11 @@ public sealed class ActionJobParserTests
         // outside ActionJobContract) plus the confirm_token itself, but the same business arguments.
         var confirmAction = new ActionJobContract
         {
-            Document = "Tower", Save = true, Comment = "grids",
-            ElementIds = [9, 8], DryRun = false,
+            Document = "Tower",
+            Save = true,
+            Comment = "grids",
+            ElementIds = [9, 8],
+            DryRun = false,
             ConfirmToken = token
         };
         var confirmIdentity = DocumentConfirmationBinding.Identity(@"C:\Models\Tower.rvt", "Tower.rvt");
@@ -154,7 +160,10 @@ public sealed class ActionJobParserTests
     {
         var data = new ActionResultData
         {
-            Path = @"C:\x\a.nwc", Scope = "model", DryRun = true, Overwritten = false,
+            Path = @"C:\x\a.nwc",
+            Scope = "model",
+            DryRun = true,
+            Overwritten = false,
             Options = new NwcOptionsResult { Scope = "model", Coordinates = "shared", Parameters = "all", FacetingFactor = 1 }
         };
         var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("export-nwc", data, 1));

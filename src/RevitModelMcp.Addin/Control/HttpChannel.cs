@@ -279,7 +279,8 @@ internal sealed class HttpChannel : IDisposable
         {
             await JsonAsync(context, submitted.Error == "queue_full" ? 429 : 400, new()
             {
-                ["error"] = submitted.Error ?? "submission_failed", ["retryAfterMs"] = submitted.RetryAfterMs
+                ["error"] = submitted.Error ?? "submission_failed",
+                ["retryAfterMs"] = submitted.RetryAfterMs
             }).ConfigureAwait(false);
             return null;
         }

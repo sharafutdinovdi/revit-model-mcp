@@ -107,8 +107,11 @@ internal static class ViewVisibility
             result.ViewName = target.Name;
             var humanSummary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "set-view-visibility", DocumentTitle = document.Title,
-                Count = result.Changes.Count, ViewName = result.ViewName, DryRun = dryRun
+                Command = "set-view-visibility",
+                DocumentTitle = document.Title,
+                Count = result.Changes.Count,
+                ViewName = result.ViewName,
+                DryRun = dryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
             if (!dryRun) transaction.SetName(groupName);
@@ -124,8 +127,12 @@ internal static class ViewVisibility
             }
             return new ActionResultData
             {
-                Visibility = result, DryRun = dryRun, RolledBack = dryRun, Committed = !dryRun,
-                Summary = humanSummary, UndoName = dryRun ? null : groupName
+                Visibility = result,
+                DryRun = dryRun,
+                RolledBack = dryRun,
+                Committed = !dryRun,
+                Summary = humanSummary,
+                UndoName = dryRun ? null : groupName
             };
         }
         catch
@@ -158,7 +165,11 @@ internal static class ViewVisibility
 
     private static string CategoryType(Category category) => category.CategoryType.ToString() switch
     {
-        "AnalyticalModel" => "analytical", "Model" => "model", "Annotation" => "annotation", "Import" => "import", _ => "other"
+        "AnalyticalModel" => "analytical",
+        "Model" => "model",
+        "Annotation" => "annotation",
+        "Import" => "import",
+        _ => "other"
     };
 
     private static bool GetClass(View view, string name) => name switch

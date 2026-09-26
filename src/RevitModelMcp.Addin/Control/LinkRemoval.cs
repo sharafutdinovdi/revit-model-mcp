@@ -63,16 +63,20 @@ internal static class LinkRemoval
             {
                 var record = new RemovedLink
                 {
-                    Id = RevitValueReader.GetId(candidate.Element.Id), Name = candidate.Element.Name,
-                    Kind = candidate.Kind, InstanceCount = candidate.InstanceCount
+                    Id = RevitValueReader.GetId(candidate.Element.Id),
+                    Name = candidate.Element.Name,
+                    Kind = candidate.Kind,
+                    InstanceCount = candidate.InstanceCount
                 };
                 document.Delete(candidate.Element.Id);
                 result.Removed.Add(record);
             }
             var humanSummary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "remove-links", DocumentTitle = document.Title,
-                Count = result.Removed.Count, DryRun = dryRun
+                Command = "remove-links",
+                DocumentTitle = document.Title,
+                Count = result.Removed.Count,
+                DryRun = dryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
             if (!dryRun) transaction.SetName(groupName);
@@ -88,8 +92,12 @@ internal static class LinkRemoval
             }
             return new ActionResultData
             {
-                LinkRemoval = result, DryRun = dryRun, RolledBack = dryRun, Committed = !dryRun,
-                Summary = humanSummary, UndoName = dryRun ? null : groupName
+                LinkRemoval = result,
+                DryRun = dryRun,
+                RolledBack = dryRun,
+                Committed = !dryRun,
+                Summary = humanSummary,
+                UndoName = dryRun ? null : groupName
             };
         }
         catch

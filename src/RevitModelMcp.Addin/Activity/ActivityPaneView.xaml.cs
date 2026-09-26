@@ -86,7 +86,8 @@ public partial class ActivityPaneView : UserControl
                 new(running, 0.5),
                 new(clear, 0.65)
             },
-            new Point(0, 0), new Point(1, 0)) { RelativeTransform = _sweepShift };
+            new Point(0, 0), new Point(1, 0))
+        { RelativeTransform = _sweepShift };
     }
 
     private void Refresh()

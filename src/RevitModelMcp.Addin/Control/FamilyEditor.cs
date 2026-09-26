@@ -21,7 +21,10 @@ internal static class FamilyEditor
             var result = new FamilyEditData { Mode = "family", DryRun = job.DryRun };
             var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "edit-families", DocumentTitle = document.Title, Count = 1, DryRun = job.DryRun
+                Command = "edit-families",
+                DocumentTitle = document.Title,
+                Count = 1,
+                DryRun = job.DryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, summary);
             using var group = new TransactionGroup(document, groupName);
@@ -128,7 +131,10 @@ internal static class FamilyEditor
             var editedCount = data.Families.Count(family => family.Status != "skipped");
             var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "edit-families", DocumentTitle = document.Title, Count = editedCount, DryRun = job.DryRun
+                Command = "edit-families",
+                DocumentTitle = document.Title,
+                Count = editedCount,
+                DryRun = job.DryRun
             });
             data.Summary = summary;
             if (job.DryRun || data.FailedFamily is not null && job.StopOnError)

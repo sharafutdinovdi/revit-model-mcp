@@ -3,8 +3,8 @@ using System.IO;
 using System.Security.Cryptography;
 using Autodesk.Revit.DB;
 using Nice3point.Revit.Extensions;
-using RevitModelMcp.Control;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
@@ -80,22 +80,32 @@ internal static class NwcExporter
 
         var result = new ActionResultData
         {
-            Path = job.Path, Scope = job.Scope, DryRun = action.DryRun,
+            Path = job.Path,
+            Scope = job.Scope,
+            DryRun = action.DryRun,
             View = view is null ? null : new NwcViewResult { Id = RevitValueReader.GetId(view.Id), Name = view.Name },
             ElementCount = job.Scope == "selection" ? ids.Count : null,
             ExporterAvailable = true,
             PathChecks = new NwcPathChecks { ParentExists = true, TargetExists = targetExists },
             Options = new NwcOptionsResult
             {
-                Scope = job.Scope, View = job.View,
+                Scope = job.Scope,
+                View = job.View,
                 ElementIds = job.Scope == "selection" ? action.ElementIds : null,
-                Coordinates = job.Coordinates, Parameters = job.Parameters,
-                ExportElementIds = job.ExportElementIds, ConvertElementProperties = job.ConvertElementProperties,
-                ExportParts = job.ExportParts, ExportRoomAsAttribute = job.ExportRoomAsAttribute,
-                ExportRoomGeometry = job.ExportRoomGeometry, ConvertLights = job.ConvertLights,
-                ConvertLinkedCadFormats = job.ConvertLinkedCadFormats, ExportLinks = job.ExportLinks,
-                ExportUrls = job.ExportUrls, DivideFileIntoLevels = job.DivideFileIntoLevels,
-                FindMissingMaterials = job.FindMissingMaterials, FacetingFactor = job.FacetingFactor,
+                Coordinates = job.Coordinates,
+                Parameters = job.Parameters,
+                ExportElementIds = job.ExportElementIds,
+                ConvertElementProperties = job.ConvertElementProperties,
+                ExportParts = job.ExportParts,
+                ExportRoomAsAttribute = job.ExportRoomAsAttribute,
+                ExportRoomGeometry = job.ExportRoomGeometry,
+                ConvertLights = job.ConvertLights,
+                ConvertLinkedCadFormats = job.ConvertLinkedCadFormats,
+                ExportLinks = job.ExportLinks,
+                ExportUrls = job.ExportUrls,
+                DivideFileIntoLevels = job.DivideFileIntoLevels,
+                FindMissingMaterials = job.FindMissingMaterials,
+                FacetingFactor = job.FacetingFactor,
                 Sources = new[] { "scope", "view", "element_ids", "coordinates", "parameters", "export_element_ids",
                     "convert_element_properties", "export_parts", "export_room_as_attribute", "export_room_geometry",
                     "convert_lights", "convert_linked_cad_formats", "export_links", "export_urls",

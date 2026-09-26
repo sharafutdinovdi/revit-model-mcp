@@ -9,7 +9,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "move", DocumentTitle = "Project1.rvt", Count = 3
+            Command = "move",
+            DocumentTitle = "Project1.rvt",
+            Count = 3
         });
         await Assert.That(summary).IsEqualTo("Moved 3 elements in Project1.rvt.");
     }
@@ -19,7 +21,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "move", DocumentTitle = "Project1.rvt", Count = 1
+            Command = "move",
+            DocumentTitle = "Project1.rvt",
+            Count = 1
         });
         await Assert.That(summary).IsEqualTo("Moved 1 element in Project1.rvt.");
     }
@@ -29,7 +33,10 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "move", DocumentTitle = "Project1.rvt", Count = 2, DryRun = true
+            Command = "move",
+            DocumentTitle = "Project1.rvt",
+            Count = 2,
+            DryRun = true
         });
         await Assert.That(summary).IsEqualTo("Would move 2 elements in Project1.rvt.");
     }
@@ -39,7 +46,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "delete", DocumentTitle = "Project1.rvt", Count = 5
+            Command = "delete",
+            DocumentTitle = "Project1.rvt",
+            Count = 5
         });
         await Assert.That(summary).IsEqualTo("Deleted 5 elements in Project1.rvt.");
     }
@@ -49,7 +58,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "select", DocumentTitle = "Project1.rvt", Count = 0
+            Command = "select",
+            DocumentTitle = "Project1.rvt",
+            Count = 0
         });
         await Assert.That(summary).IsEqualTo("Selected 0 elements in Project1.rvt.");
     }
@@ -59,7 +70,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "isolate", DocumentTitle = "Project1.rvt", Count = 0
+            Command = "isolate",
+            DocumentTitle = "Project1.rvt",
+            Count = 0
         });
         await Assert.That(summary).IsEqualTo("Reset temporary isolation in Project1.rvt.");
     }
@@ -69,7 +82,10 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "place-family", DocumentTitle = "Project1.rvt", Family = "Door", TypeName = "36x84"
+            Command = "place-family",
+            DocumentTitle = "Project1.rvt",
+            Family = "Door",
+            TypeName = "36x84"
         });
         await Assert.That(summary).IsEqualTo("Placed Door: 36x84 in Project1.rvt.");
     }
@@ -79,7 +95,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "create-wall", DocumentTitle = "Project1.rvt", WallType = "Generic 200mm"
+            Command = "create-wall",
+            DocumentTitle = "Project1.rvt",
+            WallType = "Generic 200mm"
         });
         await Assert.That(summary).IsEqualTo("Created a Generic 200mm wall in Project1.rvt.");
     }
@@ -89,7 +107,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "set-parameter", DocumentTitle = "Project1.rvt", Parameter = "Comments"
+            Command = "set-parameter",
+            DocumentTitle = "Project1.rvt",
+            Parameter = "Comments"
         });
         await Assert.That(summary).IsEqualTo("Set parameter 'Comments' on 1 element in Project1.rvt.");
     }
@@ -99,7 +119,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "batch", DocumentTitle = "Project1.rvt", BatchStepCount = 4
+            Command = "batch",
+            DocumentTitle = "Project1.rvt",
+            BatchStepCount = 4
         });
         await Assert.That(summary).IsEqualTo("Ran a batch of 4 steps in Project1.rvt.");
     }
@@ -109,7 +131,9 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "edit-families", DocumentTitle = "Project1.rvt", Count = 2
+            Command = "edit-families",
+            DocumentTitle = "Project1.rvt",
+            Count = 2
         });
         await Assert.That(summary).IsEqualTo("Edited 2 families in Project1.rvt.");
     }
@@ -119,7 +143,8 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "align-link-datums", DocumentTitle = "Project1.rvt"
+            Command = "align-link-datums",
+            DocumentTitle = "Project1.rvt"
         });
         await Assert.That(summary).IsEqualTo("Aligned link datums in Project1.rvt.");
     }

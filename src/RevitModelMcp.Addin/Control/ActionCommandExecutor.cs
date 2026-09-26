@@ -328,7 +328,8 @@ internal static class ActionCommandExecutor
         {
             Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "undo-last", DocumentTitle = document.Title
+                Command = "undo-last",
+                DocumentTitle = document.Title
             })
         };
     }

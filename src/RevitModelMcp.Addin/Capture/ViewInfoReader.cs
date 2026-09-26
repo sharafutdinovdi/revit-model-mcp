@@ -32,16 +32,23 @@ internal static class ViewInfoReader
         var template = document.GetElement(view.ViewTemplateId) as View;
         var result = new ViewInfoData
         {
-            Id = RevitValueReader.GetId(view.Id), Name = view.Name, Type = view.ViewType.ToString(),
-            IsTemplate = view.IsTemplate, DetailLevel = view.DetailLevel.ToString(),
-            DisplayStyle = view.DisplayStyle.ToString(), Discipline = RevitValueReader.GetParameterText(view.get_Parameter(BuiltInParameter.VIEW_DISCIPLINE)),
+            Id = RevitValueReader.GetId(view.Id),
+            Name = view.Name,
+            Type = view.ViewType.ToString(),
+            IsTemplate = view.IsTemplate,
+            DetailLevel = view.DetailLevel.ToString(),
+            DisplayStyle = view.DisplayStyle.ToString(),
+            Discipline = RevitValueReader.GetParameterText(view.get_Parameter(BuiltInParameter.VIEW_DISCIPLINE)),
             Phase = ParameterElementName(document, view, BuiltInParameter.VIEW_PHASE),
             PhaseFilter = ParameterElementName(document, view, BuiltInParameter.VIEW_PHASE_FILTER),
-            Scale = view.Scale, Crop = new CropInfo { Active = view.CropBoxActive, Visible = view.CropBoxVisible },
+            Scale = view.Scale,
+            Crop = new CropInfo { Active = view.CropBoxActive, Visible = view.CropBoxVisible },
             ClassToggles = new CategoryClassInfo
             {
-                ModelHidden = view.AreModelCategoriesHidden, AnnotationHidden = view.AreAnnotationCategoriesHidden,
-                AnalyticalHidden = view.AreAnalyticalModelCategoriesHidden, ImportHidden = view.AreImportCategoriesHidden,
+                ModelHidden = view.AreModelCategoriesHidden,
+                AnnotationHidden = view.AreAnnotationCategoriesHidden,
+                AnalyticalHidden = view.AreAnalyticalModelCategoriesHidden,
+                ImportHidden = view.AreImportCategoriesHidden,
                 PointCloudsHidden = view.ArePointCloudsHidden
             }
         };
@@ -50,7 +57,8 @@ internal static class ViewInfoReader
             var nonControlled = template.GetNonControlledTemplateParameterIds().ToHashSet();
             result.Template = new TemplateInfo
             {
-                Id = RevitValueReader.GetId(template.Id), Name = template.Name,
+                Id = RevitValueReader.GetId(template.Id),
+                Name = template.Name,
                 ControlledParameters = template.GetTemplateParameterIds().Where(id => !nonControlled.Contains(id))
                     .Select(id => RevitValueReader.GetId(id) < 0
                         ? LabelUtils.GetLabelFor((BuiltInParameter)RevitValueReader.GetId(id))
@@ -64,7 +72,8 @@ internal static class ViewInfoReader
             result.SectionBox = new SectionBoxInfo
             {
                 Active = view3D.IsSectionBoxActive,
-                Min = Coordinates(box.Min), Max = Coordinates(box.Max)
+                Min = Coordinates(box.Min),
+                Max = Coordinates(box.Max)
             };
         }
         if (view.ViewType is ViewType.ThreeD or ViewType.Section or ViewType.Elevation)
@@ -95,19 +104,23 @@ internal static class ViewInfoReader
             using var collector = new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset);
             result.Worksets = collector.Select(workset => new WorksetInfo
             {
-                Name = workset.Name, Visibility = view.GetWorksetVisibility(workset.Id).ToString(),
+                Name = workset.Name,
+                Visibility = view.GetWorksetVisibility(workset.Id).ToString(),
                 EffectiveVisible = view.IsWorksetVisible(workset.Id)
             }).OrderBy(workset => workset.Name).ToList();
         }
         result.Filters = view.GetFilters().Select(id => new FilterInfo
         {
             Name = document.GetElement(id)?.Name ?? RevitValueReader.GetId(id).ToString(),
-            Visible = view.GetFilterVisibility(id), Enabled = view.GetIsFilterEnabled(id)
+            Visible = view.GetFilterVisibility(id),
+            Enabled = view.GetIsFilterEnabled(id)
         }).ToList();
         using var links = new FilteredElementCollector(document).OfClass(typeof(RevitLinkInstance));
         result.Links = links.Cast<RevitLinkInstance>().Select(link => new LinkInfo
         {
-            Name = link.Name, Hidden = LinkHidden(view, link), OverrideType = LinkOverrideType(view, link)
+            Name = link.Name,
+            Hidden = LinkHidden(view, link),
+            OverrideType = LinkOverrideType(view, link)
         }).ToList();
         result.TemporaryModes = new TemporaryModeInfo
         {
