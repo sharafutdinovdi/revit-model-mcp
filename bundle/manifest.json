@@ -110,6 +110,26 @@
     {
       "name": "revit_parameter_fill_check",
       "description": "Count filled, empty and missing values; sample unitless element IDs."
+    },
+    {
+      "name": "revit_jobs",
+      "description": "List queued and running jobs with client, state, position and age; cancel one of this server's own jobs."
+    },
+    {
+      "name": "revit_nwc_settings_check",
+      "description": "Parse a Navisworks exporter settings XML on the workstation without exporting; return values, mapping and options with no API equivalent."
+    },
+    {
+      "name": "revit_view_info",
+      "description": "Inspect a view: template controls, display settings, hidden categories, worksets, filters, links and temporary modes."
+    },
+    {
+      "name": "revit_family_audit",
+      "description": "Inspect family parameters, their use, shared status and purge candidates."
+    },
+    {
+      "name": "revit_compare_link_datums",
+      "description": "Compare a link's grids and levels with host datums without changing the model."
     }
   ],
   "tools_generated": true,
