@@ -188,9 +188,10 @@ Prerelease tags containing `-` skip PyPI, MCP Registry and WinGet publishing.
 The release workflow calls `.github/workflows/winget.yml` after publishing the GitHub Release.
 `release-please.yml` dispatches `release.yml` for the new tag (a top-level run, which PyPI trusted publishing requires); `release.yml` then calls `winget.yml`. The same pipeline can be started by hand from the Actions tab with an existing tag to republish assets.
 The calling job grants `id-token: write`; the PyPI job retains the `pypi` environment and both publishers retain OIDC permissions.
-WinGet also supports manually published releases and `workflow_dispatch` with a stable release tag.
+WinGet runs only from `release.yml` or by `workflow_dispatch` with a stable release tag, for example after a manually published release.
 It generates and validates manifests for `Sharafutdinov.RevitModelMcp` and uploads a `winget-manifests` artifact.
-Submission requires the optional `WINGET_TOKEN` repository secret, a classic PAT with `public_repo` scope.
+Submission requires the optional `WINGET_TOKEN` repository secret, a classic PAT with `public_repo` and `workflow` scopes.
+The `workflow` scope lets the workflow sync the token owner's `winget-pkgs` fork.
 Without the token, generation and artifact upload still run.
 On Windows, `build/winget/New-WingetManifests.ps1 -Version 0.2.0 -ReleaseTag v0.2.0 -OutputDir artifacts/winget` downloads the MSIs and reads their hashes and product codes.
 `-SkipDownload` uses matching MSIs already in `output/`.
