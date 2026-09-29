@@ -8,6 +8,7 @@ workstation `%LOCALAPPDATA%\RevitModelMcp\read-only` file switches them to read-
 described in [actions](actions.md).
 `revit_export_nwc` may write to a drive path or a UNC path on a trusted share unless read-only mode is active. It never transfers the NWC file to the client; logging omits the export path.
 UNC shares are denied by default for export, save, open, shared parameter files and NWC settings XML. Add approved `\\server\share` roots to the `trustedNetworkRoots` string array in `%LOCALAPPDATA%\RevitModelMcp\settings.json` and restart Revit; mapped drives remain allowed as drive paths.
+`RSN://` paths use Revit Server and are not restricted by `trustedNetworkRoots`.
 The default surface covers ping, active document information, the open document list, instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.

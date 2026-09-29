@@ -52,6 +52,26 @@ public sealed class Application : ExternalApplication
         }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
         Directory.CreateDirectory(Output.SnapshotFileWriter.OutputDirectory);
+        NwcPathValidator.ConfigureTrustedNetworkRoots([]);
+        HttpSettings? httpSettings = null;
+        var showActivityPaneOnAction = true;
+        try
+        {
+            httpSettings = HttpSettings.Load();
+            showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
+            try
+            {
+                NwcPathValidator.ConfigureTrustedNetworkRoots(httpSettings.TrustedNetworkRoots);
+            }
+            catch (ArgumentException)
+            {
+                PluginLog.Warn("Invalid trustedNetworkRoots in settings.json. Network shares remain unavailable.");
+            }
+        }
+        catch (Exception exception)
+        {
+            PluginLog.Warn($"Settings could not be loaded. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+        }
         if (File.Exists(TriggerFilePath))
         {
             File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
@@ -93,21 +113,21 @@ public sealed class Application : ExternalApplication
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
         _instanceHeartbeat.Start(_activeDocument, _documents);
-        var showActivityPaneOnAction = true;
-        try
+        if (httpSettings is not null)
         {
-            var httpSettings = HttpSettings.Load();
-            NwcPathValidator.ConfigureTrustedNetworkRoots(httpSettings.TrustedNetworkRoots);
-            showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
-            _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
-                Application.ControlledApplication.VersionNumber, httpSettings);
-            _httpChannel.UpdateDocument(_activeDocument?.Title);
-            _httpChannel.Start();
-            _instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);
-        }
-        catch (Exception exception)
-        {
-            PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+            try
+            {
+                httpSettings.ApplyHttpOverrides();
+                _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
+                    Application.ControlledApplication.VersionNumber, httpSettings);
+                _httpChannel.UpdateDocument(_activeDocument?.Title);
+                _httpChannel.Start();
+                _instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);
+            }
+            catch (Exception exception)
+            {
+                PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+            }
         }
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
     }

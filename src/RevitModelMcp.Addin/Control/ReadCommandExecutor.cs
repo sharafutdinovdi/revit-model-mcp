@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
@@ -58,7 +57,6 @@ internal static class ReadCommandExecutor
             if (job.Kind == ControlJobKind.NwcSettingsCheck)
             {
                 var settingsPath = NwcPathValidator.EnsureAbsoluteNoTraversal(job.CoordinatorJob.SettingsXml!, "settings_xml");
-                NwcPathValidator.EnsureSettingsXmlSize(new FileInfo(settingsPath).Length);
                 var xml = NwcSettingsXml.ReadFile(settingsPath);
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;

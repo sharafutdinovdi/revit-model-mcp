@@ -1,3 +1,4 @@
+using System.IO;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
@@ -82,6 +83,42 @@ public sealed class NwcSettingsXmlTests
         await Assert.That(() => NwcSettingsXml.ReadFile(@"C:\a\..\settings.xml")).Throws<ArgumentException>();
         await Assert.That(() => NwcSettingsXml.ReadFile("settings.xml")).Throws<ArgumentException>();
         await Assert.That(() => NwcSettingsXml.ReadFile(@"C:\x\settings.txt")).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task ReadFile_MissingFileDoesNotEchoPath()
+    {
+        var fileName = $"missing_nwc_settings_{Guid.NewGuid():N}.xml";
+        var path = Path.DirectorySeparatorChar == '\\'
+            ? Path.Combine(Path.GetTempPath(), fileName)
+            : $@"C:\{fileName}";
+
+        var exception = Assert.Throws<IOException>(() => NwcSettingsXml.ReadFile(path));
+        await Assert.That(exception.Message).IsEqualTo("Could not read the NWC settings XML file on the Revit workstation.");
+    }
+
+    [Test]
+    public async Task ReadFile_RejectsOversizedFileBeforeParsing()
+    {
+        var fileName = $"nwc_settings_{Guid.NewGuid():N}.xml";
+        var path = Path.DirectorySeparatorChar == '\\'
+            ? Path.Combine(Path.GetTempPath(), fileName)
+            : $@"C:\{fileName}";
+        try
+        {
+            File.WriteAllBytes(path, System.Text.Encoding.ASCII.GetBytes("<optionset/>".PadRight(1024 * 1024)));
+            var result = NwcSettingsXml.ReadFile(path);
+            await Assert.That(result.Values).IsEmpty();
+
+            File.WriteAllBytes(path, new byte[1024 * 1024 + 1]);
+
+            var exception = Assert.Throws<ArgumentException>(() => NwcSettingsXml.ReadFile(path));
+            await Assert.That(exception.Message).Contains("settings_xml exceeds the 1 MiB limit.");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Test]
