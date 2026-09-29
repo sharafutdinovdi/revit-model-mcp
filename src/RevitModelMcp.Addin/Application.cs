@@ -108,7 +108,7 @@ public sealed class Application : ExternalApplication
                 Application.ControlledApplication.VersionNumber, httpSettings);
             _httpChannel.UpdateDocument(_activeDocument?.Title);
             _httpChannel.Start();
-            _instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);
+            _instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);
         }
         catch (Exception exception)
         {

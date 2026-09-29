@@ -64,6 +64,38 @@ public sealed class ChannelAclPolicyTests
     }
 
     [Test]
+    [Arguments("S-1-3-0")]
+    [Arguments("S-1-3-4")]
+    public async Task CreatorAndOwnerRightsRulesAreAllowed(string sid)
+    {
+        var entries = new[] { new ChannelAclEntry(sid, 0x10000000, true, true) };
+
+        await Assert.That(ChannelAclPolicy.RefusalReason(CurrentUser, CurrentUser, entries)).IsNull();
+    }
+
+    [Test]
+    [Arguments("S-1-3-0")]
+    [Arguments("S-1-3-4")]
+    public async Task CreatorAndOwnerRightsAreNotTrustedOwners(string sid)
+    {
+        await Assert.That(ChannelAclPolicy.RefusalReason(sid, CurrentUser, [])).Contains("owner");
+    }
+
+    [Test]
+    [Arguments(true, false, CurrentUser, true)]
+    [Arguments(true, true, CurrentUser, false)]
+    [Arguments(false, false, CurrentUser, false)]
+    [Arguments(true, false, OtherUser, false)]
+    public async Task ExistingDirectoryProtectionDependsOnOwnerAndDacl(
+        bool migrateOwnedDirectory, bool accessRulesProtected, string ownerSid, bool expected)
+    {
+        var shouldProtect = ChannelAclPolicy.ShouldProtectExistingDirectory(
+            migrateOwnedDirectory, accessRulesProtected, ownerSid, CurrentUser);
+
+        await Assert.That(shouldProtect).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task ReadOnlyAndDenyRulesDoNotGrantWriteAccess()
     {
         var entries = new[]

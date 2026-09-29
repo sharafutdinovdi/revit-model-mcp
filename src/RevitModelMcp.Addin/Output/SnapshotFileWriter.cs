@@ -114,11 +114,19 @@ internal static class SnapshotFileWriter
 
         var currentSecurity = directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
         var owner = currentSecurity.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
-        if (migrateOwnedDirectory && owner?.Equals(currentUser) == true)
+        if (ChannelAclPolicy.ShouldProtectExistingDirectory(migrateOwnedDirectory,
+                currentSecurity.AreAccessRulesProtected, owner?.Value, currentUser.Value))
         {
-            directory.SetAccessControl(PrivateDirectorySecurity(currentUser));
-            currentSecurity = directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
-            owner = currentSecurity.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            try
+            {
+                directory.SetAccessControl(PrivateDirectorySecurity(currentUser));
+                currentSecurity = directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+                owner = currentSecurity.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            }
+            catch (Exception)
+            {
+                // The existing ACL is evaluated below when migration fails.
+            }
         }
 
         var entries = currentSecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
