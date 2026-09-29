@@ -47,6 +47,10 @@ RESPONSE_NAME = re.compile(
     r"response_[0-9]{8}_[0-9]{6}_[0-9]{3}_[A-Za-z0-9_-]+"
     r"(?:_(?:[A-Za-z0-9_.~-]|%[0-9A-Fa-f]{2})+)?\.json\Z"
 )
+STARTED_UTC = re.compile(
+    r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+    r"(?:\.[0-9]{1,7})?(?:Z|[+-][0-9]{2}:[0-9]{2})\Z"
+)
 
 
 class RemoteCommandTimeoutError(RevitChannelError):
@@ -112,7 +116,7 @@ class SshPowerShellHost:
             )
         if version == 2:
             try:
-                started_utc = _normalized_started_utc(instance["startedUtc"])
+                started_utc = _validated_started_utc(instance["startedUtc"])
             except ValueError as error:
                 raise RevitChannelError(
                     "The selected Revit instance has an invalid startup identity. Update the add-in."
@@ -574,7 +578,7 @@ def _parse_instance_package(
             if updated.tzinfo is None or updated < stale_before:
                 continue
             if "startedUtc" in status:
-                status["startedUtc"] = _normalized_started_utc(status["startedUtc"])
+                status["startedUtc"] = _validated_started_utc(status["startedUtc"])
             process_id = status["processId"]
             if process_id not in running or item.get("name") != f"instance_{process_id}.json":
                 continue
@@ -661,13 +665,13 @@ def _ps_quote(value: str) -> str:
     return value
 
 
-def _normalized_started_utc(value: object) -> str:
-    if not isinstance(value, str):
+def _validated_started_utc(value: object) -> str:
+    if not isinstance(value, str) or not STARTED_UTC.fullmatch(value):
         raise ValueError("startup identity is not a timestamp")
     started = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if started.tzinfo is None:
         raise ValueError("startup identity has no time zone")
-    return started.astimezone(timezone.utc).isoformat(timespec="microseconds")
+    return value
 
 
 @lru_cache(maxsize=None)
@@ -681,9 +685,9 @@ def _mux_directory(runtime: str | None) -> Path | None:
             directory = temporary / f"revit-model-mcp-{getattr(os, 'getuid', lambda: 'user')()}"
         else:
             directory = home / ".cache" / "revit-model-mcp"
-        if len(os.fsencode(f"{directory}/mux-{'0' * 40}")) > 90:
+        if len(os.fsencode(f"{directory}/mux-{'0' * 40}")) > 86:
             directory = home / ".cache" / "rmm"
-        if len(os.fsencode(f"{directory}/mux-{'0' * 40}")) > 90:
+        if len(os.fsencode(f"{directory}/mux-{'0' * 40}")) > 86:
             raise ValueError("multiplexing socket path is too long")
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         if hasattr(os, "getuid"):

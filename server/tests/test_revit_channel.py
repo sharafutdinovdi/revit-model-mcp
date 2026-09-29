@@ -13,6 +13,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     ActivationError,
@@ -519,17 +521,18 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_response_polling_retries_one_timed_out_poll(self) -> None:
         host = SshPowerShellHost()
+        response_name = "response_20260916_120000_000_ping.json"
         host._run = AsyncMock(
             side_effect=[
                 RemoteCommandTimeoutError("The quick check timed out"),
-                "response_new_ping.json",
+                response_name,
             ]
         )
 
         with patch("revit_model_mcp.ssh_host.POLL_INTERVAL_SECONDS", 0):
             response = await host.wait_for_new_response("ping", set(), 1)
 
-        self.assertEqual(response, "response_new_ping.json")
+        self.assertEqual(response, response_name)
         self.assertEqual(host._run.await_count, 2)
 
 
@@ -873,76 +876,72 @@ class HostConfigurationTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(_ps_quote(f"before{quote}after"), f"before{quote}{quote}after")
 
 
-def test_ssh_command_reuses_private_runtime_directory(monkeypatch):
-    if os.name == "nt":
-        return
-    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
-        directory = Path(root) / "runtime"
-        directory.mkdir(mode=0o755)
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
-        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
-        monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
-        host = SshPowerShellHost("revit-host")
-
-        command = host._build_command("'ok'")
-
-        assert command == [
-            "ssh",
-            "-o",
-            "BatchMode=yes",
-            "-o",
-            "ConnectTimeout=45",
-            "-T",
-            "-a",
-            "-x",
-            "-o",
-            "ClearAllForwardings=yes",
-            "-o",
-            "ForwardAgent=no",
-            "-o",
-            "ForwardX11=no",
-            "-o",
-            "PermitLocalCommand=no",
-            "-o",
-            "ControlMaster=auto",
-            "-o",
-            f"ControlPath={directory}/mux-%C",
-            "-o",
-            "ControlPersist=600",
-            "revit-host",
-            "powershell.exe",
-            "-NoProfile",
-            "-NonInteractive",
-            "-EncodedCommand",
-            base64.b64encode("'ok'".encode("utf-16le")).decode("ascii"),
-        ]
-        assert host._build_command("'ok'") == command
-        if os.name != "nt":
-            assert stat.S_IMODE(directory.stat().st_mode) == 0o700
-
-
-def test_ssh_command_falls_back_to_user_cache(monkeypatch):
-    if os.name == "nt":
-        return
+def test_ssh_command_reuses_private_runtime_directory(monkeypatch, tmp_path):
     _mux_directory.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    directory = Path("runtime")
+    directory.mkdir(mode=0o755)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
+    host = SshPowerShellHost("revit-host")
+
+    command = host._build_command("'ok'")
+
+    assert command == [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=45",
+        "-T",
+        "-a",
+        "-x",
+        "-o",
+        "ClearAllForwardings=yes",
+        "-o",
+        "ForwardAgent=no",
+        "-o",
+        "ForwardX11=no",
+        "-o",
+        "PermitLocalCommand=no",
+        "-o",
+        "ControlMaster=auto",
+        "-o",
+        f"ControlPath={directory}/mux-%C",
+        "-o",
+        "ControlPersist=600",
+        "revit-host",
+        "powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        base64.b64encode("'ok'".encode("utf-16le")).decode("ascii"),
+    ]
+    assert host._build_command("'ok'") == command
+    if os.name != "nt":
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+
+
+def test_ssh_command_falls_back_to_user_cache(monkeypatch, tmp_path):
+    _mux_directory.cache_clear()
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
     monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
-    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
-        monkeypatch.setattr("revit_model_mcp.ssh_host.tempfile.gettempdir", lambda: "/tmp")
-        with patch("revit_model_mcp.ssh_host.Path.home", return_value=Path(root)):
-            command = SshPowerShellHost()._build_command("'ok'")
-        directory = Path(root) / ".cache" / "revit-model-mcp"
-        assert f"ControlPath={directory}/mux-%C" in command
-        assert directory.is_dir()
-        if os.name != "nt":
-            assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    monkeypatch.setattr("revit_model_mcp.ssh_host.tempfile.gettempdir", lambda: "/tmp")
+    with patch("revit_model_mcp.ssh_host.Path.home", return_value=Path(".")):
+        command = SshPowerShellHost()._build_command("'ok'")
+    directory = Path(".") / ".cache" / "revit-model-mcp"
+    assert f"ControlPath={directory}/mux-%C" in command
+    assert directory.is_dir()
+    if os.name != "nt":
+        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
     _mux_directory.cache_clear()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows does not use the Unix ownership check")
 def test_ssh_command_disables_mux_for_symlink(monkeypatch):
-    if os.name == "nt":
-        return
     with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
         directory = Path(root) / "runtime"
         target = Path(root) / "target"
@@ -956,9 +955,8 @@ def test_ssh_command_disables_mux_for_symlink(monkeypatch):
         assert stat.S_IMODE(target.stat().st_mode) == original_mode
 
 
+@pytest.mark.skipif(not hasattr(os, "getuid"), reason="Unix user IDs are unavailable")
 def test_ssh_command_disables_mux_for_foreign_owner(monkeypatch):
-    if not hasattr(os, "getuid"):
-        return
     with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
         directory = Path(root) / "runtime"
         directory.mkdir(mode=0o755)
@@ -975,17 +973,15 @@ def test_ssh_command_disables_mux_for_foreign_owner(monkeypatch):
         assert stat.S_IMODE(directory.stat().st_mode) == original_mode
 
 
-def test_ssh_command_shortens_long_socket_path(monkeypatch):
-    if os.name == "nt":
-        return
-    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
-        long_runtime = Path(root) / ("x" * 100)
-        monkeypatch.setenv("XDG_RUNTIME_DIR", str(long_runtime))
-        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
-        with patch("revit_model_mcp.ssh_host.Path.home", return_value=Path(root)):
-            command = SshPowerShellHost()._build_command("'ok'")
-        assert f"ControlPath={Path(root) / '.cache' / 'rmm'}/mux-%C" in command
-        assert not long_runtime.exists()
+def test_ssh_command_shortens_socket_path_above_86_bytes(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    long_runtime = Path("x" * 42)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(long_runtime))
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    with patch("revit_model_mcp.ssh_host.Path.home", return_value=Path(".")):
+        command = SshPowerShellHost()._build_command("'ok'")
+    assert f"ControlPath={Path('.') / '.cache' / 'rmm'}/mux-%C" in command
+    assert not long_runtime.exists()
 
 
 def test_ssh_command_disables_forwarding_before_user_options(monkeypatch):
@@ -1015,20 +1011,19 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
     ]
 
 
-def test_ssh_extra_options_follow_mux_options(monkeypatch):
-    if os.name == "nt":
-        return
-    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
-        monkeypatch.setenv("XDG_RUNTIME_DIR", root)
-        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
-        monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
-        command = SshPowerShellHost("revit-host")._build_command("'ok'")
-        assert command[21:25] == [
-            "ControlPersist=600",
-            "-o",
-            "ServerAliveInterval=30",
-            "revit-host",
-        ]
+def test_ssh_extra_options_follow_mux_options(monkeypatch, tmp_path):
+    _mux_directory.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "runtime")
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
+    command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    assert command[21:25] == [
+        "ControlPersist=600",
+        "-o",
+        "ServerAliveInterval=30",
+        "revit-host",
+    ]
 
 
 def test_local_command_ignores_ssh_settings(monkeypatch):
@@ -1108,7 +1103,7 @@ def instance_status(process_id=42, title="Structural", **extra):
         "documentPath": rf"C:\Models\{title}.rvt",
         "revitVersion": "2024",
         "updatedUtc": "2026-09-16T00:00:00Z",
-        "startedUtc": "2026-09-15T23:00:00.000000+00:00",
+        "startedUtc": "2026-09-15T23:00:00.0000000Z",
         "fileChannelVersion": 2,
         "httpPort": None,
         **extra,
@@ -1177,10 +1172,10 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("startedUtc", instances[0])
         host._run.assert_awaited_once()
 
-    async def test_discovery_normalizes_valid_started_utc(self):
+    async def test_discovery_preserves_valid_started_utc(self):
         now = datetime.now(timezone.utc)
         host = SshPowerShellHost()
-        status = instance_status(startedUtc="2026-09-16T01:00:00+02:00")
+        status = instance_status(startedUtc="2026-09-16T01:00:00.1234567+02:00")
         host._run = AsyncMock(
             return_value=json.dumps(
                 {
@@ -1197,7 +1192,25 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
 
         instances = await host._discover_instances()
 
-        self.assertEqual(instances[0]["startedUtc"], "2026-09-15T23:00:00.000000+00:00")
+        self.assertEqual(instances[0]["startedUtc"], status["startedUtc"])
+
+    async def test_prepare_preserves_seventh_started_utc_digit(self):
+        started_utc = "2026-09-15T23:00:00.1234567Z"
+        host = SshPowerShellHost()._for_instance(instance_status(startedUtc=started_utc))
+        host._run = AsyncMock(return_value='{"revitRunning":true,"responses":[],"published":true}')
+
+        await host.prepare_job(
+            "mcp_test.tmp", '{"command":"ping","jobId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}', "ping"
+        )
+
+        script = host._run.await_args.args[0]
+        self.assertIn(f"[DateTime]::Parse('{started_utc}')", script)
+
+    def test_rejects_started_utc_with_excess_precision(self):
+        with self.assertRaisesRegex(RevitChannelError, "invalid startup identity"):
+            SshPowerShellHost()._for_instance(
+                instance_status(startedUtc="2026-09-15T23:00:00.12345678Z")
+            )
 
     async def test_directed_reads_pin_pid_identity_and_directory(self):
         host = SshPowerShellHost()

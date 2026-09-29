@@ -21,6 +21,7 @@ def save_artifact(result: dict[str, object], save_to: str | None) -> str:
         else Path(tempfile.mkdtemp(prefix="revit-view-")) / name
     )
     target.parent.mkdir(parents=True, exist_ok=True)
+    target = target.parent.resolve() / target.name
     try:
         with target.open("xb") as output:
             output.write(image)

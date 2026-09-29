@@ -121,7 +121,9 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory) / "nested" / "image.PNG"
             package = {"artifactName": "view.png", "artifact": base64.b64encode(PNG).decode()}
-            self.assertEqual(save_artifact(package, str(target)), str(target))
+            self.assertEqual(
+                save_artifact(package, str(target)), str(target.parent.resolve() / target.name)
+            )
             self.assertEqual(target.read_bytes(), PNG)
 
     async def test_channel_returns_local_path_with_plugin_metadata(self) -> None:
