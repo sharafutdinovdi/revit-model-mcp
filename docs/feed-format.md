@@ -61,6 +61,8 @@ The new command names are `view-info`, `set-view-visibility` and `remove-links`.
 
 `save_to` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
+A parameter filter matches the Revit parameter of that name, even when the name matches a built-in output field such as `Level` or `Name`.
+Output `fields` with those names return the built-in field value.
 Numeric filter values use mm for lengths, m2 for areas and m3 for volumes.
 Other measurable filter values use the document's display units; unmeasurable doubles use internal values.
 Returned query fields include `value`, optional `numericValue`, `unit`, `hasValue` and `source`.
