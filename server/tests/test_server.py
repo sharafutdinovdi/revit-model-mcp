@@ -19,8 +19,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.pipe_host import LocalPipeHost
-from revit_model_mcp.revit_channel import parse_response
-from revit_model_mcp.revit_channel import ReadJob
+from revit_model_mcp.revit_channel import ReadJob, parse_response
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
