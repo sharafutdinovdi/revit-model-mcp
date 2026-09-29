@@ -19,6 +19,7 @@ It uses the pipe when the selected instance lists `pipe/1` in `protocols`.
 Otherwise, or when the pipe cannot be opened, it uses the local file channel.
 Instance selection follows the file channel rules below.
 The server keeps one connection per Revit process and checks that `hello` returns the heartbeat's `pid` and `instanceId`.
+On Windows, it also checks the pipe server process ID when opening each connection and uses identification-only client credentials.
 
 ### Protocol pipe/1
 
@@ -39,7 +40,7 @@ A request may carry `id`; its reply echoes it.
 For every job it submitted, a connection receives `{"type":"job","jobId","state","position"}` when the state changes.
 It then receives one final `{"type":"job","jobId","state","result"}` with `state` `done`, `failed` or `cancelled` and the command response in `result`.
 Failures return `{"type":"error","id","error","message"}`.
-Codes include `hello_required`, `client_mismatch`, `invalid_job`, `invalid_message`, `duplicate_job_id`, `actions_disabled` and `queue_full` with `retryAfterMs`.
+Codes include `client_id_changed`, `client_id_required`, `client_mismatch`, `duplicate_job_id`, `hello_required`, `internal_error`, `invalid_job`, `invalid_message`, `job_id_required`, `job_required`, `message_rejected`, `not_found`, `queue_full`, `read_only`, `submission_failed`, `unknown_type` and `unsupported_protocol`. `queue_full` includes `retryAfterMs`.
 
 Pipe, HTTP and file jobs share one per-Revit scheduler.
 A disconnect cancels that connection's queued jobs; a running job, and above all a running action, always finishes.
@@ -135,6 +136,12 @@ HTTP has no built-in TLS.
 Use an SSH tunnel, Tailscale or a TLS reverse proxy; the client validates HTTPS certificates.
 Redirects are rejected to prevent forwarding the bearer token to another endpoint.
 `/health` is unauthenticated and reveals the Revit version, active document name, process ID, startup identity (`startedUtc`) and read-only state.
+The Python client sends a fresh 32-byte random base64url nonce in `X-RevitMcp-Nonce` on every health request.
+The add-in answers with `X-RevitMcp-Proof`, the unpadded base64url HMAC-SHA256 of `revit-model-mcp/health/v1\n` followed by the decoded nonce.
+The HMAC key is the UTF-8 bytes of the token text sent after `Bearer `, including for an overridden `REVIT_MCP_TOKEN`.
+The client compares each proof before sending the token for a job.
+Health requests without a valid nonce keep the same response body and do not return a proof.
+An older add-in cannot supply the proof, so a newer Python client refuses jobs and asks for an add-in update; an older client works with a newer add-in.
 All other routes require `Authorization: Bearer <token>`.
 
 | Request | Result |
@@ -151,6 +158,7 @@ A timeout or client disconnect does not cancel a job.
 Results expire ten minutes after completion.
 Do not resubmit an action after a timeout without checking its result and the model.
 The Python client submits once with `timeout=0`, then polls within `timeout_seconds`.
+Proof verification uses the existing health requests for each job and adds no HTTP request per job or poll.
 `pickup_timeout_seconds` applies only to file transports.
 
 HTTP 401 means the token is missing or invalid.
@@ -476,7 +484,7 @@ All three feed one scheduler; the add-in runs one job at a time through External
 The pipe and HTTP return JSON directly; the file channel keeps its file-based responses.
 A heartbeat identifies each Revit instance, its open documents and its protocols.
 The default tools read model data and export images.
-Opt-in actions use the same channel and execute in the Revit API context.
+Actions use the same channel and execute in the Revit API context.
 See [how it works](how-it-works.md), [architecture](architecture.md) and the [feed format](feed-format.md).
 
 ## Installation from a clone

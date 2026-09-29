@@ -19,6 +19,18 @@ public sealed class UniversalJobParserTests
     }
 
     [Test]
+    public async Task Parse_QueryElements_ClampsLimitAboveMaximum()
+    {
+        var maximum = ControlJobParser.Parse("""{"command":"query-elements","limit":5000}""");
+        var excessive = ControlJobParser.Parse("""{"command":"query-elements","limit":5001}""");
+
+        await Assert.That(maximum.Kind).IsEqualTo(ControlJobKind.QueryElements);
+        await Assert.That(maximum.Limit).IsEqualTo(5000);
+        await Assert.That(excessive.Kind).IsEqualTo(ControlJobKind.QueryElements);
+        await Assert.That(excessive.Limit).IsEqualTo(5000);
+    }
+
+    [Test]
     public async Task Parse_QueryElements_ReadsEveryFilterAndOutputControl()
     {
         const string json = """

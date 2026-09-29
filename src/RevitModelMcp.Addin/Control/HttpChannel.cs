@@ -102,6 +102,8 @@ internal sealed class HttpChannel : IDisposable
             var method = context.Request.HttpMethod;
             if (method == "GET" && path == "/health")
             {
+                if (HealthProof.TryCompute(_settings.Token, context.Request.Headers["X-RevitMcp-Nonce"], out var proof))
+                    context.Response.Headers["X-RevitMcp-Proof"] = proof;
                 await JsonAsync(context, 200, new()
                 {
                     ["ok"] = true,
