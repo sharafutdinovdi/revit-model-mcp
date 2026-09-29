@@ -96,7 +96,8 @@ An elevated script install reserves the selected prefix only with `-EnableHttp`:
 For a per-machine MSI, pass `HTTP_ENABLED=1 HTTP_URL_PREFIX="http://127.0.0.1:53111/"` to `msiexec /i <package.msi>` from an elevated prompt.
 The prefix must match the explicitly enabled Revit process.
 The SingleUser MSI installs without elevation and does not manage URL reservations. For HTTP with a per-user installation, use the exact `netsh http add urlacl` command printed by `install.ps1 -EnableHttp` when it is not elevated. Alternatively, use the MultiUser MSI from an elevated prompt with the HTTP properties above.
-Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
+An opted-in MultiUser MSI reserves the prefix for the built-in Users group, allowing any local interactive user to bind that prefix.
+Bearer-token authentication remains required.
 Without elevation, an opted-in script install prints the exact reservation command for an elevated command prompt.
 The script preserves existing reservations without claiming ownership.
 An opted-in MultiUser MSI install fails if its prefix already exists; omit `HTTP_ENABLED=1` to use a reservation managed outside that MSI.

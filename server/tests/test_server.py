@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import os
 import runpy
@@ -71,6 +72,10 @@ ACTION_TOOL_NAMES = {
     "revit_remove_links",
     "revit_undo_last",
 }
+
+
+def encode_discovery_payload(package):
+    return base64.b64encode(json.dumps(package, ensure_ascii=False).encode("utf-8")).decode("ascii")
 
 
 def test_bundle_tool_description_is_dedented():
@@ -460,7 +465,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_list_instances_ignores_stale_instance_file(self) -> None:
         host = SshPowerShellHost()
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [],
                     "files": [
@@ -486,7 +491,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_list_instances_reads_files_without_window_titles(self) -> None:
         host = SshPowerShellHost()
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [{"processId": 42, "revitVersion": "2023.1"}],
                     "files": [
@@ -518,7 +523,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
     async def test_list_instances_marks_process_when_plugin_does_not_respond(self) -> None:
         host = SshPowerShellHost()
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [{"processId": 84, "revitVersion": "2024.2"}],
                     "files": [],

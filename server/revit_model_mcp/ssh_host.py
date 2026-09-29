@@ -97,11 +97,16 @@ class SshPowerShellHost:
             "[ordered]@{ processId = $_.Id; revitVersion = $_.FileVersionInfo.ProductVersion } }); "
             "$files = @(Get-ChildItem -LiteralPath $directory -Filter 'instance_*.json' -File -ErrorAction SilentlyContinue | "
             "ForEach-Object { [ordered]@{ name = $_.Name; content = [IO.File]::ReadAllText($_.FullName) } }); "
-            "[ordered]@{ processes = $processes; files = $files } | ConvertTo-Json -Depth 4 -Compress"
+            "$package = [ordered]@{ processes = $processes; files = $files } | ConvertTo-Json -Depth 4 -Compress; "
+            "$bytes = [Text.Encoding]::UTF8.GetBytes($package); "
+            "[Convert]::ToBase64String($bytes)"
         )
         try:
-            package = json.loads(await self._run(script))
-        except (json.JSONDecodeError, TypeError) as error:
+            output = await self._run(script)
+            package = json.loads(
+                base64.b64decode(output.strip(), validate=True).decode("utf-8-sig")
+            )
+        except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
             raise ResponseParseError(
                 f"Revit instance list could not be parsed as JSON: {error}"
             ) from error

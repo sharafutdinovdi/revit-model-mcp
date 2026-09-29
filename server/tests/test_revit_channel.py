@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import os
 import shutil
@@ -579,6 +580,129 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_progress_writes_wait_for_terminal_response(self) -> None:
+        progress_messages = (
+            "Command accepted; preparing the view element list.",
+            "The element list is ready; reading data in batches.",
+            "Processing is waiting for the next ExternalEvent call.",
+            "New job rejected: RevitModelMcp is busy reading elements.",
+            "Processed 3 of 9 views. Current view: 'Level 1'. View elements were not read.",
+            "Command accepted and running.",
+        )
+        jobs = (ReadJob.view_elements("Level 1"), ReadJob.list_views())
+        for job in jobs:
+            for message in progress_messages:
+                for correlated in (False, True):
+                    with self.subTest(command=job.command, message=message, correlated=correlated):
+                        remote = FakeRemoteHost()
+                        reads = 0
+                        terminal = {
+                            "command": job.command,
+                            "success": True,
+                            "partial": False,
+                            "data": {"complete": True},
+                            "elapsedMs": 100,
+                        }
+
+                        async def read_response(name, cleanup_names, download_artifact, save_to):
+                            nonlocal reads
+                            reads += 1
+                            self.assertEqual(cleanup_names, [])
+                            self.assertNotIn(remote.response_name, remote.deleted_names)
+                            identity = json.loads(remote.written_content)["correlationId"]
+                            if reads == 1:
+                                progress = {
+                                    "command": job.command,
+                                    "success": False,
+                                    "partial": True,
+                                    "message": message,
+                                    "elapsedMs": 0
+                                    if message.startswith("Command accepted")
+                                    else 100,
+                                    "data": "accepted"
+                                    if message == "Command accepted and running."
+                                    else {"items": []},
+                                }
+                                if correlated:
+                                    progress["correlationId"] = identity
+                                return json.dumps(progress), None
+                            if correlated:
+                                terminal["correlationId"] = identity
+                            return json.dumps(terminal), None
+
+                        remote.finish_job = AsyncMock(side_effect=read_response)
+                        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+                            result = await RevitReadChannel(remote).execute(job)
+                        self.assertEqual(result, terminal)
+                        self.assertEqual(remote.finish_job.await_count, 2)
+                        self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_list_views_progress_name_containing_terminal_text_is_intermediate(self) -> None:
+        for elapsed_ms in (0, 61000):
+            with self.subTest(elapsed_ms=elapsed_ms):
+                remote = FakeRemoteHost()
+                reads = 0
+                terminal = {
+                    "command": "list-views",
+                    "success": True,
+                    "partial": False,
+                    "data": {"views": [{"name": "Level 1"}]},
+                }
+
+                async def read_response(name, cleanup_names, download_artifact, save_to):
+                    nonlocal reads
+                    reads += 1
+                    self.assertEqual(cleanup_names, [])
+                    self.assertNotIn(remote.response_name, remote.deleted_names)
+                    identity = json.loads(remote.written_content)["correlationId"]
+                    if reads == 1:
+                        return (
+                            json.dumps(
+                                {
+                                    "command": "list-views",
+                                    "success": False,
+                                    "partial": True,
+                                    "message": "Processed 3 of 9 views. Current view: "
+                                    "'The 60-second limit was reached'. View elements were not read.",
+                                    "elapsedMs": elapsed_ms,
+                                    "data": {"views": [{"name": "Level 1"}]},
+                                    "correlationId": identity,
+                                }
+                            ),
+                            None,
+                        )
+                    terminal["correlationId"] = identity
+                    return json.dumps(terminal), None
+
+                remote.finish_job = AsyncMock(side_effect=read_response)
+                with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+                    result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+                self.assertEqual(result, terminal)
+                self.assertEqual(remote.finish_job.await_count, 2)
+                self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_correlated_list_views_limit_partial_is_terminal(self) -> None:
+        remote = FakeRemoteHost()
+        partial = {
+            "command": "list-views",
+            "success": False,
+            "partial": True,
+            "message": "The 60-second limit was reached. Processed 3 of 9 views.",
+            "elapsedMs": 60000,
+            "data": {"views": [{"name": "Level 1"}]},
+        }
+
+        async def read_response(name, cleanup_names, download_artifact, save_to):
+            self.assertEqual(cleanup_names, [])
+            partial["correlationId"] = json.loads(remote.written_content)["correlationId"]
+            return json.dumps(partial), None
+
+        remote.finish_job = AsyncMock(side_effect=read_response)
+        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+            result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+        self.assertEqual(result, partial)
+        self.assertEqual(remote.finish_job.await_count, 1)
+
     async def test_waits_for_success_after_accepted_response(self) -> None:
         for placeholder in (
             {"data": "accepted", "message": "Command accepted and running.", "elapsedMs": 0},
@@ -850,6 +974,29 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         connection_events = remote.events
         self.assertEqual(len(connection_events), 5)
         self.assertLessEqual(len(connection_events), RELAY_CONNECTION_LIMIT)
+
+    async def test_returns_result_when_cleanup_fails(self) -> None:
+        remote = FakeRemoteHost()
+        remote.delete_files = AsyncMock(side_effect=RevitChannelError("ssh dropped"))
+
+        with self.assertLogs("revit_model_mcp.revit_channel", "WARNING") as logs:
+            result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+
+        self.assertEqual(result, json.loads(SUCCESS_RESPONSE))
+        self.assertIn("ssh dropped", logs.output[0])
+        remote.delete_files.assert_awaited_once()
+
+    async def test_preserves_response_timeout_when_cleanup_fails(self) -> None:
+        remote = FakeRemoteHost()
+        remote.response_name = None
+        remote.delete_files = AsyncMock(side_effect=RevitChannelError("ssh dropped"))
+
+        with self.assertLogs("revit_model_mcp.revit_channel", "WARNING") as logs:
+            with self.assertRaises(ResponseTimeoutError):
+                await RevitReadChannel(remote).execute(ReadJob.document_info())
+
+        self.assertIn("ssh dropped", logs.output[0])
+        remote.delete_files.assert_awaited_once()
 
     async def test_serializes_parallel_calls_to_the_single_trigger(
         self,
@@ -1183,6 +1330,10 @@ def instance_status(process_id=42, title="Structural", **extra):
     }
 
 
+def encode_discovery_payload(package):
+    return base64.b64encode(json.dumps(package, ensure_ascii=False).encode("utf-8")).decode("ascii")
+
+
 def test_ssh_heartbeat_preserves_addin_compatibility_fields():
     now = datetime.now(timezone.utc)
     status = instance_status(
@@ -1244,7 +1395,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         bad = instance_status(startedUtc="2026-09-15T23:00:00\u2019; exit 1")
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [{"processId": 42, "revitVersion": "2024"}],
                     "files": [
@@ -1268,7 +1419,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         status = instance_status(startedUtc="2026-09-16T01:00:00.1234567+02:00")
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [{"processId": 42, "revitVersion": "2024"}],
                     "files": [
@@ -1284,6 +1435,53 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         instances = await host._discover_instances()
 
         self.assertEqual(instances[0]["startedUtc"], status["startedUtc"])
+
+    async def test_discovery_decodes_utf8_payload_with_cyrillic_names(self):
+        host = SshPowerShellHost()
+        status = instance_status(
+            title="Жилой дом",
+            documentPath=r"C:\Модели\Жилой дом.rvt",
+            updatedUtc=datetime.now(timezone.utc).isoformat(),
+        )
+        host._run = AsyncMock(
+            return_value=encode_discovery_payload(
+                {
+                    "processes": [{"processId": 42, "revitVersion": "2024"}],
+                    "files": [
+                        {
+                            "name": "instance_42.json",
+                            "content": json.dumps(status, ensure_ascii=False),
+                        }
+                    ],
+                }
+            )
+        )
+
+        instances = await host._discover_instances()
+
+        self.assertEqual(instances[0]["documentTitle"], "Жилой дом")
+        self.assertEqual(instances[0]["documentPath"], r"C:\Модели\Жилой дом.rvt")
+        self.assertEqual(await host.list_revit_instances("Жилой"), instances)
+
+    async def test_discovery_script_encodes_payload_as_base64_utf8(self):
+        host = SshPowerShellHost()
+        host._run = AsyncMock(return_value=encode_discovery_payload({"processes": [], "files": []}))
+
+        await host._discover_instances()
+
+        script = host._run.await_args.args[0]
+        self.assertIn("[Text.Encoding]::UTF8.GetBytes", script)
+        self.assertIn("[Convert]::ToBase64String", script)
+
+    async def test_discovery_rejects_invalid_base64_payload(self):
+        host = SshPowerShellHost()
+        host._run = AsyncMock(return_value="not base64!")
+
+        with self.assertRaisesRegex(
+            ResponseParseError, "Revit instance list could not be parsed"
+        ) as caught:
+            await host._discover_instances()
+        self.assertIsInstance(caught.exception.__cause__, binascii.Error)
 
     async def test_prepare_preserves_seventh_started_utc_digit(self):
         started_utc = "2026-09-15T23:00:00.1234567Z"
