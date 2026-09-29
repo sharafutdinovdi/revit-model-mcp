@@ -29,6 +29,7 @@ $ErrorActionPreference = 'Stop'
 $repo = $PSScriptRoot
 $tempRoot = $null
 $script:releaseAssets = @()
+$script:checksums = $null
 $headers = @{ 'User-Agent' = 'revit-model-mcp-install' }
 if ($env:GITHUB_TOKEN) { $headers.Authorization = "Bearer $env:GITHUB_TOKEN" }
 
@@ -64,11 +65,24 @@ function Get-Payload([string] $SelectedYear) {
         $url = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/download/$releaseTag/$asset"
         $zip = Join-Path $tempRoot $asset
         Invoke-WebRequest -Uri $url -Headers $headers -OutFile $zip -UseBasicParsing
+        if (!$script:checksums) {
+            if ('SHA256SUMS.txt' -notin $script:releaseAssets) { throw "Release $releaseTag has no SHA256SUMS.txt." }
+            $script:checksums = Join-Path $tempRoot 'SHA256SUMS.txt'
+            $checksumUrl = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/download/$releaseTag/SHA256SUMS.txt"
+            Invoke-WebRequest -Uri $checksumUrl -Headers $headers -OutFile $script:checksums -UseBasicParsing
+        }
+        $entries = @(Get-Content -LiteralPath $script:checksums | Where-Object { $_ -match ('^([0-9a-fA-F]{64})  ' + [regex]::Escape($asset) + '$') })
+        if ($entries.Count -ne 1) { throw "Expected one SHA256 checksum for $asset in release $releaseTag." }
+        $expectedHash = $entries[0].Substring(0, 64)
+        $actualHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+        if ($actualHash -ne $expectedHash) { throw "SHA256 mismatch for $asset in release $releaseTag." }
         Expand-Archive -LiteralPath $zip -DestinationPath $stage
     }
-    if (Get-ChildItem $stage -Recurse -Filter 'RevitAPI*.dll' -File) {
-        throw "Revit API binaries must not be installed: $SelectedYear payload."
-    }
+    $blocked = @(Get-ChildItem $stage -Recurse -Filter '*.dll' -File | Where-Object {
+        $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
+        $_.VersionInfo.CompanyName -match 'Autodesk'
+    })
+    if ($blocked.Count) { throw "Autodesk binaries must not be installed: $SelectedYear payload ($($blocked.Name -join ', '))." }
     if (!(Test-Path (Join-Path $stage 'RevitModelMcp\RevitModelMcp.dll') -PathType Leaf)) {
         throw "Missing RevitModelMcp.dll in $SelectedYear payload."
     }
