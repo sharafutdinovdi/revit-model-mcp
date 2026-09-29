@@ -39,7 +39,7 @@ A request may carry `id`; its reply echoes it.
 For every job it submitted, a connection receives `{"type":"job","jobId","state","position"}` when the state changes.
 It then receives one final `{"type":"job","jobId","state","result"}` with `state` `done`, `failed` or `cancelled` and the command response in `result`.
 Failures return `{"type":"error","id","error","message"}`.
-Codes include `hello_required`, `client_mismatch`, `invalid_job`, `invalid_message`, `duplicate_job_id`, `actions_disabled` and `queue_full` with `retryAfterMs`.
+Codes include `client_id_changed`, `client_id_required`, `client_mismatch`, `duplicate_job_id`, `hello_required`, `internal_error`, `invalid_job`, `invalid_message`, `job_id_required`, `job_required`, `message_rejected`, `not_found`, `queue_full`, `read_only`, `submission_failed`, `unknown_type` and `unsupported_protocol`. `queue_full` includes `retryAfterMs`.
 
 Pipe, HTTP and file jobs share one per-Revit scheduler.
 A disconnect cancels that connection's queued jobs; a running job, and above all a running action, always finishes.
@@ -473,7 +473,7 @@ All three feed one scheduler; the add-in runs one job at a time through External
 The pipe and HTTP return JSON directly; the file channel keeps its file-based responses.
 A heartbeat identifies each Revit instance, its open documents and its protocols.
 The default tools read model data and export images.
-Opt-in actions use the same channel and execute in the Revit API context.
+Actions use the same channel and execute in the Revit API context.
 See [how it works](how-it-works.md), [architecture](architecture.md) and the [feed format](feed-format.md).
 
 ## Installation from a clone
