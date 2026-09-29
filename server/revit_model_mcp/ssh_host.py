@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import copy
 import json
 import logging
@@ -424,12 +425,30 @@ class SshPowerShellHost:
         try:
             result = json.loads(output)
             content = base64.b64decode(result["response"], validate=True).decode("utf-8-sig")
-            local_path = save_artifact(result, save_to) if download_artifact else None
-            return content, local_path
+            if download_artifact:
+                name = result.get("artifactName")
+                encoded = result.get("artifact")
+                if (
+                    not isinstance(name, str)
+                    or Path(name).name != name
+                    or not isinstance(encoded, str)
+                ):
+                    raise ValueError("Remote response does not contain a safe image artifact.")
         except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise ResponseParseError(
                 f"Could not parse response and image after remote read: {error}"
             ) from error
+        if not download_artifact:
+            return content, None
+        try:
+            local_path = save_artifact(result, save_to)
+        except binascii.Error as error:
+            raise ResponseParseError(
+                f"Could not parse response and image after remote read: {error}"
+            ) from error
+        except ValueError as error:
+            raise RevitChannelError(str(error)) from error
+        return content, local_path
 
     async def delete_files(self, names: list[str]) -> None:
         if not names:

@@ -9,7 +9,13 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 from revit_model_mcp.artifact_download import save_artifact
-from revit_model_mcp.revit_channel import JobPickupStatus, ReadJob, RevitReadChannel
+from revit_model_mcp.revit_channel import (
+    JobPickupStatus,
+    ReadJob,
+    ResponseParseError,
+    RevitChannelError,
+    RevitReadChannel,
+)
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 EXPORT_RESPONSE = json.dumps(
@@ -75,6 +81,60 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("response.data.fileName", script)
         self.assertIn("ReadAllBytes($artifactPath)", script)
         self.assertIn("Remove-Item", script)
+
+    async def test_finish_job_reports_destination_errors_plainly(self) -> None:
+        host = SshPowerShellHost()
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "image.png"
+            target.write_bytes(b"original")
+            cases = (
+                (target, PNG, "Local file already exists:"),
+                (
+                    Path(directory) / "image.txt",
+                    PNG,
+                    "The image destination must have a .png extension.",
+                ),
+                (
+                    Path(directory) / "invalid.png",
+                    b"not a PNG",
+                    "The Revit endpoint did not return a PNG image.",
+                ),
+            )
+            for destination, image, message in cases:
+                with self.subTest(message=message):
+                    host._run = AsyncMock(
+                        return_value=json.dumps(
+                            {
+                                "response": base64.b64encode(EXPORT_RESPONSE.encode()).decode(),
+                                "artifactName": "view.png",
+                                "artifact": base64.b64encode(image).decode(),
+                            }
+                        )
+                    )
+                    with self.assertRaisesRegex(RevitChannelError, message):
+                        await host.finish_job(
+                            "response_20260916_120000_000_export-view.json",
+                            [],
+                            True,
+                            str(destination),
+                        )
+
+    async def test_finish_job_wraps_invalid_artifact_base64_as_parse_error(self) -> None:
+        host = SshPowerShellHost()
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "response": base64.b64encode(EXPORT_RESPONSE.encode()).decode(),
+                    "artifactName": "view.png",
+                    "artifact": "not base64",
+                }
+            )
+        )
+
+        with self.assertRaisesRegex(
+            ResponseParseError, "Could not parse response and image after remote read:"
+        ):
+            await host.finish_job("response_20260916_120000_000_export-view.json", [], True, None)
 
     def test_save_artifact_refuses_existing_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
