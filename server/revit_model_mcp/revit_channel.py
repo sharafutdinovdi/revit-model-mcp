@@ -675,14 +675,19 @@ class RevitReadChannel:
             await self.remote.delete_files(cleanup_names)
         except (Exception, asyncio.CancelledError) as cleanup_error:
             # Cleanup failure must not replace the original command failure.
-            if failure is None:
-                failure = RevitChannelError(
-                    f"Could not clean up channel temporary files: {cleanup_error}"
-                )
-            else:
+            if failure is not None:
                 LOGGER.warning(
                     "Could not clean up temporary files after an error: %s",
                     cleanup_error,
+                )
+            elif result is not None and isinstance(cleanup_error, Exception):
+                LOGGER.warning(
+                    "Could not clean up temporary files after receiving a result: %s",
+                    cleanup_error,
+                )
+            else:
+                failure = RevitChannelError(
+                    f"Could not clean up channel temporary files: {cleanup_error}"
                 )
 
         if failure is not None:

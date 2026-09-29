@@ -851,6 +851,29 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(connection_events), 5)
         self.assertLessEqual(len(connection_events), RELAY_CONNECTION_LIMIT)
 
+    async def test_returns_result_when_cleanup_fails(self) -> None:
+        remote = FakeRemoteHost()
+        remote.delete_files = AsyncMock(side_effect=RevitChannelError("ssh dropped"))
+
+        with self.assertLogs("revit_model_mcp.revit_channel", "WARNING") as logs:
+            result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+
+        self.assertEqual(result, json.loads(SUCCESS_RESPONSE))
+        self.assertIn("ssh dropped", logs.output[0])
+        remote.delete_files.assert_awaited_once()
+
+    async def test_preserves_response_timeout_when_cleanup_fails(self) -> None:
+        remote = FakeRemoteHost()
+        remote.response_name = None
+        remote.delete_files = AsyncMock(side_effect=RevitChannelError("ssh dropped"))
+
+        with self.assertLogs("revit_model_mcp.revit_channel", "WARNING") as logs:
+            with self.assertRaises(ResponseTimeoutError):
+                await RevitReadChannel(remote).execute(ReadJob.document_info())
+
+        self.assertIn("ssh dropped", logs.output[0])
+        remote.delete_files.assert_awaited_once()
+
     async def test_serializes_parallel_calls_to_the_single_trigger(
         self,
     ) -> None:
