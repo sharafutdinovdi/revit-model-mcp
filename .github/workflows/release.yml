@@ -147,8 +147,6 @@ jobs:
           node-version: '22'
       - name: Set bundle release version
         shell: python
-        env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           import json
           import os
@@ -158,12 +156,6 @@ jobs:
           path = Path('bundle/manifest.json')
           manifest = json.loads(path.read_text())
           manifest['version'] = version
-          package = f'revit-model-mcp=={version}'
-          # Prereleases are distributed as wheels on GitHub, without PyPI publishing.
-          if '-' in version:
-              wheel, = Path('server/dist').glob('*.whl')
-              package = f'https://github.com/{os.environ["GITHUB_REPOSITORY"]}/releases/download/{os.environ["RELEASE_TAG"]}/{wheel.name}'
-          manifest['server']['mcp_config']['args'] = ['--from', package, 'revit-model-mcp'] if '-' in version else [package]
           path.write_text(json.dumps(manifest, indent=2) + '\n')
       - name: Validate and pack Claude Desktop bundle
         shell: pwsh
