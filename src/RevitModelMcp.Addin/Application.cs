@@ -21,11 +21,7 @@ namespace RevitModelMcp;
 [UsedImplicitly]
 public sealed class Application : ExternalApplication
 {
-    private static readonly string TriggerFilePath = Path.Combine(
-        Output.SnapshotFileWriter.OutputDirectory,
-        "trigger.txt");
-
-    private readonly ControlChannel _controlChannel = new(TriggerFilePath);
+    private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
     private ExternalEventRequestQueue? _requestQueue;
@@ -41,6 +37,14 @@ public sealed class Application : ExternalApplication
     {
         PluginLog.Start();
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
+        var (fileChannelEnabled, fileChannelWarning) = Output.SnapshotFileWriter.InitializeChannel();
+        if (fileChannelWarning is not null)
+            PluginLog.Warn(fileChannelWarning);
+        var triggerFilePath = Path.Combine(Output.SnapshotFileWriter.OutputDirectory, "trigger.txt");
+        _controlChannel = new ControlChannel(triggerFilePath)
+        {
+            FileChannelEnabled = fileChannelEnabled
+        };
         _eventHandler = new ControlExternalEventHandler(_controlChannel);
         _externalEvent = Autodesk.Revit.UI.ExternalEvent.Create(_eventHandler);
         _requestQueue = new ExternalEventRequestQueue(() =>
@@ -51,7 +55,6 @@ public sealed class Application : ExternalApplication
             return result is ExternalEventRequest.Accepted or ExternalEventRequest.Pending;
         }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
-        Directory.CreateDirectory(Output.SnapshotFileWriter.OutputDirectory);
         NwcPathValidator.ConfigureTrustedNetworkRoots([]);
         HttpSettings? httpSettings = null;
         var showActivityPaneOnAction = true;
@@ -72,16 +75,17 @@ public sealed class Application : ExternalApplication
         {
             PluginLog.Warn($"Settings could not be loaded. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
         }
-        if (File.Exists(TriggerFilePath))
+        if (_controlChannel.FileChannelEnabled)
         {
-            File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            if (File.Exists(triggerFilePath))
+                File.Move(triggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            _triggerWatcher = new TriggerFileWatcher(
+                triggerFilePath,
+                RequestExecution,
+                exception => PluginLog.Error("Trigger watcher failed.", exception),
+                TimeSpan.FromSeconds(10));
+            _triggerWatcher.Start();
         }
-        _triggerWatcher = new TriggerFileWatcher(
-            TriggerFilePath,
-            RequestExecution,
-            exception => PluginLog.Error("Trigger watcher failed.", exception),
-            TimeSpan.FromSeconds(10));
-        _triggerWatcher.Start();
         Application.ViewActivated += OnViewActivated;
         Application.ControlledApplication.DocumentClosing += OnDocumentClosing;
         Application.ControlledApplication.DocumentClosed += OnDocumentListChanged;
@@ -99,20 +103,23 @@ public sealed class Application : ExternalApplication
         catch (Exception exception)
         {
             _pipeChannel = null;
-            PluginLog.Error("Pipe listener failed; the file channel stays available.", exception);
+            PluginLog.Error("Pipe listener failed.", exception);
         }
-        // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
-        _instanceHeartbeat = new InstanceHeartbeat(
-            Output.SnapshotFileWriter.RootDirectory,
-            Process.GetCurrentProcess().Id,
-            Application.ControlledApplication.VersionNumber,
-            _instanceId,
-            _pipeChannel?.PipeName);
+        if (_controlChannel.FileChannelEnabled)
+        {
+            // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
+            _instanceHeartbeat = new InstanceHeartbeat(
+                Output.SnapshotFileWriter.RootDirectory,
+                Process.GetCurrentProcess().Id,
+                Application.ControlledApplication.VersionNumber,
+                _instanceId,
+                _pipeChannel?.PipeName);
+        }
         Application.ControlledApplication.DocumentChanged += OnDocumentChanged;
         ActivityHost.Scheduler = _controlChannel.Scheduler;
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
-        _instanceHeartbeat.Start(_activeDocument, _documents);
+        _instanceHeartbeat?.Start(_activeDocument, _documents);
         if (httpSettings is not null)
         {
             try
@@ -122,7 +129,7 @@ public sealed class Application : ExternalApplication
                     Application.ControlledApplication.VersionNumber, httpSettings);
                 _httpChannel.UpdateDocument(_activeDocument?.Title);
                 _httpChannel.Start();
-                _instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);
+                _instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);
             }
             catch (Exception exception)
             {

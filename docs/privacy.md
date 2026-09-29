@@ -7,7 +7,7 @@ Changes to this policy are recorded in the repository history.
 
 Revit Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
-Optional actions can change the model when both write gates are enabled.
+Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
 The project includes no analytics, telemetry or crash reporting.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
 The bundle launcher uses uvx to download the package and dependencies from PyPI and its package hosting service during installation or updates.
@@ -19,13 +19,14 @@ These package downloads do not send Revit model data.
 Responses are returned to the MCP client for the requested operation.
 The local and SSH file channels write requests, responses and exported PNG files under `%LOCALAPPDATA%\RevitModelMcp` on the Windows workstation.
 `REVIT_MCP_CHANNEL_DIR` overrides the channel directory.
-Settings and the workstation write gate remain in the default directory.
+Settings and the workstation `read-only` file remain in the default directory.
 HTTP keeps completed job responses in memory until expiry; exported images also use the workstation channel directory.
 Downloaded PNG files are written to the client path specified by `save_to`, or a new `revit-view-*` directory in the client's temporary directory.
 
-`REVIT_MCP_REDACT_PATHS=1` removes directories from response `documentPath` and nested `path` fields.
+`REVIT_MCP_REDACT_PATHS=1` removes directories from response `documentPath`, `path` and `centralPath` fields.
+It also reduces Windows drive and UNC paths in `confirmationText`, `summary`, `error`, `message`, `warning` and `warnings` strings at any depth to file names.
 The bundle enables this setting by default.
-Model names, parameter values, errors and exported image `localPath` values remain visible.
+Document names, parameter values, remaining message text and exported image `localPath` values remain visible.
 Redaction applies to outgoing Python responses, not workstation files or add-in logs.
 Boolean settings also accept `true/false`, `yes/no` and `on/off`, without regard to case or surrounding whitespace; `1/0` remains the canonical form.
 

@@ -232,7 +232,7 @@ async def _execute(
         )
         return redact_model_paths(result)
     except RevitChannelError as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
 
 def addressed_tool(function):
@@ -849,7 +849,7 @@ async def revit_list_instances(document: Document = None) -> list[dict[str, obje
     try:
         return redact_model_paths(await host.list_revit_instances(document))
     except RevitChannelError as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
 
 @addressed_tool

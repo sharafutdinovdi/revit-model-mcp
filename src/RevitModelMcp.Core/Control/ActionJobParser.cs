@@ -393,28 +393,52 @@ public static class DocumentPathValidator
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
 {
+    private const int MaxTokens = 100;
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private readonly object _syncRoot = new();
     private readonly Dictionary<string, (string Command, string Document, string Arguments, string State, DateTimeOffset Expires)> _tokens = [];
+    private readonly List<string> _issuedOrder = [];
 
     public string Issue(string command, string document, string arguments, string state)
     {
         var bytes = new byte[32];
         using (var generator = RandomNumberGenerator.Create()) generator.GetBytes(bytes);
         var token = BitConverter.ToString(bytes).Replace("-", string.Empty);
-        _tokens[token] = (command, document, arguments, state, _clock().AddMinutes(5));
+        lock (_syncRoot)
+        {
+            var now = _clock();
+            for (var index = _issuedOrder.Count - 1; index >= 0; index--)
+            {
+                var issuedToken = _issuedOrder[index];
+                if (_tokens[issuedToken].Expires > now) continue;
+                _tokens.Remove(issuedToken);
+                _issuedOrder.RemoveAt(index);
+            }
+            if (_issuedOrder.Count == MaxTokens)
+            {
+                _tokens.Remove(_issuedOrder[0]);
+                _issuedOrder.RemoveAt(0);
+            }
+            _tokens[token] = (command, document, arguments, state, now.AddMinutes(5));
+            _issuedOrder.Add(token);
+        }
         return token;
     }
 
     public DocumentConfirmationResult Consume(string token, string command, string document, string arguments, string state)
     {
-        if (!_tokens.TryGetValue(token, out var stored)) return DocumentConfirmationResult.Invalid;
-        _tokens.Remove(token);
-        if (stored.Expires <= _clock() || stored.Command != command)
-            return DocumentConfirmationResult.Invalid;
-        if (stored.State != state) return DocumentConfirmationResult.DocumentChanged;
-        return stored.Document == document && stored.Arguments == arguments
-            ? DocumentConfirmationResult.Valid
-            : DocumentConfirmationResult.Invalid;
+        lock (_syncRoot)
+        {
+            if (!_tokens.TryGetValue(token, out var stored)) return DocumentConfirmationResult.Invalid;
+            _tokens.Remove(token);
+            _issuedOrder.Remove(token);
+            if (stored.Expires <= _clock() || stored.Command != command)
+                return DocumentConfirmationResult.Invalid;
+            if (stored.State != state) return DocumentConfirmationResult.DocumentChanged;
+            return stored.Document == document && stored.Arguments == arguments
+                ? DocumentConfirmationResult.Valid
+                : DocumentConfirmationResult.Invalid;
+        }
     }
 }
 

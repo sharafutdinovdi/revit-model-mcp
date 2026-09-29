@@ -1,9 +1,12 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -35,16 +38,127 @@ internal sealed class SnapshotRunResult
 
 internal static class SnapshotFileWriter
 {
-    internal static string RootDirectory { get; } = Environment.GetEnvironmentVariable("REVIT_MCP_CHANNEL_DIR") is { Length: > 0 } directory
-        ? directory
-        : Path.Combine(
+    private sealed class ChannelAclRefusedException(string reason) : Exception(reason);
+
+    private static readonly string DefaultRootDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RevitModelMcp");
+    private static readonly string? OverrideRootDirectory = Environment.GetEnvironmentVariable("REVIT_MCP_CHANNEL_DIR") is { Length: > 0 } directory
+        ? directory
+        : null;
+    private static string _rootDirectory = OverrideRootDirectory ?? DefaultRootDirectory;
+    private static string _outputDirectory = Path.Combine(
+        _rootDirectory, "instances", Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
 
-    internal static string OutputDirectory { get; } = Path.Combine(
-        RootDirectory, "instances", Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
+    internal static string RootDirectory => _rootDirectory;
+    internal static string OutputDirectory => _outputDirectory;
 
     internal static string StartedUtc { get; } = DateTime.UtcNow.ToString("O");
+
+    internal static (bool Enabled, string? Warning) InitializeChannel()
+    {
+        SecurityIdentifier currentUser;
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            currentUser = identity.User ?? throw new InvalidOperationException("The current user SID is unavailable.");
+        }
+        catch (Exception exception)
+        {
+            return (false, $"File channel disabled: Current Windows identity is unavailable ({exception.GetType().Name}).");
+        }
+        try
+        {
+            EnsureDirectory(RootDirectory, currentUser, OverrideRootDirectory is null);
+            EnsureDirectory(Path.Combine(RootDirectory, "instances"), currentUser, OverrideRootDirectory is null);
+            EnsureDirectory(OutputDirectory, currentUser, OverrideRootDirectory is null);
+            return (true, null);
+        }
+        catch (Exception exception)
+        {
+            var reason = exception is ChannelAclRefusedException
+                ? exception.Message
+                : $"Directory ACL could not be read or set ({exception.GetType().Name}).";
+            if (OverrideRootDirectory is not null)
+            {
+                _rootDirectory = DefaultRootDirectory;
+                _outputDirectory = Path.Combine(DefaultRootDirectory, "instances",
+                    Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
+                try
+                {
+                    EnsureDirectory(RootDirectory, currentUser, true);
+                    EnsureDirectory(Path.Combine(RootDirectory, "instances"), currentUser, true);
+                    EnsureDirectory(OutputDirectory, currentUser, true);
+                }
+                catch (Exception fallbackException)
+                {
+                    return (false, $"File channel disabled: {reason} Private default directory failed ({fallbackException.GetType().Name}).");
+                }
+                return (true, $"File channel override refused: {reason} Using the private default directory.");
+            }
+            return (false, $"File channel disabled: {reason} Check the channel directory ownership and write permissions.");
+        }
+    }
+
+    private static void EnsureDirectory(string path, SecurityIdentifier currentUser, bool migrateOwnedDirectory)
+    {
+        var directory = new DirectoryInfo(path);
+        if (!directory.Exists)
+        {
+            var security = PrivateDirectorySecurity(currentUser);
+#if NETFRAMEWORK
+            Directory.CreateDirectory(path, security);
+#else
+            security.CreateDirectory(path);
+#endif
+        }
+
+        var currentSecurity = directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+        var owner = currentSecurity.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+        if (ChannelAclPolicy.ShouldProtectExistingDirectory(migrateOwnedDirectory,
+                currentSecurity.AreAccessRulesProtected, owner?.Value, currentUser.Value))
+        {
+            try
+            {
+                directory.SetAccessControl(PrivateDirectorySecurity(currentUser));
+                currentSecurity = directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+                owner = currentSecurity.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            }
+            catch (Exception)
+            {
+                // The existing ACL is evaluated below when migration fails.
+            }
+        }
+
+        var entries = currentSecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>()
+            .Select(rule => new ChannelAclEntry(
+                rule.IdentityReference.Value,
+                (int)rule.FileSystemRights,
+                rule.AccessControlType == AccessControlType.Allow,
+                rule.IsInherited));
+        var reason = ChannelAclPolicy.RefusalReason(owner?.Value, currentUser.Value, entries);
+        if (reason is not null) throw new ChannelAclRefusedException(reason);
+    }
+
+    private static DirectorySecurity PrivateDirectorySecurity(SecurityIdentifier currentUser)
+    {
+        var security = new DirectorySecurity();
+        security.SetAccessRuleProtection(true, false);
+        security.SetOwner(currentUser);
+        foreach (var principal in new[]
+                 {
+                     currentUser,
+                     new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                     new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null)
+                 })
+        {
+            security.AddAccessRule(new FileSystemAccessRule(principal, FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None, AccessControlType.Allow));
+        }
+        return security;
+    }
 
     public static SnapshotWriteResult Write(Snapshot snapshot, DateTime localTime)
     {

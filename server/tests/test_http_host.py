@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import shutil
 import struct
@@ -24,19 +27,29 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + struct.pack("!II", 1600, 900)
 
 @pytest.fixture
 def endpoint():
-    state = {"status": 200, "polls": 0, "requests": [], "payload": None, "forever": False}
+    state = {
+        "status": 200,
+        "polls": 0,
+        "requests": [],
+        "nonces": [],
+        "payload": None,
+        "forever": False,
+        "proof": "good",
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
-        def reply(self, status, body, content_type="application/json"):
+        def reply(self, status, body, content_type="application/json", proof=None):
             if not isinstance(body, bytes):
                 body = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("X-Revit-Job-Id", "job-1")
+            if proof is not None:
+                self.send_header("X-RevitMcp-Proof", proof)
             self.end_headers()
             self.wfile.write(body)
 
@@ -44,6 +57,26 @@ def endpoint():
             route = urlsplit(self.path)
             state["requests"].append((self.command, self.path, self.headers.get("Authorization")))
             if route.path == "/health":
+                encoded_nonce = self.headers.get("X-RevitMcp-Nonce")
+                state["nonces"].append(encoded_nonce)
+                proof = None
+                if encoded_nonce and state["proof"] == "good":
+                    nonce = base64.urlsafe_b64decode(encoded_nonce + "==")
+                    proof = (
+                        base64.urlsafe_b64encode(
+                            hmac.new(
+                                b"test-token",
+                                b"revit-model-mcp/health/v1\n" + nonce,
+                                hashlib.sha256,
+                            ).digest()
+                        )
+                        .rstrip(b"=")
+                        .decode("ascii")
+                    )
+                elif state["proof"] == "wrong":
+                    proof = "wrong-proof"
+                elif state["proof"] == "known":
+                    proof = "GfUwWjTyg3_Dag6VadPsgEniE7ybFFAH9msV89o4grU"
                 return self.reply(
                     200,
                     {
@@ -54,9 +87,14 @@ def endpoint():
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": True,
                     },
+                    proof=proof,
                 )
             if self.headers.get("Authorization") != "Bearer test-token":
                 return self.reply(401, {"error": "unauthorized"})
+            if route.path == "/jobs" and state.get("drop_once"):
+                state["drop_once"] = False
+                self.close_connection = True
+                return
             if state["status"] == 302:
                 self.send_response(302)
                 self.send_header("Location", state["redirect"])
@@ -116,6 +154,7 @@ def test_health_and_instance_discovery(endpoint):
     assert instances[0]["pluginResponding"] is True
     assert asyncio.run(host.list_revit_instances("other")) == []
     assert all(request[2] is None for request in state["requests"])
+    assert len(set(state["nonces"])) == 3
 
 
 def test_job_round_trip(endpoint):
@@ -132,6 +171,8 @@ def test_job_round_trip(endpoint):
         ("GET", "/health", None),
         ("POST", "/jobs?timeout=0", "Bearer test-token"),
     ]
+    assert all(nonce is not None for nonce in state["nonces"])
+    assert state["nonces"][0] != state["nonces"][1]
     assert state["payload"]["targetProcessId"] == 42
 
 
@@ -149,8 +190,66 @@ def test_http_errors(endpoint, status, message):
 def test_wrong_token(endpoint):
     host, _ = endpoint
     host.token = "wrong"
-    with pytest.raises(RevitChannelError, match="REVIT_MCP_TOKEN"):
+    with pytest.raises(RevitChannelError, match="REVIT_MCP_TOKEN") as error:
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    assert "did not prove the add-in token" in str(error.value)
+
+
+@pytest.mark.parametrize("proof", ["missing", "wrong"])
+def test_unproved_endpoint_never_receives_authorization(endpoint, proof):
+    host, state = endpoint
+    state["proof"] = proof
+
+    for _ in range(2):
+        with pytest.raises(RevitChannelError, match="Update the add-in, or another process"):
+            asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    assert state["requests"] == [("GET", "/health", None)] * 2
+    assert state["nonces"][0] != state["nonces"][1]
+
+
+def test_health_proof_known_answer(endpoint, monkeypatch):
+    host, state = endpoint
+    monkeypatch.setattr("revit_model_mcp.http_host.os.urandom", lambda size: bytes(range(size)))
+    state["proof"] = "known"
+
+    assert asyncio.run(host.health())["ok"] is True
+    assert state["nonces"] == ["AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"]
+
+
+def test_later_job_rejects_endpoint_without_proof(endpoint):
+    host, state = endpoint
+    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    previous_nonces = set(state["nonces"])
+    previous_requests = len(state["requests"])
+    state["proof"] = "missing"
+
+    with pytest.raises(RevitChannelError, match="did not prove the add-in token"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    assert state["requests"][previous_requests:] == [("GET", "/health", None)]
+    assert state["nonces"][-1] not in previous_nonces
+
+
+def test_http_401_requires_fresh_proof(endpoint):
+    host, state = endpoint
+    state["status"] = 401
+    with pytest.raises(RevitChannelError, match="bearer token"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    state["status"] = 200
+    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert len(set(state["nonces"])) == 4
+
+
+def test_connection_error_requires_fresh_proof(endpoint):
+    host, state = endpoint
+    state["drop_once"] = True
+    with pytest.raises(RevitChannelError, match="not reachable"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert len(set(state["nonces"])) == 4
 
 
 def test_pending_job_polls_without_resubmitting(endpoint):
@@ -245,7 +344,7 @@ def test_addin_advertises_bound_http_endpoint_identity():
     assert source.count("BoundPort =") == 1
     after_start = application.split("_httpChannel.Start();", 1)[1]
     assert after_start.lstrip().startswith(
-        "_instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);"
+        "_instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);"
     )
     assert "HttpPort = _httpPort" in application
     health = source.split('path == "/health"', 1)[1].split("return;", 1)[0]
@@ -398,6 +497,84 @@ try {
     Update-HttpUrlAcl
     if ((Get-Content $marker -Raw).Trim() -ne 'http://+:53110/') {
         throw 'Wildcard bind was not mapped to the listener prefix'
+    }
+}
+finally { Remove-Item $root -Recurse -Force }
+"""
+    )
+
+
+def test_script_release_payload_checksums():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+function Invoke-WebRequest {
+    param($Uri, $Headers, $OutFile, [switch]$UseBasicParsing)
+    if ($Uri -like '*/SHA256SUMS.txt') {
+        if ($script:case -eq 'old404' -or $script:case -eq 'new404') {
+            throw [Net.Http.HttpRequestException]::new('Not found', $null, [Net.HttpStatusCode]::NotFound)
+        }
+        $asset = "revit-model-mcp-addin-$releaseVersion-R26.zip"
+        $hash = (Get-FileHash (Join-Path $tempRoot $asset) -Algorithm SHA256).Hash
+        if ($script:case -eq 'mismatch') { $hash = '0' * 64 }
+        if ($script:case -eq 'missingEntry') { $asset = 'another.zip' }
+        Set-Content -LiteralPath $OutFile -Value "$hash  $asset"
+    }
+    else { Set-Content -LiteralPath $OutFile -Value 'payload' }
+}
+function Expand-Archive {
+    param($LiteralPath, $DestinationPath)
+    $folder = Join-Path $DestinationPath 'RevitModelMcp'
+    New-Item $folder -ItemType Directory | Out-Null
+    Set-Content (Join-Path $folder 'RevitModelMcp.dll') 'dll'
+    Set-Content (Join-Path $DestinationPath 'RevitModelMcp.addin') '<RevitAddIns><AddIn><Assembly>x</Assembly></AddIn></RevitAddIns>'
+}
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+New-Item $root -ItemType Directory | Out-Null
+try {
+    $Source = 'Release'; $headers = @{}
+    foreach ($case in 'match', 'mismatch', 'missingEntry', 'old404', 'new404', 'oldAbsent', 'newAbsent') {
+        $script:case = $case
+        $releaseVersion = if ($case -like 'old*') { '0.2.0' } else { '0.3.0' }
+        $releaseTag = "v$releaseVersion"
+        $tempRoot = Join-Path $root $case
+        New-Item $tempRoot -ItemType Directory | Out-Null
+        $script:checksums = $null
+        $script:releaseAssets = @("revit-model-mcp-addin-$releaseVersion-R26.zip")
+        if ($case -notin 'oldAbsent', 'newAbsent') { $script:releaseAssets += 'SHA256SUMS.txt' }
+        $failed = $false
+        try { $output = Get-Payload '2026' 3>&1 6>&1 | Out-String }
+        catch {
+            $failed = $true
+            $output = $_.Exception.Message
+        }
+        if ($case -in 'match', 'old404', 'oldAbsent') {
+            if ($failed) { throw "$case failed: $output" }
+            if ($case -like 'old*' -and $output -notmatch 'predates checksums') {
+                throw "$case did not warn about missing checksums"
+            }
+            if ($case -eq 'match' -and @($output -split "`n" | Where-Object {
+                $_.Trim() -eq "Verified SHA256 of revit-model-mcp-addin-$releaseVersion-R26.zip."
+            }).Count -ne 1) { throw "Checksum verification was not reported once: $output" }
+        }
+        elseif (!$failed) { throw "$case accepted an invalid checksum" }
+        elseif ($case -eq 'mismatch' -and $output -notmatch 'SHA256 mismatch') {
+            throw "Mismatch did not report the hash: $output"
+        }
+        elseif ($case -eq 'missingEntry' -and $output -notmatch 'Expected one SHA256 checksum') {
+            throw "Missing entry was not reported: $output"
+        }
+        elseif ($case -eq 'newAbsent' -and $output -notmatch 'Choose version 0.3.0 or later') {
+            throw "Missing checksum file was not reported: $output"
+        }
+        elseif ($case -eq 'new404' -and $output -notmatch 'Not found') {
+            throw "Missing checksum download was not reported: $output"
+        }
     }
 }
 finally { Remove-Item $root -Recurse -Force }

@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import json
+import sys
+from ctypes import wintypes
 from datetime import datetime, timezone
 from pathlib import Path
+from types import ModuleType
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
+from revit_model_mcp import pipe_host
 from revit_model_mcp.pipe_host import (
     PIPE_PROTOCOL,
     LocalPipeHost,
@@ -17,6 +22,69 @@ from revit_model_mcp.revit_channel import CLIENT_ID, ReadJob, RevitReadChannel
 
 PID = 4242
 INSTANCE_ID = "0f8fad5bd9cb469fa16570867728950e"
+
+
+def mock_windows_pipe(monkeypatch, server_pid: int | None):
+    pipe = MagicMock()
+    windows_utils = ModuleType("asyncio.windows_utils")
+    windows_utils.PipeHandle = MagicMock(return_value=pipe)
+    monkeypatch.setitem(sys.modules, "asyncio.windows_utils", windows_utils)
+    kernel32 = MagicMock()
+    kernel32.CreateFileW.return_value = 123
+    if server_pid is None:
+        del kernel32.GetNamedPipeServerProcessId
+    else:
+
+        def get_server_pid(_handle, result):
+            ctypes.cast(result, ctypes.POINTER(wintypes.ULONG)).contents.value = server_pid
+            return True
+
+        kernel32.GetNamedPipeServerProcessId.side_effect = get_server_pid
+    monkeypatch.setattr(
+        pipe_host.ctypes, "WinDLL", lambda *_args, **_kwargs: kernel32, raising=False
+    )
+    return kernel32, pipe
+
+
+def test_windows_pipe_rejects_different_server_process(monkeypatch) -> None:
+    kernel32, pipe = mock_windows_pipe(monkeypatch, PID + 1)
+
+    try:
+        pipe_host._open_verified_pipe(PID, pipe_host.pipe_address(PID))
+    except PipeDisconnectedError as error:
+        assert "does not match selected process" in str(error)
+    else:
+        raise AssertionError("The pipe from another process was accepted.")
+
+    kernel32.GetNamedPipeServerProcessId.assert_called_once()
+    pipe.close.assert_called_once()
+
+
+def test_windows_pipe_accepts_matching_server_process_with_identification_qos(monkeypatch) -> None:
+    kernel32, pipe = mock_windows_pipe(monkeypatch, PID)
+
+    opened = pipe_host._open_verified_pipe(PID, pipe_host.pipe_address(PID))
+
+    assert opened is pipe
+    pipe.close.assert_not_called()
+    assert (
+        kernel32.CreateFileW.call_args.args[5]
+        & (pipe_host.SECURITY_SQOS_PRESENT | pipe_host.SECURITY_IDENTIFICATION)
+        == pipe_host.SECURITY_SQOS_PRESENT | pipe_host.SECURITY_IDENTIFICATION
+    )
+
+
+def test_windows_pipe_rejects_unavailable_server_process_check(monkeypatch) -> None:
+    _, pipe = mock_windows_pipe(monkeypatch, None)
+
+    try:
+        pipe_host._open_verified_pipe(PID, pipe_host.pipe_address(PID))
+    except PipeDisconnectedError as error:
+        assert "Update Windows or use the file channel" in str(error)
+    else:
+        raise AssertionError("The pipe was accepted without a process check.")
+
+    pipe.close.assert_called_once()
 
 
 def write_heartbeat(directory: Path, protocols: list[str] | None) -> None:

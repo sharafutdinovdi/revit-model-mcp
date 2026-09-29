@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import copy
+import hashlib
+import hmac
+import http.client
 import json
 import os
 import tempfile
@@ -49,12 +53,38 @@ class HttpHost:
         self._response: str | None = None
         self._payload: dict[str, Any] = {}
         self._identity: dict[str, Any] | None = None
+        self._verified_token: str | None = None
 
     async def health(self) -> dict[str, Any]:
-        _, body, _ = await self._request("GET", "/health", authenticated=False)
+        self._verified_token = None
+        token = self.token
+        nonce = os.urandom(32) if token else None
+        headers = (
+            {"X-RevitMcp-Nonce": base64.urlsafe_b64encode(nonce).rstrip(b"=").decode("ascii")}
+            if nonce is not None
+            else None
+        )
+        _, body, response_headers = await self._request(
+            "GET", "/health", authenticated=False, extra_headers=headers
+        )
+        if nonce is not None:
+            expected = base64.urlsafe_b64encode(
+                hmac.new(
+                    token.encode("utf-8"), b"revit-model-mcp/health/v1\n" + nonce, hashlib.sha256
+                ).digest()
+            ).rstrip(b"=")
+            actual = response_headers.get("X-RevitMcp-Proof", "").encode("utf-8")
+            if not hmac.compare_digest(actual, expected):
+                raise RevitChannelError(
+                    "The HTTP endpoint did not prove the add-in token. "
+                    "Update the add-in, or another process may be using the port. "
+                    "Check that REVIT_MCP_TOKEN or --token matches the workstation settings.json."
+                )
         result = self._json(body)
         if result.get("ok") is not True or not isinstance(result.get("processId"), int):
             raise ResponseParseError("Invalid Revit health response.")
+        if nonce is not None:
+            self._verified_token = token
         return result
 
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
@@ -75,12 +105,14 @@ class HttpHost:
     async def select_job(self, job: ReadJob) -> tuple[HttpHost, ReadJob]:
         instance = select_instance(await self.list_revit_instances(), job)
         selected = copy.copy(self)
+        selected._verified_token = None
         selected._identity = instance
         return selected, replace(
             job, payload={**job.payload, "targetProcessId": instance["processId"]}
         )
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
+        self._verified_token = None
         if self._identity is not None:
             status = await self.health()
             if any(
@@ -223,8 +255,11 @@ class HttpHost:
         body: bytes | None = None,
         timeout: float = 10,
         authenticated: bool = True,
+        extra_headers: dict[str, str] | None = None,
     ):
         headers = {"Accept": "application/json, image/png"}
+        if extra_headers is not None:
+            headers.update(extra_headers)
         if body is not None:
             headers["Content-Type"] = "application/json"
         if authenticated:
@@ -234,6 +269,10 @@ class HttpHost:
                 raise RevitChannelError(
                     "Set REVIT_MCP_TOKEN or --token to the token in the workstation settings.json."
                 )
+            if self._verified_token != self.token:
+                await self.health()
+            if self._verified_token != self.token:
+                raise RevitChannelError("The HTTP endpoint token proof is no longer current.")
             headers["Authorization"] = "Bearer " + self.token
         request = urllib.request.Request(
             self.host + path, data=body, headers=headers, method=method
@@ -245,6 +284,8 @@ class HttpHost:
                     return response.status, response.read(), response.headers
             except urllib.error.HTTPError as error:
                 error.close()
+                if error.code == 401:
+                    self._verified_token = None
                 messages = {
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
                     403: "Revit denied this request. Actions are refused while the workstation is in read-only mode.",
@@ -254,7 +295,13 @@ class HttpHost:
                 raise RevitChannelError(
                     messages.get(error.code, f"Revit endpoint returned HTTP {error.code}.")
                 ) from None
-            except (TimeoutError, urllib.error.URLError, OSError) as error:
+            except (
+                TimeoutError,
+                urllib.error.URLError,
+                OSError,
+                http.client.HTTPException,
+            ) as error:
+                self._verified_token = None
                 if isinstance(error, TimeoutError) or isinstance(
                     getattr(error, "reason", None), TimeoutError
                 ):

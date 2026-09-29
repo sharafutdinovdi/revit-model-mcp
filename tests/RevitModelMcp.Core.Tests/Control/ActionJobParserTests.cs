@@ -23,6 +23,38 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task DocumentConfirmationTokens_IssuePrunesExpiredTokens()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var tokens = new DocumentConfirmationTokens(() => now);
+        var expired = tokens.Issue("save-document", "document-1", "path=A", "state-1");
+        now = now.AddMinutes(5);
+        var current = tokens.Issue("save-document", "document-1", "path=A", "state-1");
+        now = now.AddMinutes(-5);
+
+        await Assert.That(tokens.Consume(expired, "save-document", "document-1", "path=A", "state-1"))
+            .IsEqualTo(DocumentConfirmationResult.Invalid);
+        await Assert.That(tokens.Consume(current, "save-document", "document-1", "path=A", "state-1"))
+            .IsEqualTo(DocumentConfirmationResult.Valid);
+    }
+
+    [Test]
+    public async Task DocumentConfirmationTokens_IssueEvictsOldestBeyondOneHundred()
+    {
+        var tokens = new DocumentConfirmationTokens();
+        var issued = Enumerable.Range(0, 101)
+            .Select(_ => tokens.Issue("save-document", "document-1", "path=A", "state-1"))
+            .ToArray();
+
+        await Assert.That(tokens.Consume(issued[0], "save-document", "document-1", "path=A", "state-1"))
+            .IsEqualTo(DocumentConfirmationResult.Invalid);
+        await Assert.That(tokens.Consume(issued[1], "save-document", "document-1", "path=A", "state-1"))
+            .IsEqualTo(DocumentConfirmationResult.Valid);
+        await Assert.That(tokens.Consume(issued[100], "save-document", "document-1", "path=A", "state-1"))
+            .IsEqualTo(DocumentConfirmationResult.Valid);
+    }
+
+    [Test]
     public async Task DocumentConfirmationBinding_IssueThenConfirm_SucceedsDespiteUnrelatedFieldChanges()
     {
         var tokens = new DocumentConfirmationTokens();

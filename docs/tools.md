@@ -57,7 +57,7 @@ Coordinator location and link lists are capped at 100 without pagination; locati
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
 
-Offsets are zero-based row counts; limits are positive row counts.
+Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
 Other numeric filter values follow document display units; returned query values carry a `unit` field when available.
 See the [feed format](feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.
