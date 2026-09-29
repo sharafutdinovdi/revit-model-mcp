@@ -11,4 +11,8 @@
     <Configurations>$(Configurations);Release.R22;Release.R23;Release.R24;Release.R25;Release.R26</Configurations>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
 </Project>

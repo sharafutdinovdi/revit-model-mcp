@@ -23,12 +23,6 @@
           "Microsoft.NETFramework.ReferenceAssemblies.net48": "1.0.3"
         }
       },
-      "Microsoft.NETFramework.ReferenceAssemblies.net48": {
-        "type": "Direct",
-        "requested": "[1.0.3, )",
-        "resolved": "1.0.3",
-        "contentHash": "zMk4D+9zyiEWByyQ7oPImPN/Jhpj166Ky0Nlla4eXlNL8hI/BtSJsgR8Inldd4NNpIAH3oh8yym0W2DrhXdSLQ=="
-      },
       "Nice3point.Revit.Api.RevitAPI": {
         "type": "Direct",
         "requested": "[2024.0.0, 2024.0.0]",
@@ -58,6 +52,11 @@
         "requested": "[11.0.1, )",
         "resolved": "11.0.1",
         "contentHash": "9Jqm26Yb5D833BSU6rH3taFB8Y+A67Y3GJRC6XFEBKc2ueQSfd0B4bU3cAGsUNrWUJd1V9Sgm5U7I8SNG5zJvA=="
+      },
+      "Microsoft.NETFramework.ReferenceAssemblies.net48": {
+        "type": "Transitive",
+        "resolved": "1.0.3",
+        "contentHash": "zMk4D+9zyiEWByyQ7oPImPN/Jhpj166Ky0Nlla4eXlNL8hI/BtSJsgR8Inldd4NNpIAH3oh8yym0W2DrhXdSLQ=="
       },
       "revitmodelmcp.core": {
         "type": "Project"
