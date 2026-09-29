@@ -22,6 +22,11 @@ Revit Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+The [code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) lists what is signed, team roles and the approval rule.
+
 ## Install
 
 ### Claude Desktop bundle
