@@ -20,11 +20,7 @@ namespace RevitModelMcp;
 [UsedImplicitly]
 public sealed class Application : ExternalApplication
 {
-    private static readonly string TriggerFilePath = Path.Combine(
-        Output.SnapshotFileWriter.OutputDirectory,
-        "trigger.txt");
-
-    private readonly ControlChannel _controlChannel = new(TriggerFilePath);
+    private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
     private ExternalEventRequestQueue? _requestQueue;
@@ -40,6 +36,14 @@ public sealed class Application : ExternalApplication
     {
         PluginLog.Start();
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
+        var (fileChannelEnabled, fileChannelWarning) = Output.SnapshotFileWriter.InitializeChannel();
+        if (fileChannelWarning is not null)
+            PluginLog.Warn(fileChannelWarning);
+        var triggerFilePath = Path.Combine(Output.SnapshotFileWriter.OutputDirectory, "trigger.txt");
+        _controlChannel = new ControlChannel(triggerFilePath)
+        {
+            FileChannelEnabled = fileChannelEnabled
+        };
         _eventHandler = new ControlExternalEventHandler(_controlChannel);
         _externalEvent = Autodesk.Revit.UI.ExternalEvent.Create(_eventHandler);
         _requestQueue = new ExternalEventRequestQueue(() =>
@@ -50,16 +54,12 @@ public sealed class Application : ExternalApplication
             return result is ExternalEventRequest.Accepted or ExternalEventRequest.Pending;
         }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
-        var fileChannelRefusal = Output.SnapshotFileWriter.InitializeChannel();
-        _controlChannel.FileChannelEnabled = fileChannelRefusal is null;
-        if (fileChannelRefusal is not null)
-            PluginLog.Warn(fileChannelRefusal);
         if (_controlChannel.FileChannelEnabled)
         {
-            if (File.Exists(TriggerFilePath))
-                File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            if (File.Exists(triggerFilePath))
+                File.Move(triggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
             _triggerWatcher = new TriggerFileWatcher(
-                TriggerFilePath,
+                triggerFilePath,
                 RequestExecution,
                 exception => PluginLog.Error("Trigger watcher failed.", exception),
                 TimeSpan.FromSeconds(10));

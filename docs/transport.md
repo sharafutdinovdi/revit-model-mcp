@@ -309,8 +309,8 @@ Set `REVIT_MCP_CHANNEL_DIR` to an absolute Windows path to override it.
 The server and Revit must use the same directory.
 The Revit environment must contain the override before Revit starts.
 The add-in keeps new channel directories private and restricts existing default directories owned by the current user.
-If `REVIT_MCP_CHANNEL_DIR` points to a directory another untrusted account can write, the add-in disables the file channel and does not publish a heartbeat there.
-Use a private directory to restore discovery; the pipe listener and any configured HTTP listener still start, and HTTP can connect directly.
+If another account can write to the override directory, the add-in ignores the override and uses the private default directory for heartbeats, jobs, responses and exports.
+Set `REVIT_MCP_CHANNEL_DIR` on the server to that private default directory or remove the server override so discovery uses the same directory.
 
 Discovery reads `ROOT\instance_<pid>.json` only, where `ROOT` is the configured directory.
 Each v2 add-in owns `ROOT\instances\<pid>\`:

@@ -6,7 +6,7 @@ Include the affected version and steps to reproduce.
 Do not include credentials or confidential model data.
 Keep undisclosed vulnerabilities out of public issues and Discussions.
 
-The add-in keeps the channel directory private and disables the file channel if another untrusted account can write to it.
+The add-in keeps the channel directory private. If another account can write to the override directory, the add-in uses the private default directory instead. Set `REVIT_MCP_CHANNEL_DIR` on the server to that directory or remove the server override.
 Responses can contain model paths and parameter values.
 See [server privacy settings](server/README.md#responses-and-privacy).
 

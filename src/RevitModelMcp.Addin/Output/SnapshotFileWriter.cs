@@ -55,7 +55,7 @@ internal static class SnapshotFileWriter
 
     internal static string StartedUtc { get; } = DateTime.UtcNow.ToString("O");
 
-    internal static string? InitializeChannel()
+    internal static (bool Enabled, string? Warning) InitializeChannel()
     {
         SecurityIdentifier currentUser;
         try
@@ -65,14 +65,14 @@ internal static class SnapshotFileWriter
         }
         catch (Exception exception)
         {
-            return $"File channel disabled: Current Windows identity is unavailable ({exception.GetType().Name}).";
+            return (false, $"File channel disabled: Current Windows identity is unavailable ({exception.GetType().Name}).");
         }
         try
         {
             EnsureDirectory(RootDirectory, currentUser, OverrideRootDirectory is null);
             EnsureDirectory(Path.Combine(RootDirectory, "instances"), currentUser, OverrideRootDirectory is null);
             EnsureDirectory(OutputDirectory, currentUser, OverrideRootDirectory is null);
-            return null;
+            return (true, null);
         }
         catch (Exception exception)
         {
@@ -92,10 +92,11 @@ internal static class SnapshotFileWriter
                 }
                 catch (Exception fallbackException)
                 {
-                    return $"File channel disabled: {reason} Private response directory failed ({fallbackException.GetType().Name}). Check REVIT_MCP_CHANNEL_DIR permissions.";
+                    return (false, $"File channel disabled: {reason} Private default directory failed ({fallbackException.GetType().Name}).");
                 }
+                return (true, $"File channel override refused: {reason} Using the private default directory.");
             }
-            return $"File channel disabled: {reason} Check the channel directory ownership and write permissions, including REVIT_MCP_CHANNEL_DIR when set.";
+            return (false, $"File channel disabled: {reason} Check the channel directory ownership and write permissions.");
         }
     }
 
