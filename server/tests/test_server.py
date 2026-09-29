@@ -538,6 +538,12 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             config["project"]["scripts"]["revit-model-mcp"], "revit_model_mcp.server:main"
         )
 
+    def test_bundle_win32_launcher_escapes_version_floor(self) -> None:
+        manifest = json.loads((REPOSITORY_ROOT / "bundle/manifest.json").read_text())
+        command = manifest["server"]["mcp_config"]["platform_overrides"]["win32"]["args"][1]
+        self.assertEqual(command.count("revit-model-mcp^>="), 2)
+        self.assertNotIn('"', command)
+
     def test_host_configuration(self) -> None:
         local = revit_server.create_host("local")
         self.assertIsInstance(local, LocalPipeHost)

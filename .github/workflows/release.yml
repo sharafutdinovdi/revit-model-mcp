@@ -163,11 +163,14 @@ jobs:
               wheel, = Path('server/dist').glob('*.whl')
               package = f'https://github.com/{os.environ["GITHUB_REPOSITORY"]}/releases/download/{os.environ["RELEASE_TAG"]}/{wheel.name}'
               launcher = f'uvx --from {package} revit-model-mcp'
+              win32_launcher = launcher
           else:
               package = f'"revit-model-mcp>={version}"'
               launcher = f'uvx --offline --prerelease=disallow {package} || uvx --prerelease=disallow {package}'
+              win32_package = f'revit-model-mcp^>={version}'
+              win32_launcher = f'uvx --offline --prerelease=disallow {win32_package} || uvx --prerelease=disallow {win32_package}'
           config['args'] = ['-c', launcher]
-          config['platform_overrides']['win32']['args'] = ['/c', launcher]
+          config['platform_overrides']['win32']['args'] = ['/c', win32_launcher]
           path.write_text(json.dumps(manifest, indent=2) + '\n')
       - name: Validate and pack Claude Desktop bundle
         shell: pwsh

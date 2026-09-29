@@ -42,7 +42,7 @@
           "command": "cmd",
           "args": [
             "/c",
-            "uvx --offline --prerelease=disallow \"revit-model-mcp>=0.7.0\" || uvx --prerelease=disallow \"revit-model-mcp>=0.7.0\""
+            "uvx --offline --prerelease=disallow revit-model-mcp^>=0.7.0 || uvx --prerelease=disallow revit-model-mcp^>=0.7.0"
           ]
         }
       }

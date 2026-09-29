@@ -42,8 +42,9 @@ jobs:
           assert.equal(manifest.user_config.REVIT_MCP_READ_ONLY.default, false);
           assert.equal(manifest.user_config.REVIT_MCP_TOKEN.sensitive, true);
           const launcher = 'uvx --offline --prerelease=disallow "revit-model-mcp>=0.7.0" || uvx --prerelease=disallow "revit-model-mcp>=0.7.0"';
+          const win32Launcher = 'uvx --offline --prerelease=disallow revit-model-mcp^>=0.7.0 || uvx --prerelease=disallow revit-model-mcp^>=0.7.0';
           assert.equal(manifest.server.mcp_config.platform_overrides.win32.command, 'cmd');
-          assert.deepEqual(manifest.server.mcp_config.platform_overrides.win32.args, ['/c', launcher]);
+          assert.deepEqual(manifest.server.mcp_config.platform_overrides.win32.args, ['/c', win32Launcher]);
           for (const userConfig of [{}, ...[true, false].flatMap(redact => [true, false].map(readOnly => ({
             REVIT_MCP_REDACT_PATHS: redact, REVIT_MCP_READ_ONLY: readOnly,
             REVIT_MCP_HOST: 'ssh:test-workstation', REVIT_MCP_TOKEN: 'test-token',
