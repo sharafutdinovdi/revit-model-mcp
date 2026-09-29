@@ -12,10 +12,10 @@ jobs:
   bundle:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22'
       - name: Install MCPB CLI
@@ -56,7 +56,7 @@ jobs:
           }
           console.log('PASS: 18 documented tools, default settings, all boolean combinations and host/token forwarding');
           JAVASCRIPT
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: bundle
           path: ${{ runner.temp }}/revit-model-mcp.mcpb
@@ -65,8 +65,8 @@ jobs:
   test:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
       - name: Build Revit 2026
@@ -77,14 +77,14 @@ jobs:
         run: dotnet build src/RevitModelMcp.Addin -c Release.R27 -p:DeployAddin=false
       - name: Test core
         run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
       - name: Install uv
-        run: pip install uv
+        run: pip install uv==0.12.20
       - name: Test server
         working-directory: server
-        run: uv run --with pytest pytest -q
+        run: uv run --with pytest==9.1.1 pytest -q
       - name: Build installers
         shell: pwsh
         env:
@@ -104,7 +104,11 @@ jobs:
             $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn /norestart TARGETDIR=`"$target`" /l*v `"$log`"" -Wait -PassThru
             if ($process.ExitCode -ne 0) { throw "MSI extraction failed: $($process.ExitCode)" }
             $files = @(Get-ChildItem $target -Recurse -File)
-            if ($files | Where-Object Name -Like 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
+            $blocked = @($files | Where-Object {
+              $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
+              ($_.Extension -eq '.dll' -and $_.VersionInfo.CompanyName -match 'Autodesk')
+            })
+            if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
             $manifests = @($files | Where-Object Name -EQ 'RevitModelMcp.addin')
             if ($manifests.Count -ne 3) { throw 'Unexpected Revit year count in MSI' }
             foreach ($year in '22', '26', '27') {
@@ -113,7 +117,7 @@ jobs:
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year assembly in MSI" }
               Write-Host "ASSERT: $($msi.Name) contains R$year manifest and assembly"
             }
-            Write-Host "ASSERT: $($msi.Name) contains no RevitAPI DLLs"
+            Write-Host "ASSERT: $($msi.Name) contains no Autodesk DLLs"
           }
       - name: Smoke test single-user MSI
         shell: pwsh
@@ -171,13 +175,13 @@ jobs:
           }
       - name: Upload MSI logs on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installer-logs
           path: |
             ${{ runner.temp }}/mcp-*.log
             ${{ runner.temp }}/*-extract.log
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: installers
           path: output/*.msi
@@ -202,21 +206,25 @@ jobs:
             Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
             Copy-Item src/RevitModelMcp.Addin/RevitModelMcp.addin, LICENSE, THIRD-PARTY-NOTICES.md $stage
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year add-in" }
-            if (Get-ChildItem $stage -Recurse -Filter 'RevitAPI*.dll') { throw 'Revit API binaries must not be distributed' }
+            $blocked = @(Get-ChildItem $stage -Recurse -Filter '*.dll' -File | Where-Object {
+              $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
+              $_.VersionInfo.CompanyName -match 'Autodesk'
+            })
+            if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
           }
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: revit-model-mcp-addin-R22
           retention-days: 90
           path: artifacts/addin-R22/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: revit-model-mcp-addin-R26
           retention-days: 90
           path: artifacts/addin-R26/
           if-no-files-found: error
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: revit-model-mcp-addin-R27
           retention-days: 90
@@ -227,4 +235,4 @@ jobs:
         run: |
           uv build
           if ($LASTEXITCODE -ne 0) { throw 'Python build failed' }
-          uvx twine check dist/*
+          uvx twine==7.0.0 check dist/*
