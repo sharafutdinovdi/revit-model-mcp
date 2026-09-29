@@ -56,7 +56,8 @@ internal sealed class PipeChannel : IDisposable
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
         {
-            PluginLog.Warn($"Pipe listener disabled: the first instance could not be created. Type='{exception.GetType().Name}'.");
+            PluginLog.Warn($"Pipe listener disabled: the first instance could not be created. " +
+                $"Type='{exception.GetType().Name}', HResult=0x{exception.HResult:X8}. The file channel remains available.");
             return;
         }
         PipeName = _pipeName;
@@ -142,6 +143,7 @@ internal sealed class PipeChannel : IDisposable
         while (server is not null)
         {
             NamedPipeServerStream? connected = server;
+            NamedPipeServerStream? failedListener = null;
             server = null;
             _listening = connected;
             try
@@ -158,7 +160,7 @@ internal sealed class PipeChannel : IDisposable
             catch (IOException)
             {
                 // The client disappeared before the connection completed.
-                connected.Dispose();
+                failedListener = connected;
                 connected = null;
             }
             try
@@ -168,6 +170,10 @@ internal sealed class PipeChannel : IDisposable
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 PluginLog.Error("Pipe listener stopped: the next pipe instance could not be created.", exception);
+            }
+            finally
+            {
+                failedListener?.Dispose();
             }
             if (connected is not null) _ = Task.Run(() => HandleAsync(connected));
         }
