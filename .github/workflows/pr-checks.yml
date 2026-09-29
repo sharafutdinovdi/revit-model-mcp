@@ -40,11 +40,16 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      - name: Restore solution with locks
+        env:
+          Configuration: Debug.R26
+          DeployAddin: 'false'
+        run: dotnet restore RevitModelMcp.sln --locked-mode
       - name: Verify C# formatting
         env:
           Configuration: Debug.R26
           DeployAddin: 'false'
-        run: dotnet format RevitModelMcp.sln --verify-no-changes --verbosity minimal
+        run: dotnet format RevitModelMcp.sln --no-restore --verify-no-changes --verbosity minimal
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -75,7 +80,7 @@ jobs:
         {
           "Check Conventional Commit title": "use a Conventional Commit PR title, e.g. fix(server): ...",
           "Check workflows with actionlint": "actionlint",
-          "Verify C# formatting": "$env:Configuration = 'Debug.R26'; $env:DeployAddin = 'false'; dotnet format RevitModelMcp.sln --verify-no-changes --verbosity minimal",
+          "Verify C# formatting": "$env:Configuration = 'Debug.R26'; $env:DeployAddin = 'false'; dotnet restore RevitModelMcp.sln --locked-mode; dotnet format RevitModelMcp.sln --no-restore --verify-no-changes --verbosity minimal",
           "Install documentation dependencies": "pip install -r docs/requirements.txt",
           "Build documentation": "mkdocs build --strict",
           "Install Ruff": "pip install ruff==0.16.7",

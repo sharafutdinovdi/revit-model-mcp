@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "dependencies": {
+    ".NETFramework,Version=v4.8": {
+      "ILRepack": {
+        "type": "Direct",
+        "requested": "[2.0.46, )",
+        "resolved": "2.0.46",
+        "contentHash": "A0aJSYJQfbXQXLrKqT4J3FtF9/+y6twMNCGYuzRM8I1C9TutkNkkrlQR/15yUH7Ik3DNiWOJRlsdOkB7H3XK5Q=="
+      },
+      "JetBrains.Annotations": {
+        "type": "Direct",
+        "requested": "[2026.2.0, )",
+        "resolved": "2026.2.0",
+        "contentHash": "drvAEaI7Xf4wU6dx4UTB9MoZWXZlraaQ0qoeThPQ411FxNhId7QdUTukIC9I8aUHP0ycAaGwZNKqSvfOZQvUlg=="
+      },
+      "Microsoft.NETFramework.ReferenceAssemblies": {
+        "type": "Direct",
+        "requested": "[1.0.3, )",
+        "resolved": "1.0.3",
+        "contentHash": "vUc9Npcs14QsyOD01tnv/m8sQUnGTGOw1BCmKcv77LBJY7OxhJ+zJF7UD/sCL3lYNFuqmQEVlkfS4Quif6FyYg==",
+        "dependencies": {
+          "Microsoft.NETFramework.ReferenceAssemblies.net48": "1.0.3"
+        }
+      },
+      "Nice3point.Revit.Api.RevitAPI": {
+        "type": "Direct",
+        "requested": "[2022.1.1, 2022.1.1]",
+        "resolved": "2022.1.1",
+        "contentHash": "PseFDiNFVKGrqVv4Em8vDFisKaB11d645EgJoAQlmm75W2LB/5D1H2/fM7pmsVexaXIbMh+q21CXUqthzQtyQA=="
+      },
+      "Nice3point.Revit.Api.RevitAPIUI": {
+        "type": "Direct",
+        "requested": "[2022.1.1, 2022.1.1]",
+        "resolved": "2022.1.1",
+        "contentHash": "XWHzkVud/RMBCVEUeYSjzqCldvfYYcE7GLQGF4jnF1DzUx3TT+mxUMfyFjzXAiSwtnD/pOD7JEoHseGIiAxlcg=="
+      },
+      "Nice3point.Revit.Extensions": {
+        "type": "Direct",
+        "requested": "[2022.*, )",
+        "resolved": "2022.5.5",
+        "contentHash": "Tv7LDMhNXT8Gt2zZkwII434ULjFJCS4IrwVksiEopZvfARHOPXJWBv/sVlDG4ENUrUlgGRi/97r4e613hEbTDg=="
+      },
+      "Nice3point.Revit.Toolkit": {
+        "type": "Direct",
+        "requested": "[2022.*, )",
+        "resolved": "2022.4.0",
+        "contentHash": "BKKAccXR7nv//gmj5QCrjvQxLfj+oC6B6gs4Vy847Lnwrfe3SRrrkFf/XdRe58XMcm6pjex/r0Ot7doYkxAYKg=="
+      },
+      "Polyfill": {
+        "type": "Direct",
+        "requested": "[11.0.1, )",
+        "resolved": "11.0.1",
+        "contentHash": "9Jqm26Yb5D833BSU6rH3taFB8Y+A67Y3GJRC6XFEBKc2ueQSfd0B4bU3cAGsUNrWUJd1V9Sgm5U7I8SNG5zJvA=="
+      },
+      "Microsoft.NETFramework.ReferenceAssemblies.net48": {
+        "type": "Transitive",
+        "resolved": "1.0.3",
+        "contentHash": "zMk4D+9zyiEWByyQ7oPImPN/Jhpj166Ky0Nlla4eXlNL8hI/BtSJsgR8Inldd4NNpIAH3oh8yym0W2DrhXdSLQ=="
+      },
+      "revitmodelmcp.core": {
+        "type": "Project"
+      }
+    }
+  }
+}

@@ -55,17 +55,25 @@ jobs:
           $packageVersion = python -c "import tomllib; print(tomllib.load(open('server/pyproject.toml', 'rb'))['project']['version'])"
           if ($LASTEXITCODE -ne 0 -or $packageVersion -ne $version) { throw 'Tag and Python package versions must match' }
           "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Restore tests with lock
+        run: dotnet restore tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --locked-mode
       - name: Test core
-        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
+        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --no-restore
       - name: Test server
         working-directory: server
-        run: uv run --with pytest==9.1.1 pytest -q
+        run: |
+          uv sync --frozen
+          uv run --frozen --with pytest==9.1.1 pytest -q
+      - name: Restore Revit API reference pin helper with lock
+        run: dotnet restore build/RevitApiReferencePin/RevitApiReferencePin.csproj --locked-mode -p:Configuration=Release
       - name: Build and zip Revit 2022-2027
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts/release | Out-Null
           foreach ($year in '22', '23', '24', '25', '26', '27') {
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
+            if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION" --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year build failed" }
             $assembly = "src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll"
             $assemblyVersion = [System.Reflection.AssemblyName]::GetAssemblyName($assembly).Version.ToString(3)
@@ -84,12 +92,19 @@ jobs:
             if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
             Compress-Archive -Path "$stage/*" -DestinationPath "artifacts/release/revit-model-mcp-addin-$env:RELEASE_VERSION-R$year.zip"
           }
+      - name: Restore build and installer projects with locks
+        shell: pwsh
+        run: |
+          dotnet restore build/Build.csproj --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Build project locked restore failed' }
+          dotnet restore build/install/Installer.csproj --locked-mode -p:Configuration=Release
+          if ($LASTEXITCODE -ne 0) { throw 'Installer locked restore failed' }
       - name: Build installers
         shell: pwsh
         env:
           Build__Version: ${{ env.RELEASE_VERSION }}
         run: |
-          dotnet run --project build -- pack --no-build
+          dotnet run --no-restore --project build -- pack --no-build
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
           $installers = @(Get-ChildItem output/*.msi)
           if ($installers.Count -ne 2) { throw "Expected two MSIs, found $($installers.Count)" }
@@ -391,7 +406,7 @@ jobs:
             exit 1
           fi
           bundle="$(realpath "${bundles[0]}")"
-          uv run --directory server python ../build/bundle_manifest.py --smithery "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" --from "$bundle"
+          uv run --frozen --directory server python ../build/bundle_manifest.py --smithery "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" --from "$bundle"
           npx --yes smithery@1.2.0 mcp publish "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" -n sharafutdinovdi/revit-model-mcp
 
   winget:

@@ -49,7 +49,7 @@
     <PackageReference Include="ILRepack" Version="2.0.46" PrivateAssets="all"/>
     <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" PrivateAssets="all"/>
     <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
   </ItemGroup>
 
   <ItemGroup>
@@ -74,7 +74,7 @@
           Condition="'$(IsRepackable)' == 'true'">
     <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
            Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
-    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
   </Target>
 
 </Project>

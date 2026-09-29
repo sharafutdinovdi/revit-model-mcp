@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0-windows7.0": {
+      "ILRepack": {
+        "type": "Direct",
+        "requested": "[2.0.46, )",
+        "resolved": "2.0.46",
+        "contentHash": "A0aJSYJQfbXQXLrKqT4J3FtF9/+y6twMNCGYuzRM8I1C9TutkNkkrlQR/15yUH7Ik3DNiWOJRlsdOkB7H3XK5Q=="
+      },
+      "JetBrains.Annotations": {
+        "type": "Direct",
+        "requested": "[2026.2.0, )",
+        "resolved": "2026.2.0",
+        "contentHash": "drvAEaI7Xf4wU6dx4UTB9MoZWXZlraaQ0qoeThPQ411FxNhId7QdUTukIC9I8aUHP0ycAaGwZNKqSvfOZQvUlg=="
+      },
+      "Nice3point.Revit.Api.RevitAPI": {
+        "type": "Direct",
+        "requested": "[2025.0.2, 2025.0.2]",
+        "resolved": "2025.0.2",
+        "contentHash": "cfkgSjcWg0cqTgLO4zCsJRgZgoB6uB8vkcBsAGv2W6TrIkSlJ5D/Ys/xTj9my0PEwNF9vmDtxv1n2zSBq8Ni8Q=="
+      },
+      "Nice3point.Revit.Api.RevitAPIUI": {
+        "type": "Direct",
+        "requested": "[2025.0.2, 2025.0.2]",
+        "resolved": "2025.0.2",
+        "contentHash": "9C+HcZrsS00qf3cisRfIyl58KNrwIYOsJPTIy367mg00Y/XnSa5rvDwXQSIRZ32ZcYyE3ApB6472pyWoXdjMPQ=="
+      },
+      "Nice3point.Revit.Extensions": {
+        "type": "Direct",
+        "requested": "[2025.*, )",
+        "resolved": "2025.2.5",
+        "contentHash": "k/uUsGBaIk27sAZTSTVajxAI3gwYiO/mE/Zz2oBOz0C3PGK2PqHdz0MwsVD2Dg5ywXGuxR+q5ezKsuKok3iBZg=="
+      },
+      "Nice3point.Revit.Toolkit": {
+        "type": "Direct",
+        "requested": "[2025.*, )",
+        "resolved": "2025.2.0",
+        "contentHash": "Te+lciDB7LJ+5fK7zlwHAwLeDkAjyPgS3cz+qjVKCyJ/77hZvn+fjR6AHLWtVOat9eQoB8KsXr0AxHKEgg4ZZw=="
+      },
+      "Polyfill": {
+        "type": "Direct",
+        "requested": "[11.0.1, )",
+        "resolved": "11.0.1",
+        "contentHash": "9Jqm26Yb5D833BSU6rH3taFB8Y+A67Y3GJRC6XFEBKc2ueQSfd0B4bU3cAGsUNrWUJd1V9Sgm5U7I8SNG5zJvA=="
+      },
+      "revitmodelmcp.core": {
+        "type": "Project"
+      }
+    }
+  }
+}

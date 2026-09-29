@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net10.0-windows7.0": {
+      "WixSharp.Core": {
+        "type": "Direct",
+        "requested": "[2.14.1, )",
+        "resolved": "2.14.1",
+        "contentHash": "YTINiCKve/VspfouS/1YZSSuM/86mmf8D0PlRDBfJlshbnC+3tmAvlDU45izsxa6hHC7fMG4v6DZKrBJtMAh1w==",
+        "dependencies": {
+          "WixSharp.Msi.Core": "2.14.1",
+          "WixToolset.Dtf.WindowsInstaller": "4.0.4",
+          "WixToolset.Mba.Core": "4.0.4"
+        }
+      },
+      "WixSharp.Msi.Core": {
+        "type": "Direct",
+        "requested": "[2.14.1, )",
+        "resolved": "2.14.1",
+        "contentHash": "OFGzsojB7A8NQ5tNKi+vWPY2wOMS53FWL1W9+YAjqgJm5REX1ggBQpEUCOJaJ0/y/QMzxSpn5Dqs0Q4J/gLEFA=="
+      },
+      "WixToolset.Dtf.WindowsInstaller": {
+        "type": "Transitive",
+        "resolved": "4.0.4",
+        "contentHash": "UdwgCxyH2SZBKuUOb3ARTbIMqfqp77ShiOxmb/D98qNQjQqQS6lJXNKiVuySVs0gw9eY149T/5mA5aOh+detLg=="
+      },
+      "WixToolset.Mba.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.4",
+        "contentHash": "yGnvUE6ffRDjCR1NHJLPzm0GNgrSRm8Vc9yAh68xjo7Ag93LXqRIzD8YoD+jm1dy0kQzuhBKSqfNh1+jgBanlg=="
+      }
+    }
+  }
+}

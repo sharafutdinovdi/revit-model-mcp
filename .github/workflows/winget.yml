@@ -1,6 +1,7 @@
-# WINGET_TOKEN is a classic GitHub PAT with public_repo and workflow scopes.
-# The workflow scope is needed to sync the winget-pkgs fork.
-# Without it, manifests are generated and uploaded without submission.
+# The maintainer must provision WINGET_TOKEN from a dedicated account that owns
+# only the winget-pkgs fork. It needs public_repo and workflow scopes to sync the fork.
+# wingetcreate reads it through WINGET_CREATE_GITHUB_TOKEN, not a CLI argument.
+# Without the token, manifests are generated and uploaded without submission.
 name: WinGet
 
 on:
