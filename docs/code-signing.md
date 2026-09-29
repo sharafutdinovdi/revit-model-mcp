@@ -1,28 +1,22 @@
-# Code signing policy
+# Code signing
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+Release builds are not code-signed.
+The MSI installers, the add-in assemblies and the updater are built by the release workflow in this repository and published without an Authenticode signature.
 
-Signing covers the Windows release artifacts built by the release workflow in this repository: the MSI installers and the add-in assemblies.
-Signing is being set up; releases published before it are unsigned.
+## Verify downloads
 
-## What is signed
+Every release publishes `SHA256SUMS.txt` and a build provenance attestation for its assets.
+See [Verify downloads](security.md#verify-downloads) for the commands.
+`install.ps1` and the add-in updater check `SHA256SUMS.txt` before they install anything.
 
-Only artifacts built from this repository's source code by GitHub Actions are signed.
-Third-party libraries shipped inside the installers keep their own signatures or stay unsigned.
-Revit API assemblies are never shipped.
+## Revit's unsigned add-in prompt
 
-## Team roles
+Revit asks whether to load an unsigned add-in the first time it loads the DLL, and again whenever the DLL content or its path changes.
+Choose **Always Load** and close Revit normally; Revit keeps the decision only after a graceful exit.
+Each [automatic update](updates.md) therefore causes one prompt at the next Revit start.
 
-| Role | Members |
-|---|---|
-| Committers and reviewers | [sharafutdinovdi](https://github.com/sharafutdinovdi) |
-| Approvers | [sharafutdinovdi](https://github.com/sharafutdinovdi) |
+Organizations that deploy their own code-signing certificate can sign the installed DLLs with `install.ps1 -SignThumbprint <thumbprint>`; see [transport](transport.md).
 
-Every pull request from a contributor outside the team is reviewed by a team member before merge.
-Every signing request is approved manually by an approver.
-All team members use multi-factor authentication for GitHub and SignPath.
+## Plans
 
-## Privacy
-
-The [privacy policy](privacy.md) describes what the add-in and the server collect, where data goes, and how long it is kept.
-This program does not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it.
+I am looking for another certificate for open source builds; this page will list what is signed and how once that is in place.

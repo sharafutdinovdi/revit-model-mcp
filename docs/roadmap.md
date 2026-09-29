@@ -20,7 +20,7 @@ Milestone [v0.7: Security & delivery](https://github.com/sharafutdinovdi/revit-m
 
 - Security hardening from the September review: SSH invocation and artifact downloads, private channel directory, network path allowlist, named pipe ownership, HTTP endpoint proof, path redaction, bounded stores, pinned release tooling and verified installer downloads.
 - Delivery: a complete bundle manifest published to Smithery on release ([#87](https://github.com/sharafutdinovdi/revit-model-mcp/issues/87)), a server that updates itself and checks the add-in version ([#88](https://github.com/sharafutdinovdi/revit-model-mcp/issues/88)), and an add-in that updates itself after Revit closes ([#89](https://github.com/sharafutdinovdi/revit-model-mcp/issues/89)).
-- Code signing through SignPath Foundation, so updates do not trigger Revit's unsigned add-in prompt. Until builds are signed, Revit asks once after each add-in update.
+- Code signing: a certificate for open source builds, so updates do not trigger Revit's unsigned add-in prompt. Until builds are signed, Revit asks once after each add-in update.
 - Installer: per-user MSI without elevation ([#76](https://github.com/sharafutdinovdi/revit-model-mcp/issues/76)), rollback across years ([#31](https://github.com/sharafutdinovdi/revit-model-mcp/issues/31)), reproducible restores ([#30](https://github.com/sharafutdinovdi/revit-model-mcp/issues/30)).
 
 ## Next: 0.8, reliability and action safety
