@@ -13,12 +13,14 @@ namespace RevitModelMcp.Activity;
 internal static class ActivityLog
 {
     private const int MaxEntries = 500;
+    private const long FileSizeLimitBytes = 5 * 1024 * 1024;
     private static readonly object SyncRoot = new();
     private static readonly LinkedList<ActivityEntry> Entries = new();
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
     private static readonly string LogDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp");
     private static readonly string LogPath = Path.Combine(LogDirectory, "activity.log");
+    private static readonly string RotatedLogPath = Path.Combine(LogDirectory, "activity.1.log");
 
     public static event Action? Changed;
 
@@ -69,7 +71,15 @@ internal static class ActivityLog
             using var stream = new MemoryStream();
             serializer.WriteObject(stream, entry);
             var line = Encoding.UTF8.GetString(stream.ToArray());
-            File.AppendAllText(LogPath, line + Environment.NewLine, Utf8WithoutBom);
+            lock (SyncRoot)
+            {
+                if (File.Exists(LogPath) && new FileInfo(LogPath).Length > FileSizeLimitBytes)
+                {
+                    if (File.Exists(RotatedLogPath)) File.Delete(RotatedLogPath);
+                    File.Move(LogPath, RotatedLogPath);
+                }
+                File.AppendAllText(LogPath, line + Environment.NewLine, Utf8WithoutBom);
+            }
         }
         catch (IOException exception) { PluginLog.Error("Activity log append failed.", exception); }
         catch (UnauthorizedAccessException exception) { PluginLog.Error("Activity log append failed.", exception); }

@@ -349,6 +349,18 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    public async Task Parse_ViewElements_ClampsLimitAboveMaximum()
+    {
+        var maximum = ControlJobParser.Parse("""{"command":"view-elements","view":"Plan","limit":5000}""");
+        var excessive = ControlJobParser.Parse("""{"command":"view-elements","view":"Plan","limit":5001}""");
+
+        await Assert.That(maximum.Kind).IsEqualTo(ControlJobKind.ViewElements);
+        await Assert.That(maximum.Limit).IsEqualTo(5000);
+        await Assert.That(excessive.Kind).IsEqualTo(ControlJobKind.ViewElements);
+        await Assert.That(excessive.Limit).IsEqualTo(5000);
+    }
+
+    [Test]
     public async Task Parse_ElementDetails_ReturnsId()
     {
         var result = ControlJobParser.Parse("{\"command\":\"element-details\",\"id\":11327511}");
