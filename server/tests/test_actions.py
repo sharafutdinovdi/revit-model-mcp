@@ -210,7 +210,13 @@ def test_document_action_response_paths_are_redacted_when_enabled():
         ('Save "C:\\Models\\Tower.rvt" now.', 'Save "Tower.rvt" now.'),
         ("Saved C:\\Models\\Tower.rvt and closed it.", "Saved Tower.rvt and closed it."),
         (r"Open \\host\share\Tower.rvt next.", "Open Tower.rvt next."),
+        ("Open //host/share/Tower.rvt next.", "Open Tower.rvt next."),
         (r'Open "\\host\my share\Tower.rvt" next.', 'Open "Tower.rvt" next.'),
+        (
+            "See https://example.com/a/b.html for help.",
+            "See https://example.com/a/b.html for help.",
+        ),
+        ("Open RSN://srv/AR/Tower.rvt next.", "Open RSN://srv/AR/Tower.rvt next."),
         ("Open C:/Models/Tower.rvt next.", "Open Tower.rvt next."),
         (
             'Save "C:\\My Models\\Tower North.rvt" now.',

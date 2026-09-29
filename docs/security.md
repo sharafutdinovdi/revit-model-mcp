@@ -12,9 +12,10 @@ The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
 
-`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` and every `path` field, including link and image paths, to file names.
-This covers nested results and instance listings.
-Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
+`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` removes directories from response `documentPath`, `path` and `centralPath` fields, including nested results and instance listings.
+It also reduces Windows drive and UNC paths in `confirmationText`, `summary`, `error`, `message`, `warning` and `warnings` strings at any depth to file names, including tool errors.
+Model names, parameter values, remaining message text and exported image `localPath` values remain visible.
+Redaction applies to outgoing Python responses, not channel files or add-in logs.
 
 HTTP binds to `127.0.0.1:53110` by default.
 A per-user 32-byte random bearer token is generated in `settings.json`; its protected NTFS ACL grants access only to the current user.

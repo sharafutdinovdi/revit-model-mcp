@@ -67,7 +67,7 @@ mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 | `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
 | `REVIT_MCP_ACTIVATE_TASK` | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
 | `REVIT_MCP_CHANNEL_DIR` | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the Python server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. |
-| `REVIT_MCP_REDACT_PATHS` | Unset | `1` replaces every response `documentPath` and nested `path` value with its file name. `--redact-paths` enables the same behavior. |
+| `REVIT_MCP_REDACT_PATHS` | Unset | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior. |
 
 `revit_family_audit` is a read tool. It inspects an open family when `families` is omitted, or exact family names / `["*"]` in a project. `revit_edit_families` applies ordered shared-parameter, removal, purge and shared-flag operations. Project edits use one family load per family and one undo entry; `dry_run=true` rolls back. The edit tool requires both action gates. Family audit defaults to a 600-second response budget; family edits default to 1800 seconds.
 
@@ -89,9 +89,10 @@ Without a task the server only polls for pickup.
 ## Responses and privacy
 
 Model paths occur in responder metadata and instance listings.
-Redaction covers `documentPath` and all nested `path` fields in successful MCP results, including RVT/CAD/image link paths from `revit_links_status`.
+Redaction covers `documentPath`, `path` and `centralPath` fields in MCP results, including RVT/CAD/image link paths from `revit_links_status`.
+It also reduces Windows drive and UNC paths in `confirmationText`, `summary`, `error`, `message`, `warning` and `warnings` strings at any depth to file names, including tool errors.
 It preserves exported image `localPath` values for clients that open the downloaded file.
-It does not redact names, parameter values, add-in error text or files stored in the channel.
+Names, parameter values and remaining message text stay visible. Redaction applies to outgoing Python responses, not files stored in the channel or add-in logs.
 Revit model data and errors can retain their original language.
 Python tool descriptions and server-generated messages are English.
 

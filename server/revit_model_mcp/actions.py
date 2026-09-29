@@ -167,7 +167,7 @@ def env_flag(name: str, default: bool = False) -> bool:
 
 
 _WINDOWS_PATH = re.compile(
-    r"(?<!\w)(?:[A-Za-z]:[\\/]|(?:\\\\|//)[^\\/\s\"'`,;:!?()<>|]+[\\/]"
+    r"(?<!\w)(?:[A-Za-z]:[\\/]|(?:\\\\|(?<!:)//)[^\\/\s\"'`,;:!?()<>|]+[\\/]"
     r"(?:[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*)[\\/])"
     r"(?:(?>[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*)[\\/])*"
     r"(?:[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*?\.[A-Za-z0-9]{1,10}\b"
@@ -220,7 +220,7 @@ async def _send_action(
         instances = await host_provider().list_revit_instances()
         selected = resolve_instance(instances, document)
     except RevitChannelError as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
     if document is not None:
         payload["targetDocument"] = document
     job = ReadJob(
