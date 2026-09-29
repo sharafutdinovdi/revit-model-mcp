@@ -27,8 +27,7 @@ internal static class QueryParameterResolver
         IEnumerable<string> requestedNames,
         Func<FilteredElementCollector> candidateCollector)
     {
-        var requested = requestedNames.Where(name => !ElementFieldReader.IsBuiltInField(name))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var requested = requestedNames.Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var result = new Dictionary<string, QueryParameterDescriptor>(StringComparer.OrdinalIgnoreCase);
         if (requested.Count == 0)
