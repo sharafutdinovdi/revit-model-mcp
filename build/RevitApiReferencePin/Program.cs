@@ -12,58 +12,75 @@ try
     var assemblyPath = Path.GetFullPath(args[1]);
     var symbolPath = Path.ChangeExtension(assemblyPath, ".pdb");
     var hasSymbols = File.Exists(symbolPath);
+    string[] referenceNames = ["RevitAPI", "RevitAPIUI"];
 
-    using (var assembly = AssemblyDefinition.ReadAssembly(assemblyPath, new ReaderParameters { ReadSymbols = hasSymbols }))
+    var temporaryPath = assemblyPath + ".revit-api-pin.tmp";
+    var temporarySymbolPath = Path.ChangeExtension(temporaryPath, ".pdb");
+    try
     {
-        var references = assembly.MainModule.AssemblyReferences;
-        foreach (var name in new[] { "RevitAPI", "RevitAPIUI" })
+        using (var assemblyStream = new MemoryStream(File.ReadAllBytes(assemblyPath)))
+        using (var symbolStream = hasSymbols ? new MemoryStream(File.ReadAllBytes(symbolPath)) : null)
+        using (var assembly = AssemblyDefinition.ReadAssembly(assemblyStream, new ReaderParameters
         {
-            var matches = references.Where(reference => reference.Name == name).ToArray();
-            if (matches.Length != 1)
+            InMemory = true,
+            ReadSymbols = hasSymbols,
+            SymbolStream = symbolStream
+        }))
+        {
+            var references = assembly.MainModule.AssemblyReferences;
+            foreach (var name in referenceNames)
             {
-                throw new InvalidDataException($"{assemblyPath}: expected exactly one {name} AssemblyRef, found {matches.Length}.");
+                var matches = references.Where(reference => reference.Name == name).ToArray();
+                if (matches.Length != 1)
+                {
+                    throw new InvalidDataException($"{assemblyPath}: expected exactly one {name} AssemblyRef, found {matches.Length}.");
+                }
+
+                if (args[0] == "rewrite")
+                {
+                    matches[0].Version = expectedVersion;
+                }
+                else if (matches[0].Version != expectedVersion)
+                {
+                    throw new InvalidDataException($"{assemblyPath}: {name} AssemblyRef is {matches[0].Version}, expected {expectedVersion}.");
+                }
             }
 
             if (args[0] == "rewrite")
             {
-                matches[0].Version = expectedVersion;
-            }
-            else if (matches[0].Version != expectedVersion)
-            {
-                throw new InvalidDataException($"{assemblyPath}: {name} AssemblyRef is {matches[0].Version}, expected {expectedVersion}.");
+                assembly.Write(temporaryPath, new WriterParameters { WriteSymbols = hasSymbols });
             }
         }
 
         if (args[0] == "rewrite")
         {
-            var temporaryPath = assemblyPath + ".revit-api-pin.tmp";
-            var temporarySymbolPath = Path.ChangeExtension(temporaryPath, ".pdb");
-            try
+            File.Move(temporaryPath, assemblyPath, true);
+            if (hasSymbols)
             {
-                assembly.Write(temporaryPath, new WriterParameters { WriteSymbols = hasSymbols });
-                File.Move(temporaryPath, assemblyPath, true);
-                if (hasSymbols)
-                {
-                    File.Move(temporarySymbolPath, symbolPath, true);
-                }
+                File.Move(temporarySymbolPath, symbolPath, true);
             }
-            finally
-            {
-                File.Delete(temporaryPath);
-                File.Delete(temporarySymbolPath);
-            }
+        }
+    }
+    finally
+    {
+        if (args[0] == "rewrite")
+        {
+            File.Delete(temporaryPath);
+            File.Delete(temporarySymbolPath);
         }
     }
 
     if (args[0] == "rewrite")
     {
-        using var rewrittenAssembly = AssemblyDefinition.ReadAssembly(assemblyPath);
-        foreach (var name in new[] { "RevitAPI", "RevitAPIUI" })
+        using (var rewrittenAssembly = AssemblyDefinition.ReadAssembly(assemblyPath))
         {
-            var matches = rewrittenAssembly.MainModule.AssemblyReferences.Where(reference => reference.Name == name).ToArray();
-            if (matches.Length != 1 || matches[0].Version != expectedVersion)
+            foreach (var name in referenceNames)
             {
-                throw new InvalidDataException($"{assemblyPath}: {name} AssemblyRef verification failed. Expected one reference at {expectedVersion}.");
+                var matches = rewrittenAssembly.MainModule.AssemblyReferences.Where(reference => reference.Name == name).ToArray();
+                if (matches.Length != 1 || matches[0].Version != expectedVersion)
+                {
+                    throw new InvalidDataException($"{assemblyPath}: {name} AssemblyRef verification failed. Expected one reference at {expectedVersion}.");
+                }
             }
         }
     }
