@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -29,6 +30,7 @@ internal sealed class PipeChannel : IDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private volatile NamedPipeServerStream? _listening;
     private readonly int _processId = Process.GetCurrentProcess().Id;
+    private readonly string _pipeName;
 
     public PipeChannel(ControlChannel channel, Action requestExecution, string revitVersion, string instanceId,
         Func<IReadOnlyList<InstanceDocument>> documents)
@@ -38,34 +40,102 @@ internal sealed class PipeChannel : IDisposable
         _revitVersion = revitVersion;
         _documents = documents;
         InstanceId = instanceId;
-        PipeName = PipeProtocol.PipeName(_processId);
+        _pipeName = PipeProtocol.PipeName(_processId);
     }
 
-    public string PipeName { get; }
+    public string? PipeName { get; private set; }
     public string InstanceId { get; }
 
     /// <summary>Creates the first pipe instance, so the pipe accepts clients when this method returns.</summary>
     public void Start()
     {
-        var server = CreateServer();
+        NamedPipeServerStream server;
+        try
+        {
+            server = CreateServer(firstInstance: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            PluginLog.Warn($"Pipe listener disabled: the first instance could not be created. Type='{exception.GetType().Name}'.");
+            return;
+        }
+        PipeName = _pipeName;
         _ = Task.Run(() => AcceptAsync(server));
-        PluginLog.Info($"Pipe listener started. Name='{PipeName}'.");
+        PluginLog.Info($"Pipe listener started. Name='{_pipeName}'.");
     }
 
-    private NamedPipeServerStream CreateServer()
+    private NamedPipeServerStream CreateServer(bool firstInstance)
     {
         using var identity = WindowsIdentity.GetCurrent();
         var security = new PipeSecurity();
         security.SetAccessRuleProtection(true, false);
         security.AddAccessRule(new PipeAccessRule(identity.User!, PipeAccessRights.FullControl, AccessControlType.Allow));
 #if NETFRAMEWORK
-        return new NamedPipeServerStream(PipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
+        if (firstInstance) return CreateFirstServer(security);
+        return new NamedPipeServerStream(_pipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
             PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 65536, 65536, security);
 #else
-        return NamedPipeServerStreamAcl.Create(PipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
-            PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 65536, 65536, security);
+        var options = PipeOptions.Asynchronous | (firstInstance ? PipeOptions.FirstPipeInstance : PipeOptions.None);
+        return NamedPipeServerStreamAcl.Create(_pipeName, PipeDirection.InOut, NamedPipeServerStream.MaxAllowedServerInstances,
+            PipeTransmissionMode.Byte, options, 65536, 65536, security);
 #endif
     }
+
+#if NETFRAMEWORK
+    private const int PipeAccessDuplex = 0x00000003;
+    private const int FileFlagOverlapped = 0x40000000;
+    private const int FileFlagFirstPipeInstance = 0x00080000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SecurityAttributes
+    {
+        public int Length;
+        public IntPtr SecurityDescriptor;
+        [MarshalAs(UnmanagedType.Bool)] public bool InheritHandle;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern SafePipeHandle CreateNamedPipe(string name, int openMode, int pipeMode,
+        int maxInstances, int outBufferSize, int inBufferSize, int defaultTimeout, ref SecurityAttributes attributes);
+
+    private NamedPipeServerStream CreateFirstServer(PipeSecurity security)
+    {
+        var descriptor = security.GetSecurityDescriptorBinaryForm();
+        var descriptorPointer = Marshal.AllocHGlobal(descriptor.Length);
+        try
+        {
+            Marshal.Copy(descriptor, 0, descriptorPointer, descriptor.Length);
+            var attributes = new SecurityAttributes
+            {
+                Length = Marshal.SizeOf<SecurityAttributes>(),
+                SecurityDescriptor = descriptorPointer
+            };
+            var handle = CreateNamedPipe($@"\\.\pipe\{_pipeName}",
+                PipeAccessDuplex | FileFlagOverlapped | FileFlagFirstPipeInstance,
+                0, byte.MaxValue, 65536, 65536, 0, ref attributes);
+            if (handle.IsInvalid)
+            {
+                var error = Marshal.GetLastWin32Error();
+                handle.Dispose();
+                throw new Win32Exception(error);
+            }
+            try
+            {
+                return new NamedPipeServerStream(PipeDirection.InOut, isAsync: true, isConnected: false,
+                    safePipeHandle: handle);
+            }
+            catch
+            {
+                handle.Dispose();
+                throw;
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(descriptorPointer);
+        }
+    }
+#endif
 
     private async Task AcceptAsync(NamedPipeServerStream? server)
     {
@@ -93,7 +163,7 @@ internal sealed class PipeChannel : IDisposable
             }
             try
             {
-                if (!_shutdown.IsCancellationRequested) server = CreateServer();
+                if (!_shutdown.IsCancellationRequested) server = CreateServer(firstInstance: false);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {

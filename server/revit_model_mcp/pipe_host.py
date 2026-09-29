@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import itertools
 import json
 import logging
@@ -11,6 +12,7 @@ import shutil
 import sys
 import tempfile
 from collections.abc import Awaitable, Callable
+from ctypes import wintypes
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -37,6 +39,9 @@ RESPONSE_LIMIT_BYTES = 256 * 1024 * 1024
 REQUEST_TIMEOUT_SECONDS = 30.0
 HEARTBEAT_STALE_SECONDS = 60.0
 ERROR_PIPE_BUSY = 231
+SECURITY_SQOS_PRESENT = 0x00100000
+SECURITY_IDENTIFICATION = 0x00010000
+FILE_FLAG_OVERLAPPED = 0x40000000
 FINISHED_STATES = frozenset({"done", "failed", "cancelled"})
 
 StreamPair = tuple[asyncio.StreamReader, asyncio.StreamWriter]
@@ -63,15 +68,20 @@ async def open_windows_pipe(process_id: int) -> StreamPair:
     if sys.platform != "win32":
         raise PipeDisconnectedError("Named pipes are available only on Windows.")
     loop = asyncio.get_running_loop()
-    create = getattr(loop, "create_pipe_connection", None)
-    if create is None:
+    if not hasattr(loop, "_make_duplex_pipe_transport"):
         raise PipeDisconnectedError("This event loop cannot open named pipes.")
     reader = asyncio.StreamReader(limit=RESPONSE_LIMIT_BYTES)
     for attempt in range(20):
         try:
-            transport, protocol = await create(
-                lambda: asyncio.StreamReaderProtocol(reader), address
-            )
+            pipe = _open_verified_pipe(process_id, address)
+            try:
+                protocol = asyncio.StreamReaderProtocol(reader)
+                transport = loop._make_duplex_pipe_transport(
+                    pipe, protocol, extra={"addr": address}
+                )
+            except BaseException:
+                pipe.close()
+                raise
             return reader, asyncio.StreamWriter(transport, protocol, reader, loop)
         except OSError as error:
             # Every listening instance is taken for a moment; the add-in creates the next one.
@@ -81,6 +91,58 @@ async def open_windows_pipe(process_id: int) -> StreamPair:
                 ) from None
             await asyncio.sleep(0.05)
     raise PipeDisconnectedError(f"Revit pipe {address} stayed busy.")
+
+
+def _open_verified_pipe(process_id: int, address: str):
+    from asyncio.windows_utils import PipeHandle
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    create_file = kernel32.CreateFileW
+    create_file.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        wintypes.HANDLE,
+    ]
+    create_file.restype = wintypes.HANDLE
+    handle = create_file(
+        address,
+        0x80000000 | 0x40000000,
+        0,
+        None,
+        3,
+        FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION,
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+    pipe = PipeHandle(handle)
+    try:
+        try:
+            server_process_id = kernel32.GetNamedPipeServerProcessId
+        except AttributeError:
+            raise PipeDisconnectedError(
+                "Windows cannot verify the Revit pipe server process. Update Windows or use the file channel."
+            ) from None
+        server_process_id.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.ULONG)]
+        server_process_id.restype = wintypes.BOOL
+        actual_process_id = wintypes.ULONG()
+        if not server_process_id(handle, ctypes.byref(actual_process_id)):
+            raise PipeDisconnectedError(
+                "Windows could not verify the Revit pipe server process. Retry discovery or use the file channel."
+            )
+        if actual_process_id.value != process_id:
+            raise PipeDisconnectedError(
+                f"Revit pipe server process {actual_process_id.value} does not match selected process {process_id}. "
+                "Retry discovery or use the file channel."
+            )
+        return pipe
+    except BaseException:
+        pipe.close()
+        raise
 
 
 class PipeConnection:

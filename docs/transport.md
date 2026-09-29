@@ -19,6 +19,7 @@ It uses the pipe when the selected instance lists `pipe/1` in `protocols`.
 Otherwise, or when the pipe cannot be opened, it uses the local file channel.
 Instance selection follows the file channel rules below.
 The server keeps one connection per Revit process and checks that `hello` returns the heartbeat's `pid` and `instanceId`.
+On Windows, it also checks the pipe server process ID when opening each connection and uses identification-only client credentials.
 
 ### Protocol pipe/1
 

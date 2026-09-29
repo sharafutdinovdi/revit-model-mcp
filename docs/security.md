@@ -26,7 +26,7 @@ MCP action calls are refused in read-only mode over every transport.
 Direct HTTP action jobs require the bearer token and are refused with HTTP 403 while the workstation read-only file is present; the Python server's `REVIT_MCP_READ_ONLY` setting does not apply to direct callers.
 
 The named pipe `\\.\pipe\RevitModelMcp.<pid>` has a protected ACL that grants access only to the Windows user running Revit.
-Other local users and services running under other accounts cannot open it unless an administrator changes that ACL.
+The add-in creates the first instance with that ACL and disables the pipe if the name is already in use.
 The add-in also drops any pipe client that connects from another computer.
 The pipe needs no token: holding the Revit user's credentials already grants access to the file channel and the model.
 Pipe requests are limited to 1 MiB, and action jobs still require the workstation gate.
