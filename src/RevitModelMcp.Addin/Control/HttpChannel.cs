@@ -396,6 +396,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "token", Order = 4)] public string Token { get; set; } = string.Empty;
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
     [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
+    [DataMember(Name = "updateCheck", Order = 7)] public bool UpdateCheck { get; set; } = true;
 
     [OnDeserializing]
     private void SetDefaults(StreamingContext context)
@@ -406,6 +407,7 @@ internal sealed record HttpSettings
         Token = string.Empty;
         ShowActivityPaneOnAction = true;
         TrustedNetworkRoots = [];
+        UpdateCheck = true;
     }
 
     public static HttpSettings Load(string? directory = null)

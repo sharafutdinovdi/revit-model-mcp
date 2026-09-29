@@ -46,6 +46,7 @@ See the [bundle guide](bundle/README.md) for build details and prerequisites.
 
 Download `RevitModelMcp-<version>-SingleUser.msi` (current user) or `RevitModelMcp-<version>-MultiUser.msi` (all users) from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
 Run it with Revit closed, then start Revit and open a model.
+See [automatic updates](docs/updates.md) for update behavior and opt-out settings.
 Alternatively, run from a clone in PowerShell:
 
 ```powershell

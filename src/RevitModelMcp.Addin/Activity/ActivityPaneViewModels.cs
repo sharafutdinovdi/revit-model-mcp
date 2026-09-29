@@ -63,9 +63,10 @@ public sealed class ActivityRowView(ActivityEntry entry) : Observable
     public string ClientName => Entry.ClientName;
     public Brush LaneBrush { get; } = ClientLane.For(entry.ClientName);
     public string DocumentTitle => Entry.Document;
+    public bool HasReleaseUrl => Entry.ReleaseUrl is not null;
     public bool IsFailed => Entry.State == "failed";
     public bool IsDryRun => Entry.DryRun || Entry.State == "dry_run";
-    public string ErrorText => IsFailed ? Entry.Summary : string.Empty;
+    public string ErrorText => IsFailed && Entry.Command != "system-notice" ? Entry.Summary : string.Empty;
     public int ChangedCount => Entry.ChangedCount;
     public int CreatedCount => Entry.CreatedCount;
     public int DeletedCount => Entry.DeletedCount;

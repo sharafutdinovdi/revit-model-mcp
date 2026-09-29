@@ -24,11 +24,19 @@
     <PackageReference Include="ILRepack" Version="2.0.46" PrivateAssets="all"/>
     <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" PrivateAssets="all"/>
     <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RevitModelMcp.Core\RevitModelMcp.Core.csproj"/>
   </ItemGroup>
+
+  <Target Name="CopyUpdater" AfterTargets="Build">
+    <MSBuild Projects="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/RevitModelMcp.Updater.csproj"
+             Targets="Build" Properties="Configuration=$(Configuration);EnableWindowsTargeting=true"/>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
+          DestinationFolder="$(TargetDir)"/>
+  </Target>
 
   <ItemGroup>
     <Resource Include="Resources\Icons\*.png"/>

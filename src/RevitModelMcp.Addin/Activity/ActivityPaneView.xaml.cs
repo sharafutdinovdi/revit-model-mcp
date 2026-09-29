@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -203,6 +204,13 @@ public partial class ActivityPaneView : UserControl
     private void OnRowHeaderClick(object sender, MouseButtonEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is ActivityRowView row) Toggle(row);
+    }
+
+    private void OnReleaseNotesClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ActivityRowView { Entry.ReleaseUrl: { } url }) return;
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        e.Handled = true;
     }
 
     private void OnChevronClick(object sender, RoutedEventArgs e)

@@ -1,4 +1,5 @@
 using Installer;
+using System.Text;
 using WixSharp;
 using WixSharp.CommonTasks;
 using WixSharp.Controls;
@@ -27,6 +28,7 @@ var project = new Project
     Properties =
     [
         new Property("HTTP_ENABLED", "0") { Secure = true },
+        new Property("UPDATECHECK", "1") { Secure = true },
         new Property("HTTP_URL_PREFIX", "http://127.0.0.1:53110/") { Secure = true },
         new RegValueProperty("HTTP_OWNED_PREFIX", RegistryHive.LocalMachine,
             @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]", "Prefix", "") { Secure = true }
@@ -66,6 +68,7 @@ var project = new Project
 };
 
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
+var commonActions = project.Actions;
 project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
 
 BuildSingleUserMsi();
@@ -74,6 +77,7 @@ BuildMultiUserMsi();
 void BuildSingleUserMsi()
 {
     project.Scope = InstallScope.perUser;
+    project.Actions = [.. commonActions, UpdateSettingAction("LOCALAPPDATA", false)];
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
     project.Dirs =
     [
@@ -89,6 +93,7 @@ void BuildSingleUserMsi()
 void BuildMultiUserMsi()
 {
     project.Scope = InstallScope.perMachine;
+    project.Actions = [.. commonActions, UpdateSettingAction("ProgramData", true)];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
     project.Dirs = wixEntities
@@ -101,4 +106,23 @@ void BuildMultiUserMsi()
         .ToArray();
 
     project.BuildMsi();
+}
+
+PathFileAction UpdateSettingAction(string environmentFolder, bool elevated)
+{
+    var script = $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
+        "$directory = Split-Path $path; New-Item -ItemType Directory -Path $directory -Force | Out-Null; " +
+        "$settings = if (Test-Path $path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }; " +
+        "$settings | Add-Member -NotePropertyName updateCheck -NotePropertyValue $false -Force; " +
+        "$settings | ConvertTo-Json -Compress | Set-Content -LiteralPath $path -Encoding UTF8";
+    var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+    return new PathFileAction(new Id(elevated ? "DisableMachineUpdateCheck" : "DisableUserUpdateCheck"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+        "SystemFolder", Return.check, When.After, Step.InstallFiles,
+        new Condition("UPDATECHECK=\"0\" AND NOT REMOVE~=\"ALL\""))
+    {
+        Execute = Execute.deferred,
+        Impersonate = !elevated
+    };
 }

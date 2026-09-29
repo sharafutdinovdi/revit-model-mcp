@@ -32,6 +32,7 @@ public sealed class ActivityEntry
     [DataMember(Name = "document")] public string Document { get; set; } = string.Empty;
     [DataMember(Name = "state")] public string State { get; set; } = "done";
     [DataMember(Name = "summary")] public string Summary { get; set; } = string.Empty;
+    [DataMember(Name = "releaseUrl", EmitDefaultValue = false)] public string? ReleaseUrl { get; set; }
     [DataMember(Name = "changed")] public List<ActivityElementRef> Changed { get; set; } = [];
     [DataMember(Name = "created")] public List<ActivityElementRef> Created { get; set; } = [];
     [DataMember(Name = "deleted")] public List<ActivityElementRef> Deleted { get; set; } = [];

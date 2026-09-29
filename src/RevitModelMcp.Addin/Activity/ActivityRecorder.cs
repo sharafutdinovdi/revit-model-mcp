@@ -9,6 +9,19 @@ namespace RevitModelMcp.Activity;
 /// <summary>Builds one <see cref="ActivityEntry"/> per finished action job and files it in <see cref="ActivityLog"/>.</summary>
 internal static class ActivityRecorder
 {
+    public static void RecordSystemNotice(string message, string? releaseUrl = null, bool failed = false)
+    {
+        ActivityLog.Record(new ActivityEntry
+        {
+            Time = DateTimeOffset.Now,
+            ClientName = "System",
+            Command = "system-notice",
+            Summary = message,
+            ReleaseUrl = releaseUrl,
+            State = failed ? "failed" : "done"
+        });
+    }
+
     public static void RecordAction(ControlJobParseResult job, Document? document, ActionResultData? data,
         CommandResponse<ActionResultData> response, ChangeCapture? changes)
     {

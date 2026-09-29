@@ -76,6 +76,7 @@ jobs:
             Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
             Copy-Item src/RevitModelMcp.Addin/RevitModelMcp.addin, LICENSE, THIRD-PARTY-NOTICES.md $stage
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year add-in" }
+            if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.Updater.exe")) { throw "Missing R$year updater" }
             $blocked = @(Get-ChildItem $stage -Recurse -Filter '*.dll' -File | Where-Object {
               $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
               $_.VersionInfo.CompanyName -match 'Autodesk'
@@ -113,6 +114,7 @@ jobs:
               $manifest = @($manifests | Where-Object { $_.Directory.Name -eq "20$year" })
               if ($manifest.Count -ne 1) { throw "Missing or duplicate R$year manifest in MSI" }
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year assembly in MSI" }
+              if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.Updater.exe")) { throw "Missing R$year updater in MSI" }
               Write-Host "ASSERT: $($msi.Name) contains R$year manifest and assembly"
             }
             Write-Host "ASSERT: $($msi.Name) contains no Autodesk DLLs"

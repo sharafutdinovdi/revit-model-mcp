@@ -82,6 +82,7 @@ plugins:
           - transport.md
           - security.md
           - architecture.md
+          - updates.md
         Reference:
           - tools.md
           - actions.md
@@ -99,6 +100,7 @@ nav:
       - Transport: transport.md
       - Security: security.md
       - Architecture: architecture.md
+      - Automatic updates: updates.md
   - Reference:
       - Tools: tools.md
       - Actions: actions.md
