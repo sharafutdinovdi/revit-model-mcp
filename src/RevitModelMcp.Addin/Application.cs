@@ -12,6 +12,7 @@ using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -96,6 +97,7 @@ public sealed class Application : ExternalApplication
         try
         {
             var httpSettings = HttpSettings.Load();
+            NwcPathValidator.ConfigureTrustedNetworkRoots(httpSettings.TrustedNetworkRoots);
             showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
             _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
                 Application.ControlledApplication.VersionNumber, httpSettings);

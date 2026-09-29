@@ -122,11 +122,69 @@ public sealed class ActionJobParserTests
             """{"command":"open-document","path":"C:\\x\\a.rvt","mode":"central"}""",
             """{"command":"open-document","path":"C:\\x\\a.rvt","worksets":"bad"}""",
             """{"command":"sync-document","document":"A"}""",
-            """{"command":"save-document","document":"C:\\x\\a.rvt","saveAs":"C:\\x\\a.rvt"}"""
+            """{"command":"save-document","document":"C:\\x\\a.rvt","saveAs":"C:/x/../a.rvt"}"""
         })
             await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"save-document","document":"A"}]}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task DocumentPaths_RejectTraversalAndDeviceAliases()
+    {
+        foreach (var path in new[] { @"C:\x\..\a.rvt", "C:/x/../a.rvt", @"\\?\UNC\srv\share\a.rvt", @"\\.\C:\x\a.rvt" })
+            await Assert.That(() => DocumentPathValidator.Validate(path)).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task DocumentPaths_CompareNormalizedCentralAndGuardExistingWorksharedFile()
+    {
+        await Assert.That(DocumentPathValidator.SamePath("C:/x/y.rvt", @"C:\X\Y.RVT")).IsTrue();
+        await Assert.That(DocumentPathValidator.SamePath("C:/x/y.rvt", @"C:\X\other.rvt")).IsFalse();
+        await Assert.That(() => DocumentPathValidator.EnsureSaveAsDiffersFromCentral("C:/x/y.rvt", @"C:\X\Y.RVT"))
+            .Throws<InvalidOperationException>();
+        DocumentPathValidator.EnsureSaveAsDiffersFromCentral("C:/x/y.rvt", @"C:\X\other.rvt");
+        DocumentPathValidator.EnsureSafeOverwrite(false, false);
+        await Assert.That(() => DocumentPathValidator.EnsureSafeOverwrite(true, false)).Throws<InvalidOperationException>();
+        await Assert.That(() => DocumentPathValidator.EnsureSafeOverwrite(false, true)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Parse_SaveAsDoesNotCompareDocumentReferenceAsCentralPath()
+    {
+        var result = ControlJobParser.Parse("""{"command":"save-document","document":"C:\\x\\a.rvt","saveAs":"C:\\x\\a.rvt"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+    }
+
+    [Test]
+    public async Task Parse_FileActionsRejectUntrustedUncBeforeExecution()
+    {
+        foreach (var json in new[]
+        {
+            """{"command":"open-document","path":"\\\\srv\\share\\a.rvt"}""",
+            """{"command":"save-document","document":"A","saveAs":"\\\\srv\\share\\a.rvt"}""",
+            """{"command":"export-nwc","path":"\\\\srv\\share\\a.nwc"}""",
+            """{"command":"export-nwc","path":"C:\\x\\a.nwc","settingsXml":"\\\\srv\\share\\settings.xml"}""",
+            """{"command":"edit-families","operations":[{"op":"add_shared_parameters","sharedParameterFile":"\\\\srv\\share\\a.txt","parameters":[{"name":"A","group":"Data"}]}]}"""
+        })
+        {
+            var result = ControlJobParser.Parse(json);
+            await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+            await Assert.That(result.Error).Contains("trustedNetworkRoots");
+            await Assert.That(result.Error).DoesNotContain("srv");
+        }
+        foreach (var json in new[]
+        {
+            """{"command":"open-document","path":"\\\\SRV\\Share\\a.rvt"}""",
+            """{"command":"save-document","document":"A","saveAs":"\\\\SRV\\Share\\a.rvt"}""",
+            """{"command":"export-nwc","path":"\\\\SRV\\Share\\a.nwc"}""",
+            """{"command":"export-nwc","path":"C:\\x\\a.nwc","settingsXml":"\\\\SRV\\Share\\settings.xml"}""",
+            """{"command":"edit-families","operations":[{"op":"add_shared_parameters","sharedParameterFile":"\\\\SRV\\Share\\a.txt","parameters":[{"name":"A","group":"Data"}]}]}"""
+        })
+            await Assert.That(ControlJobParser.Parse(json, [@"\\srv\share"]).Kind).IsEqualTo(ControlJobKind.Action);
+        var untrusted = ControlJobParser.Parse("""{"command":"open-document","path":"\\\\srv\\share\\a.rvt"}""");
+        await Assert.That(untrusted.Error).IsEqualTo(
+            @"path is a network path. Add its share to trustedNetworkRoots in %LOCALAPPDATA%\RevitModelMcp\settings.json to allow it.");
     }
 
     [Test]

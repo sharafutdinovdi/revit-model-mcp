@@ -384,6 +384,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "httpPort", Order = 3)] public int HttpPort { get; set; } = 53110;
     [DataMember(Name = "token", Order = 4)] public string Token { get; set; } = string.Empty;
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
+    [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
 
     [OnDeserializing]
     private void SetDefaults(StreamingContext context)
@@ -393,6 +394,7 @@ internal sealed record HttpSettings
         HttpPort = 53110;
         Token = string.Empty;
         ShowActivityPaneOnAction = true;
+        TrustedNetworkRoots = [];
     }
 
     public static HttpSettings Load(string? directory = null)

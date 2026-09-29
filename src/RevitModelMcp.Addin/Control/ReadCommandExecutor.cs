@@ -57,7 +57,9 @@ internal static class ReadCommandExecutor
             }
             if (job.Kind == ControlJobKind.NwcSettingsCheck)
             {
-                var xml = NwcSettingsXml.ReadFile(job.CoordinatorJob.SettingsXml!);
+                var settingsPath = NwcPathValidator.EnsureAbsoluteNoTraversal(job.CoordinatorJob.SettingsXml!, "settings_xml");
+                NwcPathValidator.EnsureSettingsXmlSize(new FileInfo(settingsPath).Length);
+                var xml = NwcSettingsXml.ReadFile(settingsPath);
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }

@@ -20,7 +20,7 @@ public static class ActionJobParser
     public static bool IsAction(string command) => command is
         "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
 
-    public static ControlJobParseResult Parse(string command, ControlJobContract job)
+    public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         try
         {
@@ -93,7 +93,7 @@ public static class ActionJobParser
             };
             if (command == "open-document")
             {
-                DocumentPathValidator.Validate(action.DocumentPath);
+                DocumentPathValidator.Validate(action.DocumentPath, "path", trustedNetworkRoots);
                 Require(action.Mode is "detached" or "detached_discard_worksets" or "local_copy" or "read_only_local", "mode is invalid.");
                 Require(!action.Audit, "audit must be false.");
                 Require(action.Worksets is "all" or "none" or "open" &&
@@ -104,8 +104,7 @@ public static class ActionJobParser
                 Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
             if (command == "save-document" && action.SaveAs is not null)
             {
-                DocumentPathValidator.Validate(action.SaveAs);
-                Require(!DocumentPathValidator.SamePath(action.SaveAs, action.Document), "save_as must differ from the central path.");
+                DocumentPathValidator.Validate(action.SaveAs, "save_as", trustedNetworkRoots);
             }
             if (command == "sync-document")
             {
@@ -151,6 +150,8 @@ public static class ActionJobParser
                         $"Unknown family operation: {operation.Op}.");
                     if (operation.Op == "add_shared_parameters")
                     {
+                        if (operation.SharedParameterFile is not null)
+                            NwcPathValidator.EnsureAbsoluteNoTraversal(operation.SharedParameterFile, "shared_parameter_file", trustedNetworkRoots);
                         if (operation.Parameters is not { Count: > 0 })
                             throw new ArgumentException("add_shared_parameters requires parameters.");
                         Require(operation.Parameters.All(parameter => !string.IsNullOrWhiteSpace(parameter.Name) && !string.IsNullOrWhiteSpace(parameter.Group)),
@@ -215,7 +216,9 @@ public static class ActionJobParser
             if (command == "export-nwc")
             {
                 var export = action.Nwc;
-                NwcPathValidator.Validate(export.Path);
+                NwcPathValidator.Validate(export.Path, trustedNetworkRoots);
+                if (export.SettingsXml is not null)
+                    NwcPathValidator.EnsureAbsoluteNoTraversal(export.SettingsXml, "settings_xml", trustedNetworkRoots);
                 Require(export.Scope is "model" or "view" or "selection", "scope must be model, view or selection.");
                 Require(export.Coordinates is "shared" or "internal", "coordinates must be shared or internal.");
                 Require(export.Parameters is "all" or "elements" or "none", "parameters must be all, elements or none.");
@@ -346,27 +349,46 @@ public static class ActionJobParser
 
 public static class DocumentPathValidator
 {
-    public static void Validate(string? path)
+    public static void Validate(string? path, string label = "path", IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("path is required.");
         if (path!.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
         {
             var parts = path.Substring(6).Split('/');
-            if (parts.Length < 3 || parts.Any(string.IsNullOrWhiteSpace) || !parts[parts.Length - 1].EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+            if (parts.Length < 3 || parts.Any(part => string.IsNullOrWhiteSpace(part) || part is "." or "..") || !parts[parts.Length - 1].EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Invalid RSN model path.");
             return;
         }
         if (path.IndexOf("://", StringComparison.Ordinal) >= 0 ||
             !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa path, or RSN .rvt path.");
-        if (!(path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/') &&
-            !path.StartsWith(@"\\", StringComparison.Ordinal))
-            throw new ArgumentException("path must be absolute local or UNC path.");
+        NwcPathValidator.EnsureAbsoluteNoTraversal(path, label, trustedNetworkRoots);
     }
 
     public static bool SamePath(string? first, string? second) =>
-        first is not null && second is not null &&
-        string.Equals(first.TrimEnd('\\', '/'), second.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrWhiteSpace(first) && !string.IsNullOrWhiteSpace(second) &&
+        string.Equals(Canonical(first), Canonical(second), StringComparison.OrdinalIgnoreCase);
+
+    public static void EnsureSafeOverwrite(bool isCentral, bool isWorkshared)
+    {
+        if (isCentral || isWorkshared)
+            throw new InvalidOperationException("save_as cannot overwrite a central or workshared model.");
+    }
+
+    public static void EnsureSaveAsDiffersFromCentral(string saveAs, string? centralPath)
+    {
+        if (SamePath(saveAs, centralPath))
+            throw new InvalidOperationException("save_as cannot overwrite a known central path.");
+    }
+
+    private static string Canonical(string path)
+    {
+        var normalized = path.Replace('/', '\\');
+        if (normalized.Length >= 3 && char.IsLetter(normalized[0]) && normalized[1] == ':' && normalized[2] == '\\' ||
+            normalized.StartsWith("\\\\", StringComparison.Ordinal))
+            return Path.GetFullPath(normalized).TrimEnd('\\');
+        return path.TrimEnd('\\', '/');
+    }
 }
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
