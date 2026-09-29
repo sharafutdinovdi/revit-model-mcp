@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import json
 import os
 import shutil
@@ -1183,6 +1184,10 @@ def instance_status(process_id=42, title="Structural", **extra):
     }
 
 
+def encode_discovery_payload(package):
+    return base64.b64encode(json.dumps(package, ensure_ascii=False).encode("utf-8")).decode("ascii")
+
+
 def test_ssh_heartbeat_preserves_addin_compatibility_fields():
     now = datetime.now(timezone.utc)
     status = instance_status(
@@ -1244,7 +1249,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         bad = instance_status(startedUtc="2026-09-15T23:00:00\u2019; exit 1")
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [{"processId": 42, "revitVersion": "2024"}],
                     "files": [
@@ -1268,7 +1273,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         status = instance_status(startedUtc="2026-09-16T01:00:00.1234567+02:00")
         host._run = AsyncMock(
-            return_value=json.dumps(
+            return_value=encode_discovery_payload(
                 {
                     "processes": [{"processId": 42, "revitVersion": "2024"}],
                     "files": [
@@ -1284,6 +1289,53 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         instances = await host._discover_instances()
 
         self.assertEqual(instances[0]["startedUtc"], status["startedUtc"])
+
+    async def test_discovery_decodes_utf8_payload_with_cyrillic_names(self):
+        host = SshPowerShellHost()
+        status = instance_status(
+            title="Жилой дом",
+            documentPath=r"C:\Модели\Жилой дом.rvt",
+            updatedUtc=datetime.now(timezone.utc).isoformat(),
+        )
+        host._run = AsyncMock(
+            return_value=encode_discovery_payload(
+                {
+                    "processes": [{"processId": 42, "revitVersion": "2024"}],
+                    "files": [
+                        {
+                            "name": "instance_42.json",
+                            "content": json.dumps(status, ensure_ascii=False),
+                        }
+                    ],
+                }
+            )
+        )
+
+        instances = await host._discover_instances()
+
+        self.assertEqual(instances[0]["documentTitle"], "Жилой дом")
+        self.assertEqual(instances[0]["documentPath"], r"C:\Модели\Жилой дом.rvt")
+        self.assertEqual(await host.list_revit_instances("Жилой"), instances)
+
+    async def test_discovery_script_encodes_payload_as_base64_utf8(self):
+        host = SshPowerShellHost()
+        host._run = AsyncMock(return_value=encode_discovery_payload({"processes": [], "files": []}))
+
+        await host._discover_instances()
+
+        script = host._run.await_args.args[0]
+        self.assertIn("[Text.Encoding]::UTF8.GetBytes", script)
+        self.assertIn("[Convert]::ToBase64String", script)
+
+    async def test_discovery_rejects_invalid_base64_payload(self):
+        host = SshPowerShellHost()
+        host._run = AsyncMock(return_value="not base64!")
+
+        with self.assertRaisesRegex(
+            ResponseParseError, "Revit instance list could not be parsed"
+        ) as caught:
+            await host._discover_instances()
+        self.assertIsInstance(caught.exception.__cause__, binascii.Error)
 
     async def test_prepare_preserves_seventh_started_utc_digit(self):
         started_utc = "2026-09-15T23:00:00.1234567Z"
