@@ -1525,7 +1525,7 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                 published.append((process_id, payload))
                 directory.joinpath(f"job_{payload['jobId']}.json").unlink()
                 directory.joinpath(
-                    f"response_20260916_120000_000_{command}_{payload['correlationId']}.json"
+                    f"response_20260917_120000_000_{command}_{payload['correlationId']}.json"
                 ).write_text(
                     json.dumps(
                         {
@@ -1554,8 +1554,8 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                 [(42, "ping"), (42, "document-info"), (84, "ping"), (84, "document-info")],
             )
             self.assertEqual(len({payload["correlationId"] for _, payload in published}), 4)
-            self.assertFalse(list(Path(root, "instances", "42").glob("response_20260916_*")))
-            self.assertFalse(list(Path(root, "instances", "84").glob("response_20260916_*")))
+            self.assertFalse(list(Path(root, "instances", "42").glob("response_20260917_*")))
+            self.assertFalse(list(Path(root, "instances", "84").glob("response_20260917_*")))
 
 
 def test_two_server_processes_complete_jobs_on_simulated_host(tmp_path):
