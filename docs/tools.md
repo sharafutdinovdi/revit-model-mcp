@@ -15,6 +15,7 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 | `revit_jobs` | `cancel_job_id=null` | List queued and running jobs with client, state, position and age; cancel one of this server's own jobs. |
 | `revit_nwc_settings_check` | `settings_xml` | Parse exporter XML on the Revit workstation without exporting; return values, mapping, notApplied and ignored. |
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
+| `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
 | `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields; return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |

@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
+import runpy
 import tomllib
 import unittest
 from datetime import datetime, timezone
@@ -92,24 +91,20 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
     source.mkdir()
     manifest = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
     manifest["version"] = "9.9.9"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
     (source / "manifest.json").write_text(json.dumps(manifest))
     (source / "icon.png").write_bytes(b"icon")
     archive = tmp_path / "smithery.mcpb"
 
-    subprocess.run(
-        [
-            sys.executable,
-            str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"),
-            "--smithery",
-            str(archive),
-            "--from",
-            str(source),
-        ],
-        check=True,
-        cwd=MCP_DIRECTORY,
-        capture_output=True,
-        text=True,
-    )
+    generate = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))["main"]
+    with (
+        patch(
+            "sys.argv", ["bundle_manifest.py", "--smithery", str(archive), "--from", str(source)]
+        ),
+        patch.dict(generate.__globals__, {"MANIFEST_PATH": manifest_path}),
+    ):
+        generate()
 
     registry = asyncio.run(revit_server.mcp.list_tools())
     with ZipFile(archive) as bundle:

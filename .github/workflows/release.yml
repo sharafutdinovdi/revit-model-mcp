@@ -343,7 +343,7 @@ jobs:
 
   # Releases created with GITHUB_TOKEN do not trigger release workflows.
   smithery:
-    needs: [build, publish]
+    needs: [build, publish, pypi]
     if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
     runs-on: ubuntu-latest
     env:
@@ -357,17 +357,17 @@ jobs:
         with:
           name: release-assets
           path: artifacts/release
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
           python-version: '3.12'
       - name: Install uv
         if: ${{ env.SMITHERY_API_KEY != '' }}
-        run: pip install uv
+        run: pip install uv==0.12.20
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
