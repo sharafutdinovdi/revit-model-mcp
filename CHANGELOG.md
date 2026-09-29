@@ -6,6 +6,38 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.6.0...v0.7.0) (2026-09-29)
+
+
+### Features
+
+* **addin:** update the add-in automatically ([#94](https://github.com/sharafutdinovdi/revit-model-mcp/issues/94)) ([c876e33](https://github.com/sharafutdinovdi/revit-model-mcp/commit/c876e33ca13b8f886c26a42deca0fa2a4898a85f))
+* **build:** complete the bundle manifest and publish it to Smithery ([#92](https://github.com/sharafutdinovdi/revit-model-mcp/issues/92)) ([b1519e0](https://github.com/sharafutdinovdi/revit-model-mcp/commit/b1519e0c9138e4922e63107d68484248e472725a))
+* **http:** require the add-in to prove the token before jobs ([#83](https://github.com/sharafutdinovdi/revit-model-mcp/issues/83)) ([69af8d0](https://github.com/sharafutdinovdi/revit-model-mcp/commit/69af8d01e60d6f0fbf3cbe96c99b452207d09d12))
+* **server:** update the server automatically and check add-in compatibility ([#93](https://github.com/sharafutdinovdi/revit-model-mcp/issues/93)) ([4aacbf0](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4aacbf0f8b7d31dd2990e60bf6279ee00cb2c154))
+
+
+### Bug Fixes
+
+* **addin:** bound confirmation tokens, logs and query limits ([#85](https://github.com/sharafutdinovdi/revit-model-mcp/issues/85)) ([b9b8e44](https://github.com/sharafutdinovdi/revit-model-mcp/commit/b9b8e4483f25d254d800743c4e0477bc8c3f539d))
+* **addin:** own the named pipe and verify its server process ([#82](https://github.com/sharafutdinovdi/revit-model-mcp/issues/82)) ([6d3ab51](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6d3ab51db798cd4bf81f59b8bd0c6edf698928d3))
+* **addin:** reject oversized declared HTTP jobs ([#65](https://github.com/sharafutdinovdi/revit-model-mcp/issues/65)) ([db5ed7d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/db5ed7d34cf4b6b88e5b4fa7fe8e19babcf29f5a))
+* **addin:** restrict the file channel directory to the current user ([#80](https://github.com/sharafutdinovdi/revit-model-mcp/issues/80)) ([2f9f172](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2f9f1721bf1e5bda4d94ecbe907942a47e6efe57))
+* **addin:** validate network and aliased paths in file arguments ([#81](https://github.com/sharafutdinovdi/revit-model-mcp/issues/81)) ([4b09359](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4b09359cbb448f0b5c48d60543ee43e3ad29a12d))
+* redact paths in confirmation text, summaries and errors ([#84](https://github.com/sharafutdinovdi/revit-model-mcp/issues/84)) ([6c557aa](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6c557aa97a3ecd269207203dac40f966253a2bbd))
+* **server:** harden the ssh channel and artifact download ([#79](https://github.com/sharafutdinovdi/revit-model-mcp/issues/79)) ([002fb17](https://github.com/sharafutdinovdi/revit-model-mcp/commit/002fb17e35783ee7700e4ef8af5c3c22e81edc18))
+* **server:** stop throttling multiplexed ssh sessions ([#91](https://github.com/sharafutdinovdi/revit-model-mcp/issues/91)) ([99dfba8](https://github.com/sharafutdinovdi/revit-model-mcp/commit/99dfba8aaea011918599907475c367abb7d1a08a))
+* **winget:** make release submission reliable ([#66](https://github.com/sharafutdinovdi/revit-model-mcp/issues/66)) ([2dad037](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2dad037f7d833e64d9ff611310f9764cb458e2a8))
+
+
+### Documentation
+
+* add code signing policy ([#90](https://github.com/sharafutdinovdi/revit-model-mcp/issues/90)) ([6dfd07d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6dfd07d8db76fee2da2da90538896b213f23d4a1))
+* align security and privacy docs with default-on actions ([#78](https://github.com/sharafutdinovdi/revit-model-mcp/issues/78)) ([2426c40](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2426c408a7284ce7c33ae074bfc4e8d323317548))
+* describe unsigned release builds ([#97](https://github.com/sharafutdinovdi/revit-model-mcp/issues/97)) ([0b661d7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0b661d75e3f7912553ed69dba2fe4b22e36e3ba2))
+* invite a star after the demo recording ([#77](https://github.com/sharafutdinovdi/revit-model-mcp/issues/77)) ([cc03f56](https://github.com/sharafutdinovdi/revit-model-mcp/commit/cc03f5600abd6b1463909aaa41dce3d4d24deb68))
+* update the roadmap for 0.7 and 0.8 ([#95](https://github.com/sharafutdinovdi/revit-model-mcp/issues/95)) ([e1effdd](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e1effddb67fa536c1e2ebe2ebe449bbfd17016d1))
+
 ## [0.6.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.5.0...v0.6.0) (2026-09-27)
 
 
