@@ -446,7 +446,7 @@ try {
         $script:releaseAssets = @("revit-model-mcp-addin-$releaseVersion-R26.zip")
         if ($case -notin 'oldAbsent', 'newAbsent') { $script:releaseAssets += 'SHA256SUMS.txt' }
         $failed = $false
-        try { $output = Get-Payload '2026' 3>&1 | Out-String }
+        try { $output = Get-Payload '2026' 3>&1 6>&1 | Out-String }
         catch {
             $failed = $true
             $output = $_.Exception.Message
@@ -456,6 +456,9 @@ try {
             if ($case -like 'old*' -and $output -notmatch 'predates checksums') {
                 throw "$case did not warn about missing checksums"
             }
+            if ($case -eq 'match' -and @($output -split "`n" | Where-Object {
+                $_.Trim() -eq "Verified SHA256 of revit-model-mcp-addin-$releaseVersion-R26.zip."
+            }).Count -ne 1) { throw "Checksum verification was not reported once: $output" }
         }
         elseif (!$failed) { throw "$case accepted an invalid checksum" }
         elseif ($case -eq 'mismatch' -and $output -notmatch 'SHA256 mismatch') {

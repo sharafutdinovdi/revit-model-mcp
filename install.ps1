@@ -92,6 +92,7 @@ function Get-Payload([string] $SelectedYear) {
             $expectedHash = $entries[0].Substring(0, 64)
             $actualHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
             if ($actualHash -ne $expectedHash) { throw "SHA256 mismatch for $asset in release $releaseTag." }
+            Write-Host "Verified SHA256 of $asset."
         }
         Expand-Archive -LiteralPath $zip -DestinationPath $stage
     }
