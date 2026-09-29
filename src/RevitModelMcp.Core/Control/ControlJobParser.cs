@@ -297,7 +297,7 @@ public sealed class ControlJobParseResult
 
         return resolvedLimit <= 0
             ? Invalid(command, "The limit must be greater than zero.")
-            : ViewElements(view, categories, resolvedOffset, resolvedLimit);
+            : ViewElements(view, categories, resolvedOffset, Math.Min(resolvedLimit, ControlJobParser.MaximumQueryLimit));
     }
 
     private static ControlJobParseResult ParseElementDetails(string command, long? id)
@@ -337,6 +337,7 @@ public sealed class ControlJobParseResult
 
 public static class ControlJobParser
 {
+    internal const int MaximumQueryLimit = 5000;
     public static ControlJobParseResult Parse(string? content)
     {
         if (string.IsNullOrWhiteSpace(content))

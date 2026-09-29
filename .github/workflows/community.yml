@@ -19,8 +19,7 @@ permissions:
 jobs:
   community:
     if: github.event_name != 'workflow_run'
-    uses: sharafutdinovdi/.github/.github/workflows/community.yml@main
-    secrets: inherit
+    uses: sharafutdinovdi/.github/.github/workflows/community.yml@594da42c2b8e77e670d1d1846f89145b91bc0c73 # main
 
   artifact-comment:
     if: >-
@@ -37,7 +36,7 @@ jobs:
       cancel-in-progress: false
     steps:
       - name: Update build artifact comment
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const run = context.payload.workflow_run;

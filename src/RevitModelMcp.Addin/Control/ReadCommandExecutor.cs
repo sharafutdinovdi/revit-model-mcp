@@ -180,7 +180,7 @@ internal static class ReadCommandExecutor
             PluginLog.Error($"Job processing failed. Command='{job.Command}'.", exception);
             output.Write(CommandResponse<object>.Fail(
                 job.Command,
-                $"Failed to execute the command: {exception}",
+                $"Failed to execute the command: {exception.Message}",
                 stopwatch.ElapsedMilliseconds));
             LogFinished(job.Command, "error", stopwatch.ElapsedMilliseconds, output.FilePath, exception.Message);
         }
