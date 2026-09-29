@@ -33,7 +33,9 @@ jobs:
 
           const { getMcpConfigForManifest } = await import(pathToFileURL(`${process.env.RUNNER_TEMP}/mcpb/node_modules/@anthropic-ai/mcpb/dist/shared/config.js`));
           const manifest = JSON.parse(readFileSync('bundle/manifest.json', 'utf8'));
-          const documentedTools = [...readFileSync('docs/tools.md', 'utf8').matchAll(/^\| `(revit_\w+)`/gm)].map(match => match[1]).sort();
+          const documentedTools = [...new Set(['docs/tools.md', 'docs/actions.md'].flatMap(path =>
+            [...readFileSync(path, 'utf8').matchAll(/^\| `(revit_\w+)`/gm)].map(match => match[1])
+          ))].sort();
           assert.deepEqual(manifest.tools.map(tool => tool.name).sort(), documentedTools);
           assert.equal(manifest.version, '0.0.0');
           assert.equal(manifest.user_config.REVIT_MCP_REDACT_PATHS.default, true);
@@ -54,7 +56,7 @@ jobs:
             };
             assert.deepEqual(config.env, expected);
           }
-          console.log('PASS: 18 documented tools, default settings, all boolean combinations and host/token forwarding');
+          console.log(`PASS: ${documentedTools.length} documented tools, default settings, all boolean combinations and host/token forwarding`);
           JAVASCRIPT
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

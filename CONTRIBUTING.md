@@ -121,6 +121,8 @@ Run `mkdocs build --strict` in the activated environment before submitting a PR.
 ## Test coverage
 
 The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
+They also check that the bundle manifest lists every registered tool in order with its current description.
+After changing tools, run `cd server && uv run python ../build/bundle_manifest.py` to regenerate the manifest.
 A threaded fake HTTP server covers health, authentication, busy responses, job polling and PNG download.
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.
@@ -133,7 +135,7 @@ Automated tests do not validate live Revit behavior; see [validation evidence](d
 2. release-please maintains a `chore(main): release X.Y.Z` PR with generated changelog entries and version updates.
 3. The maintainer checks the release PR and merges it after required checks pass.
 4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
-5. Check PyPI, MCP Registry and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
+5. Check PyPI, MCP Registry, Smithery and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
 
 release-please owns [CHANGELOG.md](CHANGELOG.md), the version in `server/pyproject.toml` and both versions in `server/server.json`.
 The manifest starts at `0.3.0`; `server/pyproject.toml` remains the package version checked by the build.

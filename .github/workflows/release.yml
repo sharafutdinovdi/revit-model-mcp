@@ -67,6 +67,10 @@ jobs:
           foreach ($year in '22', '23', '24', '25', '26', '27') {
             dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
             if ($LASTEXITCODE -ne 0) { throw "R$year build failed" }
+            $assembly = "src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll"
+            $assemblyVersion = [System.Reflection.AssemblyName]::GetAssemblyName($assembly).Version.ToString(3)
+            $expectedVersion = $env:RELEASE_VERSION.Split('-')[0]
+            if ($assemblyVersion -ne $expectedVersion) { throw "R$year assembly version $assemblyVersion differs from $expectedVersion" }
             $stage = "artifacts/addin-R$year"
             New-Item -ItemType Directory -Force "$stage/RevitModelMcp" | Out-Null
             Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
@@ -338,6 +342,49 @@ jobs:
           ./mcp-publisher publish server/server.json 2>&1 | tee mcp-publish-response.txt
 
   # Releases created with GITHUB_TOKEN do not trigger release workflows.
+  smithery:
+    needs: [build, publish, pypi]
+    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    env:
+      SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+    steps:
+      - name: Skip without Smithery API key
+        if: ${{ env.SMITHERY_API_KEY == '' }}
+        run: echo '::notice::SMITHERY_API_KEY is empty; skipping Smithery publishing.'
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ env.SMITHERY_API_KEY != '' }}
+        with:
+          name: release-assets
+          path: artifacts/release
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.SMITHERY_API_KEY != '' }}
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: ${{ env.SMITHERY_API_KEY != '' }}
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        if: ${{ env.SMITHERY_API_KEY != '' }}
+        run: pip install uv==0.12.20
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        if: ${{ env.SMITHERY_API_KEY != '' }}
+        with:
+          node-version: '22'
+      - name: Build and publish Smithery bundle
+        if: ${{ env.SMITHERY_API_KEY != '' }}
+        run: |
+          set -euo pipefail
+          bundles=(artifacts/release/*.mcpb)
+          if [[ ${#bundles[@]} -ne 1 || ! -f "${bundles[0]}" ]]; then
+            echo 'Expected exactly one MCPB release asset' >&2
+            exit 1
+          fi
+          bundle="$(realpath "${bundles[0]}")"
+          uv run --directory server python ../build/bundle_manifest.py --smithery "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" --from "$bundle"
+          npx --yes smithery@1.2.0 mcp publish "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" -n sharafutdinovdi/revit-model-mcp
+
   winget:
     needs: publish
     if: ${{ !contains(inputs.tag || github.ref_name, '-') }}

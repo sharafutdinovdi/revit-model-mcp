@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import runpy
 import tomllib
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from zipfile import ZipFile
 
 import pytest
 from mcp import Client, StdioServerParameters
@@ -68,6 +71,75 @@ ACTION_TOOL_NAMES = {
     "revit_remove_links",
     "revit_undo_last",
 }
+
+
+def test_bundle_tool_description_is_dedented():
+    tool_manifest_entry = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))[
+        "tool_manifest_entry"
+    ]
+    tool = SimpleNamespace(
+        name="example",
+        description=(
+            "First line.\n\n    Second line.\n    \n\n"
+            "If more than one Revit instance is running, choose one."
+        ),
+    )
+    assert tool_manifest_entry(tool) == {
+        "name": "example",
+        "description": "First line.\n\nSecond line.\n\nIf more than one Revit instance is running, choose one.",
+    }
+
+
+def test_bundle_manifest_matches_tool_registry():
+    import asyncio
+
+    manifest = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
+    tools = asyncio.run(revit_server.mcp.list_tools())
+    tool_manifest_entry = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))[
+        "tool_manifest_entry"
+    ]
+    expected = [tool_manifest_entry(tool) for tool in tools]
+    assert manifest["tools"] == expected, (
+        "Bundle tools differ from the server registry. Regenerate with "
+        "cd server && uv run python ../build/bundle_manifest.py"
+    )
+
+
+def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
+    import asyncio
+
+    source = tmp_path / "desktop"
+    source.mkdir()
+    manifest = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
+    manifest["version"] = "9.9.9"
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(manifest))
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    (source / "icon.png").write_bytes(b"icon")
+    archive = tmp_path / "smithery.mcpb"
+
+    bundle_manifest = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))
+    generate = bundle_manifest["main"]
+    with (
+        patch(
+            "sys.argv", ["bundle_manifest.py", "--smithery", str(archive), "--from", str(source)]
+        ),
+        patch.dict(generate.__globals__, {"MANIFEST_PATH": manifest_path}),
+    ):
+        generate()
+
+    registry = asyncio.run(revit_server.mcp.list_tools())
+    with ZipFile(archive) as bundle:
+        assert set(bundle.namelist()) == {"manifest.json", "icon.png"}
+        assert bundle.read("icon.png") == b"icon"
+        published = json.loads(bundle.read("manifest.json"))
+    assert published["version"] == "9.9.9"
+    assert published["tools"] == [
+        {**bundle_manifest["tool_manifest_entry"](tool), "inputSchema": tool.input_schema}
+        for tool in registry
+    ]
+
+
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],

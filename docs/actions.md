@@ -224,6 +224,13 @@ After a timeout, inspect the model before retrying an action; the previous call 
 
 `revit_documents` is a read tool that lists all documents in one Revit process, including background documents. Each row reports `title`, `path`, `isActive`, `isFamilyDocument`, `isWorkshared`, `isDetached`, `isModified`, `openedByMcp` and `centralPath` when available. It works even when no document is active.
 
+| Tool | Arguments | Action |
+| --- | --- | --- |
+| `revit_open_document` | `path`, `mode="detached"`, `worksets="all"`, `activate=false`, `audit=false` | Open a local, UNC or RSN model. |
+| `revit_close_document` | `document`, `save=false`, `confirm_token=null` | Close a background document. |
+| `revit_save_document` | `document`, `save_as=null`, `overwrite=false`, `compact=false`, `confirm_token=null` | Save an open document. |
+| `revit_sync_document` | `document`, `comment`, `relinquish="all"`, `compact=false`, `save_local_before=true`, `save_local_after=true`, `confirm_token=null` | Synchronize a workshared document. |
+
 `revit_open_document` opens a local or UNC `.rvt`/`.rfa` file, or `RSN://server/folder/model.rvt`. It defaults to `mode="detached"` and opens in the background. `activate=true` opens it in the Revit UI. The other modes are `detached_discard_worksets`, `local_copy` and `read_only_local`. A local copy is created under `%LOCALAPPDATA%\RevitModelMcp\locals`; an existing destination is refused. `read_only_local` accepts only a non-central file with the read-only file attribute. Cloud paths are outside this contract. `worksets` accepts `"all"`, `"none"` or `{"open":["Name"]}`. `audit` must be false.
 Its `path` accepts local UNC central files when their share is in `trustedNetworkRoots`; device paths and `..` segments are rejected.
 

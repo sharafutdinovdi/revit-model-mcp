@@ -23,6 +23,14 @@ The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/)
 ## Build
 
 The manifest follows [MCPB 0.3](https://github.com/anthropics/mcpb/blob/main/MANIFEST.md).
+Generate its tool names and descriptions from the server registry after changing tools:
+
+```sh
+cd server
+uv run python ../build/bundle_manifest.py
+```
+
+The committed manifest lists every tool but omits `inputSchema` because MCPB rejects that field.
 The binary command is the external `uvx` executable on PATH.
 The bundle contains metadata and the icon; uv downloads the Python package and dependencies at first launch.
 The server accepts boolean environment values directly, with `1` and `0` as the canonical values.
@@ -44,6 +52,9 @@ The release workflow replaces both the manifest version and the package pin with
 Prerelease bundles reference the release wheel URL because prereleases are not published to PyPI.
 Stable bundles require the corresponding PyPI publishing job to finish before first launch.
 The workflow includes the bundle in `SHA256SUMS.txt` and attests all staged release assets.
+For stable releases, the Smithery job copies the released desktop bundle into a separate ZIP archive with full tool input schemas, then publishes it as `sharafutdinovdi/revit-model-mcp` after the GitHub Release is published.
+The Smithery archive is built with `build/bundle_manifest.py --smithery <output.mcpb> --from <desktop.mcpb>`.
+Add the `SMITHERY_API_KEY` repository secret to enable publishing; an empty secret produces a notice and skips it.
 
 The committed icon is rendered from the repository logo:
 
