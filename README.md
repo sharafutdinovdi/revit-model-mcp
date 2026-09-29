@@ -86,6 +86,8 @@ Both action gates are enabled in this recording.
 
 <img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
 
+If Revit Model MCP saves you time, a :star: on GitHub helps other Revit users find it.
+
 What happens in the recording, in order:
 
 1. "What model is open in Revit right now?" The client reads the document, levels and room counts.
