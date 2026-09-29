@@ -12,7 +12,7 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -30,12 +30,6 @@ from revit_model_mcp.revit_channel import (
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
-
-
-@dataclass
-class _ProofState:
-    nonce: bytes
-    verified_token: str | None = None
 
 
 class HttpHost:
@@ -59,11 +53,12 @@ class HttpHost:
         self._response: str | None = None
         self._payload: dict[str, Any] = {}
         self._identity: dict[str, Any] | None = None
-        self._proof = _ProofState(os.urandom(32))
+        self._verified_token: str | None = None
 
     async def health(self) -> dict[str, Any]:
+        self._verified_token = None
         token = self.token
-        nonce = self._proof.nonce if token and self._proof.verified_token != token else None
+        nonce = os.urandom(32) if token else None
         headers = (
             {"X-RevitMcp-Nonce": base64.urlsafe_b64encode(nonce).rstrip(b"=").decode("ascii")}
             if nonce is not None
@@ -82,13 +77,14 @@ class HttpHost:
             if not hmac.compare_digest(actual, expected):
                 raise RevitChannelError(
                     "The HTTP endpoint did not prove the add-in token. "
-                    "Update the add-in, or another process may be using the port."
+                    "Update the add-in, or another process may be using the port. "
+                    "Check that REVIT_MCP_TOKEN or --token matches the workstation settings.json."
                 )
         result = self._json(body)
         if result.get("ok") is not True or not isinstance(result.get("processId"), int):
             raise ResponseParseError("Invalid Revit health response.")
         if nonce is not None:
-            self._proof.verified_token = token
+            self._verified_token = token
         return result
 
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
@@ -109,12 +105,14 @@ class HttpHost:
     async def select_job(self, job: ReadJob) -> tuple[HttpHost, ReadJob]:
         instance = select_instance(await self.list_revit_instances(), job)
         selected = copy.copy(self)
+        selected._verified_token = None
         selected._identity = instance
         return selected, replace(
             job, payload={**job.payload, "targetProcessId": instance["processId"]}
         )
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
+        self._verified_token = None
         if self._identity is not None:
             status = await self.health()
             if any(
@@ -271,9 +269,9 @@ class HttpHost:
                 raise RevitChannelError(
                     "Set REVIT_MCP_TOKEN or --token to the token in the workstation settings.json."
                 )
-            if self._proof.verified_token != self.token:
+            if self._verified_token != self.token:
                 await self.health()
-            if self._proof.verified_token != self.token:
+            if self._verified_token != self.token:
                 raise RevitChannelError("The HTTP endpoint token proof is no longer current.")
             headers["Authorization"] = "Bearer " + self.token
         request = urllib.request.Request(
@@ -287,8 +285,7 @@ class HttpHost:
             except urllib.error.HTTPError as error:
                 error.close()
                 if error.code == 401:
-                    self._proof.verified_token = None
-                    self._proof.nonce = os.urandom(32)
+                    self._verified_token = None
                 messages = {
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
                     403: "Revit denied this request. Actions are refused while the workstation is in read-only mode.",
@@ -304,8 +301,7 @@ class HttpHost:
                 OSError,
                 http.client.HTTPException,
             ) as error:
-                self._proof.verified_token = None
-                self._proof.nonce = os.urandom(32)
+                self._verified_token = None
                 if isinstance(error, TimeoutError) or isinstance(
                     getattr(error, "reason", None), TimeoutError
                 ):

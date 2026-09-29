@@ -135,10 +135,10 @@ HTTP has no built-in TLS.
 Use an SSH tunnel, Tailscale or a TLS reverse proxy; the client validates HTTPS certificates.
 Redirects are rejected to prevent forwarding the bearer token to another endpoint.
 `/health` is unauthenticated and reveals the Revit version, active document name, process ID, startup identity (`startedUtc`) and read-only state.
-The Python client sends a 32-byte random base64url nonce in `X-RevitMcp-Nonce` on its first health request for a client session.
+The Python client sends a fresh 32-byte random base64url nonce in `X-RevitMcp-Nonce` on every health request.
 The add-in answers with `X-RevitMcp-Proof`, the unpadded base64url HMAC-SHA256 of `revit-model-mcp/health/v1\n` followed by the decoded nonce.
 The HMAC key is the UTF-8 bytes of the token text sent after `Bearer `, including for an overridden `REVIT_MCP_TOKEN`.
-The client compares the proof before sending the token and checks again after a connection error or reconnect.
+The client compares each proof before sending the token for a job.
 Health requests without a valid nonce keep the same response body and do not return a proof.
 An older add-in cannot supply the proof, so a newer Python client refuses jobs and asks for an add-in update; an older client works with a newer add-in.
 All other routes require `Authorization: Bearer <token>`.
@@ -157,7 +157,7 @@ A timeout or client disconnect does not cancel a job.
 Results expire ten minutes after completion.
 Do not resubmit an action after a timeout without checking its result and the model.
 The Python client submits once with `timeout=0`, then polls within `timeout_seconds`.
-Proof verification uses the existing health request at connection time and adds no HTTP request per job or poll.
+Proof verification uses the existing health requests for each job and adds no HTTP request per job or poll.
 `pickup_timeout_seconds` applies only to file transports.
 
 HTTP 401 means the token is missing or invalid.

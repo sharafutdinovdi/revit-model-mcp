@@ -28,8 +28,6 @@ public static class HealthProof
         {
             return false;
         }
-        if (nonce.Length is < 1 or > 64) return false;
-
         var message = new byte[MessagePrefix.Length + nonce.Length];
         Buffer.BlockCopy(MessagePrefix, 0, message, 0, MessagePrefix.Length);
         Buffer.BlockCopy(nonce, 0, message, MessagePrefix.Length, nonce.Length);

@@ -154,6 +154,7 @@ def test_health_and_instance_discovery(endpoint):
     assert instances[0]["pluginResponding"] is True
     assert asyncio.run(host.list_revit_instances("other")) == []
     assert all(request[2] is None for request in state["requests"])
+    assert len(set(state["nonces"])) == 3
 
 
 def test_job_round_trip(endpoint):
@@ -170,8 +171,8 @@ def test_job_round_trip(endpoint):
         ("GET", "/health", None),
         ("POST", "/jobs?timeout=0", "Bearer test-token"),
     ]
-    assert state["nonces"][0] is not None
-    assert state["nonces"][1] is None
+    assert all(nonce is not None for nonce in state["nonces"])
+    assert state["nonces"][0] != state["nonces"][1]
     assert state["payload"]["targetProcessId"] == 42
 
 
@@ -189,8 +190,9 @@ def test_http_errors(endpoint, status, message):
 def test_wrong_token(endpoint):
     host, _ = endpoint
     host.token = "wrong"
-    with pytest.raises(RevitChannelError, match="did not prove the add-in token"):
+    with pytest.raises(RevitChannelError, match="REVIT_MCP_TOKEN") as error:
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    assert "did not prove the add-in token" in str(error.value)
 
 
 @pytest.mark.parametrize("proof", ["missing", "wrong"])
@@ -198,20 +200,35 @@ def test_unproved_endpoint_never_receives_authorization(endpoint, proof):
     host, state = endpoint
     state["proof"] = proof
 
-    with pytest.raises(RevitChannelError, match="Update the add-in, or another process"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    for _ in range(2):
+        with pytest.raises(RevitChannelError, match="Update the add-in, or another process"):
+            asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
 
-    assert state["requests"] == [("GET", "/health", None)]
-    assert state["nonces"][0] is not None
+    assert state["requests"] == [("GET", "/health", None)] * 2
+    assert state["nonces"][0] != state["nonces"][1]
 
 
-def test_health_proof_known_answer(endpoint):
+def test_health_proof_known_answer(endpoint, monkeypatch):
     host, state = endpoint
-    host._proof.nonce = bytes(range(32))
+    monkeypatch.setattr("revit_model_mcp.http_host.os.urandom", lambda size: bytes(range(size)))
     state["proof"] = "known"
 
     assert asyncio.run(host.health())["ok"] is True
     assert state["nonces"] == ["AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"]
+
+
+def test_later_job_rejects_endpoint_without_proof(endpoint):
+    host, state = endpoint
+    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    previous_nonces = set(state["nonces"])
+    previous_requests = len(state["requests"])
+    state["proof"] = "missing"
+
+    with pytest.raises(RevitChannelError, match="did not prove the add-in token"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    assert state["requests"][previous_requests:] == [("GET", "/health", None)]
+    assert state["nonces"][-1] not in previous_nonces
 
 
 def test_http_401_requires_fresh_proof(endpoint):
@@ -222,7 +239,7 @@ def test_http_401_requires_fresh_proof(endpoint):
 
     state["status"] = 200
     assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
-    assert state["nonces"][2] is not None
+    assert len(set(state["nonces"])) == 4
 
 
 def test_connection_error_requires_fresh_proof(endpoint):
@@ -232,7 +249,7 @@ def test_connection_error_requires_fresh_proof(endpoint):
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
 
     assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
-    assert state["nonces"][2] is not None
+    assert len(set(state["nonces"])) == 4
 
 
 def test_pending_job_polls_without_resubmitting(endpoint):
