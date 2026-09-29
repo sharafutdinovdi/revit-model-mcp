@@ -16,6 +16,7 @@ using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
+using RevitModelMcp.Updates;
 
 namespace RevitModelMcp;
 
@@ -155,6 +156,7 @@ public sealed class Application : ExternalApplication
             }
         }
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
+        UpdateService.Start();
     }
 
     public override void OnShutdown()

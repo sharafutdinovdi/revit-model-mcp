@@ -93,20 +93,20 @@ An elevated script install reserves the selected prefix only with `-EnableHttp`:
 .\install.ps1 -Year 2026 -EnableHttp -HttpBind 127.0.0.1 -HttpPort 53111
 ```
 
-For either MSI package, pass `HTTP_ENABLED=1 HTTP_URL_PREFIX="http://127.0.0.1:53111/"` to `msiexec /i <package.msi>`.
+For a per-machine MSI, pass `HTTP_ENABLED=1 HTTP_URL_PREFIX="http://127.0.0.1:53111/"` to `msiexec /i <package.msi>` from an elevated prompt.
 The prefix must match the explicitly enabled Revit process.
-The single-user MSI retains its per-user installation scope and supports elevation for the optional reservation.
+The SingleUser MSI installs without elevation and does not manage URL reservations. For HTTP with a per-user installation, use the exact `netsh http add urlacl` command printed by `install.ps1 -EnableHttp` when it is not elevated. Alternatively, use the MultiUser MSI from an elevated prompt with the HTTP properties above.
 Run the installer as the account that runs Revit; deployment as another account or SYSTEM requires a reservation for the Revit user.
 Without elevation, an opted-in script install prints the exact reservation command for an elevated command prompt.
 The script preserves existing reservations without claiming ownership.
-An opted-in MSI install fails if its prefix already exists; omit `HTTP_ENABLED=1` to use a reservation managed outside that MSI.
+An opted-in MultiUser MSI install fails if its prefix already exists; omit `HTTP_ENABLED=1` to use a reservation managed outside that MSI.
 
 Changing `httpPort` or `httpBind` requires a matching URL reservation.
 Use `+` in the reservation prefix for `httpBind=0.0.0.0`.
 An access-denied warning in the add-in log includes the exact configured prefix and repair command.
 The listener remains stopped until the reservation exists and Revit restarts.
 
-MSI uninstall removes only the prefix recorded for that installed product after successful registration.
+MultiUser MSI uninstall removes only the prefix recorded for that installed product after successful registration.
 Major upgrades remove that owned reservation; pass the HTTP installation properties again to reserve a prefix for the new version.
 The script records a successfully created prefix under `%APPDATA%\Autodesk\Revit\Addins\RevitModelMcp-http-urlacl.txt`.
 `install.ps1 -Uninstall` removes that recorded prefix after the last installed Revit year for the current user, or prints its removal command when not elevated.

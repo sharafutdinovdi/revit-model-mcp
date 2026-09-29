@@ -1,45 +1,76 @@
+using System.Text;
 using Installer;
 using WixSharp;
 using WixSharp.CommonTasks;
 using WixSharp.Controls;
-using WixToolset.Dtf.WindowsInstaller;
 
 const string outputName = "RevitModelMcp";
 const string projectName = "RevitModelMcp";
 
 var versioning = Versioning.CreateFromVersionString(args[0]);
-var project = new Project
+var wixEntities = Generator.GenerateWixEntities(args[1..]);
+
+BuildSingleUserMsi();
+BuildMultiUserMsi();
+
+Project CreateProject(InstallScope scope)
 {
-    OutDir = "output",
-    Name = projectName,
-    Platform = Platform.x64,
-    UI = WUI.WixUI_FeatureTree,
-    MajorUpgrade = MajorUpgrade.Default,
-    GUID = new Guid("75e1b812-23a4-45ce-9e7c-84d7d43b8c70"),
-    BannerImage = @"build\install\Resources\Icons\BannerImage.png",
-    BackgroundImage = @"build\install\Resources\Icons\BackgroundImage.png",
-    Version = versioning.VersionPrefix,
-    ControlPanelInfo =
+    var project = new Project
     {
-        Manufacturer = "Dinar Sharafutdinov",
-        ProductIcon = @"build\install\Resources\Icons\ShellIcon.ico"
-    },
-    Properties =
+        OutDir = "output",
+        Name = projectName,
+        Scope = scope,
+        Platform = Platform.x64,
+        UI = WUI.WixUI_FeatureTree,
+        MajorUpgrade = MajorUpgrade.Default,
+        GUID = new Guid("75e1b812-23a4-45ce-9e7c-84d7d43b8c70"),
+        BannerImage = @"build\install\Resources\Icons\BannerImage.png",
+        BackgroundImage = @"build\install\Resources\Icons\BackgroundImage.png",
+        Version = versioning.VersionPrefix,
+        ControlPanelInfo =
+        {
+            Manufacturer = "Dinar Sharafutdinov",
+            ProductIcon = @"build\install\Resources\Icons\ShellIcon.ico"
+        }
+    };
+    project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
+    return project;
+}
+
+void BuildSingleUserMsi()
+{
+    var project = CreateProject(InstallScope.perUser);
+    project.Properties = [new Property("UPDATECHECK", "1") { Secure = true }];
+    project.RegValues = [];
+    project.Actions = [UpdateSettingAction("LOCALAPPDATA", false)];
+    project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
+    project.Dirs =
+    [
+        new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
+    ];
+    project.BuildMsi();
+}
+
+void BuildMultiUserMsi()
+{
+    var project = CreateProject(InstallScope.perMachine);
+    project.Properties =
     [
         new Property("HTTP_ENABLED", "0") { Secure = true },
+        new Property("UPDATECHECK", "1") { Secure = true },
         new Property("HTTP_URL_PREFIX", "http://127.0.0.1:53110/") { Secure = true },
         new RegValueProperty("HTTP_OWNED_PREFIX", RegistryHive.LocalMachine,
             @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]", "Prefix", "") { Secure = true }
-    ],
-    RegValues =
+    ];
+    project.RegValues =
     [
         new RegValue(RegistryHive.LocalMachine, @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]",
             "Prefix", "[HTTP_OWNED_PREFIX]")
         {
             ComponentCondition = "HTTP_ENABLED=\"1\" AND NOT Installed"
         }
-    ],
-    Actions =
+    ];
+    project.Actions =
     [
         new SetPropertyAction("HTTP_OWNED_PREFIX", "[HTTP_URL_PREFIX]", Return.check,
             When.Before, Step.CostFinalize,
@@ -61,34 +92,9 @@ var project = new Project
         {
             Execute = Execute.deferred,
             Impersonate = false
-        }
-    ]
-};
-
-var wixEntities = Generator.GenerateWixEntities(args[1..]);
-project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
-
-BuildSingleUserMsi();
-BuildMultiUserMsi();
-
-void BuildSingleUserMsi()
-{
-    project.Scope = InstallScope.perUser;
-    project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
-    project.Dirs =
-    [
-        new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
+        },
+        UpdateSettingAction("ProgramData", true)
     ];
-    var installerPath = project.BuildMsi();
-    // WiX perUser sets the no-elevation bit; URL ACL custom actions require elevation.
-    using var database = new Database(installerPath, DatabaseOpenMode.Direct);
-    database.SummaryInfo.WordCount &= ~8;
-    database.Commit();
-}
-
-void BuildMultiUserMsi()
-{
-    project.Scope = InstallScope.perMachine;
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
     project.Dirs = wixEntities
@@ -101,4 +107,23 @@ void BuildMultiUserMsi()
         .ToArray();
 
     project.BuildMsi();
+}
+
+PathFileAction UpdateSettingAction(string environmentFolder, bool elevated)
+{
+    var script = $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
+        "$directory = Split-Path $path; New-Item -ItemType Directory -Path $directory -Force | Out-Null; " +
+        "$settings = if (Test-Path $path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }; " +
+        "$settings | Add-Member -NotePropertyName updateCheck -NotePropertyValue $false -Force; " +
+        "$settings | ConvertTo-Json -Compress | Set-Content -LiteralPath $path -Encoding UTF8";
+    var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+    return new PathFileAction(new Id(elevated ? "DisableMachineUpdateCheck" : "DisableUserUpdateCheck"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+        "SystemFolder", Return.check, When.After, Step.InstallFiles,
+        new Condition("UPDATECHECK=\"0\" AND NOT REMOVE~=\"ALL\""))
+    {
+        Execute = Execute.deferred,
+        Impersonate = !elevated
+    };
 }

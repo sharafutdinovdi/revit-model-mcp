@@ -266,6 +266,10 @@
                             <DockPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,2,0,0" LastChildFill="True">
                                 <TextBlock DockPanel.Dock="Left" Text="{Binding ClientName}" Foreground="{Binding LaneBrush}"/>
                                 <TextBlock DockPanel.Dock="Left" Text=" · " Foreground="{DynamicResource TextMutedBrush}"/>
+                                <Button DockPanel.Dock="Left" Content="Release notes" Click="OnReleaseNotesClick"
+                                        Visibility="{Binding HasReleaseUrl, Converter={StaticResource BoolToVisibility}}"
+                                        Foreground="{DynamicResource RunningBrush}" Background="Transparent" BorderThickness="0"
+                                        Cursor="Hand" Padding="0"/>
 
                                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                     <Border Style="{StaticResource Tag}"

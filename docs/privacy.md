@@ -9,6 +9,7 @@ Revit Model MCP reads the model open in Revit on the configured workstation and 
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
 Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
 The project includes no analytics, telemetry or crash reporting.
+Unless disabled, the add-in contacts `api.github.com` at most once every 24 hours after Revit starts to check the latest stable release. Per-user installs download the SingleUser MSI and its SHA256 checksum from the release assets when an update is available. The request contains no model data.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
 The bundle launcher uses uvx to download the package and dependencies from PyPI and its package hosting service during installation or updates.
 Prerelease bundles download the package wheel from GitHub Releases.

@@ -42,6 +42,7 @@ public static class ActivityTitleBuilder
     public static string Build(ActivityEntry entry)
     {
         if (entry is null) throw new ArgumentNullException(nameof(entry));
+        if (entry.Command == "system-notice") return entry.Summary;
         var count = entry.ActionCount ?? entry.ChangedCount + entry.CreatedCount + entry.DeletedCount;
         var finished = !entry.DryRun && entry.State is not ("failed" or "dry_run" or "queued" or "running");
         return Format(entry.Command, count, finished);
