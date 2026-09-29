@@ -77,7 +77,7 @@ void BuildMultiUserMsi()
             new Condition("HTTP_ENABLED=\"1\" AND NOT Installed AND NOT REMOVE~=\"ALL\"")),
         new PathFileAction(new Id("RegisterHttpUrlAcl"),
             @"[System64Folder]netsh.exe",
-            "http add urlacl url=[HTTP_OWNED_PREFIX] sddl=\"D:(A;;GX;;;[UserSID])\"",
+            "http add urlacl url=[HTTP_OWNED_PREFIX] sddl=\"D:(A;;GX;;;S-1-5-32-545)\"",
             "System64Folder", Return.check, When.Before, Step.WriteRegistryValues,
             new Condition("HTTP_ENABLED=\"1\" AND NOT Installed AND NOT REMOVE~=\"ALL\""))
         {
