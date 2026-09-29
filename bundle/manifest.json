@@ -29,7 +29,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "uvx --offline --prerelease=disallow revit-model-mcp || uvx --prerelease=disallow revit-model-mcp"
+        "uvx --offline --prerelease=disallow \"revit-model-mcp>=0.7.0\" || uvx --prerelease=disallow \"revit-model-mcp>=0.7.0\""
       ],
       "env": {
         "REVIT_MCP_HOST": "${user_config.REVIT_MCP_HOST}",
@@ -42,7 +42,7 @@
           "command": "cmd",
           "args": [
             "/c",
-            "uvx --offline --prerelease=disallow revit-model-mcp || uvx --prerelease=disallow revit-model-mcp"
+            "uvx --offline --prerelease=disallow \"revit-model-mcp>=0.7.0\" || uvx --prerelease=disallow \"revit-model-mcp>=0.7.0\""
           ]
         }
       }

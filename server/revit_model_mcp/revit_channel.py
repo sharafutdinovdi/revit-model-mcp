@@ -7,6 +7,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass, replace
 from typing import Any, Protocol, get_type_hints
@@ -497,6 +498,10 @@ MIN_ADDIN_VERSION = dict.fromkeys(
     "0.6.0",
 )
 RELEASES_URL = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest"
+ADDIN_VERSION = re.compile(
+    r"(\d+(?:\.\d+)+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+    r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
+)
 
 
 def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
@@ -504,9 +509,12 @@ def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
     reported = instance.get("addinVersion")
     version = reported if isinstance(reported, str) and reported else None
     commands = instance.get("commands")
-    too_old = version is None and newer_stable(required, "0.6.0")
-    if version is not None:
-        too_old = newer_stable(required, version)
+    parsed = ADDIN_VERSION.fullmatch(version) if version is not None else None
+    too_old = (
+        newer_stable(required, parsed.group(1))
+        if parsed
+        else (version is None and newer_stable(required, "0.6.0"))
+    )
     missing_command = version is not None and (
         not isinstance(commands, list) or command not in commands
     )

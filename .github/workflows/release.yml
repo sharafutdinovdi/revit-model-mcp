@@ -147,6 +147,8 @@ jobs:
           node-version: '22'
       - name: Set bundle release version
         shell: python
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           import json
           import os
@@ -156,6 +158,16 @@ jobs:
           path = Path('bundle/manifest.json')
           manifest = json.loads(path.read_text())
           manifest['version'] = version
+          config = manifest['server']['mcp_config']
+          if '-' in version:
+              wheel, = Path('server/dist').glob('*.whl')
+              package = f'https://github.com/{os.environ["GITHUB_REPOSITORY"]}/releases/download/{os.environ["RELEASE_TAG"]}/{wheel.name}'
+              launcher = f'uvx --from {package} revit-model-mcp'
+          else:
+              package = f'"revit-model-mcp>={version}"'
+              launcher = f'uvx --offline --prerelease=disallow {package} || uvx --prerelease=disallow {package}'
+          config['args'] = ['-c', launcher]
+          config['platform_overrides']['win32']['args'] = ['/c', launcher]
           path.write_text(json.dumps(manifest, indent=2) + '\n')
       - name: Validate and pack Claude Desktop bundle
         shell: pwsh

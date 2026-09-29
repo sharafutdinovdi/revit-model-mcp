@@ -124,8 +124,8 @@ def check_for_updates(path: Path | None = None, now: datetime | None = None) -> 
         state["lastChecked"] = now.isoformat()
         _write_state(path, state)
         flags = 0
-        if sys.platform == "win32":
-            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        if os.name == "nt":
+            flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
         subprocess.Popen(
             [
                 "uvx",
@@ -142,8 +142,9 @@ def check_for_updates(path: Path | None = None, now: datetime | None = None) -> 
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env={**os.environ, "UV_HTTP_TIMEOUT": "10"},
+            close_fds=True,
             creationflags=flags,
-            start_new_session=sys.platform != "win32",
+            start_new_session=os.name != "nt",
         )
         threading.Thread(target=_fetch_latest, args=(path,), daemon=True).start()
     except Exception:

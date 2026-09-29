@@ -62,6 +62,24 @@ def test_update_opt_out_does_not_spawn_or_request(tmp_path, monkeypatch):
     assert updates.update_status()["updateCheck"] == "disabled"
 
 
+def test_windows_refresh_starts_hidden_process(tmp_path, monkeypatch):
+    monkeypatch.delenv("REVIT_MCP_NO_UPDATE_CHECK", raising=False)
+    with (
+        patch.object(updates.os, "name", "nt"),
+        patch.object(updates.subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True),
+        patch.object(updates.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200, create=True),
+        patch.object(updates.subprocess, "Popen") as spawn,
+        patch.object(updates.threading, "Thread"),
+    ):
+        updates.check_for_updates(tmp_path / "update.json")
+    spawn.assert_called_once()
+    assert spawn.call_args.kwargs["creationflags"] == 0x08000200
+    assert spawn.call_args.kwargs["start_new_session"] is False
+    assert spawn.call_args.kwargs["close_fds"] is True
+    for stream in ("stdin", "stdout", "stderr"):
+        assert spawn.call_args.kwargs[stream] == updates.subprocess.DEVNULL
+
+
 def test_pypi_lookup_records_latest_stable_even_when_prerelease_is_newest(tmp_path):
     path = tmp_path / "update.json"
     package = {
@@ -99,3 +117,17 @@ def test_compatibility_gate_uses_version_and_command_list():
             check_addin_compatibility("ping", {"addinVersion": "0.7.0"})
     finally:
         del MIN_ADDIN_VERSION["future-command"]
+
+
+@pytest.mark.parametrize("version", ["0.7.0-rc.1", "0.7.0-rc.1+sha", "0.7.0+sha"])
+def test_compatibility_gate_uses_release_segment_for_addin_versions(version):
+    check_addin_compatibility("ping", {"addinVersion": version, "commands": ["ping"]})
+    check_addin_compatibility(
+        "future-command", {"addinVersion": version, "commands": ["future-command"]}
+    )
+
+
+def test_compatibility_gate_falls_back_to_commands_for_unparseable_version():
+    check_addin_compatibility("ping", {"addinVersion": "unknown", "commands": ["ping"]})
+    with pytest.raises(RevitChannelError, match="needs add-in 0.6.0 or later"):
+        check_addin_compatibility("ping", {"addinVersion": "unknown", "commands": []})
