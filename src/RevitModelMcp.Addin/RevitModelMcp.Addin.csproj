@@ -16,11 +16,36 @@
     <Configurations>$(Configurations);Release.R22;Release.R23;Release.R24;Release.R25;Release.R26;Release.R27</Configurations>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(RevitVersion)' == '2022'">
+    <MinimumRevitApiPackageVersion>2022.1.1</MinimumRevitApiPackageVersion>
+    <MinimumRevitApiAssemblyVersion>22.0.0.0</MinimumRevitApiAssemblyVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' == '2023'">
+    <MinimumRevitApiPackageVersion>2023.0.1</MinimumRevitApiPackageVersion>
+    <MinimumRevitApiAssemblyVersion>23.0.0.0</MinimumRevitApiAssemblyVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' == '2024'">
+    <MinimumRevitApiPackageVersion>2024.0.0</MinimumRevitApiPackageVersion>
+    <MinimumRevitApiAssemblyVersion>24.0.0.0</MinimumRevitApiAssemblyVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' == '2025'">
+    <MinimumRevitApiPackageVersion>2025.0.2</MinimumRevitApiPackageVersion>
+    <MinimumRevitApiAssemblyVersion>25.0.0.0</MinimumRevitApiAssemblyVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' == '2026'">
+    <MinimumRevitApiPackageVersion>2026.0.4</MinimumRevitApiPackageVersion>
+    <MinimumRevitApiAssemblyVersion>26.0.4.0</MinimumRevitApiAssemblyVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' == '2027'">
+    <MinimumRevitApiPackageVersion>2027.0.0</MinimumRevitApiPackageVersion>
+    <MinimumRevitApiAssemblyVersion>27.0.0.0</MinimumRevitApiAssemblyVersion>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Nice3point.Revit.Toolkit" Version="$(RevitVersion).*"/>
     <PackageReference Include="Nice3point.Revit.Extensions" Version="$(RevitVersion).*"/>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="[$(RevitVersion).0.0,$([MSBuild]::Add($(RevitVersion),1)).0.0)"/>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="[$(RevitVersion).0.0,$([MSBuild]::Add($(RevitVersion),1)).0.0)"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="[$(MinimumRevitApiPackageVersion)]"/>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="[$(MinimumRevitApiPackageVersion)]"/>
     <PackageReference Include="ILRepack" Version="2.0.46" PrivateAssets="all"/>
     <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" PrivateAssets="all"/>
     <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
@@ -43,5 +68,13 @@
   <ItemGroup>
     <Resource Include="Resources\Icons\*.png"/>
   </ItemGroup>
+
+  <Target Name="PinMergedRevitApiReferences"
+          AfterTargets="RepackAddinFiles"
+          Condition="'$(IsRepackable)' == 'true'">
+    <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
+           Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
+  </Target>
 
 </Project>

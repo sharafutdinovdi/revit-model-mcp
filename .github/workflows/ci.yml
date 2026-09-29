@@ -75,12 +75,13 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
-      - name: Build Revit 2026
-        run: dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
-      - name: Build Revit 2022
-        run: dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
-      - name: Build Revit 2027
-        run: dotnet build src/RevitModelMcp.Addin -c Release.R27 -p:DeployAddin=false
+      - name: Build installer Revit versions
+        shell: pwsh
+        run: |
+          foreach ($year in '26', '22', '27') {
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true
+            if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
+          }
       - name: Test core
         run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -238,6 +239,13 @@ jobs:
           retention-days: 90
           path: artifacts/addin-R27/
           if-no-files-found: error
+      - name: Build remaining Revit versions
+        shell: pwsh
+        run: |
+          foreach ($year in '23', '24', '25') {
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true
+            if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
+          }
       - name: Build Python package
         working-directory: server
         run: |
