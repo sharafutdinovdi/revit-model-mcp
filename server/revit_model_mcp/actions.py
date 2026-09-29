@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import PureWindowsPath
 from typing import Annotated, Any, Literal, Union
 
@@ -165,20 +166,36 @@ def env_flag(name: str, default: bool = False) -> bool:
     raise ValueError(f"{name} must be 1/0, true/false, yes/no or on/off.")
 
 
+_WINDOWS_PATH = re.compile(
+    r"(?<!\w)(?:[A-Za-z]:[\\/]|(?:\\\\|//)[^\\/\s\"'`,;:!?()<>|]+[\\/]"
+    r"(?:[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*)[\\/])"
+    r"(?:(?>[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*)[\\/])*"
+    r"(?:[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*?\.[A-Za-z0-9]{1,10}\b"
+    r"|[^\\/\s\"'`,;:!?()<>|]*[^\\/\s\"'`,;:!?()<>|.])"
+)
+_TEXT_FIELDS = {"confirmationText", "summary", "error", "message", "warning", "warnings"}
+
+
 def redact_model_paths(value: Any) -> Any:
-    """Reduce documentPath/path/centralPath strings to file names when REVIT_MCP_REDACT_PATHS is set."""
+    """Reduce Windows paths in response path and message fields to file names."""
     if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return value
-    if isinstance(value, dict):
-        return {
-            key: PureWindowsPath(item).name
-            if key in {"documentPath", "path", "centralPath"} and isinstance(item, str)
-            else redact_model_paths(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [redact_model_paths(item) for item in value]
-    return value
+
+    def scrub(item: Any, text_field: bool = False) -> Any:
+        if isinstance(item, dict):
+            return {
+                key: PureWindowsPath(nested).name
+                if key in {"documentPath", "path", "centralPath"} and isinstance(nested, str)
+                else scrub(nested, key in _TEXT_FIELDS)
+                for key, nested in item.items()
+            }
+        if isinstance(item, list):
+            return [scrub(nested, text_field) for nested in item]
+        if text_field and isinstance(item, str):
+            return _WINDOWS_PATH.sub(lambda match: PureWindowsPath(match.group()).name, item)
+        return item
+
+    return scrub(value)
 
 
 def millimeters_to_feet(value: float) -> float:

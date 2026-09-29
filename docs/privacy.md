@@ -23,9 +23,10 @@ Settings and the workstation write gate remain in the default directory.
 HTTP keeps completed job responses in memory until expiry; exported images also use the workstation channel directory.
 Downloaded PNG files are written to the client path specified by `save_to`, or a new `revit-view-*` directory in the client's temporary directory.
 
-`REVIT_MCP_REDACT_PATHS=1` removes directories from response `documentPath` and nested `path` fields.
+`REVIT_MCP_REDACT_PATHS=1` removes directories from response `documentPath`, `path` and `centralPath` fields.
+It also reduces Windows drive and UNC paths in `confirmationText`, `summary`, `error`, `message`, `warning` and `warnings` strings at any depth to file names.
 The bundle enables this setting by default.
-Model names, parameter values, errors and exported image `localPath` values remain visible.
+Document names, parameter values, remaining message text and exported image `localPath` values remain visible.
 Redaction applies to outgoing Python responses, not workstation files or add-in logs.
 Boolean settings also accept `true/false`, `yes/no` and `on/off`, without regard to case or surrounding whitespace; `1/0` remains the canonical form.
 
