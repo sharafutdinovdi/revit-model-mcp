@@ -6,8 +6,7 @@ Include the affected version and steps to reproduce.
 Do not include credentials or confidential model data.
 Keep undisclosed vulnerabilities out of public issues and Discussions.
 
-The file channel uses operating system permissions.
-Limit channel directory access to trusted users.
+The add-in keeps the channel directory private and disables the file channel if another untrusted account can write to it.
 Responses can contain model paths and parameter values.
 See [server privacy settings](server/README.md#responses-and-privacy).
 

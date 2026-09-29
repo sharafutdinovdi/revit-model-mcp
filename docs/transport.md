@@ -308,6 +308,9 @@ The default directory is `%LOCALAPPDATA%\RevitModelMcp` on the Windows account r
 Set `REVIT_MCP_CHANNEL_DIR` to an absolute Windows path to override it.
 The server and Revit must use the same directory.
 The Revit environment must contain the override before Revit starts.
+The add-in keeps new channel directories private and restricts existing default directories owned by the current user.
+If `REVIT_MCP_CHANNEL_DIR` points to a directory another untrusted account can write, the add-in disables the file channel and does not publish a heartbeat there.
+Use a private directory to restore discovery; the pipe listener and any configured HTTP listener still start, and HTTP can connect directly.
 
 Discovery reads `ROOT\instance_<pid>.json` only, where `ROOT` is the configured directory.
 Each v2 add-in owns `ROOT\instances\<pid>\`:

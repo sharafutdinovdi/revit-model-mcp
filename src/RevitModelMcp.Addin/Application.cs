@@ -50,17 +50,21 @@ public sealed class Application : ExternalApplication
             return result is ExternalEventRequest.Accepted or ExternalEventRequest.Pending;
         }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
-        Directory.CreateDirectory(Output.SnapshotFileWriter.OutputDirectory);
-        if (File.Exists(TriggerFilePath))
+        var fileChannelRefusal = Output.SnapshotFileWriter.InitializeChannel();
+        _controlChannel.FileChannelEnabled = fileChannelRefusal is null;
+        if (fileChannelRefusal is not null)
+            PluginLog.Warn(fileChannelRefusal);
+        if (_controlChannel.FileChannelEnabled)
         {
-            File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            if (File.Exists(TriggerFilePath))
+                File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            _triggerWatcher = new TriggerFileWatcher(
+                TriggerFilePath,
+                RequestExecution,
+                exception => PluginLog.Error("Trigger watcher failed.", exception),
+                TimeSpan.FromSeconds(10));
+            _triggerWatcher.Start();
         }
-        _triggerWatcher = new TriggerFileWatcher(
-            TriggerFilePath,
-            RequestExecution,
-            exception => PluginLog.Error("Trigger watcher failed.", exception),
-            TimeSpan.FromSeconds(10));
-        _triggerWatcher.Start();
         Application.ViewActivated += OnViewActivated;
         Application.ControlledApplication.DocumentClosing += OnDocumentClosing;
         Application.ControlledApplication.DocumentClosed += OnDocumentListChanged;
@@ -78,20 +82,23 @@ public sealed class Application : ExternalApplication
         catch (Exception exception)
         {
             _pipeChannel = null;
-            PluginLog.Error("Pipe listener failed; the file channel stays available.", exception);
+            PluginLog.Error("Pipe listener failed.", exception);
         }
-        // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
-        _instanceHeartbeat = new InstanceHeartbeat(
-            Output.SnapshotFileWriter.RootDirectory,
-            Process.GetCurrentProcess().Id,
-            Application.ControlledApplication.VersionNumber,
-            _instanceId,
-            _pipeChannel?.PipeName);
+        if (_controlChannel.FileChannelEnabled)
+        {
+            // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
+            _instanceHeartbeat = new InstanceHeartbeat(
+                Output.SnapshotFileWriter.RootDirectory,
+                Process.GetCurrentProcess().Id,
+                Application.ControlledApplication.VersionNumber,
+                _instanceId,
+                _pipeChannel?.PipeName);
+        }
         Application.ControlledApplication.DocumentChanged += OnDocumentChanged;
         ActivityHost.Scheduler = _controlChannel.Scheduler;
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
-        _instanceHeartbeat.Start(_activeDocument, _documents);
+        _instanceHeartbeat?.Start(_activeDocument, _documents);
         var showActivityPaneOnAction = true;
         try
         {
