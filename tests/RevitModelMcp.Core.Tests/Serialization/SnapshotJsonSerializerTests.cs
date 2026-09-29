@@ -25,6 +25,9 @@ public sealed class SnapshotJsonSerializerTests
             InstanceId = "0f8fad5bd9cb469fa16570867728950e",
             PipeName = "RevitModelMcp.4242",
             Protocols = ["pipe/1", "file/2"],
+            AddinVersion = "0.6.0",
+            ProtocolVersion = 1,
+            Commands = ["ping", "document-info"],
             Documents =
             [
                 new InstanceDocument { Title = "SampleModel", Path = @"C:\Models\SampleModel.rvt", IsActive = true },
@@ -52,6 +55,9 @@ public sealed class SnapshotJsonSerializerTests
         await Assert.That(root.GetProperty("instanceId").GetString()).IsEqualTo(status.InstanceId);
         await Assert.That(root.GetProperty("pipeName").GetString()).IsEqualTo("RevitModelMcp.4242");
         await Assert.That(root.GetProperty("protocols")[0].GetString()).IsEqualTo("pipe/1");
+        await Assert.That(root.GetProperty("addinVersion").GetString()).IsEqualTo("0.6.0");
+        await Assert.That(root.GetProperty("protocolVersion").GetInt32()).IsEqualTo(1);
+        await Assert.That(root.GetProperty("commands")[1].GetString()).IsEqualTo("document-info");
         var documents = root.GetProperty("documents");
         await Assert.That(documents.GetArrayLength()).IsEqualTo(2);
         await Assert.That(documents[0].GetProperty("path").GetString()).IsEqualTo(@"C:\Models\SampleModel.rvt");

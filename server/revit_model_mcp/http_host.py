@@ -87,6 +87,10 @@ class HttpHost:
             self._verified_token = token
         return result
 
+    @property
+    def instance_info(self) -> dict[str, Any]:
+        return self._identity or {}
+
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
         status = await self.health()
         name = status.get("documentName", "")

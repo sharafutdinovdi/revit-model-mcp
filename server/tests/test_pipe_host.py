@@ -96,6 +96,9 @@ def write_heartbeat(directory: Path, protocols: list[str] | None) -> None:
         "updatedUtc": datetime.now(timezone.utc).isoformat(),
         "fileChannelVersion": 2,
         "startedUtc": "2026-09-24T00:00:00Z",
+        "addinVersion": "0.6.0",
+        "protocolVersion": 1,
+        "commands": ["ping", "document-info"],
     }
     if protocols is not None:
         status.update(
@@ -181,6 +184,9 @@ class FakeRevit:
                             "instanceId": INSTANCE_ID,
                             "pid": PID,
                             "revitVersion": "2026",
+                            "addinVersion": "0.6.0",
+                            "protocolVersion": 1,
+                            "commands": ["ping", "document-info"],
                             "documents": [],
                         }
                     )
@@ -250,9 +256,12 @@ def test_pipe_is_selected_when_the_heartbeat_advertises_it(tmp_path: Path) -> No
             selected, job = await host.select_job(ReadJob.ping())
             assert isinstance(selected, PipeJobHost)
             assert job.payload["targetProcessId"] == PID
+            assert selected.instance_info["addinVersion"] == "0.6.0"
+            assert selected.instance_info["commands"] == ["ping", "document-info"]
             instances = await host.list_revit_instances()
             assert instances[0]["pluginResponding"] is True
             assert instances[0]["documents"][0]["isActive"] is True
+            assert instances[0]["protocolVersion"] == 1
             await host.aclose()
 
     asyncio.run(scenario())

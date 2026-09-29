@@ -31,7 +31,7 @@ A request may carry `id`; its reply echoes it.
 
 | Request | Reply |
 | --- | --- |
-| `{"type":"hello","protocol":"pipe/1","clientId":"…","clientName":"…"}` | `{"type":"hello","instanceId","pid","revitVersion","documents"}` |
+| `{"type":"hello","protocol":"pipe/1","clientId":"…","clientName":"…"}` | `{"type":"hello","instanceId","pid","revitVersion","addinVersion","protocolVersion","commands","documents"}` |
 | `{"type":"submit","job":{…}}` | `{"type":"submitted","jobId","state","position"}` |
 | `{"type":"status","jobId":"…"}` | `{"type":"status","jobId","state","position","result"}`; `result` only when finished |
 | `{"type":"cancel","jobId":"…"}` | `{"type":"cancel","jobId","cancelled","state","message"}` |
@@ -135,7 +135,7 @@ uv run --directory server revit-model-mcp
 HTTP has no built-in TLS.
 Use an SSH tunnel, Tailscale or a TLS reverse proxy; the client validates HTTPS certificates.
 Redirects are rejected to prevent forwarding the bearer token to another endpoint.
-`/health` is unauthenticated and reveals the Revit version, active document name, process ID, startup identity (`startedUtc`) and read-only state.
+`/health` is unauthenticated and reveals the Revit and add-in versions, supported commands, protocol version, active document name, process ID, startup identity (`startedUtc`) and read-only state.
 The Python client sends a fresh 32-byte random base64url nonce in `X-RevitMcp-Nonce` on every health request.
 The add-in answers with `X-RevitMcp-Proof`, the unpadded base64url HMAC-SHA256 of `revit-model-mcp/health/v1\n` followed by the decoded nonce.
 The HMAC key is the UTF-8 bytes of the token text sent after `Bearer `, including for an overridden `REVIT_MCP_TOKEN`.
@@ -146,7 +146,7 @@ All other routes require `Authorization: Bearer <token>`.
 
 | Request | Result |
 | --- | --- |
-| `GET /health` | `ok`, `revitVersion`, `documentName`, `processId`, `startedUtc`, `readOnly` |
+| `GET /health` | `ok`, `revitVersion`, `addinVersion`, `protocolVersion`, `commands`, `documentName`, `processId`, `startedUtc`, `readOnly` |
 | `POST /jobs?timeout=120` | Enqueue a job; return its state, position and ID |
 | `GET /jobs/{id}` | State and position with HTTP 202 while pending; state and result with HTTP 200; HTTP 404 after expiry |
 | `POST /jobs/{id}/cancel` | JSON body `{"clientId":"<server GUID>"}` cancels that client's queued job; running actions finish |
@@ -377,6 +377,10 @@ Discovery version 3 keeps the v2 fields and adds the pipe and the open documents
 | `pipeName` | `RevitModelMcp.<pid>`; absent when the pipe failed to start |
 | `protocols` | `pipe/1` when listening, always `file/2`, and `http/1` when HTTP is bound |
 | `documents` | Every open non-linked document: `title`, `path`, `isActive`, `isFamilyDocument` |
+| `addinVersion`, `protocolVersion`, `commands` | Assembly informational version, protocol integer `1`, and supported command names |
+
+The server reads these fields from the selected heartbeat, pipe hello or HTTP health response.
+An older add-in without `addinVersion` is treated as version 0.6.0 or earlier.
 
 `revit_list_instances` returns these fields in local pipe mode; path redaction also covers `documents[].path`.
 

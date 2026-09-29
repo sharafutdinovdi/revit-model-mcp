@@ -279,6 +279,9 @@ internal sealed class PipeChannel : IDisposable
             InstanceId = InstanceId,
             Pid = _processId,
             RevitVersion = _revitVersion,
+            AddinVersion = Application.AddinVersion,
+            ProtocolVersion = Application.ProtocolVersion,
+            Commands = Application.SupportedCommands.ToList(),
             Documents = _documents().ToList()
         };
     }

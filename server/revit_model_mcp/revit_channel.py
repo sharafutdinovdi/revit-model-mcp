@@ -14,6 +14,7 @@ from typing import Any, Protocol, get_type_hints
 from mcp.server.mcpserver import Context
 
 from revit_model_mcp.universal_jobs import aggregate_payload, query_payload
+from revit_model_mcp.updates import newer_stable
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_HOST = "local"
@@ -447,6 +448,76 @@ class RemoteHost(Protocol):
     async def delete_files(self, names: list[str]) -> None: ...
 
 
+MIN_ADDIN_VERSION = dict.fromkeys(
+    (
+        "ping",
+        "jobs",
+        "model-health",
+        "links-status",
+        "shared-coordinates",
+        "parameter-fill-check",
+        "document-info",
+        "documents",
+        "list-views",
+        "view-summary",
+        "view-info",
+        "view-elements",
+        "element-details",
+        "view-warnings",
+        "export-view",
+        "query-elements",
+        "aggregate-elements",
+        "list-catalog",
+        "list-warnings",
+        "list-relations",
+        "family-audit",
+        "nwc-settings-check",
+        "compare-link-datums",
+        "select",
+        "show",
+        "isolate",
+        "move",
+        "place-family",
+        "create-wall",
+        "set-parameter",
+        "delete",
+        "batch",
+        "export-nwc",
+        "edit-families",
+        "align-link-datums",
+        "open-document",
+        "close-document",
+        "save-document",
+        "sync-document",
+        "set-view-visibility",
+        "remove-links",
+        "undo-last",
+        "views-dump",
+    ),
+    "0.6.0",
+)
+RELEASES_URL = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest"
+
+
+def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
+    required = MIN_ADDIN_VERSION.get(command, "0.7.0")
+    reported = instance.get("addinVersion")
+    version = reported if isinstance(reported, str) and reported else None
+    commands = instance.get("commands")
+    too_old = version is None and newer_stable(required, "0.6.0")
+    if version is not None:
+        too_old = newer_stable(required, version)
+    missing_command = version is not None and (
+        not isinstance(commands, list) or command not in commands
+    )
+    if too_old or missing_command:
+        installed = version or "0.6.0 or earlier"
+        raise RevitChannelError(
+            f"This tool needs add-in {required} or later; the Revit workstation has {installed}. "
+            f"Install the latest add-in from the releases page: {RELEASES_URL}."
+        )
+
+
 class RevitReadChannel:
     def __init__(self, remote: RemoteHost) -> None:
         self.remote = remote
@@ -465,9 +536,16 @@ class RevitReadChannel:
 
         async with self._lock:
             remote, job = await self.remote.select_job(job)
-            return await RevitReadChannel(remote)._execute_serial(
+            instance = getattr(remote, "instance_info", {})
+            if not isinstance(instance, dict):
+                instance = {}
+            check_addin_compatibility(job.command, instance)
+            result = await RevitReadChannel(remote)._execute_serial(
                 job, timeout_seconds, pickup_timeout_seconds
             )
+            if job.command == "ping":
+                result["addinVersion"] = instance.get("addinVersion") or "0.6.0 or earlier"
+            return result
 
     async def _execute_serial(
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int

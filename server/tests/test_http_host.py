@@ -15,6 +15,7 @@ import pytest
 
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
+    MIN_ADDIN_VERSION,
     ReadJob,
     ResponseTimeoutError,
     RevitChannelError,
@@ -86,6 +87,9 @@ def endpoint():
                         "processId": state.get("processId", 42),
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": True,
+                        "addinVersion": "0.6.0",
+                        "protocolVersion": 1,
+                        "commands": list(MIN_ADDIN_VERSION),
                     },
                     proof=proof,
                 )
@@ -148,6 +152,9 @@ def test_health_and_instance_discovery(endpoint):
     host, state = endpoint
     health = asyncio.run(host.health())
     assert health["readOnly"] is True
+    assert health["addinVersion"] == "0.6.0"
+    assert health["protocolVersion"] == 1
+    assert "ping" in health["commands"]
     assert health["startedUtc"] == "2026-09-16T00:00:00Z"
     instances = asyncio.run(host.list_revit_instances("mod"))
     assert instances[0]["processId"] == 42
@@ -161,6 +168,7 @@ def test_job_round_trip(endpoint):
     host, state = endpoint
     result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
     assert result["data"] == "pong"
+    assert result["addinVersion"] == "0.6.0"
     assert state["payload"]["command"] == "ping"
     assert len(state["payload"]["correlationId"]) == 32
     assert len(state["payload"]["jobId"]) == 32

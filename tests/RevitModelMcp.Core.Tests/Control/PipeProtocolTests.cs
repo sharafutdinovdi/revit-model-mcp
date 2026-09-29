@@ -51,6 +51,9 @@ public sealed class PipeProtocolTests
             InstanceId = "0f8fad5bd9cb469fa16570867728950e",
             Pid = 4242,
             RevitVersion = "2026",
+            AddinVersion = "0.6.0",
+            ProtocolVersion = 1,
+            Commands = ["ping", "document-info"],
             Documents =
             [
                 new InstanceDocument { Title = "Tower \"A\"", Path = @"C:\Models\Tower.rvt", IsActive = true },
@@ -75,6 +78,9 @@ public sealed class PipeProtocolTests
         await Assert.That(helloLine.Contains('\n')).IsFalse();
         await Assert.That(pushLine.Contains('\n')).IsFalse();
         await Assert.That(helloBack.Pid).IsEqualTo(4242);
+        await Assert.That(helloBack.AddinVersion).IsEqualTo("0.6.0");
+        await Assert.That(helloBack.ProtocolVersion).IsEqualTo(1);
+        await Assert.That(helloBack.Commands![1]).IsEqualTo("document-info");
         await Assert.That(helloBack.InstanceId).IsEqualTo(hello.InstanceId);
         await Assert.That(helloBack.Documents!.Count).IsEqualTo(2);
         await Assert.That(helloBack.Documents[0].Title).IsEqualTo("Tower \"A\"");

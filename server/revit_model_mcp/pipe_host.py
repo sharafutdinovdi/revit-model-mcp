@@ -333,6 +333,9 @@ class LocalPipeHost:
                             "pipeName",
                             "protocols",
                             "documents",
+                            "addinVersion",
+                            "protocolVersion",
+                            "commands",
                         )
                         if key in status
                     },
@@ -426,6 +429,10 @@ class PipeJobHost:
     """RemoteHost for one job on a selected pipe instance."""
 
     requires_identity = False
+
+    @property
+    def instance_info(self) -> dict[str, Any]:
+        return {**self._instance, **self._connection.hello}
 
     def __init__(
         self, parent: LocalPipeHost, instance: dict[str, Any], connection: PipeConnection

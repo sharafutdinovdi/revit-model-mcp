@@ -83,6 +83,10 @@ class SshPowerShellHost:
         self._published_job_file: str | None = None
 
     @property
+    def instance_info(self) -> dict[str, object]:
+        return self._instance or {}
+
+    @property
     def requires_identity(self) -> bool:
         return self._instance is not None and self._instance.get("fileChannelVersion") == 2
 
@@ -643,6 +647,9 @@ def _parse_instance_package(
                         "pipeName",
                         "protocols",
                         "documents",
+                        "addinVersion",
+                        "protocolVersion",
+                        "commands",
                     )
                     if key in status
                 },

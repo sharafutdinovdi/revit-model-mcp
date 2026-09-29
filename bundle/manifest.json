@@ -24,17 +24,27 @@
   "icon": "icon.png",
   "server": {
     "type": "binary",
-    "entry_point": "uvx",
+    "entry_point": "sh",
     "mcp_config": {
-      "command": "uvx",
+      "command": "sh",
       "args": [
-        "revit-model-mcp==0.0.0"
+        "-c",
+        "uvx --offline --prerelease=disallow revit-model-mcp || uvx --prerelease=disallow revit-model-mcp"
       ],
       "env": {
         "REVIT_MCP_HOST": "${user_config.REVIT_MCP_HOST}",
         "REVIT_MCP_REDACT_PATHS": "${user_config.REVIT_MCP_REDACT_PATHS}",
         "REVIT_MCP_READ_ONLY": "${user_config.REVIT_MCP_READ_ONLY}",
         "REVIT_MCP_TOKEN": "${user_config.REVIT_MCP_TOKEN}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "cmd",
+          "args": [
+            "/c",
+            "uvx --offline --prerelease=disallow revit-model-mcp || uvx --prerelease=disallow revit-model-mcp"
+          ]
+        }
       }
     }
   },
