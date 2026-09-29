@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tomllib
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from zipfile import ZipFile
 
 import pytest
 from mcp import Client, StdioServerParameters
@@ -68,6 +71,58 @@ ACTION_TOOL_NAMES = {
     "revit_remove_links",
     "revit_undo_last",
 }
+
+
+def test_bundle_manifest_matches_tool_registry():
+    import asyncio
+
+    manifest = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
+    tools = asyncio.run(revit_server.mcp.list_tools())
+    expected = [{"name": tool.name, "description": tool.description} for tool in tools]
+    assert manifest["tools"] == expected, (
+        "Bundle tools differ from the server registry. Regenerate with "
+        "cd server && uv run python ../build/bundle_manifest.py"
+    )
+
+
+def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
+    import asyncio
+
+    source = tmp_path / "desktop"
+    source.mkdir()
+    manifest = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
+    manifest["version"] = "9.9.9"
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    (source / "icon.png").write_bytes(b"icon")
+    archive = tmp_path / "smithery.mcpb"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"),
+            "--smithery",
+            str(archive),
+            "--from",
+            str(source),
+        ],
+        check=True,
+        cwd=MCP_DIRECTORY,
+        capture_output=True,
+        text=True,
+    )
+
+    registry = asyncio.run(revit_server.mcp.list_tools())
+    with ZipFile(archive) as bundle:
+        assert set(bundle.namelist()) == {"manifest.json", "icon.png"}
+        assert bundle.read("icon.png") == b"icon"
+        published = json.loads(bundle.read("manifest.json"))
+    assert published["version"] == "9.9.9"
+    assert published["tools"] == [
+        {"name": tool.name, "description": tool.description, "inputSchema": tool.input_schema}
+        for tool in registry
+    ]
+
+
 EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],

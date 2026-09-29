@@ -121,6 +121,8 @@ Run `mkdocs build --strict` in the activated environment before submitting a PR.
 ## Test coverage
 
 The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
+They also check that the bundle manifest lists every registered tool in order with its current description.
+After changing tools, run `cd server && uv run python ../build/bundle_manifest.py` to regenerate the manifest.
 A threaded fake HTTP server covers health, authentication, busy responses, job polling and PNG download.
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.
