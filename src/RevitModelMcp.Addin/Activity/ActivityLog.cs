@@ -73,11 +73,16 @@ internal static class ActivityLog
             var line = Encoding.UTF8.GetString(stream.ToArray());
             lock (SyncRoot)
             {
-                if (File.Exists(LogPath) && new FileInfo(LogPath).Length > FileSizeLimitBytes)
+                try
                 {
-                    if (File.Exists(RotatedLogPath)) File.Delete(RotatedLogPath);
-                    File.Move(LogPath, RotatedLogPath);
+                    if (File.Exists(LogPath) && new FileInfo(LogPath).Length > FileSizeLimitBytes)
+                    {
+                        if (File.Exists(RotatedLogPath)) File.Delete(RotatedLogPath);
+                        File.Move(LogPath, RotatedLogPath);
+                    }
                 }
+                catch (IOException exception) { PluginLog.Error("Activity log rotation failed.", exception); }
+                catch (UnauthorizedAccessException exception) { PluginLog.Error("Activity log rotation failed.", exception); }
                 File.AppendAllText(LogPath, line + Environment.NewLine, Utf8WithoutBom);
             }
         }

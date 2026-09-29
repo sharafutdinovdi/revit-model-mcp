@@ -260,6 +260,7 @@ The add-in keeps an in-memory ring buffer of the last 500 finished action jobs, 
 to `%LOCALAPPDATA%\RevitModelMcp\activity.log`: time, client, command, document, state (`done`, `failed` or
 `dry_run`), `summary`, the changed, created and deleted elements with category, name and ID, their true
 totals, the undo entry name, and whether it was later undone.
+Once `activity.log` exceeds 5 MiB, the next entry rotates it to `activity.1.log`, replacing the previous rotated file.
 
 For committed jobs, the element lists are exact. While a job runs a model transaction, the add-in subscribes to Revit's
 `DocumentChanged` event for the target document only and collects the added, modified and deleted element
