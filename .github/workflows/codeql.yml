@@ -37,12 +37,21 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+      - name: Restore Revit API reference pin helper with lock
+        if: matrix.language == 'csharp'
+        run: dotnet restore build/RevitApiReferencePin/RevitApiReferencePin.csproj --locked-mode -p:Configuration=Release
+      - name: Restore Revit 2026 with lock
+        if: matrix.language == 'csharp'
+        run: dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode -p:Configuration=Release.R26 -p:DeployAddin=false
       - name: Build Revit 2026
         if: matrix.language == 'csharp'
-        run: dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false
+        run: dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:DeployAddin=false --no-restore
+      - name: Restore Revit 2022 with lock
+        if: matrix.language == 'csharp'
+        run: dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode -p:Configuration=Release.R22 -p:DeployAddin=false
       - name: Build Revit 2022
         if: matrix.language == 'csharp'
-        run: dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false
+        run: dotnet build src/RevitModelMcp.Addin -c Release.R22 -p:DeployAddin=false --no-restore
       - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
         with:
           category: /language:${{ matrix.language }}

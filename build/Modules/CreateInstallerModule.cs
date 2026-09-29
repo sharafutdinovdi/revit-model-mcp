@@ -35,7 +35,8 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
         await context.DotNet().Build(new DotNetBuildOptions
         {
             ProjectSolution = wixInstaller.Path,
-            Configuration = "Release"
+            Configuration = "Release",
+            NoRestore = true
         }, cancellationToken: cancellationToken);
 
         var builderFile = wixInstaller.Folder!

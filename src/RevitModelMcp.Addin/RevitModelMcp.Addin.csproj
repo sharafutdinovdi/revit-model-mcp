@@ -74,7 +74,7 @@
           Condition="'$(IsRepackable)' == 'true'">
     <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
            Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
-    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
   </Target>
 
 </Project>

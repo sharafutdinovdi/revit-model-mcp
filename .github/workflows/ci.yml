@@ -75,15 +75,28 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
+      - name: Restore Revit API reference pin helper with lock
+        run: dotnet restore build/RevitApiReferencePin/RevitApiReferencePin.csproj --locked-mode -p:Configuration=Release
       - name: Build installer Revit versions
         shell: pwsh
         run: |
           foreach ($year in '26', '22', '27') {
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false
+            if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
           }
+      - name: Restore tests and installer projects with locks
+        shell: pwsh
+        run: |
+          dotnet restore tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Test locked restore failed' }
+          dotnet restore build/Build.csproj --locked-mode
+          if ($LASTEXITCODE -ne 0) { throw 'Build project locked restore failed' }
+          dotnet restore build/install/Installer.csproj --locked-mode -p:Configuration=Release
+          if ($LASTEXITCODE -ne 0) { throw 'Installer locked restore failed' }
       - name: Test core
-        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
+        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --no-restore
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -91,13 +104,15 @@ jobs:
         run: pip install uv==0.12.20
       - name: Test server
         working-directory: server
-        run: uv run --with pytest==9.1.1 pytest -q
+        run: |
+          uv sync --frozen
+          uv run --frozen --with pytest==9.1.1 pytest -q
       - name: Build installers
         shell: pwsh
         env:
           Build__Version: 0.0.0-ci
         run: |
-          dotnet run --project build -- pack --no-build
+          dotnet run --no-restore --project build -- pack --no-build
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
           $installers = @(Get-ChildItem output/*.msi)
           if ($installers.Count -ne 2) { throw "Expected two MSIs, found $($installers.Count)" }
@@ -243,7 +258,9 @@ jobs:
         shell: pwsh
         run: |
           foreach ($year in '23', '24', '25') {
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false
+            if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
           }
       - name: Build Python package

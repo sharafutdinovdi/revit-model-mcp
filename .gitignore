@@ -29,6 +29,7 @@ htmlcov/
 *.egg-info/
 dist/
 uv.lock
+!server/uv.lock
 
 # Local data
 .env
