@@ -9,7 +9,7 @@ PackageName: RevitModelMcp
 PackageUrl: https://github.com/sharafutdinovdi/revit-model-mcp
 License: MIT
 LicenseUrl: https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/LICENSE
-ShortDescription: MCP access to live Autodesk Revit models, read-only by default with opt-in actions.
+ShortDescription: MCP access to live Autodesk Revit models with actions enabled by default.
 Description: |-
   Windows add-in for Autodesk Revit 2022-2027.
   Requires a supported Revit installation and the revit-model-mcp Python server.

@@ -1,7 +1,7 @@
 # Revit Model MCP server
 
 The Python package exposes Revit tools over MCP stdio; actions run by default.
-Set `REVIT_MCP_READ_ONLY=1` and the workstation `read-only` gate to disable them without hiding the action tools.
+Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them without hiding the action tools.
 It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
 
 ## Install and run
@@ -61,7 +61,7 @@ mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 | Variable | Default | Behavior |
 |---|---|---|
 | `REVIT_MCP_HOST` | `local` | Local PowerShell, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_READ_ONLY` | Unset | `1` refuses action calls, including `revit_batch`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation gate is checked independently. |
+| `REVIT_MCP_READ_ONLY` | Unset | `1` refuses action calls, including `revit_batch`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation `read-only` file is checked independently. |
 | `REVIT_MCP_TOKEN` | Unset | HTTP bearer token from workstation settings. `--token` overrides it. |
 | `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
 | `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
@@ -69,7 +69,7 @@ mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 | `REVIT_MCP_CHANNEL_DIR` | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the Python server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. |
 | `REVIT_MCP_REDACT_PATHS` | Unset | `1` replaces every response `documentPath` and nested `path` value with its file name. `--redact-paths` enables the same behavior. |
 
-`revit_family_audit` is a read tool. It inspects an open family when `families` is omitted, or exact family names / `["*"]` in a project. `revit_edit_families` applies ordered shared-parameter, removal, purge and shared-flag operations. Project edits use one family load per family and one undo entry; `dry_run=true` rolls back. The edit tool requires both action gates. Family audit defaults to a 600-second response budget; family edits default to 1800 seconds.
+`revit_family_audit` is a read tool. It inspects an open family when `families` is omitted, or exact family names / `["*"]` in a project. `revit_edit_families` applies ordered shared-parameter, removal, purge and shared-flag operations. Project edits use one family load per family and one undo entry; `dry_run=true` rolls back. The edit tool is refused in read-only mode. Family audit defaults to a 600-second response budget; family edits default to 1800 seconds.
 
 SSH mode passes `ControlMaster=auto`, `ControlPath=<dir>/mux-%C` and `ControlPersist=600` on every invocation.
 The socket directory is `$XDG_RUNTIME_DIR` when nonempty, otherwise `/tmp/revit-model-mcp-<uid>/`.
