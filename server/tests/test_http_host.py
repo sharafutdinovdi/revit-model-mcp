@@ -245,7 +245,7 @@ def test_addin_advertises_bound_http_endpoint_identity():
     assert source.count("BoundPort =") == 1
     after_start = application.split("_httpChannel.Start();", 1)[1]
     assert after_start.lstrip().startswith(
-        "_instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);"
+        "_instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);"
     )
     assert "HttpPort = _httpPort" in application
     health = source.split('path == "/health"', 1)[1].split("return;", 1)[0]
