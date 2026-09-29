@@ -396,21 +396,24 @@ macOS and Linux clients run the server on Windows over SSH stdio, or use HTTP or
 `REVIT_MCP_HOST=ssh:<alias>` selects a host in the client's SSH configuration.
 `--host ssh:<alias>` provides the same setting on the command line.
 The client invokes `ssh` with batch mode and a 45-second connection timeout.
+It disables terminal allocation, agent forwarding, X11 forwarding, configured port forwards and local commands before applying `REVIT_MCP_SSH_OPTIONS`.
 The remote command runs Windows PowerShell with a UTF-16LE base64-encoded script.
-Host aliases are validated and PowerShell path literals escape single quotes.
+Host aliases are validated. PowerShell string literals escape ASCII and Unicode single quotes, and response file names and startup timestamps are validated before use.
 SSH credentials and routing belong to the user's SSH configuration.
 
 Responses and exported PNG files are transferred as base64 in the PowerShell result.
-The server decodes the image into `save_to` or a new temporary directory.
+The server checks the PNG signature and decodes the image into `save_to` or a new temporary directory.
+`save_to` must end in `.png`.
 An existing destination file produces an error.
 The MCP result contains the image path and metadata without base64.
 
 Each SSH invocation includes `-o ControlMaster=auto -o ControlPath=<dir>/mux-%C -o ControlPersist=600` by default.
 Commands for the same connection reuse the master instead of opening a new TCP connection for each PowerShell call.
 The master persists for 600 idle seconds.
-`<dir>` is `$XDG_RUNTIME_DIR` when nonempty, otherwise `/tmp/revit-model-mcp-<uid>/`.
-The directory is created or restricted to mode `0700` on macOS and Linux.
-Keep the directory path short; `%C` provides a hashed connection identifier within the Unix socket path limit.
+`<dir>` is `$XDG_RUNTIME_DIR` when nonempty. Otherwise the server uses a per-user temporary directory outside shared `/tmp`, or `~/.cache/revit-model-mcp`.
+On macOS and Linux, the server verifies the directory is owned by the current user and is not a symlink before setting mode `0700`.
+If the socket path is too long, the server tries `~/.cache/rmm`. If the directory cannot be verified or the path is still too long, it disables multiplexing and logs a warning.
+`%C` provides a hashed connection identifier within the Unix socket path limit.
 
 `REVIT_MCP_SSH_MUX=0` disables these built-in multiplexing options.
 Use it on clients without multiplexing support, such as native Windows OpenSSH.

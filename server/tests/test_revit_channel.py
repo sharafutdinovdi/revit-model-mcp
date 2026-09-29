@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from revit_model_mcp.revit_channel import (
@@ -37,6 +38,8 @@ from revit_model_mcp.ssh_host import (
     RemoteCommandError,
     RemoteCommandTimeoutError,
     SshPowerShellHost,
+    _mux_directory,
+    _ps_quote,
 )
 
 SUCCESS_RESPONSE = json.dumps(
@@ -263,7 +266,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             return_value=json.dumps(
                 {
                     "revitRunning": True,
-                    "responses": ["response_old_ping.json"],
+                    "responses": ["response_20260916_120000_000_ping.json"],
                     "published": True,
                     "channelBusy": False,
                 }
@@ -273,13 +276,45 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         responses = await host.prepare_job(
             "mcp_test.tmp", '{"command":"ping","jobId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}', "ping"
         )
-        self.assertEqual(responses, {"response_old_ping.json"})
+        self.assertEqual(responses, {"response_20260916_120000_000_ping.json"})
         host._run.assert_awaited_once()
         script = host._run.await_args.args[0]
         self.assertIn("Get-Process Revit", script)
         self.assertIn("Get-ChildItem", script)
         self.assertIn("WriteAllBytes", script)
         self.assertIn("[IO.File]::Move", script)
+
+    async def test_prepare_ignores_malformed_response_names(self) -> None:
+        host = SshPowerShellHost()
+        host._instance = {"processId": 42}
+        good = "response_20260916_120000_000_ping_job-24.json"
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "revitRunning": True,
+                    "responses": [good, "response_20260916_120000_000_ping\u2019.json"],
+                    "published": True,
+                }
+            )
+        )
+
+        names = await host.prepare_job(
+            "mcp_test.tmp", '{"command":"ping","jobId":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}', "ping"
+        )
+
+        self.assertEqual(names, {good})
+        host._run.assert_awaited_once()
+
+    async def test_poll_and_finish_ignore_malformed_response_names(self) -> None:
+        host = SshPowerShellHost()
+        host._poll_for_change = AsyncMock(
+            return_value=("response_20260916_120000_000_ping\u2019.json", 1, 0)
+        )
+        self.assertIsNone(await host.wait_for_new_response("ping", set(), 5))
+        host._run = AsyncMock()
+        with self.assertRaisesRegex(ResponseParseError, "invalid file name"):
+            await host.finish_job("response_20260916_120000_000_ping\u2019.json", [], False, None)
+        host._run.assert_not_awaited()
 
     async def test_prepare_rejects_stopped_revit_and_accepts_next_job(self) -> None:
         host = SshPowerShellHost()
@@ -304,7 +339,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         encoded = base64.b64encode(SUCCESS_RESPONSE.encode()).decode()
         package = {"response": encoded, "artifactName": None, "artifact": None}
         host._run = AsyncMock(return_value=json.dumps(package))
-        response_name = "response_new_document-info.json"
+        response_name = "response_20260916_120000_000_document-info.json"
         content, local_path = await host.finish_job(
             response_name, ["mcp_test.tmp", response_name], False, None
         )
@@ -833,52 +868,134 @@ class HostConfigurationTests(unittest.IsolatedAsyncioTestCase):
         with patch("revit_model_mcp.ssh_host.ACTIVATION_TASK", "User's task"):
             self.assertIn("'User''s task'", SshPowerShellHost()._activation_script())
 
-
-def test_ssh_command_reuses_private_runtime_directory(tmp_path, monkeypatch):
-    directory = tmp_path / "runtime"
-    directory.mkdir(mode=0o755)
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
-    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
-    monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
-    host = SshPowerShellHost("revit-host")
-
-    command = host._build_command("'ok'")
-
-    assert command == [
-        "ssh",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=45",
-        "-o",
-        "ControlMaster=auto",
-        "-o",
-        f"ControlPath={directory}/mux-%C",
-        "-o",
-        "ControlPersist=600",
-        "revit-host",
-        "powershell.exe",
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        base64.b64encode("'ok'".encode("utf-16le")).decode("ascii"),
-    ]
-    assert host._build_command("'ok'") == command
-    if os.name != "nt":
-        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    def test_powershell_quotes_each_unicode_single_quote(self) -> None:
+        for quote in ("\u2018", "\u2019", "\u201a", "\u201b"):
+            self.assertEqual(_ps_quote(f"before{quote}after"), f"before{quote}{quote}after")
 
 
-def test_ssh_command_falls_back_to_user_cache(tmp_path, monkeypatch):
+def test_ssh_command_reuses_private_runtime_directory(monkeypatch):
+    if os.name == "nt":
+        return
+    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
+        directory = Path(root) / "runtime"
+        directory.mkdir(mode=0o755)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
+        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+        monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
+        host = SshPowerShellHost("revit-host")
+
+        command = host._build_command("'ok'")
+
+        assert command == [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=45",
+            "-T",
+            "-a",
+            "-x",
+            "-o",
+            "ClearAllForwardings=yes",
+            "-o",
+            "ForwardAgent=no",
+            "-o",
+            "ForwardX11=no",
+            "-o",
+            "PermitLocalCommand=no",
+            "-o",
+            "ControlMaster=auto",
+            "-o",
+            f"ControlPath={directory}/mux-%C",
+            "-o",
+            "ControlPersist=600",
+            "revit-host",
+            "powershell.exe",
+            "-NoProfile",
+            "-NonInteractive",
+            "-EncodedCommand",
+            base64.b64encode("'ok'".encode("utf-16le")).decode("ascii"),
+        ]
+        assert host._build_command("'ok'") == command
+        if os.name != "nt":
+            assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+
+
+def test_ssh_command_falls_back_to_user_cache(monkeypatch):
+    if os.name == "nt":
+        return
+    _mux_directory.cache_clear()
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
     monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
-    with patch("revit_model_mcp.ssh_host.Path.home", return_value=tmp_path):
+    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
+        monkeypatch.setattr("revit_model_mcp.ssh_host.tempfile.gettempdir", lambda: "/tmp")
+        with patch("revit_model_mcp.ssh_host.Path.home", return_value=Path(root)):
+            command = SshPowerShellHost()._build_command("'ok'")
+        directory = Path(root) / ".cache" / "revit-model-mcp"
+        assert f"ControlPath={directory}/mux-%C" in command
+        assert directory.is_dir()
+        if os.name != "nt":
+            assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+    _mux_directory.cache_clear()
+
+
+def test_ssh_command_disables_mux_for_symlink(monkeypatch):
+    if os.name == "nt":
+        return
+    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
+        directory = Path(root) / "runtime"
+        target = Path(root) / "target"
+        target.mkdir(mode=0o755)
+        original_mode = stat.S_IMODE(target.stat().st_mode)
+        directory.symlink_to(target, target_is_directory=True)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
+        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
         command = SshPowerShellHost()._build_command("'ok'")
-    directory = Path("/tmp") / f"revit-model-mcp-{getattr(os, 'getuid', lambda: 'user')()}"
-    assert f"ControlPath={directory}/mux-%C" in command
-    assert directory.is_dir()
-    if os.name != "nt":
-        assert stat.S_IMODE(directory.stat().st_mode) == 0o700
+        assert "ControlMaster=auto" not in command
+        assert stat.S_IMODE(target.stat().st_mode) == original_mode
+
+
+def test_ssh_command_disables_mux_for_foreign_owner(monkeypatch):
+    if not hasattr(os, "getuid"):
+        return
+    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
+        directory = Path(root) / "runtime"
+        directory.mkdir(mode=0o755)
+        details = os.lstat(directory)
+        original_mode = stat.S_IMODE(details.st_mode)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(directory))
+        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+        with patch(
+            "revit_model_mcp.ssh_host.os.lstat",
+            return_value=SimpleNamespace(st_mode=details.st_mode, st_uid=os.getuid() + 1),
+        ):
+            command = SshPowerShellHost()._build_command("'ok'")
+        assert "ControlMaster=auto" not in command
+        assert stat.S_IMODE(directory.stat().st_mode) == original_mode
+
+
+def test_ssh_command_shortens_long_socket_path(monkeypatch):
+    if os.name == "nt":
+        return
+    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
+        long_runtime = Path(root) / ("x" * 100)
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(long_runtime))
+        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+        with patch("revit_model_mcp.ssh_host.Path.home", return_value=Path(root)):
+            command = SshPowerShellHost()._build_command("'ok'")
+        assert f"ControlPath={Path(root) / '.cache' / 'rmm'}/mux-%C" in command
+        assert not long_runtime.exists()
+
+
+def test_ssh_command_disables_forwarding_before_user_options(monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_SSH_MUX", "0")
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ForwardAgent=yes -o ForwardX11=yes")
+    command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    assert command.index("ClearAllForwardings=yes") < command.index("ForwardAgent=yes")
+    assert command.index("ForwardAgent=no") < command.index("ForwardAgent=yes")
+    assert command.index("ForwardX11=no") < command.index("ForwardX11=yes")
+    assert command[5:8] == ["-T", "-a", "-x"]
 
 
 def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
@@ -888,7 +1005,7 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
         command = SshPowerShellHost("revit-host")._build_command("'ok'")
     mkdir.assert_not_called()
     assert not any(option.startswith("Control") for option in command)
-    assert command[5:11] == [
+    assert command[16:22] == [
         "-p",
         "2222",
         "-o",
@@ -898,17 +1015,20 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
     ]
 
 
-def test_ssh_extra_options_follow_mux_options(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
-    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
-    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
-    command = SshPowerShellHost("revit-host")._build_command("'ok'")
-    assert command[10:14] == [
-        "ControlPersist=600",
-        "-o",
-        "ServerAliveInterval=30",
-        "revit-host",
-    ]
+def test_ssh_extra_options_follow_mux_options(monkeypatch):
+    if os.name == "nt":
+        return
+    with tempfile.TemporaryDirectory(prefix="rmm-", dir="/tmp") as root:
+        monkeypatch.setenv("XDG_RUNTIME_DIR", root)
+        monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+        monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
+        command = SshPowerShellHost("revit-host")._build_command("'ok'")
+        assert command[21:25] == [
+            "ControlPersist=600",
+            "-o",
+            "ServerAliveInterval=30",
+            "revit-host",
+        ]
 
 
 def test_local_command_ignores_ssh_settings(monkeypatch):
@@ -988,7 +1108,7 @@ def instance_status(process_id=42, title="Structural", **extra):
         "documentPath": rf"C:\Models\{title}.rvt",
         "revitVersion": "2024",
         "updatedUtc": "2026-09-16T00:00:00Z",
-        "startedUtc": "2026-09-15T23:00:00Z",
+        "startedUtc": "2026-09-15T23:00:00.000000+00:00",
         "fileChannelVersion": 2,
         "httpPort": None,
         **extra,
@@ -1033,6 +1153,52 @@ class MatchesDocumentAndResolveInstanceTests(unittest.TestCase):
 
 
 class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_discovery_rejects_invalid_started_utc(self):
+        now = datetime.now(timezone.utc)
+        host = SshPowerShellHost()
+        bad = instance_status(startedUtc="2026-09-15T23:00:00\u2019; exit 1")
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "processes": [{"processId": 42, "revitVersion": "2024"}],
+                    "files": [
+                        {
+                            "name": "instance_42.json",
+                            "content": json.dumps({**bad, "updatedUtc": now.isoformat()}),
+                        }
+                    ],
+                }
+            )
+        )
+
+        instances = await host._discover_instances()
+
+        self.assertEqual(len(instances), 1)
+        self.assertNotIn("startedUtc", instances[0])
+        host._run.assert_awaited_once()
+
+    async def test_discovery_normalizes_valid_started_utc(self):
+        now = datetime.now(timezone.utc)
+        host = SshPowerShellHost()
+        status = instance_status(startedUtc="2026-09-16T01:00:00+02:00")
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "processes": [{"processId": 42, "revitVersion": "2024"}],
+                    "files": [
+                        {
+                            "name": "instance_42.json",
+                            "content": json.dumps({**status, "updatedUtc": now.isoformat()}),
+                        }
+                    ],
+                }
+            )
+        )
+
+        instances = await host._discover_instances()
+
+        self.assertEqual(instances[0]["startedUtc"], "2026-09-15T23:00:00.000000+00:00")
+
     async def test_directed_reads_pin_pid_identity_and_directory(self):
         host = SshPowerShellHost()
         original = instance_status()
@@ -1294,7 +1460,7 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((await first.wait_until_trigger_is_gone(5)).taken)
             for process_id in (42, 84):
                 directory = Path(root, "instances", str(process_id))
-                directory.joinpath("response_20260916_ping_fresh.json").write_text(
+                directory.joinpath("response_20260916_120000_000_ping_fresh.json").write_text(
                     json.dumps(
                         {
                             "command": "ping",
@@ -1303,23 +1469,27 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                         }
                     )
                 )
-                directory.joinpath("view.png").write_bytes(b"png-content")
-                directory.joinpath("response_20260916_ping_late.json").write_text(
+                directory.joinpath("view.png").write_bytes(b"\x89PNG\r\n\x1a\ncontent")
+                directory.joinpath("response_20260916_120001_000_ping_late.json").write_text(
                     json.dumps({"command": "ping", "correlationId": "late"})
                 )
             response = await first.wait_for_new_response("ping", set(), 5, "fresh")
-            self.assertEqual(response, "response_20260916_ping_fresh.json")
+            self.assertEqual(response, "response_20260916_120000_000_ping_fresh.json")
             target = Path(root, "download.png")
             _, saved = await first.finish_job(response, [response], True, str(target))
-            self.assertEqual(Path(saved).read_bytes(), b"png-content")
+            self.assertEqual(Path(saved).read_bytes(), b"\x89PNG\r\n\x1a\ncontent")
             self.assertFalse(Path(root, "instances", "42", "view.png").exists())
             self.assertTrue(Path(root, "instances", "84", "view.png").exists())
-            await first.delete_files(["response_20260916_ping_late.json"])
+            await first.delete_files(["response_20260916_120001_000_ping_late.json"])
             self.assertTrue(
-                Path(root, "instances", "84", "response_20260916_ping_late.json").exists()
+                Path(
+                    root, "instances", "84", "response_20260916_120001_000_ping_late.json"
+                ).exists()
             )
             self.assertTrue(
-                Path(root, "instances", "84", "response_20260916_ping_fresh.json").exists()
+                Path(
+                    root, "instances", "84", "response_20260916_120000_000_ping_fresh.json"
+                ).exists()
             )
             self.assertTrue(Path(root, "instances", "84", f"job_{second_id}.json").exists())
             self.assertTrue(any("$_.Id -eq 42" in script for script in scripts))
@@ -1342,7 +1512,7 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                 published.append((process_id, payload))
                 directory.joinpath(f"job_{payload['jobId']}.json").unlink()
                 directory.joinpath(
-                    f"response_now_{command}_{payload['correlationId']}.json"
+                    f"response_20260916_120000_000_{command}_{payload['correlationId']}.json"
                 ).write_text(
                     json.dumps(
                         {
@@ -1371,8 +1541,8 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                 [(42, "ping"), (42, "document-info"), (84, "ping"), (84, "document-info")],
             )
             self.assertEqual(len({payload["correlationId"] for _, payload in published}), 4)
-            self.assertFalse(list(Path(root, "instances", "42").glob("response_now_*")))
-            self.assertFalse(list(Path(root, "instances", "84").glob("response_now_*")))
+            self.assertFalse(list(Path(root, "instances", "42").glob("response_20260916_*")))
+            self.assertFalse(list(Path(root, "instances", "84").glob("response_20260916_*")))
 
 
 def test_two_server_processes_complete_jobs_on_simulated_host(tmp_path):

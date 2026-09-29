@@ -34,7 +34,7 @@ Pipe requests are limited to 1 MiB, and action jobs still require the workstatio
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
 Running the server on the workstation over SSH stdio needs the same account as Revit and opens no additional port.
-The default multiplexing socket directory has mode `0700` on macOS and Linux.
+On macOS and Linux, the default multiplexing socket directory is verified as user-owned and set to mode `0700`; multiplexing is disabled if this fails.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).
 
