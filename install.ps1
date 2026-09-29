@@ -66,16 +66,33 @@ function Get-Payload([string] $SelectedYear) {
         $zip = Join-Path $tempRoot $asset
         Invoke-WebRequest -Uri $url -Headers $headers -OutFile $zip -UseBasicParsing
         if (!$script:checksums) {
-            if ('SHA256SUMS.txt' -notin $script:releaseAssets) { throw "Release $releaseTag has no SHA256SUMS.txt." }
-            $script:checksums = Join-Path $tempRoot 'SHA256SUMS.txt'
-            $checksumUrl = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/download/$releaseTag/SHA256SUMS.txt"
-            Invoke-WebRequest -Uri $checksumUrl -Headers $headers -OutFile $script:checksums -UseBasicParsing
+            $legacyRelease = [version]($releaseVersion -replace '-.*$', '') -lt [version]'0.3.0'
+            if ('SHA256SUMS.txt' -notin $script:releaseAssets) {
+                if (!$legacyRelease) { throw "Release $releaseTag has no SHA256SUMS.txt. Choose version 0.3.0 or later." }
+                Write-Warning "Release $releaseTag predates checksums. The downloaded asset cannot be verified."
+                $script:checksums = 'missing'
+            }
+            else {
+                $checksumFile = Join-Path $tempRoot 'SHA256SUMS.txt'
+                $checksumUrl = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/download/$releaseTag/SHA256SUMS.txt"
+                try {
+                    Invoke-WebRequest -Uri $checksumUrl -Headers $headers -OutFile $checksumFile -UseBasicParsing
+                    $script:checksums = $checksumFile
+                }
+                catch {
+                    if (!$legacyRelease -or ([int]$_.Exception.Response.StatusCode -ne 404 -and [int]$_.Exception.StatusCode -ne 404)) { throw }
+                    Write-Warning "Release $releaseTag predates checksums. The downloaded asset cannot be verified."
+                    $script:checksums = 'missing'
+                }
+            }
         }
-        $entries = @(Get-Content -LiteralPath $script:checksums | Where-Object { $_ -match ('^([0-9a-fA-F]{64})  ' + [regex]::Escape($asset) + '$') })
-        if ($entries.Count -ne 1) { throw "Expected one SHA256 checksum for $asset in release $releaseTag." }
-        $expectedHash = $entries[0].Substring(0, 64)
-        $actualHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
-        if ($actualHash -ne $expectedHash) { throw "SHA256 mismatch for $asset in release $releaseTag." }
+        if ($script:checksums -ne 'missing') {
+            $entries = @(Get-Content -LiteralPath $script:checksums | Where-Object { $_ -match ('^([0-9a-fA-F]{64})  ' + [regex]::Escape($asset) + '$') })
+            if ($entries.Count -ne 1) { throw "Expected one SHA256 checksum for $asset in release $releaseTag." }
+            $expectedHash = $entries[0].Substring(0, 64)
+            $actualHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash
+            if ($actualHash -ne $expectedHash) { throw "SHA256 mismatch for $asset in release $releaseTag." }
+        }
         Expand-Archive -LiteralPath $zip -DestinationPath $stage
     }
     $blocked = @(Get-ChildItem $stage -Recurse -Filter '*.dll' -File | Where-Object {

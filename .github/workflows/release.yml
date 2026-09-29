@@ -15,11 +15,16 @@ permissions:
   contents: read
 
 jobs:
-  validate-dispatch:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - name: Require dispatch on the requested tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
         env:
           RELEASE_TAG: ${{ inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
@@ -29,15 +34,6 @@ jobs:
             echo 'Dispatch release.yml with --ref set to the same tag as the tag input.' >&2
             exit 1
           fi
-  build:
-    needs: validate-dispatch
-    if: always() && (needs.validate-dispatch.result == 'success' || needs.validate-dispatch.result == 'skipped')
-    runs-on: windows-latest
-    permissions:
-      contents: read
-      id-token: write
-      attestations: write
-    steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref_name }}
@@ -330,19 +326,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release=$(gh api repos/modelcontextprotocol/registry/releases/latest)
-          tag=$(jq -r .tag_name <<< "$release")
+          tag=v1.8.1
           archive=mcp-publisher_linux_amd64.tar.gz
           gh release download "$tag" --repo modelcontextprotocol/registry --pattern "$archive"
-          checksums=$(jq -r '.assets[].name | select(endswith("_checksums.txt"))' <<< "$release")
-          if [[ -n "$checksums" ]]; then
-            gh release download "$tag" --repo modelcontextprotocol/registry --pattern "$checksums"
-            awk -v archive="$archive" '$2 == archive { print }' "$checksums" > publisher.sha256
-            test -s publisher.sha256
-            sha256sum --check publisher.sha256
-          else
-            echo "Release $tag provides no checksum file"
-          fi
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  $archive" | sha256sum --check
           tar -xzf "$archive" mcp-publisher
       - name: Publish to MCP Registry
         run: |
