@@ -19,7 +19,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.pipe_host import LocalPipeHost
-from revit_model_mcp.revit_channel import parse_response
+from revit_model_mcp.revit_channel import ReadJob, parse_response
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -243,6 +243,21 @@ class RecordingChannel:
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_ping_reports_versions_and_update_state(self) -> None:
+        channel = RecordingChannel()
+        with (
+            patch.object(revit_server, "channel", channel),
+            patch.object(
+                revit_server,
+                "update_status",
+                return_value={"latestKnownVersion": "0.7.0", "updateCheck": "disabled"},
+            ),
+        ):
+            result = await revit_server._execute(ReadJob.ping(), 120, 300, None)
+        self.assertEqual(result["serverVersion"], package_version())
+        self.assertEqual(result["latestKnownVersion"], "0.7.0")
+        self.assertEqual(result["updateCheck"], "disabled")
+
     async def test_jobs_tool_passes_cancellation_without_write_gate(self) -> None:
         channel = RecordingChannel()
         with patch.object(revit_server, "channel", channel):
@@ -521,6 +536,12 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             config["project"]["scripts"]["revit-model-mcp"], "revit_model_mcp.server:main"
         )
+
+    def test_bundle_win32_launcher_escapes_version_floor(self) -> None:
+        manifest = json.loads((REPOSITORY_ROOT / "bundle/manifest.json").read_text())
+        command = manifest["server"]["mcp_config"]["platform_overrides"]["win32"]["args"][1]
+        self.assertEqual(command.count("revit-model-mcp^>="), 2)
+        self.assertNotIn('"', command)
 
     def test_host_configuration(self) -> None:
         local = revit_server.create_host("local")

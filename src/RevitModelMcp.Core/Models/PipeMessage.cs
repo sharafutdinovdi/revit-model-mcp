@@ -13,6 +13,9 @@ public sealed class PipeMessage
     public string? InstanceId { get; set; }
     public int? Pid { get; set; }
     public string? RevitVersion { get; set; }
+    public string? AddinVersion { get; set; }
+    public int? ProtocolVersion { get; set; }
+    public List<string>? Commands { get; set; }
     public List<InstanceDocument>? Documents { get; set; }
     public string? JobId { get; set; }
     public string? State { get; set; }

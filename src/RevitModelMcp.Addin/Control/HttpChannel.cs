@@ -109,6 +109,9 @@ internal sealed class HttpChannel : IDisposable
                 {
                     ["ok"] = true,
                     ["revitVersion"] = _version,
+                    ["addinVersion"] = Application.AddinVersion,
+                    ["protocolVersion"] = Application.ProtocolVersion,
+                    ["commands"] = Application.SupportedCommands,
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
                     ["startedUtc"] = SnapshotFileWriter.StartedUtc,

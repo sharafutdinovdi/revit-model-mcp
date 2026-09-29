@@ -43,6 +43,9 @@ public static class PipeProtocol
             InstanceId = Text(root, "instanceId"),
             Pid = Number(root, "pid"),
             RevitVersion = Text(root, "revitVersion"),
+            AddinVersion = Text(root, "addinVersion"),
+            ProtocolVersion = Number(root, "protocolVersion"),
+            Commands = Strings(root, "commands"),
             Documents = Documents(root),
             JobId = Text(root, "jobId"),
             State = Text(root, "state"),
@@ -69,6 +72,19 @@ public static class PipeProtocol
         String(builder, "instanceId", message.InstanceId);
         Literal(builder, "pid", message.Pid?.ToString(CultureInfo.InvariantCulture));
         String(builder, "revitVersion", message.RevitVersion);
+        String(builder, "addinVersion", message.AddinVersion);
+        Literal(builder, "protocolVersion", message.ProtocolVersion?.ToString(CultureInfo.InvariantCulture));
+        if (message.Commands is { } commands)
+        {
+            Name(builder, "commands");
+            builder.Append('[');
+            for (var index = 0; index < commands.Count; index++)
+            {
+                if (index > 0) builder.Append(',');
+                StringValue(builder, commands[index]);
+            }
+            builder.Append(']');
+        }
         if (message.Documents is { } documents)
         {
             Name(builder, "documents");
@@ -150,6 +166,18 @@ public static class PipeProtocol
         }).ToList();
     }
 
+    private static List<string>? Strings(XElement root, string name)
+    {
+        var element = Member(root, name);
+        if (element is null) return null;
+        if (JsonType(element) != "array") throw new PipeProtocolException($"Field {name} must be an array.");
+        return element.Elements().Select(item =>
+        {
+            if (JsonType(item) != "string") throw new PipeProtocolException($"Field {name} must contain strings.");
+            return item.Value;
+        }).ToList();
+    }
+
     private static string? RawObject(XElement root, string name)
     {
         var element = Member(root, name);
@@ -193,6 +221,11 @@ public static class PipeProtocol
     {
         if (value is null) return;
         Name(builder, name);
+        StringValue(builder, value);
+    }
+
+    private static void StringValue(StringBuilder builder, string value)
+    {
         builder.Append('"');
         foreach (var character in value)
         {

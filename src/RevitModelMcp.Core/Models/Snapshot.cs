@@ -111,6 +111,15 @@ public sealed class InstanceStatus
 
     [DataMember(Name = "documents", Order = 13)]
     public List<InstanceDocument> Documents { get; set; } = new();
+
+    [DataMember(Name = "addinVersion", Order = 14)]
+    public string AddinVersion { get; set; } = string.Empty;
+
+    [DataMember(Name = "protocolVersion", Order = 15)]
+    public int ProtocolVersion { get; set; } = 1;
+
+    [DataMember(Name = "commands", Order = 16)]
+    public List<string> Commands { get; set; } = new();
 }
 
 [DataContract]

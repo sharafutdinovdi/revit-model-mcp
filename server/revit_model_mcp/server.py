@@ -24,6 +24,7 @@ from revit_model_mcp.revit_channel import (
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
+from revit_model_mcp.updates import check_for_updates, update_status
 
 
 def create_host(
@@ -230,6 +231,8 @@ async def _execute(
         result = await channel.execute(
             job.for_document(document), timeout_seconds, pickup_timeout_seconds
         )
+        if job.command == "ping":
+            result.update(serverVersion=package_version(), **update_status())
         return redact_model_paths(result)
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
@@ -915,6 +918,7 @@ def main() -> None:
     channel = RevitReadChannel(host)
     if args.redact_paths:
         os.environ["REVIT_MCP_REDACT_PATHS"] = "1"
+    check_for_updates()
     mcp.run(transport="stdio")
 
 

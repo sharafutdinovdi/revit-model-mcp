@@ -41,6 +41,7 @@ from revit_model_mcp.ssh_host import (
     RemoteCommandTimeoutError,
     SshPowerShellHost,
     _mux_directory,
+    _parse_instance_package,
     _ps_quote,
 )
 
@@ -1180,6 +1181,24 @@ def instance_status(process_id=42, title="Structural", **extra):
         "httpPort": None,
         **extra,
     }
+
+
+def test_ssh_heartbeat_preserves_addin_compatibility_fields():
+    now = datetime.now(timezone.utc)
+    status = instance_status(
+        updatedUtc=now.isoformat(),
+        addinVersion="0.6.0",
+        protocolVersion=1,
+        commands=["ping", "document-info"],
+    )
+    package = {
+        "processes": [{"processId": 42, "revitVersion": "2024"}],
+        "files": [{"name": "instance_42.json", "content": json.dumps(status)}],
+    }
+    instance = _parse_instance_package(package, "", now)[0]
+    assert instance["addinVersion"] == "0.6.0"
+    assert instance["protocolVersion"] == 1
+    assert instance["commands"] == ["ping", "document-info"]
 
 
 class MatchesDocumentAndResolveInstanceTests(unittest.TestCase):
