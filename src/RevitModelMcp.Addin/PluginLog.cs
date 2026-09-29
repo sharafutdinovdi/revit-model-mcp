@@ -8,6 +8,7 @@ internal static class PluginLog
 {
     private const long FileSizeLimitBytes = 10 * 1024 * 1024;
     private const int RetainedFileCountLimit = 14;
+    private const int SameDayRotatedFileCountLimit = 10;
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
     private static readonly object SyncRoot = new();
     private static string? _directory;
@@ -52,8 +53,7 @@ internal static class PluginLog
             lock (SyncRoot)
             {
                 _directory ??= ResolveLogDirectory();
-                var path = ResolveFilePath(DateTime.Now);
-                path = RotateBySize(path);
+                var path = RotateBySize(ResolveFilePath(DateTime.Now), out var rotated);
                 var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss.fff zzz", CultureInfo.InvariantCulture);
                 var line = $"{timestamp} [{level}] {Sanitize(message)}";
                 if (exception is not null)
@@ -62,6 +62,7 @@ internal static class PluginLog
                 }
 
                 File.AppendAllText(path, line + Environment.NewLine, Utf8WithoutBom);
+                if (rotated) DeleteExpiredFiles(_directory);
             }
         }
         catch
@@ -76,8 +77,9 @@ internal static class PluginLog
         return Path.Combine(directory, $"RevitModelMcp-{now:yyyyMMdd}.log");
     }
 
-    private static string RotateBySize(string path)
+    private static string RotateBySize(string path, out bool rotated)
     {
+        rotated = false;
         if (!File.Exists(path) || new FileInfo(path).Length < FileSizeLimitBytes)
         {
             return path;
@@ -85,15 +87,24 @@ internal static class PluginLog
 
         var directory = Path.GetDirectoryName(path)!;
         var fileName = Path.GetFileNameWithoutExtension(path);
-        var index = 1;
-        string rotatedPath;
-        do
+        for (var index = 1; index <= SameDayRotatedFileCountLimit; index++)
         {
-            rotatedPath = Path.Combine(directory, $"{fileName}_{index++:000}.log");
+            var rotatedPath = Path.Combine(directory, $"{fileName}_{index:000}.log");
+            if (!File.Exists(rotatedPath))
+            {
+                rotated = true;
+                return rotatedPath;
+            }
+            if (new FileInfo(rotatedPath).Length < FileSizeLimitBytes) return rotatedPath;
         }
-        while (File.Exists(rotatedPath) && new FileInfo(rotatedPath).Length >= FileSizeLimitBytes);
 
-        return rotatedPath;
+        var oldestPath = Enumerable.Range(1, SameDayRotatedFileCountLimit)
+            .Select(index => Path.Combine(directory, $"{fileName}_{index:000}.log"))
+            .OrderBy(File.GetLastWriteTimeUtc)
+            .First();
+        File.Delete(oldestPath);
+        rotated = true;
+        return oldestPath;
     }
 
     private static string ResolveLogDirectory()
@@ -120,6 +131,13 @@ internal static class PluginLog
     {
         try
         {
+            foreach (var file in Directory.EnumerateFiles(directory, $"RevitModelMcp-{DateTime.Now:yyyyMMdd}_*.log")
+                         .OrderByDescending(File.GetLastWriteTimeUtc)
+                         .Skip(SameDayRotatedFileCountLimit))
+            {
+                File.Delete(file);
+            }
+
             foreach (var file in Directory.EnumerateFiles(directory, "RevitModelMcp-*.log")
                          .OrderByDescending(File.GetLastWriteTimeUtc)
                          .Skip(RetainedFileCountLimit))

@@ -53,9 +53,10 @@ public static class NwcSettingsXml
             throw new ArgumentException("settingsXml must have the .xml extension.", nameof(path));
         try
         {
+            NwcPathValidator.EnsureSettingsXmlSize(new FileInfo(normalized).Length);
             return Parse(File.ReadAllText(normalized));
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             throw new IOException("Could not read the NWC settings XML file on the Revit workstation.");
         }

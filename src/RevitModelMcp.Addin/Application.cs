@@ -12,6 +12,7 @@ using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -20,11 +21,7 @@ namespace RevitModelMcp;
 [UsedImplicitly]
 public sealed class Application : ExternalApplication
 {
-    private static readonly string TriggerFilePath = Path.Combine(
-        Output.SnapshotFileWriter.OutputDirectory,
-        "trigger.txt");
-
-    private readonly ControlChannel _controlChannel = new(TriggerFilePath);
+    private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
     private ExternalEventRequestQueue? _requestQueue;
@@ -40,6 +37,14 @@ public sealed class Application : ExternalApplication
     {
         PluginLog.Start();
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
+        var (fileChannelEnabled, fileChannelWarning) = Output.SnapshotFileWriter.InitializeChannel();
+        if (fileChannelWarning is not null)
+            PluginLog.Warn(fileChannelWarning);
+        var triggerFilePath = Path.Combine(Output.SnapshotFileWriter.OutputDirectory, "trigger.txt");
+        _controlChannel = new ControlChannel(triggerFilePath)
+        {
+            FileChannelEnabled = fileChannelEnabled
+        };
         _eventHandler = new ControlExternalEventHandler(_controlChannel);
         _externalEvent = Autodesk.Revit.UI.ExternalEvent.Create(_eventHandler);
         _requestQueue = new ExternalEventRequestQueue(() =>
@@ -50,17 +55,37 @@ public sealed class Application : ExternalApplication
             return result is ExternalEventRequest.Accepted or ExternalEventRequest.Pending;
         }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
-        Directory.CreateDirectory(Output.SnapshotFileWriter.OutputDirectory);
-        if (File.Exists(TriggerFilePath))
+        NwcPathValidator.ConfigureTrustedNetworkRoots([]);
+        HttpSettings? httpSettings = null;
+        var showActivityPaneOnAction = true;
+        try
         {
-            File.Move(TriggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            httpSettings = HttpSettings.Load();
+            showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
+            try
+            {
+                NwcPathValidator.ConfigureTrustedNetworkRoots(httpSettings.TrustedNetworkRoots);
+            }
+            catch (ArgumentException)
+            {
+                PluginLog.Warn("Invalid trustedNetworkRoots in settings.json. Network shares remain unavailable.");
+            }
         }
-        _triggerWatcher = new TriggerFileWatcher(
-            TriggerFilePath,
-            RequestExecution,
-            exception => PluginLog.Error("Trigger watcher failed.", exception),
-            TimeSpan.FromSeconds(10));
-        _triggerWatcher.Start();
+        catch (Exception exception)
+        {
+            PluginLog.Warn($"Settings could not be loaded. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+        }
+        if (_controlChannel.FileChannelEnabled)
+        {
+            if (File.Exists(triggerFilePath))
+                File.Move(triggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
+            _triggerWatcher = new TriggerFileWatcher(
+                triggerFilePath,
+                RequestExecution,
+                exception => PluginLog.Error("Trigger watcher failed.", exception),
+                TimeSpan.FromSeconds(10));
+            _triggerWatcher.Start();
+        }
         Application.ViewActivated += OnViewActivated;
         Application.ControlledApplication.DocumentClosing += OnDocumentClosing;
         Application.ControlledApplication.DocumentClosed += OnDocumentListChanged;
@@ -78,34 +103,38 @@ public sealed class Application : ExternalApplication
         catch (Exception exception)
         {
             _pipeChannel = null;
-            PluginLog.Error("Pipe listener failed; the file channel stays available.", exception);
+            PluginLog.Error("Pipe listener failed.", exception);
         }
-        // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
-        _instanceHeartbeat = new InstanceHeartbeat(
-            Output.SnapshotFileWriter.RootDirectory,
-            Process.GetCurrentProcess().Id,
-            Application.ControlledApplication.VersionNumber,
-            _instanceId,
-            _pipeChannel?.PipeName);
+        if (_controlChannel.FileChannelEnabled)
+        {
+            // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
+            _instanceHeartbeat = new InstanceHeartbeat(
+                Output.SnapshotFileWriter.RootDirectory,
+                Process.GetCurrentProcess().Id,
+                Application.ControlledApplication.VersionNumber,
+                _instanceId,
+                _pipeChannel?.PipeName);
+        }
         Application.ControlledApplication.DocumentChanged += OnDocumentChanged;
         ActivityHost.Scheduler = _controlChannel.Scheduler;
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
-        _instanceHeartbeat.Start(_activeDocument, _documents);
-        var showActivityPaneOnAction = true;
-        try
+        _instanceHeartbeat?.Start(_activeDocument, _documents);
+        if (httpSettings is not null)
         {
-            var httpSettings = HttpSettings.Load();
-            showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
-            _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
-                Application.ControlledApplication.VersionNumber, httpSettings);
-            _httpChannel.UpdateDocument(_activeDocument?.Title);
-            _httpChannel.Start();
-            _instanceHeartbeat.UpdateHttpPort(_httpChannel.BoundPort);
-        }
-        catch (Exception exception)
-        {
-            PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+            try
+            {
+                httpSettings.ApplyHttpOverrides();
+                _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
+                    Application.ControlledApplication.VersionNumber, httpSettings);
+                _httpChannel.UpdateDocument(_activeDocument?.Title);
+                _httpChannel.Start();
+                _instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);
+            }
+            catch (Exception exception)
+            {
+                PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
+            }
         }
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
     }

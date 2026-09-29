@@ -4,7 +4,7 @@
 
 # Revit Model MCP
 
-For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, read-only by default, and act in it only when two explicit gates are on.
+For people reviewing or automating Revit projects with an MCP client: read and act on a live Revit project through MCP. Actions are enabled by default, and either read-only setting disables them.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/codeql.yml)
@@ -21,6 +21,11 @@ For people reviewing or automating Revit models with an AI client: read a live R
 Revit Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+The [code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) lists what is signed, team roles and the approval rule.
 
 ## Install
 
@@ -82,9 +87,11 @@ Call `revit_ping` in the MCP client and expect `success: true`.
 ## In action
 
 Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation.
-Both action gates are enabled in this recording.
+Actions are enabled in this recording.
 
 <img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
+
+If Revit Model MCP saves you time, a :star: on GitHub helps other Revit users find it.
 
 What happens in the recording, in order:
 

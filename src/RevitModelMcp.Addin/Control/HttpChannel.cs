@@ -102,6 +102,8 @@ internal sealed class HttpChannel : IDisposable
             var method = context.Request.HttpMethod;
             if (method == "GET" && path == "/health")
             {
+                if (HealthProof.TryCompute(_settings.Token, context.Request.Headers["X-RevitMcp-Nonce"], out var proof))
+                    context.Response.Headers["X-RevitMcp-Proof"] = proof;
                 await JsonAsync(context, 200, new()
                 {
                     ["ok"] = true,
@@ -384,6 +386,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "httpPort", Order = 3)] public int HttpPort { get; set; } = 53110;
     [DataMember(Name = "token", Order = 4)] public string Token { get; set; } = string.Empty;
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
+    [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
 
     [OnDeserializing]
     private void SetDefaults(StreamingContext context)
@@ -393,6 +396,7 @@ internal sealed record HttpSettings
         HttpPort = 53110;
         Token = string.Empty;
         ShowActivityPaneOnAction = true;
+        TrustedNetworkRoots = [];
     }
 
     public static HttpSettings Load(string? directory = null)
@@ -426,24 +430,28 @@ internal sealed record HttpSettings
                 stream.SetLength(stream.Position);
             }
         }
+        return settings;
+    }
+
+    public void ApplyHttpOverrides()
+    {
         var enabled = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_ENABLED");
         if (!string.IsNullOrWhiteSpace(enabled))
-            settings.HttpEnabled = enabled switch { "0" => false, "1" => true, _ => throw new InvalidDataException("REVIT_MCP_HTTP_ENABLED must be 0 or 1.") };
+            HttpEnabled = enabled switch { "0" => false, "1" => true, _ => throw new InvalidDataException("REVIT_MCP_HTTP_ENABLED must be 0 or 1.") };
         var bind = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_BIND");
         if (!string.IsNullOrWhiteSpace(bind))
-            settings.HttpBind = bind;
+            HttpBind = bind;
         var port = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_PORT");
         if (!string.IsNullOrWhiteSpace(port))
-            settings.HttpPort = int.TryParse(port, out var parsed) ? parsed : 0;
+            HttpPort = int.TryParse(port, out var parsed) ? parsed : 0;
         var token = Environment.GetEnvironmentVariable("REVIT_MCP_TOKEN");
         if (!string.IsNullOrWhiteSpace(token))
-            settings.Token = token;
-        if (!IPAddress.TryParse(settings.HttpBind, out var address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+            Token = token;
+        if (!IPAddress.TryParse(HttpBind, out var address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
             throw new InvalidDataException("httpBind must be an IPv4 interface address, or explicitly 0.0.0.0.");
-        if (settings.HttpPort is < 1 or > 65535) throw new InvalidDataException("httpPort must be between 1 and 65535.");
-        if (string.IsNullOrWhiteSpace(settings.Token) || settings.Token.Any(char.IsControl))
+        if (HttpPort is < 1 or > 65535) throw new InvalidDataException("httpPort must be between 1 and 65535.");
+        if (string.IsNullOrWhiteSpace(Token) || Token.Any(char.IsControl))
             throw new InvalidDataException("The HTTP token must be nonempty and contain no control characters.");
-        return settings;
     }
 
     internal static string Serialize(Dictionary<string, object> value)

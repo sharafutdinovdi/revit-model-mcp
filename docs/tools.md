@@ -35,6 +35,8 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
 | `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 
+The `settings_xml` path rejects device paths, `..` segments and UNC shares absent from `trustedNetworkRoots`; files over 1 MiB are refused before reading.
+
 `link` accepts one linked instance ID or a case-insensitive substring of its instance or type name; ambiguous and unloaded links fail. Comparison transforms link geometry into host coordinates and reports `aligned`, `differs`, `missing_in_host`, `host_only` or `unsupported`. A same-name host datum matches first; a coincident differently named datum may match by geometry. Distances are millimetres and angles are degrees.
 Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
 
@@ -55,7 +57,7 @@ Coordinator location and link lists are capped at 100 without pagination; locati
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
 
-Offsets are zero-based row counts; limits are positive row counts.
+Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
 Other numeric filter values follow document display units; returned query values carry a `unit` field when available.
 See the [feed format](feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.

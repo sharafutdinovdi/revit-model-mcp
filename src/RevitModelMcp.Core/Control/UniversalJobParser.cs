@@ -124,7 +124,7 @@ internal static class UniversalJobParser
         return new CommonParseResult
         {
             Offset = offset,
-            Limit = limit,
+            Limit = Math.Min(limit, ControlJobParser.MaximumQueryLimit),
             Filters = new ElementFilterSpec
             {
                 Categories = NormalizeMany(job.Categories),

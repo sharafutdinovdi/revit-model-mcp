@@ -27,7 +27,7 @@ Exports and diagnostics write files outside the Revit model.
 Actions run by default; a committed change assimilates into one named, undoable Revit change and reports a `summary`.
 Set `REVIT_MCP_READ_ONLY=1` in the Python process, or create `%LOCALAPPDATA%\RevitModelMcp\read-only` on the workstation, to refuse actions without hiding the tools.
 Removing the gate file re-enables action execution without restarting Revit.
-Either gate is checked independently; direct HTTP callers are checked against the token and the workstation gate.
+Either read-only setting is checked independently; direct HTTP callers require the token and are refused while the workstation `read-only` file exists.
 
 Selection and navigation use UI calls.
 Model changes and temporary isolation run in individual transactions.

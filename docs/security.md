@@ -6,34 +6,42 @@ The model read API is always available.
 Action tools are enabled by default; either `REVIT_MCP_READ_ONLY=1` in the Python server environment or the
 workstation `%LOCALAPPDATA%\RevitModelMcp\read-only` file switches them to read-only mode without hiding them,
 described in [actions](actions.md).
-`revit_export_nwc` may write to any valid absolute workstation path unless read-only mode is active. It never transfers the NWC file to the client; logging omits the export path.
+`revit_export_nwc` may write to a drive path or a UNC path on a trusted share unless read-only mode is active. It never transfers the NWC file to the client; logging omits the export path.
+UNC shares are denied by default for export, save, open, shared parameter files and NWC settings XML. Add approved `\\server\share` roots to the `trustedNetworkRoots` string array in `%LOCALAPPDATA%\RevitModelMcp\settings.json` and restart Revit; mapped drives remain allowed as drive paths.
+`RSN://` paths use Revit Server and are not restricted by `trustedNetworkRoots`.
 The default surface covers ping, active document information, the open document list, instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
 
-`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` reduces response `documentPath` and every `path` field, including link and image paths, to file names.
-This covers nested results and instance listings.
-Model names, parameter values, error text, channel files and exported image `localPath` values remain visible.
+`REVIT_MCP_REDACT_PATHS=1` or `--redact-paths` removes directories from response `documentPath`, `path` and `centralPath` fields, including nested results and instance listings.
+It also reduces Windows drive and UNC paths in `confirmationText`, `summary`, `error`, `message`, `warning` and `warnings` strings at any depth to file names, including tool errors.
+Model names, parameter values, remaining message text and exported image `localPath` values remain visible.
+Redaction applies to outgoing Python responses, not channel files or add-in logs.
 
 HTTP binds to `127.0.0.1:53110` by default.
 A per-user 32-byte random bearer token is generated in `settings.json`; its protected NTFS ACL grants access only to the current user.
 The token is never logged.
 All HTTP routes except `/health` require it; health exposes the active document name and process information.
+Before sending that token, the Python HTTP client verifies a nonce proof from the add-in on the existing health request.
 There is no built-in TLS: put remote access behind a tunnel or a TLS proxy.
 Set `REVIT_MCP_HTTP_ENABLED=0` in Revit's environment or `httpEnabled=false` in settings to disable the listener entirely.
 MCP action calls are refused in read-only mode over every transport.
 Direct HTTP action jobs require the bearer token and are refused with HTTP 403 while the workstation read-only file is present; the Python server's `REVIT_MCP_READ_ONLY` setting does not apply to direct callers.
 
 The named pipe `\\.\pipe\RevitModelMcp.<pid>` has a protected ACL that grants access only to the Windows user running Revit.
-Other local users and services running under other accounts cannot open it unless an administrator changes that ACL.
+The add-in creates the first instance with that ACL and disables the pipe if the name is already in use.
 The add-in also drops any pipe client that connects from another computer.
 The pipe needs no token: holding the Revit user's credentials already grants access to the file channel and the model.
-Pipe requests are limited to 1 MiB, and action jobs still require the workstation gate.
+Pipe requests are limited to 1 MiB, and action jobs are refused while the workstation `read-only` file exists.
 
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
 Running the server on the workstation over SSH stdio needs the same account as Revit and opens no additional port.
+The workstation `read-only` file refuses action jobs only. It does not restrict a person who holds an SSH key for the Revit account.
+For SSH stdio, prefix a dedicated public key entry in `authorized_keys` with `restrict,command="revit-model-mcp --redact-paths"`.
+Windows OpenSSH administrators place this entry in `%ProgramData%\ssh\administrators_authorized_keys`.
+The `ssh:<alias>` file channel requires a full shell key and cannot use this forced command.
 On macOS and Linux, the default multiplexing socket directory is verified as user-owned and set to mode `0700`; multiplexing is disabled if this fails.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).

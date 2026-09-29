@@ -11,10 +11,12 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.pipe_host import LocalPipeHost
+from revit_model_mcp.revit_channel import parse_response
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -483,6 +485,25 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["responder"]["documentPath"], r"C:\Models\Sample.rvt")
         with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "0"}):
             self.assertEqual(revit_server.redact_model_paths(response), response)
+
+    async def test_redaction_covers_failed_read_tool_error(self) -> None:
+        failure = {
+            "command": "document-info",
+            "success": False,
+            "message": "Could not find file 'C:\\Users\\Owner\\Tower.rvt'.",
+        }
+
+        async def failed_execute(*_args):
+            return parse_response(json.dumps(failure), "document-info")
+
+        with (
+            patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}),
+            patch.object(revit_server.channel, "execute", failed_execute),
+            self.assertRaises(ToolError) as raised,
+        ):
+            await revit_server.revit_document_info()
+
+        self.assertEqual(str(raised.exception), "Could not find file 'Tower.rvt'.")
 
     def test_cli_enables_redaction_and_selects_host(self) -> None:
         with (

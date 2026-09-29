@@ -33,6 +33,7 @@ internal sealed class ControlChannel
 
     public JobScheduler Scheduler => _scheduler;
     public bool HasPendingWork => _session is not null || _scheduler.HasPending;
+    public bool FileChannelEnabled { get; set; }
 
     public JobSubmission SubmitHttp(ControlJobParseResult job, string payload, out Task<string>? completion)
     {
@@ -56,7 +57,7 @@ internal sealed class ControlChannel
     {
         lock (_filesSync)
         {
-            if (_stopped) return;
+            if (_stopped || !FileChannelEnabled) return;
             var directory = Path.GetDirectoryName(_triggerFilePath)!;
             if (!Directory.Exists(directory)) return;
             var files = Directory.GetFiles(directory, "job_*.json").OrderBy(File.GetCreationTimeUtc).ToList();
@@ -64,14 +65,33 @@ internal sealed class ControlChannel
             foreach (var path in files)
             {
                 string content;
-                try { content = File.ReadAllText(path); }
+                try
+                {
+                    if (new FileInfo(path).Length > PipeProtocol.MaxMessageBytes)
+                    {
+                        File.Delete(path);
+                        PluginLog.Warn($"File job skipped: over 1 MiB. Name='{Path.GetFileName(path)}'.");
+                        continue;
+                    }
+                    content = File.ReadAllText(path);
+                }
                 catch (IOException) { continue; }
+                catch (UnauthorizedAccessException) { continue; }
                 var parsed = ControlJobParser.Parse(content);
                 if (!MatchesFileTarget(parsed, application)) continue;
                 var claimedPath = $"{path}.{Guid.NewGuid():N}.claimed";
                 try { File.Move(path, claimedPath); }
                 catch (IOException) { continue; }
-                try { content = File.ReadAllText(claimedPath); }
+                try
+                {
+                    if (new FileInfo(claimedPath).Length > PipeProtocol.MaxMessageBytes)
+                    {
+                        File.Delete(claimedPath);
+                        PluginLog.Warn($"File job skipped: over 1 MiB. Name='{Path.GetFileName(path)}'.");
+                        continue;
+                    }
+                    content = File.ReadAllText(claimedPath);
+                }
                 catch (IOException)
                 {
                     File.Move(claimedPath, Path.Combine(directory, $"job_{Guid.NewGuid():N}.json"));

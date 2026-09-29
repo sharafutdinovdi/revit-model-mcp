@@ -7,6 +7,20 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_NwcSettingsCheckRejectsUntrustedUncAndDevicePaths()
+    {
+        foreach (var path in new[] { @"\\srv\share\settings.xml", @"\\?\UNC\srv\share\settings.xml", @"C:\x\..\settings.xml" })
+        {
+            var job = new ControlJobContract { Command = "nwc-settings-check", SettingsXml = path };
+            await Assert.That(ControlJobParseResult.FromContract(job).Kind).IsEqualTo(ControlJobKind.Invalid);
+        }
+        var allowed = ControlJobParseResult.FromContract(
+            new ControlJobContract { Command = "nwc-settings-check", SettingsXml = @"\\SRV\Share\settings.xml" },
+            [@"\\srv\share"]);
+        await Assert.That(allowed.Kind).IsEqualTo(ControlJobKind.NwcSettingsCheck);
+    }
+
+    [Test]
     public async Task PinnedRead_ClaimsTriggerButDocumentMustStillMatchBeforeReading()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-tests-{Guid.NewGuid():N}");
@@ -346,6 +360,18 @@ public sealed class ControlJobParserTests
         await Assert.That(result.Categories).IsEquivalentTo(new[] { "Walls", "Doors" });
         await Assert.That(result.Offset).IsEqualTo(25);
         await Assert.That(result.Limit).IsEqualTo(10);
+    }
+
+    [Test]
+    public async Task Parse_ViewElements_ClampsLimitAboveMaximum()
+    {
+        var maximum = ControlJobParser.Parse("""{"command":"view-elements","view":"Plan","limit":5000}""");
+        var excessive = ControlJobParser.Parse("""{"command":"view-elements","view":"Plan","limit":5001}""");
+
+        await Assert.That(maximum.Kind).IsEqualTo(ControlJobKind.ViewElements);
+        await Assert.That(maximum.Limit).IsEqualTo(5000);
+        await Assert.That(excessive.Kind).IsEqualTo(ControlJobKind.ViewElements);
+        await Assert.That(excessive.Limit).IsEqualTo(5000);
     }
 
     [Test]

@@ -20,7 +20,7 @@ public static class ActionJobParser
     public static bool IsAction(string command) => command is
         "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
 
-    public static ControlJobParseResult Parse(string command, ControlJobContract job)
+    public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         try
         {
@@ -93,7 +93,7 @@ public static class ActionJobParser
             };
             if (command == "open-document")
             {
-                DocumentPathValidator.Validate(action.DocumentPath);
+                DocumentPathValidator.Validate(action.DocumentPath, "path", trustedNetworkRoots);
                 Require(action.Mode is "detached" or "detached_discard_worksets" or "local_copy" or "read_only_local", "mode is invalid.");
                 Require(!action.Audit, "audit must be false.");
                 Require(action.Worksets is "all" or "none" or "open" &&
@@ -104,8 +104,7 @@ public static class ActionJobParser
                 Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
             if (command == "save-document" && action.SaveAs is not null)
             {
-                DocumentPathValidator.Validate(action.SaveAs);
-                Require(!DocumentPathValidator.SamePath(action.SaveAs, action.Document), "save_as must differ from the central path.");
+                DocumentPathValidator.Validate(action.SaveAs, "save_as", trustedNetworkRoots);
             }
             if (command == "sync-document")
             {
@@ -151,6 +150,8 @@ public static class ActionJobParser
                         $"Unknown family operation: {operation.Op}.");
                     if (operation.Op == "add_shared_parameters")
                     {
+                        if (operation.SharedParameterFile is not null)
+                            NwcPathValidator.EnsureAbsoluteNoTraversal(operation.SharedParameterFile, "shared_parameter_file", trustedNetworkRoots);
                         if (operation.Parameters is not { Count: > 0 })
                             throw new ArgumentException("add_shared_parameters requires parameters.");
                         Require(operation.Parameters.All(parameter => !string.IsNullOrWhiteSpace(parameter.Name) && !string.IsNullOrWhiteSpace(parameter.Group)),
@@ -215,7 +216,9 @@ public static class ActionJobParser
             if (command == "export-nwc")
             {
                 var export = action.Nwc;
-                NwcPathValidator.Validate(export.Path);
+                NwcPathValidator.Validate(export.Path, trustedNetworkRoots);
+                if (export.SettingsXml is not null)
+                    NwcPathValidator.EnsureAbsoluteNoTraversal(export.SettingsXml, "settings_xml", trustedNetworkRoots);
                 Require(export.Scope is "model" or "view" or "selection", "scope must be model, view or selection.");
                 Require(export.Coordinates is "shared" or "internal", "coordinates must be shared or internal.");
                 Require(export.Parameters is "all" or "elements" or "none", "parameters must be all, elements or none.");
@@ -346,53 +349,96 @@ public static class ActionJobParser
 
 public static class DocumentPathValidator
 {
-    public static void Validate(string? path)
+    public static void Validate(string? path, string label = "path", IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("path is required.");
         if (path!.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
         {
             var parts = path.Substring(6).Split('/');
-            if (parts.Length < 3 || parts.Any(string.IsNullOrWhiteSpace) || !parts[parts.Length - 1].EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+            if (parts.Length < 3 || parts.Any(part => string.IsNullOrWhiteSpace(part) || part is "." or "..") || !parts[parts.Length - 1].EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Invalid RSN model path.");
             return;
         }
         if (path.IndexOf("://", StringComparison.Ordinal) >= 0 ||
             !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa path, or RSN .rvt path.");
-        if (!(path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':' && path[2] is '\\' or '/') &&
-            !path.StartsWith(@"\\", StringComparison.Ordinal))
-            throw new ArgumentException("path must be absolute local or UNC path.");
+        NwcPathValidator.EnsureAbsoluteNoTraversal(path, label, trustedNetworkRoots);
     }
 
     public static bool SamePath(string? first, string? second) =>
-        first is not null && second is not null &&
-        string.Equals(first.TrimEnd('\\', '/'), second.TrimEnd('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        !string.IsNullOrWhiteSpace(first) && !string.IsNullOrWhiteSpace(second) &&
+        string.Equals(Canonical(first), Canonical(second), StringComparison.OrdinalIgnoreCase);
+
+    public static void EnsureSafeOverwrite(bool isCentral, bool isWorkshared)
+    {
+        if (isCentral || isWorkshared)
+            throw new InvalidOperationException("save_as cannot overwrite a central or workshared model.");
+    }
+
+    public static void EnsureSaveAsDiffersFromCentral(string saveAs, string? centralPath)
+    {
+        if (SamePath(saveAs, centralPath))
+            throw new InvalidOperationException("save_as cannot overwrite a known central path.");
+    }
+
+    private static string Canonical(string path)
+    {
+        var normalized = path.Replace('/', '\\');
+        if (normalized.Length >= 3 && char.IsLetter(normalized[0]) && normalized[1] == ':' && normalized[2] == '\\' ||
+            normalized.StartsWith("\\\\", StringComparison.Ordinal))
+            return Path.GetFullPath(normalized).TrimEnd('\\');
+        return path.TrimEnd('\\', '/');
+    }
 }
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
 {
+    private const int MaxTokens = 100;
     private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private readonly object _syncRoot = new();
     private readonly Dictionary<string, (string Command, string Document, string Arguments, string State, DateTimeOffset Expires)> _tokens = [];
+    private readonly List<string> _issuedOrder = [];
 
     public string Issue(string command, string document, string arguments, string state)
     {
         var bytes = new byte[32];
         using (var generator = RandomNumberGenerator.Create()) generator.GetBytes(bytes);
         var token = BitConverter.ToString(bytes).Replace("-", string.Empty);
-        _tokens[token] = (command, document, arguments, state, _clock().AddMinutes(5));
+        lock (_syncRoot)
+        {
+            var now = _clock();
+            for (var index = _issuedOrder.Count - 1; index >= 0; index--)
+            {
+                var issuedToken = _issuedOrder[index];
+                if (_tokens[issuedToken].Expires > now) continue;
+                _tokens.Remove(issuedToken);
+                _issuedOrder.RemoveAt(index);
+            }
+            if (_issuedOrder.Count == MaxTokens)
+            {
+                _tokens.Remove(_issuedOrder[0]);
+                _issuedOrder.RemoveAt(0);
+            }
+            _tokens[token] = (command, document, arguments, state, now.AddMinutes(5));
+            _issuedOrder.Add(token);
+        }
         return token;
     }
 
     public DocumentConfirmationResult Consume(string token, string command, string document, string arguments, string state)
     {
-        if (!_tokens.TryGetValue(token, out var stored)) return DocumentConfirmationResult.Invalid;
-        _tokens.Remove(token);
-        if (stored.Expires <= _clock() || stored.Command != command)
-            return DocumentConfirmationResult.Invalid;
-        if (stored.State != state) return DocumentConfirmationResult.DocumentChanged;
-        return stored.Document == document && stored.Arguments == arguments
-            ? DocumentConfirmationResult.Valid
-            : DocumentConfirmationResult.Invalid;
+        lock (_syncRoot)
+        {
+            if (!_tokens.TryGetValue(token, out var stored)) return DocumentConfirmationResult.Invalid;
+            _tokens.Remove(token);
+            _issuedOrder.Remove(token);
+            if (stored.Expires <= _clock() || stored.Command != command)
+                return DocumentConfirmationResult.Invalid;
+            if (stored.State != state) return DocumentConfirmationResult.DocumentChanged;
+            return stored.Document == document && stored.Arguments == arguments
+                ? DocumentConfirmationResult.Valid
+                : DocumentConfirmationResult.Invalid;
+        }
     }
 }
 

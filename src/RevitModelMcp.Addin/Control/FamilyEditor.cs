@@ -5,6 +5,7 @@ using Nice3point.Revit.Toolkit.Options;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Control;
@@ -214,6 +215,8 @@ internal static class FamilyEditor
     {
         var originalFile = application.SharedParametersFilename;
         var path = operation.SharedParameterFile ?? originalFile;
+        if (operation.SharedParameterFile is not null)
+            NwcPathValidator.EnsureAbsoluteNoTraversal(operation.SharedParameterFile, "shared_parameter_file");
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathRooted(path) || !File.Exists(path))
             throw new FileNotFoundException("Shared parameter file is missing or unreadable.", path);
         var result = new FamilyOperationResult { Op = operation.Op!, Results = [] };

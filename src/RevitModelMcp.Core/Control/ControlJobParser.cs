@@ -2,6 +2,7 @@ using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.RegularExpressions;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Control;
@@ -157,7 +158,7 @@ public sealed class ControlJobParseResult
     {
         return string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
     }
-    public static ControlJobParseResult FromContract(ControlJobContract job)
+    public static ControlJobParseResult FromContract(ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         var command = Normalize(job.Command);
         if (command is null)
@@ -198,11 +199,9 @@ public sealed class ControlJobParseResult
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
             "family-audit" => ParseFamilyAudit(job),
-            "nwc-settings-check" => string.IsNullOrWhiteSpace(job.SettingsXml)
-                ? Invalid(command, "settingsXml is required.")
-                : Create(ControlJobKind.NwcSettingsCheck, command),
+            "nwc-settings-check" => ParseNwcSettingsCheck(job.SettingsXml, trustedNetworkRoots),
             "compare-link-datums" => ParseCompareLinkDatums(job),
-            _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job),
+            _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job, trustedNetworkRoots),
             _ => Invalid(command, $"Unknown command: {command}.")
         };
         result.CorrelationId = job.CorrelationId;
@@ -224,6 +223,22 @@ public sealed class ControlJobParseResult
         var result = ControlJobParseResult.Create(ControlJobKind.FamilyAudit, "family-audit");
         result.Action = parsed.Action;
         return result;
+    }
+
+    private static ControlJobParseResult ParseNwcSettingsCheck(string? path, IReadOnlyCollection<string>? trustedNetworkRoots)
+    {
+        const string command = "nwc-settings-check";
+        try
+        {
+            NwcPathValidator.EnsureAbsoluteNoTraversal(path!, "settings_xml", trustedNetworkRoots);
+            if (!path!.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("settings_xml must have the .xml extension.");
+            return Create(ControlJobKind.NwcSettingsCheck, command);
+        }
+        catch (ArgumentException exception)
+        {
+            return Invalid(command, exception.Message);
+        }
     }
 
     private static ControlJobParseResult ParseCompareLinkDatums(ControlJobContract job)
@@ -297,7 +312,7 @@ public sealed class ControlJobParseResult
 
         return resolvedLimit <= 0
             ? Invalid(command, "The limit must be greater than zero.")
-            : ViewElements(view, categories, resolvedOffset, resolvedLimit);
+            : ViewElements(view, categories, resolvedOffset, Math.Min(resolvedLimit, ControlJobParser.MaximumQueryLimit));
     }
 
     private static ControlJobParseResult ParseElementDetails(string command, long? id)
@@ -337,7 +352,8 @@ public sealed class ControlJobParseResult
 
 public static class ControlJobParser
 {
-    public static ControlJobParseResult Parse(string? content)
+    internal const int MaximumQueryLimit = 5000;
+    public static ControlJobParseResult Parse(string? content, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         if (string.IsNullOrWhiteSpace(content))
         {
@@ -357,7 +373,7 @@ public static class ControlJobParser
             var job = serializer.ReadObject(stream) as ControlJobContract;
             return job is null
                 ? ControlJobParseResult.Invalid("invalid", "The job JSON is empty.")
-                : ControlJobParseResult.FromContract(job);
+                : ControlJobParseResult.FromContract(job, trustedNetworkRoots);
         }
         catch (Exception exception)
         {

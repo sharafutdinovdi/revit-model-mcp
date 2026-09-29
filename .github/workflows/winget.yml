@@ -28,7 +28,7 @@ jobs:
       !contains(inputs.release_tag, '-')
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Generate manifests
         shell: pwsh
         env:
@@ -77,7 +77,7 @@ jobs:
           }
           "install_tested=$tested" >> $env:GITHUB_OUTPUT
           $global:LASTEXITCODE = 0
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: winget-manifests
           path: artifacts/winget/*.yaml
@@ -87,6 +87,7 @@ jobs:
         shell: pwsh
         env:
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           INSTALL_TESTED: ${{ steps.install_test.outputs.install_tested }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -95,8 +96,12 @@ jobs:
             Write-Host 'WINGET_TOKEN is not set. Manifests are available in the artifact.'
             exit 0
           }
-          gh release download --repo microsoft/winget-create --pattern wingetcreate.exe --dir "$env:RUNNER_TEMP/wingetcreate"
+          gh release download v1.12.13.0 --repo microsoft/winget-create --pattern wingetcreate.exe --dir "$env:RUNNER_TEMP/wingetcreate"
           if ($LASTEXITCODE -ne 0) { throw 'wingetcreate download failed' }
+          $actualHash = (Get-FileHash "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" -Algorithm SHA256).Hash
+          if ($actualHash -ne '24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea') {
+            throw 'wingetcreate SHA256 mismatch'
+          }
           $version = $env:RELEASE_TAG.Substring(1)
           # One PR per package version: a pipeline re-run must not open a duplicate in winget-pkgs.
           $env:GH_TOKEN = $env:WINGET_TOKEN
@@ -117,7 +122,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Could not sync $forkOwner/winget-pkgs with microsoft/winget-pkgs; WINGET_TOKEN needs the public_repo and workflow scopes" }
           }
           $submitLog = "$env:RUNNER_TEMP/wingetcreate-submit.txt"
-          & "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" submit artifacts/winget --token $env:WINGET_TOKEN 2>&1 | Tee-Object -FilePath $submitLog | Out-String | Write-Host
+          & "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" submit artifacts/winget 2>&1 | Tee-Object -FilePath $submitLog | Out-String | Write-Host
           if ($LASTEXITCODE -ne 0) { throw 'WinGet submission failed' }
           $prUrl = (Select-String -Path $submitLog -Pattern 'https://github.com/microsoft/winget-pkgs/pull/\d+' -AllMatches).Matches.Value | Select-Object -Last 1
           if (-not $prUrl) { throw 'wingetcreate did not print a pull request URL' }

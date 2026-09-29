@@ -46,6 +46,7 @@ internal static class DocumentActions
     {
         var stopwatch = Stopwatch.StartNew();
         var path = action.DocumentPath!;
+        DocumentPathValidator.Validate(path);
         var server = path.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase);
         if (server && !ModelPathUtils.IsValidUserVisibleFullServerPath(path))
             throw new ArgumentException("Invalid Revit Server model path.");
@@ -147,12 +148,28 @@ internal static class DocumentActions
         {
             DocumentPathValidator.Validate(action.SaveAs);
             var knownCentral = CentralPath(document);
-            if (DocumentPathValidator.SamePath(action.SaveAs, knownCentral) ||
-                Opened.TryGetValue(document, out var opened) && DocumentPathValidator.SamePath(action.SaveAs, opened.OriginalPath) ||
+            DocumentPathValidator.EnsureSaveAsDiffersFromCentral(action.SaveAs, knownCentral);
+            if (Opened.TryGetValue(document, out var opened) && DocumentPathValidator.SamePath(action.SaveAs, opened.OriginalPath) ||
                 application.Application.Documents.Cast<Document>().Any(item => DocumentPathValidator.SamePath(action.SaveAs, CentralPath(item))))
                 throw new InvalidOperationException("save_as cannot overwrite a known central path.");
-            if (File.Exists(action.SaveAs) && !action.Overwrite)
-                throw new IOException("save_as target exists; set overwrite=true to replace it.");
+            if (File.Exists(action.SaveAs))
+            {
+                if (!action.Overwrite)
+                    throw new IOException("save_as target exists; set overwrite=true to replace it.");
+                bool isCentral;
+                bool isWorkshared;
+                try
+                {
+                    using var targetInfo = BasicFileInfo.Extract(action.SaveAs);
+                    isCentral = targetInfo.IsCentral;
+                    isWorkshared = targetInfo.IsWorkshared;
+                }
+                catch (Exception)
+                {
+                    throw new InvalidOperationException("save_as target cannot be inspected; overwrite is refused.");
+                }
+                DocumentPathValidator.EnsureSafeOverwrite(isCentral, isWorkshared);
+            }
         }
         else if (IsCentral(document))
             throw new InvalidOperationException("Saving an open central model is refused.");

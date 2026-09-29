@@ -8,7 +8,12 @@ from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
 
-from revit_model_mcp.actions import _send_action, millimeters_to_feet, register_actions
+from revit_model_mcp.actions import (
+    _send_action,
+    millimeters_to_feet,
+    redact_model_paths,
+    register_actions,
+)
 from revit_model_mcp.revit_channel import (
     JobPickupStatus,
     ReadJob,
@@ -184,7 +189,9 @@ def test_document_action_response_paths_are_redacted_when_enabled():
             "title": "Tower",
             "path": r"C:\Models\Tower_local.rvt",
             "centralPath": r"RSN://srv/AR/Tower.rvt",
+            "confirmationText": r"Save to C:\Models\Tower_local.rvt now?",
         },
+        "summary": r"Saved C:\Models\Tower_local.rvt",
     }
     with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
         result = asyncio.run(
@@ -193,6 +200,71 @@ def test_document_action_response_paths_are_redacted_when_enabled():
     data = result.structured_content["data"]
     assert data["path"] == "Tower_local.rvt"
     assert data["centralPath"] == "Tower.rvt"
+    assert data["confirmationText"] == "Save to Tower_local.rvt now?"
+    assert result.structured_content["summary"] == "Saved Tower_local.rvt"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ('Save "C:\\Models\\Tower.rvt" now.', 'Save "Tower.rvt" now.'),
+        ("Saved C:\\Models\\Tower.rvt and closed it.", "Saved Tower.rvt and closed it."),
+        (r"Open \\host\share\Tower.rvt next.", "Open Tower.rvt next."),
+        ("Open //host/share/Tower.rvt next.", "Open Tower.rvt next."),
+        (r'Open "\\host\my share\Tower.rvt" next.', 'Open "Tower.rvt" next.'),
+        (
+            "See https://example.com/a/b.html for help.",
+            "See https://example.com/a/b.html for help.",
+        ),
+        ("Open RSN://srv/AR/Tower.rvt next.", "Open RSN://srv/AR/Tower.rvt next."),
+        ("Open C:/Models/Tower.rvt next.", "Open Tower.rvt next."),
+        (
+            'Save "C:\\My Models\\Tower North.rvt" now.',
+            'Save "Tower North.rvt" now.',
+        ),
+        ("Failed at C:\\Models\\Tower.rvt\nRetry now.", "Failed at Tower.rvt\nRetry now."),
+        (
+            r"Copy C:\Models\Tower.rvt to \\host\share\Copy.rvt today.",
+            "Copy Tower.rvt to Copy.rvt today.",
+        ),
+        ("The document is ready.", "The document is ready."),
+    ],
+)
+def test_response_message_paths_are_redacted_when_enabled(message, expected):
+    response = {"data": {"confirmationText": message}}
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths(response)["data"]["confirmationText"] == expected
+
+
+def test_response_message_fields_are_redacted_at_any_depth():
+    response = {
+        "summary": r"Saved C:\Models\Tower.rvt.",
+        "data": {
+            "error": r"Failed at C:\Models\Tower.rvt",
+            "message": r"Read C:/Models/Tower.rvt",
+            "warning": r"Check \\host\share\Tower.rvt",
+            "warnings": [r"Missing C:\Models\Tower.rvt"],
+            "parameterValue": r"C:\Models\Tower.rvt",
+        },
+    }
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        result = redact_model_paths(response)
+    assert result == {
+        "summary": "Saved Tower.rvt.",
+        "data": {
+            "error": "Failed at Tower.rvt",
+            "message": "Read Tower.rvt",
+            "warning": "Check Tower.rvt",
+            "warnings": ["Missing Tower.rvt"],
+            "parameterValue": r"C:\Models\Tower.rvt",
+        },
+    }
+
+
+def test_response_message_paths_are_unchanged_when_redaction_is_off():
+    response = {"summary": r"Saved C:\Models\Tower.rvt"}
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "0"}):
+        assert redact_model_paths(response) is response
 
 
 def test_nwc_export_defaults_and_options_reach_channel():
