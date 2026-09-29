@@ -501,6 +501,84 @@ finally { Remove-Item $root -Recurse -Force }
     )
 
 
+def test_script_release_payload_checksums():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+function Invoke-WebRequest {
+    param($Uri, $Headers, $OutFile, [switch]$UseBasicParsing)
+    if ($Uri -like '*/SHA256SUMS.txt') {
+        if ($script:case -eq 'old404' -or $script:case -eq 'new404') {
+            throw [Net.Http.HttpRequestException]::new('Not found', $null, [Net.HttpStatusCode]::NotFound)
+        }
+        $asset = "revit-model-mcp-addin-$releaseVersion-R26.zip"
+        $hash = (Get-FileHash (Join-Path $tempRoot $asset) -Algorithm SHA256).Hash
+        if ($script:case -eq 'mismatch') { $hash = '0' * 64 }
+        if ($script:case -eq 'missingEntry') { $asset = 'another.zip' }
+        Set-Content -LiteralPath $OutFile -Value "$hash  $asset"
+    }
+    else { Set-Content -LiteralPath $OutFile -Value 'payload' }
+}
+function Expand-Archive {
+    param($LiteralPath, $DestinationPath)
+    $folder = Join-Path $DestinationPath 'RevitModelMcp'
+    New-Item $folder -ItemType Directory | Out-Null
+    Set-Content (Join-Path $folder 'RevitModelMcp.dll') 'dll'
+    Set-Content (Join-Path $DestinationPath 'RevitModelMcp.addin') '<RevitAddIns><AddIn><Assembly>x</Assembly></AddIn></RevitAddIns>'
+}
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+New-Item $root -ItemType Directory | Out-Null
+try {
+    $Source = 'Release'; $headers = @{}
+    foreach ($case in 'match', 'mismatch', 'missingEntry', 'old404', 'new404', 'oldAbsent', 'newAbsent') {
+        $script:case = $case
+        $releaseVersion = if ($case -like 'old*') { '0.2.0' } else { '0.3.0' }
+        $releaseTag = "v$releaseVersion"
+        $tempRoot = Join-Path $root $case
+        New-Item $tempRoot -ItemType Directory | Out-Null
+        $script:checksums = $null
+        $script:releaseAssets = @("revit-model-mcp-addin-$releaseVersion-R26.zip")
+        if ($case -notin 'oldAbsent', 'newAbsent') { $script:releaseAssets += 'SHA256SUMS.txt' }
+        $failed = $false
+        try { $output = Get-Payload '2026' 3>&1 6>&1 | Out-String }
+        catch {
+            $failed = $true
+            $output = $_.Exception.Message
+        }
+        if ($case -in 'match', 'old404', 'oldAbsent') {
+            if ($failed) { throw "$case failed: $output" }
+            if ($case -like 'old*' -and $output -notmatch 'predates checksums') {
+                throw "$case did not warn about missing checksums"
+            }
+            if ($case -eq 'match' -and @($output -split "`n" | Where-Object {
+                $_.Trim() -eq "Verified SHA256 of revit-model-mcp-addin-$releaseVersion-R26.zip."
+            }).Count -ne 1) { throw "Checksum verification was not reported once: $output" }
+        }
+        elseif (!$failed) { throw "$case accepted an invalid checksum" }
+        elseif ($case -eq 'mismatch' -and $output -notmatch 'SHA256 mismatch') {
+            throw "Mismatch did not report the hash: $output"
+        }
+        elseif ($case -eq 'missingEntry' -and $output -notmatch 'Expected one SHA256 checksum') {
+            throw "Missing entry was not reported: $output"
+        }
+        elseif ($case -eq 'newAbsent' -and $output -notmatch 'Choose version 0.3.0 or later') {
+            throw "Missing checksum file was not reported: $output"
+        }
+        elseif ($case -eq 'new404' -and $output -notmatch 'Not found') {
+            throw "Missing checksum download was not reported: $output"
+        }
+    }
+}
+finally { Remove-Item $root -Recurse -Force }
+"""
+    )
+
+
 def test_msi_http_url_acl_requires_opt_in_and_owned_prefix():
     source = (REPOSITORY / "build/install/Installer.cs").read_text()
     assert 'new Property("HTTP_ENABLED", "0")' in source

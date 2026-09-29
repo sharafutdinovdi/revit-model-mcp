@@ -11,5 +11,4 @@ permissions:
 
 jobs:
   auto-merge:
-    uses: sharafutdinovdi/.github/.github/workflows/dependabot-auto-merge.yml@main
-    secrets: inherit
+    uses: sharafutdinovdi/.github/.github/workflows/dependabot-auto-merge.yml@594da42c2b8e77e670d1d1846f89145b91bc0c73 # main

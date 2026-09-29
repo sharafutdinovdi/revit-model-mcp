@@ -186,7 +186,7 @@ Registry publishing is best-effort and its response appears in the job log.
 Prerelease tags containing `-` skip PyPI, MCP Registry and WinGet publishing.
 
 The release workflow calls `.github/workflows/winget.yml` after publishing the GitHub Release.
-`release-please.yml` dispatches `release.yml` for the new tag (a top-level run, which PyPI trusted publishing requires); `release.yml` then calls `winget.yml`. The same pipeline can be started by hand from the Actions tab with an existing tag to republish assets.
+`release-please.yml` dispatches `release.yml` for the new tag (a top-level run, which PyPI trusted publishing requires); `release.yml` then calls `winget.yml`. To start the same pipeline by hand from the Actions tab, select the existing tag under "Use workflow from" and enter that same tag as the input.
 The calling job grants `id-token: write`; the PyPI job retains the `pypi` environment and both publishers retain OIDC permissions.
 WinGet runs only from `release.yml` or by `workflow_dispatch` with a stable release tag, for example after a manually published release.
 It generates and validates manifests for `Sharafutdinov.RevitModelMcp` and uploads a `winget-manifests` artifact.
