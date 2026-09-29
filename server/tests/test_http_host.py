@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import hashlib
+import hmac
 import json
 import shutil
 import struct
@@ -24,19 +27,29 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + struct.pack("!II", 1600, 900)
 
 @pytest.fixture
 def endpoint():
-    state = {"status": 200, "polls": 0, "requests": [], "payload": None, "forever": False}
+    state = {
+        "status": 200,
+        "polls": 0,
+        "requests": [],
+        "nonces": [],
+        "payload": None,
+        "forever": False,
+        "proof": "good",
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
 
-        def reply(self, status, body, content_type="application/json"):
+        def reply(self, status, body, content_type="application/json", proof=None):
             if not isinstance(body, bytes):
                 body = json.dumps(body).encode()
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.send_header("X-Revit-Job-Id", "job-1")
+            if proof is not None:
+                self.send_header("X-RevitMcp-Proof", proof)
             self.end_headers()
             self.wfile.write(body)
 
@@ -44,6 +57,26 @@ def endpoint():
             route = urlsplit(self.path)
             state["requests"].append((self.command, self.path, self.headers.get("Authorization")))
             if route.path == "/health":
+                encoded_nonce = self.headers.get("X-RevitMcp-Nonce")
+                state["nonces"].append(encoded_nonce)
+                proof = None
+                if encoded_nonce and state["proof"] == "good":
+                    nonce = base64.urlsafe_b64decode(encoded_nonce + "==")
+                    proof = (
+                        base64.urlsafe_b64encode(
+                            hmac.new(
+                                b"test-token",
+                                b"revit-model-mcp/health/v1\n" + nonce,
+                                hashlib.sha256,
+                            ).digest()
+                        )
+                        .rstrip(b"=")
+                        .decode("ascii")
+                    )
+                elif state["proof"] == "wrong":
+                    proof = "wrong-proof"
+                elif state["proof"] == "known":
+                    proof = "GfUwWjTyg3_Dag6VadPsgEniE7ybFFAH9msV89o4grU"
                 return self.reply(
                     200,
                     {
@@ -54,9 +87,14 @@ def endpoint():
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": True,
                     },
+                    proof=proof,
                 )
             if self.headers.get("Authorization") != "Bearer test-token":
                 return self.reply(401, {"error": "unauthorized"})
+            if route.path == "/jobs" and state.get("drop_once"):
+                state["drop_once"] = False
+                self.close_connection = True
+                return
             if state["status"] == 302:
                 self.send_response(302)
                 self.send_header("Location", state["redirect"])
@@ -132,6 +170,8 @@ def test_job_round_trip(endpoint):
         ("GET", "/health", None),
         ("POST", "/jobs?timeout=0", "Bearer test-token"),
     ]
+    assert state["nonces"][0] is not None
+    assert state["nonces"][1] is None
     assert state["payload"]["targetProcessId"] == 42
 
 
@@ -149,8 +189,50 @@ def test_http_errors(endpoint, status, message):
 def test_wrong_token(endpoint):
     host, _ = endpoint
     host.token = "wrong"
-    with pytest.raises(RevitChannelError, match="REVIT_MCP_TOKEN"):
+    with pytest.raises(RevitChannelError, match="did not prove the add-in token"):
         asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+
+@pytest.mark.parametrize("proof", ["missing", "wrong"])
+def test_unproved_endpoint_never_receives_authorization(endpoint, proof):
+    host, state = endpoint
+    state["proof"] = proof
+
+    with pytest.raises(RevitChannelError, match="Update the add-in, or another process"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    assert state["requests"] == [("GET", "/health", None)]
+    assert state["nonces"][0] is not None
+
+
+def test_health_proof_known_answer(endpoint):
+    host, state = endpoint
+    host._proof.nonce = bytes(range(32))
+    state["proof"] = "known"
+
+    assert asyncio.run(host.health())["ok"] is True
+    assert state["nonces"] == ["AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"]
+
+
+def test_http_401_requires_fresh_proof(endpoint):
+    host, state = endpoint
+    state["status"] = 401
+    with pytest.raises(RevitChannelError, match="bearer token"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    state["status"] = 200
+    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert state["nonces"][2] is not None
+
+
+def test_connection_error_requires_fresh_proof(endpoint):
+    host, state = endpoint
+    state["drop_once"] = True
+    with pytest.raises(RevitChannelError, match="not reachable"):
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+
+    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert state["nonces"][2] is not None
 
 
 def test_pending_job_polls_without_resubmitting(endpoint):
