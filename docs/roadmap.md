@@ -31,6 +31,19 @@ Milestone [v0.8: Reliability & action safety](https://github.com/sharafutdinovdi
 - Channel robustness: terminal response handling, committed results kept on cleanup failure, parameter filters and non-ASCII model names ([#53](https://github.com/sharafutdinovdi/revit-model-mcp/issues/53) to [#56](https://github.com/sharafutdinovdi/revit-model-mcp/issues/56)).
 - HTTP host lifecycle: graceful shutdown, response budget and read deadline ([#25](https://github.com/sharafutdinovdi/revit-model-mcp/issues/25)).
 
+## Later: model audit for coordinators and project managers
+
+One tool, `revit_model_audit`, runs a stated rule set against one or many models and returns one report ([#98](https://github.com/sharafutdinovdi/revit-model-mcp/issues/98)).
+Each finding names the rule, the elements and the view it was evaluated on, so a coordinator can hand the report to a client or a subcontractor without rerunning it.
+
+- Rule sets as files: naming conventions, required parameters per category, allowed values, worksets, view and sheet conventions, taken from the project's BIM execution plan.
+- Existing checks become audit sections: model health, warnings, links, shared coordinates, link datums, parameter fill and family audit.
+- New sections: schedules read as tables, sheets with title block status and revisions, views not placed on sheets, workset and element ownership.
+- Change over time: each audit is stored as a snapshot, and the next audit reports what changed since the previous one.
+- Many models: audit a folder of models opened in the background and return one summary with a row per model.
+- Output a person can open: an HTML or XLSX report with view images, and BCF for findings that go back to the model author.
+- Ready scenarios as MCP prompts: check before issue, weekly coordinator report, acceptance of a subcontractor model.
+
 ## Known gaps
 
 - Public-source cleanup: legacy snapshot readers, contracts and fixtures still contain organization-specific family and parameter identifiers; removing those fields changes the legacy feed contract.
