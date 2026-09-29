@@ -78,7 +78,6 @@ class SshPowerShellHost:
         self._directory = self._root_directory
         self._instance: dict[str, object] | None = None
         self._published_job_file: str | None = None
-        self._stale_response_names: set[str] = set()
 
     @property
     def requires_identity(self) -> bool:
@@ -250,17 +249,7 @@ class SshPowerShellHost:
         responses = result.get("responses")
         if not isinstance(responses, list) or not all(isinstance(x, str) for x in responses):
             raise ResponseParseError("Preparation result contains an invalid response list.")
-        known_responses = {name for name in responses if RESPONSE_NAME.fullmatch(name)}
-        stale_before = datetime.now() - timedelta(days=1)
-        self._stale_response_names = set()
-        for response_name in known_responses:
-            try:
-                created = datetime.strptime(response_name[9:28], "%Y%m%d_%H%M%S_%f")
-            except ValueError:
-                continue
-            if created < stale_before:
-                self._stale_response_names.add(response_name)
-        return known_responses
+        return {name for name in responses if RESPONSE_NAME.fullmatch(name)}
 
     async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus:
         trigger_assignment = f"$trigger = Join-Path ({self._directory}) '{self._published_job_file or TRIGGER_FILE}'; "
@@ -443,7 +432,6 @@ class SshPowerShellHost:
             ) from error
 
     async def delete_files(self, names: list[str]) -> None:
-        names = [*names, *sorted(self._stale_response_names)]
         if not names:
             return
         paths = ",".join(f"'{_ps_quote(name)}'" for name in names)
@@ -451,7 +439,6 @@ class SshPowerShellHost:
             f"$directory = {self._directory}; @({paths}) | ForEach-Object {{ "
             "$path = Join-Path $directory $_; Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }"
         )
-        self._stale_response_names.clear()
 
     def _build_command(self, script: str) -> list[str]:
         encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
