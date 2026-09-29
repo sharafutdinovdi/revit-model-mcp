@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "revit-model-mcp"
-version = "0.6.0"
+version = "0.7.0"
 description = "MCP access to live Autodesk Revit projects with actions enabled by default and opt-out read-only mode"
 readme = "README.md"
 requires-python = ">=3.11"
