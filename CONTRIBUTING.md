@@ -133,7 +133,7 @@ Automated tests do not validate live Revit behavior; see [validation evidence](d
 2. release-please maintains a `chore(main): release X.Y.Z` PR with generated changelog entries and version updates.
 3. The maintainer checks the release PR and merges it after required checks pass.
 4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
-5. Check PyPI, MCP Registry and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
+5. Check PyPI, MCP Registry, Smithery and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
 
 release-please owns [CHANGELOG.md](CHANGELOG.md), the version in `server/pyproject.toml` and both versions in `server/server.json`.
 The manifest starts at `0.3.0`; `server/pyproject.toml` remains the package version checked by the build.
