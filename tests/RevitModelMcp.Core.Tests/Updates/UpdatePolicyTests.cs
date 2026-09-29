@@ -15,6 +15,9 @@ public sealed class UpdatePolicyTests
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0", false, true)).IsFalse();
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.4.0", false, false)).IsFalse();
         await Assert.That(UpdatePolicy.IsNewerStable("0.5.0-rc.1+abc", "v0.5.0", false, false)).IsTrue();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0/../payload", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0.1", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "V0.5.0", false, false)).IsFalse();
     }
 
     [Test]

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 namespace RevitModelMcp.Core.Updates;
 
@@ -6,7 +7,7 @@ public static class UpdatePolicy
 {
     public static bool IsNewerStable(string installed, string candidate, bool draft, bool prerelease)
     {
-        if (draft || prerelease || candidate.Contains('-')) return false;
+        if (draft || prerelease || !Regex.IsMatch(candidate, @"\Av?\d+\.\d+\.\d+\z", RegexOptions.CultureInvariant)) return false;
         var installedVersion = installed.TrimStart('v', 'V').Split('+')[0];
         var installedPrerelease = installedVersion.Contains('-');
         var current = installedVersion.Split('-')[0];

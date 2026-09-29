@@ -1,11 +1,13 @@
-using System.Diagnostics;
+using System.ComponentModel;
 using System.IO;
 using System.Net;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Security.AccessControl;
 using System.Security.Principal;
+using System.Text;
 using RevitModelMcp.Activity;
 using RevitModelMcp.Core.Updates;
 
@@ -56,6 +58,16 @@ internal static class UpdateService
         var machine = ReadJson<UpdateSettings>(Path.Combine(programData, "settings.json"));
         var user = ReadJson<UpdateSettings>(Path.Combine(LocalDirectory, "settings.json"));
         if (!UpdatePolicy.IsEnabled(null, machine?.UpdateCheck, user?.UpdateCheck)) return;
+        if (state.QueuedVersion is not null)
+        {
+            if (Mutex.TryOpenExisting(@"Local\RevitModelMcp.Updater", out var runningUpdater))
+            {
+                using (runningUpdater) return;
+            }
+            state.QueuedVersion = null;
+            state.LastCheck = null;
+            WriteJson(statePath, state);
+        }
         var now = DateTimeOffset.UtcNow;
         if (!UpdatePolicy.ShouldCheck(now, state.LastCheck)) return;
         state.LastCheck = now;
@@ -123,15 +135,8 @@ internal static class UpdateService
         }
         var stagedUpdaterPath = Path.Combine(directory, "RevitModelMcp.Updater.exe");
         File.Copy(updaterPath, stagedUpdaterPath, true);
-        using var updater = Process.Start(new ProcessStartInfo
-        {
-            FileName = stagedUpdaterPath,
-            Arguments = $"\"{msiPath}\" {expected} \"{Path.Combine(directory, "install.log")}\"",
-            CreateNoWindow = true,
-            UseShellExecute = false,
-            WindowStyle = ProcessWindowStyle.Hidden
-        });
-        if (updater is null) throw new InvalidOperationException("Updater process could not start.");
+        StartUpdater(stagedUpdaterPath,
+            $"\"{msiPath}\" {expected} \"{Path.Combine(directory, "install.log")}\"", directory);
         state.QueuedVersion = release.TagName;
         WriteJson(statePath, state);
         ActivityRecorder.RecordSystemNotice($"Update to {version} is ready. It will install after Revit closes.", releaseUrl);
@@ -221,8 +226,62 @@ internal static class UpdateService
         using var identity = WindowsIdentity.GetCurrent();
         security.AddAccessRule(new FileSystemAccessRule(identity.User!, FileSystemRights.FullControl,
             InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+            FileSystemRights.ReadAndExecute, InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None, AccessControlType.Allow));
         var directory = Directory.CreateDirectory(path);
         directory.SetAccessControl(security);
+    }
+
+    private static void StartUpdater(string executablePath, string arguments, string workingDirectory)
+    {
+        var startupInfo = new StartupInfo { Size = Marshal.SizeOf<StartupInfo>() };
+        var commandLine = new StringBuilder($"\"{executablePath}\" {arguments}");
+        if (!CreateProcess(executablePath, commandLine, IntPtr.Zero, IntPtr.Zero, false,
+                0x08000000, IntPtr.Zero, workingDirectory, ref startupInfo, out var processInformation))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        CloseHandle(processInformation.Thread);
+        CloseHandle(processInformation.Process);
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "CreateProcessW", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool CreateProcess(string applicationName, StringBuilder commandLine,
+        IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags,
+        IntPtr environment, string currentDirectory, ref StartupInfo startupInfo, out ProcessInformation processInformation);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct StartupInfo
+    {
+        public int Size;
+        private IntPtr reserved;
+        private IntPtr desktop;
+        private IntPtr title;
+        private int x;
+        private int y;
+        private int xSize;
+        private int ySize;
+        private int xCountChars;
+        private int yCountChars;
+        private int fillAttribute;
+        private int flags;
+        private short showWindow;
+        private short reserved2;
+        private IntPtr reservedPointer;
+        private IntPtr standardInput;
+        private IntPtr standardOutput;
+        private IntPtr standardError;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInformation
+    {
+        public IntPtr Process;
+        public IntPtr Thread;
+        private int processId;
+        private int threadId;
     }
 
     [DataContract]

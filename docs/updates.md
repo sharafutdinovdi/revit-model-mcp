@@ -2,7 +2,7 @@
 
 The add-in checks the latest stable release after Revit starts. The check runs in the background at most once every 24 hours. It uses the system proxy and has a 10-second request timeout. Drafts and prereleases are ignored.
 
-For a per-user install, the add-in downloads the new SingleUser MSI and `SHA256SUMS.txt` to `%LOCALAPPDATA%\RevitModelMcp\updates\<version>`. It verifies the MSI checksum before starting the updater. The updater waits until all Revit processes in the current Windows session close, verifies the MSI again, and installs it silently. It waits for up to seven days. The next Revit start shows the result in the activity pane, with a link to the release notes.
+For a per-user install, the add-in downloads the new SingleUser MSI and `SHA256SUMS.txt` to `%LOCALAPPDATA%\RevitModelMcp\updates\<version>`. It verifies the MSI checksum before starting the updater. The updater waits until all Revit processes in the current Windows session close, verifies the MSI again, and installs it silently without elevation. It keeps the verified MSI open until installation ends. It waits for up to seven days. If the updater stops without a result, the next Revit start retries the check and installation. The next Revit start after an installation shows the result in the activity pane, with a link to the release notes. The SingleUser MSI does not manage HTTP URL reservations; see [Windows URL reservation](transport.md#windows-url-reservation).
 
 For a per-machine install, the activity pane shows an update notice once per version. The add-in does not download or install the MSI. An administrator must update the installation.
 

@@ -3,7 +3,6 @@ using System.Text;
 using WixSharp;
 using WixSharp.CommonTasks;
 using WixSharp.Controls;
-using WixToolset.Dtf.WindowsInstaller;
 
 const string outputName = "RevitModelMcp";
 const string projectName = "RevitModelMcp";
@@ -68,6 +67,8 @@ var project = new Project
 };
 
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
+var commonProperties = project.Properties;
+var commonRegValues = project.RegValues;
 var commonActions = project.Actions;
 project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
 
@@ -77,22 +78,22 @@ BuildMultiUserMsi();
 void BuildSingleUserMsi()
 {
     project.Scope = InstallScope.perUser;
-    project.Actions = [.. commonActions, UpdateSettingAction("LOCALAPPDATA", false)];
+    project.Properties = [new Property("UPDATECHECK", "1") { Secure = true }];
+    project.RegValues = [];
+    project.Actions = [UpdateSettingAction("LOCALAPPDATA", false)];
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
     project.Dirs =
     [
         new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
     ];
-    var installerPath = project.BuildMsi();
-    // WiX perUser sets the no-elevation bit; URL ACL custom actions require elevation.
-    using var database = new Database(installerPath, DatabaseOpenMode.Direct);
-    database.SummaryInfo.WordCount &= ~8;
-    database.Commit();
+    project.BuildMsi();
 }
 
 void BuildMultiUserMsi()
 {
     project.Scope = InstallScope.perMachine;
+    project.Properties = commonProperties;
+    project.RegValues = commonRegValues;
     project.Actions = [.. commonActions, UpdateSettingAction("ProgramData", true)];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
