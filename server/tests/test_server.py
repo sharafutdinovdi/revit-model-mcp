@@ -7,6 +7,7 @@ import tomllib
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from zipfile import ZipFile
 
@@ -72,12 +73,32 @@ ACTION_TOOL_NAMES = {
 }
 
 
+def test_bundle_tool_description_is_dedented():
+    tool_manifest_entry = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))[
+        "tool_manifest_entry"
+    ]
+    tool = SimpleNamespace(
+        name="example",
+        description=(
+            "First line.\n\n    Second line.\n    \n\n"
+            "If more than one Revit instance is running, choose one."
+        ),
+    )
+    assert tool_manifest_entry(tool) == {
+        "name": "example",
+        "description": "First line.\n\nSecond line.\n\nIf more than one Revit instance is running, choose one.",
+    }
+
+
 def test_bundle_manifest_matches_tool_registry():
     import asyncio
 
     manifest = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
     tools = asyncio.run(revit_server.mcp.list_tools())
-    expected = [{"name": tool.name, "description": tool.description} for tool in tools]
+    tool_manifest_entry = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))[
+        "tool_manifest_entry"
+    ]
+    expected = [tool_manifest_entry(tool) for tool in tools]
     assert manifest["tools"] == expected, (
         "Bundle tools differ from the server registry. Regenerate with "
         "cd server && uv run python ../build/bundle_manifest.py"
@@ -97,7 +118,8 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
     (source / "icon.png").write_bytes(b"icon")
     archive = tmp_path / "smithery.mcpb"
 
-    generate = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))["main"]
+    bundle_manifest = runpy.run_path(str(REPOSITORY_ROOT / "build" / "bundle_manifest.py"))
+    generate = bundle_manifest["main"]
     with (
         patch(
             "sys.argv", ["bundle_manifest.py", "--smithery", str(archive), "--from", str(source)]
@@ -113,7 +135,7 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
         published = json.loads(bundle.read("manifest.json"))
     assert published["version"] == "9.9.9"
     assert published["tools"] == [
-        {"name": tool.name, "description": tool.description, "inputSchema": tool.input_schema}
+        {**bundle_manifest["tool_manifest_entry"](tool), "inputSchema": tool.input_schema}
         for tool in registry
     ]
 

@@ -41,15 +41,15 @@
   "tools": [
     {
       "name": "revit_jobs",
-      "description": "List queued and running jobs in the selected Revit process.\n\nSupply cancel_job_id to cancel one of this server process's own jobs.\nA running action finishes without interruption.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "List queued and running jobs in the selected Revit process.\n\nSupply cancel_job_id to cancel one of this server process's own jobs.\nA running action finishes without interruption.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_compare_link_datums",
-      "description": "Compare host grids and levels with one loaded Revit link. No model change is made.\n\nA geometric match does not create a monitor relationship or later Coordination Review warnings.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Compare host grids and levels with one loaded Revit link. No model change is made.\n\nA geometric match does not create a monitor relationship or later Coordination Review warnings.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_ping",
-      "description": "Check the RevitModelMcp connection without reading the model.\n\nReturns a response with data=\"pong\", even when no document is active.\nConnection failures and timeouts raise errors; no partial result is returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Check the RevitModelMcp connection without reading the model.\n\nReturns a response with data=\"pong\", even when no document is active.\nConnection failures and timeouts raise errors; no partial result is returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_nwc_settings_check",
@@ -57,43 +57,43 @@
     },
     {
       "name": "revit_document_info",
-      "description": "Read general information about the active Revit model.\n\nReturns data with file name, Revit version, levels (elevations in mm), area schemes, worksets and view count.\nAbsent collections are empty; non-workshared models have no worksets.\nCall revit_list_views next for view analysis.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read general information about the active Revit model.\n\nReturns data with file name, Revit version, levels (elevations in mm), area schemes, worksets and view count.\nAbsent collections are empty; non-workshared models have no worksets.\nCall revit_list_views next for view analysis.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_documents",
-      "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_model_health",
-      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and listed in skipped with their errors.\nUse revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and listed in skipped with their errors.\nUse revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_links_status",
-      "description": "Read RVT, CAD and image link status before an export or hand-over.\n\nReturns data with summary counts and rvtLinks, cadLinks and images lists containing status, paths and instance counts.\nEach list is capped at 100 entries by ID without pagination; summary counts cover all entries.\nNo links produce empty lists; per-entry failures appear in error with status Other.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read RVT, CAD and image link status before an export or hand-over.\n\nReturns data with summary counts and rvtLinks, cadLinks and images lists containing status, paths and instance counts.\nEach list is capped at 100 entries by ID without pagination; summary counts cover all entries.\nNo links produce empty lists; per-entry failures appear in error with status Other.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_shared_coordinates",
-      "description": "Read project and survey coordinates before an export or hand-over.\n\nReturns data with base/survey points, the active site, project locations and link offsets in mm and rotations in degrees, rounded to one decimal.\nLocation and link lists are capped at 100 without pagination, with total counts; no links produce an empty sharedSiteFromLinks list.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read project and survey coordinates before an export or hand-over.\n\nReturns data with base/survey points, the active site, project locations and link offsets in mm and rotations in degrees, rounded to one decimal.\nLocation and link lists are capped at 100 without pagination, with total counts; no links produce an empty sharedSiteFromLinks list.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_parameter_fill_check",
-      "description": "Count filled, empty and missing parameters before an export or hand-over.\n\nReturns data with scope, per-parameter and per-category counts, instance/type ownership, storage types and empty/missing element ID samples.\nNo matching elements produce zero counts and empty samples; absent parameters count as missing, and numeric zero counts as filled.\nA missing document, invalid scope or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Count filled, empty and missing parameters before an export or hand-over.\n\nReturns data with scope, per-parameter and per-category counts, instance/type ownership, storage types and empty/missing element ID samples.\nNo matching elements produce zero counts and empty samples; absent parameters count as missing, and numeric zero counts as filled.\nA missing document, invalid scope or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_list_catalog",
-      "description": "Discover valid model names before filtering.\n\nReturns data with section and items containing names and section-specific IDs, categories, types or counts; an empty catalog returns items=[].\nsection is required: categories, family-types, levels, area-schemes, views, worksets, phases or parameters.\nThe parameters section reports localized names, categories and value types.\nStart universal queries here, then prefer revit_aggregate_elements for counts and breakdowns; use revit_query_elements only for individual rows.\nAn unknown section, missing document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Discover valid model names before filtering.\n\nReturns data with section and items containing names and section-specific IDs, categories, types or counts; an empty catalog returns items=[].\nsection is required: categories, family-types, levels, area-schemes, views, worksets, phases or parameters.\nThe parameters section reports localized names, categories and value types.\nStart universal queries here, then prefer revit_aggregate_elements for counts and breakdowns; use revit_query_elements only for individual rows.\nAn unknown section, missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_aggregate_elements",
-      "description": "Summarize matching elements by one or two fields after revit_list_catalog.\n\nReturns data with matchedElements and groups containing keys, count and optional numericCount, sum, average and unit.\nLengths use mm, areas m2 and volumes m3; groups without numeric values have null sum and average.\nNo matches return groups=[]; invalid field or filter names raise errors even for empty results.\nCall revit_list_catalog first; prefer this tool for counts and breakdowns, and revit_query_elements only for individual rows.\nFor area totals, group by level and select the area scheme.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Summarize matching elements by one or two fields after revit_list_catalog.\n\nReturns data with matchedElements and groups containing keys, count and optional numericCount, sum, average and unit.\nLengths use mm, areas m2 and volumes m3; groups without numeric values have null sum and average.\nNo matches return groups=[]; invalid field or filter names raise errors even for empty results.\nCall revit_list_catalog first; prefer this tool for counts and breakdowns, and revit_query_elements only for individual rows.\nFor area totals, group by level and select the area scheme.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_query_elements",
-      "description": "Read a page of matching element rows after revit_list_catalog.\n\nReturns data with elements (id and values), fields, total, offset, limit and hasMore; values include availability, source and units when available.\nLengths use mm, areas m2 and volumes m3; optional geometry uses model mm rounded to one decimal, and unavailable geometry is omitted.\nUse roomCenterMm for placement inside rooms; a bounding-box centre can lie outside the room.\nNo matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.\nCall revit_list_catalog first and prefer revit_aggregate_elements for counts and breakdowns.\nInvalid fields or filters, a missing document, read failure or timeout raise errors; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read a page of matching element rows after revit_list_catalog.\n\nReturns data with elements (id and values), fields, total, offset, limit and hasMore; values include availability, source and units when available.\nLengths use mm, areas m2 and volumes m3; optional geometry uses model mm rounded to one decimal, and unavailable geometry is omitted.\nUse roomCenterMm for placement inside rooms; a bounding-box centre can lie outside the room.\nNo matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.\nCall revit_list_catalog first and prefer revit_aggregate_elements for counts and breakdowns.\nInvalid fields or filters, a missing document, read failure or timeout raise errors; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_list_views",
-      "description": "Find non-template views before analyzing a view.\n\nReturns data with views containing id, name, type, level, scale and template, plus total and processed counts for scanned non-template views.\nNo filter matches return views=[].\nUse a returned name with revit_view_summary before requesting element pages.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Find non-template views before analyzing a view.\n\nReturns data with views containing id, name, type, level, scale and template, plus total and processed counts for scanned non-template views.\nNo filter matches return views=[].\nUse a returned name with revit_view_summary before requesting element pages.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_view_info",
@@ -101,39 +101,39 @@
     },
     {
       "name": "revit_view_summary",
-      "description": "Read element categories and counts for a selected view.\n\nReturns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].\nPrefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read element categories and counts for a selected view.\n\nReturns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].\nPrefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_export_view",
-      "description": "Export a selected view to PNG when numbers do not explain geometry.\n\nReturns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.\nThe export does not change the active view or write to the model; use it to inspect outlines, zones and room boundaries.\nA missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.\nUses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Export a selected view to PNG when numbers do not explain geometry.\n\nReturns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.\nThe export does not change the active view or write to the model; use it to inspect outlines, zones and room boundaries.\nA missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.\nUses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_view_elements",
-      "description": "Read one page of elements in a selected view.\n\nReturns data with elements, total, offset, limit and hasMore; rows include IDs, category, family, type, level and available measurements in mm, m2 and m3.\nNo matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.\nPrefer revit_view_summary for counts and category discovery; use this tool for individual rows and revit_element_details for all parameters.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read one page of elements in a selected view.\n\nReturns data with elements, total, offset, limit and hasMore; rows include IDs, category, family, type, level and available measurements in mm, m2 and m3.\nNo matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.\nPrefer revit_view_summary for counts and category discovery; use this tool for individual rows and revit_element_details for all parameters.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_element_details",
-      "description": "Read parameters and geometry of an element by Revit ID.\n\nReturns data with element, instance parameters, available typeElement parameters and related warnings; no warnings return an empty list.\nRooms include level, area in m2, volume in m3 and boundaries in mm; parameter values include display/internal values and metric units when available.\nLocation and boundingBox use model mm rounded to one decimal; unavailable geometry is omitted.\nUse roomCenterMm for placement inside rooms; boundingBox.centerMm may lie outside a nonrectangular room.\nAn absent element or document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read parameters and geometry of an element by Revit ID.\n\nReturns data with element, instance parameters, available typeElement parameters and related warnings; no warnings return an empty list.\nRooms include level, area in m2, volume in m3 and boundaries in mm; parameter values include display/internal values and metric units when available.\nLocation and boundingBox use model mm rounded to one decimal; unavailable geometry is omitted.\nUse roomCenterMm for placement inside rooms; boundingBox.centerMm may lie outside a nonrectangular room.\nAn absent element or document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_view_warnings",
-      "description": "Read warnings involving elements present in a selected view.\n\nReturns data with view and warnings containing text, severity and element IDs with presentOnView flags; no related warnings return warnings=[].\nA warning may also involve elements outside the view.\nUse revit_view_summary to inspect view contents, or revit_list_warnings for model-wide warning groups.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read warnings involving elements present in a selected view.\n\nReturns data with view and warnings containing text, severity and element IDs with presentOnView flags; no related warnings return warnings=[].\nA warning may also involve elements outside the view.\nUse revit_view_summary to inspect view contents, or revit_list_warnings for model-wide warning groups.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_list_warnings",
-      "description": "Group model warnings by description text.\n\nReturns data with totalWarnings and groups containing text, severity, count, affectedElementCount and optional element rows.\nStart without filters, then repeat with a returned warning_text and include_elements=true to inspect one group.\nNo model warnings return groups=[]; an unmatched warning_text raises an error.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Group model warnings by description text.\n\nReturns data with totalWarnings and groups containing text, severity, count, affectedElementCount and optional element rows.\nStart without filters, then repeat with a returned warning_text and include_elements=true to inspect one group.\nNo model warnings return groups=[]; an unmatched warning_text raises an error.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_list_relations",
-      "description": "Read model object membership or dependencies.\n\nReturns data with relation, source and elements containing IDs, names, categories, families and types; no related objects return elements=[].\nrelation is required: level-rooms, area-scheme-elements or view-template-dependents with source_name, or group-elements or nested-family with source_id.\nObtain source names from revit_list_catalog and IDs from element queries.\nAn invalid relation, missing or wrong source, missing document, read failure or timeout raises an error; partial data is not returned.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Read model object membership or dependencies.\n\nReturns data with relation, source and elements containing IDs, names, categories, families and types; no related objects return elements=[].\nrelation is required: level-rooms, area-scheme-elements or view-template-dependents with source_name, or group-elements or nested-family with source_id.\nObtain source names from revit_list_catalog and IDs from element queries.\nAn invalid relation, missing or wrong source, missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_list_instances",
-      "description": "List Revit processes and their active documents.\n\nReturns documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nLegacy heartbeat presence is only a pre-check. No matching instances return [].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools.\n"
+      "description": "List Revit processes and their active documents.\n\nReturns documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nLegacy heartbeat presence is only a pre-check. No matching instances return [].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools."
     },
     {
       "name": "revit_family_audit",
-      "description": "Audit an open family or named project families without saving or loading changes.\n\nIn project mode, pass exact names or [\"*\"]. In family mode, omit families.\nUnused shared parameters may still carry schedule or tag data in the project.\n\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
+      "description": "Audit an open family or named project families without saving or loading changes.\n\nIn project mode, pass exact names or [\"*\"]. In family mode, omit families.\nUnused shared parameters may still carry schedule or tag data in the project.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond."
     },
     {
       "name": "revit_open_document",
@@ -153,7 +153,7 @@
     },
     {
       "name": "revit_set_view_visibility",
-      "description": "Change category, workset and filter visibility in one view; preview with dry_run.\nCategories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID.\n"
+      "description": "Change category, workset and filter visibility in one view; preview with dry_run.\nCategories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID."
     },
     {
       "name": "revit_remove_links",
@@ -161,43 +161,43 @@
     },
     {
       "name": "revit_undo_last",
-      "description": "Undo the last MCP action in Revit, through Revit's own undo command.\n\nAllowed only when the target document is active, no command is pending in Revit, and\nRevit's last undo entry is still the one this session recorded. Otherwise the action\nresult carries a clear refusal reason instead of running.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Undo the last MCP action in Revit, through Revit's own undo command.\n\nAllowed only when the target document is active, no command is pending in Revit, and\nRevit's last undo entry is still the one this session recorded. Otherwise the action\nresult carries a clear refusal reason instead of running.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_align_link_datums",
-      "description": "Align host grids and levels to a loaded link, with optional creation and rollback preview.\n\nGeometric alignment does not create a monitor relationship or later Coordination Review warnings.\n"
+      "description": "Align host grids and levels to a loaded link, with optional creation and rollback preview.\n\nGeometric alignment does not create a monitor relationship or later Coordination Review warnings."
     },
     {
       "name": "revit_select",
-      "description": "Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_show",
-      "description": "Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_isolate",
-      "description": "Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_move",
-      "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_place_family",
-      "description": "Place a loaded unhosted family on a named level for layout.\n\nfamily accepts a family name or Family: Type, case-insensitively.\nnull type_name uses the embedded type or the first type. Conflicting types\nare rejected. Missing families return similar names with categories.\nModel XY is in millimetres and Z rotation in degrees.\nUse roomCenterMm when placing something inside a room.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Place a loaded unhosted family on a named level for layout.\n\nfamily accepts a family name or Family: Type, case-insensitively.\nnull type_name uses the embedded type or the first type. Conflicting types\nare rejected. Missing families return similar names with categories.\nModel XY is in millimetres and Z rotation in degrees.\nUse roomCenterMm when placing something inside a room.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_create_wall",
-      "description": "Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_set_parameter",
-      "description": "Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.\n`parameter` accepts the Revit UI name, a BuiltInParameter name (ALL_MODEL_INSTANCE_COMMENTS) or the English name of a common built-in (Comments, Mark, Type Mark, Description, Level, Offset).\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.\n`parameter` accepts the Revit UI name, a BuiltInParameter name (ALL_MODEL_INSTANCE_COMMENTS) or the English name of a common built-in (Comments, Mark, Type Mark, Description, Level, Offset).\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_delete",
-      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_export_nwc",
@@ -205,11 +205,11 @@
     },
     {
       "name": "revit_batch",
-      "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.\n"
+      "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_edit_families",
-      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode.\n"
+      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode."
     }
   ],
   "tools_generated": true,

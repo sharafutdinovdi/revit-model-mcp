@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import inspect
 import json
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -10,6 +11,16 @@ from revit_model_mcp.server import mcp
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPOSITORY_ROOT / "bundle" / "manifest.json"
+
+
+def tool_manifest_entry(tool) -> dict:
+    description, separator, suffix = tool.description.partition(
+        "\n\nIf more than one Revit instance"
+    )
+    return {
+        "name": tool.name,
+        "description": inspect.cleandoc(description) + separator + suffix,
+    }
 
 
 def main() -> None:
@@ -23,9 +34,7 @@ def main() -> None:
         parser.error("--smithery and --from must be used together")
 
     registry = asyncio.run(mcp.list_tools())
-    desktop_tools = [
-        {"name": tool.name, "description": tool.description} for tool in registry
-    ]
+    desktop_tools = [tool_manifest_entry(tool) for tool in registry]
     manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     manifest["tools"] = desktop_tools
     MANIFEST_PATH.write_text(
