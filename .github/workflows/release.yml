@@ -231,6 +231,7 @@ jobs:
             echo
             echo "- [Python wheel]($base/$wheel)"
             echo "- [SHA256SUMS.txt]($base/SHA256SUMS.txt) covers every release asset."
+            echo "- [Code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/)"
             echo
             echo 'Close Revit before installing, then start Revit and open a model.'
             echo 'On the MCP client, run the published Python package:'

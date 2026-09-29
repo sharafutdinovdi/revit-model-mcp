@@ -29,11 +29,15 @@ The named pipe `\\.\pipe\RevitModelMcp.<pid>` has a protected ACL that grants ac
 Other local users and services running under other accounts cannot open it unless an administrator changes that ACL.
 The add-in also drops any pipe client that connects from another computer.
 The pipe needs no token: holding the Revit user's credentials already grants access to the file channel and the model.
-Pipe requests are limited to 1 MiB, and action jobs still require the workstation gate.
+Pipe requests are limited to 1 MiB, and action jobs are refused while the workstation `read-only` file exists.
 
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
 Running the server on the workstation over SSH stdio needs the same account as Revit and opens no additional port.
+The workstation `read-only` file refuses action jobs only. It does not restrict a person who holds an SSH key for the Revit account.
+For SSH stdio, prefix a dedicated public key entry in `authorized_keys` with `restrict,command="revit-model-mcp --redact-paths"`.
+Windows OpenSSH administrators place this entry in `%ProgramData%\ssh\administrators_authorized_keys`.
+The `ssh:<alias>` file channel requires a full shell key and cannot use this forced command.
 The default multiplexing socket directory has mode `0700` on macOS and Linux.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).
