@@ -305,6 +305,7 @@ if ($env:OS -eq 'Windows_NT') {
         $env:REVIT_MCP_HTTP_BIND = '127.0.0.2'
         $env:REVIT_MCP_TOKEN = 'test-override-token'
         $settings = [HttpSettings]::Load($directory)
+        $settings.ApplyHttpOverrides()
         if (!$settings.HttpEnabled -or $settings.HttpPort -ne 53112 -or
             $settings.HttpBind -ne '127.0.0.2' -or $settings.Token -ne 'test-override-token') {
             throw 'Environment overrides were not applied'
@@ -317,7 +318,9 @@ if ($env:OS -eq 'Windows_NT') {
         $env:REVIT_MCP_HTTP_ENABLED = $null
         if (![HttpSettings]::Load($directory).HttpEnabled) { throw 'Stored opt-in lost' }
         $env:REVIT_MCP_HTTP_ENABLED = '0'
-        if ([HttpSettings]::Load($directory).HttpEnabled) { throw 'Disable override ignored' }
+        $settings = [HttpSettings]::Load($directory)
+        $settings.ApplyHttpOverrides()
+        if ($settings.HttpEnabled) { throw 'Disable override ignored' }
     }
     finally { Remove-Item $directory -Recurse -Force }
 }
