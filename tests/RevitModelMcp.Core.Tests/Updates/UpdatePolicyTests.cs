@@ -7,6 +7,16 @@ namespace RevitModelMcp.Core.Tests.Updates;
 public sealed class UpdatePolicyTests
 {
     [Test]
+    public async Task BuildsReleaseUrlFromTagWithVersionFallback()
+    {
+        const string releasePage = "https://github.com/sharafutdinovdi/revit-model-mcp/releases";
+        await Assert.That(UpdatePolicy.BuildReleaseUrl(releasePage, "v0.6.98", "0.6.98"))
+            .IsEqualTo($"{releasePage}/tag/v0.6.98");
+        await Assert.That(UpdatePolicy.BuildReleaseUrl(releasePage, null, "0.6.98"))
+            .IsEqualTo($"{releasePage}/tag/v0.6.98");
+    }
+
+    [Test]
     public async Task SelectsOnlyNewStableVersions()
     {
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0", false, false)).IsTrue();

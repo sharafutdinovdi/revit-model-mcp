@@ -5,6 +5,12 @@ namespace RevitModelMcp.Core.Updates;
 
 public static class UpdatePolicy
 {
+    public static string BuildReleaseUrl(string releasePage, string? releaseTag, string version)
+    {
+        var tag = string.IsNullOrWhiteSpace(releaseTag) ? $"v{version.TrimStart('v', 'V')}" : releaseTag;
+        return $"{releasePage}/tag/{tag}";
+    }
+
     public static bool IsNewerStable(string installed, string candidate, bool draft, bool prerelease)
     {
         if (draft || prerelease || !Regex.IsMatch(candidate, @"\Av?\d+\.\d+\.\d+\z", RegexOptions.CultureInvariant)) return false;

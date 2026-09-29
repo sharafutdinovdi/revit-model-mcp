@@ -48,7 +48,8 @@ internal static class UpdateService
         {
             var message = result.ExitCode == 0 ? $"Updated to {result.Version}" :
                 $"Update to {result.Version} failed: {result.Reason ?? FailureReason(result.ExitCode)}";
-            ActivityRecorder.RecordSystemNotice(message, ReleaseUrl(result.Version), result.ExitCode != 0);
+            var resultReleaseUrl = UpdatePolicy.BuildReleaseUrl(ReleasePage, result.ReleaseTag, result.Version);
+            ActivityRecorder.RecordSystemNotice(message, resultReleaseUrl, result.ExitCode != 0);
             state.ReportedResultTime = result.Time;
             state.QueuedVersion = null;
             WriteJson(statePath, state);
@@ -77,7 +78,8 @@ internal static class UpdateService
         var release = RequestJson<Release>(new Uri(feed, ReleasePath));
         if (release is null || !UpdatePolicy.IsNewerStable(InstalledVersion(), release.TagName, release.Draft, release.Prerelease)) return;
         if (state.QueuedVersion == release.TagName) return;
-        var releaseUrl = ValidDownloadUrl(release.HtmlUrl) ? release.HtmlUrl : ReleaseUrl(release.TagName);
+        var releaseUrl = ValidDownloadUrl(release.HtmlUrl) ? release.HtmlUrl :
+            UpdatePolicy.BuildReleaseUrl(ReleasePage, release.TagName, release.TagName);
         var assemblyPath = typeof(Application).Assembly.Location;
         var perUserRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var perUser = assemblyPath.StartsWith(perUserRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
@@ -136,7 +138,7 @@ internal static class UpdateService
         var stagedUpdaterPath = Path.Combine(directory, "RevitModelMcp.Updater.exe");
         File.Copy(updaterPath, stagedUpdaterPath, true);
         StartUpdater(stagedUpdaterPath,
-            $"\"{msiPath}\" {expected} \"{Path.Combine(directory, "install.log")}\"", directory);
+            $"\"{msiPath}\" {expected} \"{Path.Combine(directory, "install.log")}\" \"{release.TagName}\"", directory);
         state.QueuedVersion = release.TagName;
         WriteJson(statePath, state);
         ActivityRecorder.RecordSystemNotice($"Update to {version} is ready. It will install after Revit closes.", releaseUrl);
@@ -157,8 +159,6 @@ internal static class UpdateService
         Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
         (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp &&
          (uri.Host == "127.0.0.1" || uri.Host == "localhost"));
-
-    private static string ReleaseUrl(string version) => $"{ReleasePage}/tag/{version}";
 
     private static string InstalledVersion() =>
         typeof(Application).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
@@ -320,6 +320,7 @@ internal static class UpdateService
     private sealed class UpdateResult
     {
         [DataMember(Name = "version")] public string Version { get; set; } = string.Empty;
+        [DataMember(Name = "releaseTag", EmitDefaultValue = false)] public string? ReleaseTag { get; set; }
         [DataMember(Name = "exitCode")] public int ExitCode { get; set; }
         [DataMember(Name = "time")] public DateTimeOffset Time { get; set; }
         [DataMember(Name = "reason")] public string? Reason { get; set; }

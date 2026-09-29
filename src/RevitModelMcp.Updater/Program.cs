@@ -12,7 +12,7 @@ internal static class Program
 {
     private static int Main(string[] arguments)
     {
-        if (arguments.Length != 3) return 2;
+        if (arguments.Length != 4) return 2;
         using var mutex = new Mutex(false, @"Local\RevitModelMcp.Updater");
         try
         {
@@ -26,6 +26,7 @@ internal static class Program
             var msiPath = Path.GetFullPath(arguments[0]);
             var expected = arguments[1];
             var logPath = Path.GetFullPath(arguments[2]);
+            var releaseTag = arguments[3];
             var version = Path.GetFileNameWithoutExtension(msiPath)
                 .Replace("RevitModelMcp-", string.Empty).Replace("-SingleUser", string.Empty);
             int exitCode;
@@ -36,7 +37,14 @@ internal static class Program
                 exitCode = 1;
                 reason = exception.GetType().Name;
             }
-            var result = new UpdateResult { Version = version, ExitCode = exitCode, Time = DateTimeOffset.UtcNow, Reason = reason };
+            var result = new UpdateResult
+            {
+                Version = version,
+                ReleaseTag = releaseTag,
+                ExitCode = exitCode,
+                Time = DateTimeOffset.UtcNow,
+                Reason = reason
+            };
             var resultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "RevitModelMcp", "update-result.json");
             Directory.CreateDirectory(Path.GetDirectoryName(resultPath)!);
@@ -160,6 +168,7 @@ internal static class Program
     private sealed class UpdateResult
     {
         [DataMember(Name = "version")] public string Version { get; set; } = string.Empty;
+        [DataMember(Name = "releaseTag")] public string ReleaseTag { get; set; } = string.Empty;
         [DataMember(Name = "exitCode")] public int ExitCode { get; set; }
         [DataMember(Name = "time")] public DateTimeOffset Time { get; set; }
         [DataMember(Name = "reason", EmitDefaultValue = false)] public string? Reason { get; set; }
