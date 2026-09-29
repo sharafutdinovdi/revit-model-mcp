@@ -34,6 +34,9 @@ Pipe requests are limited to 1 MiB, and action jobs still require the workstatio
 SSH mode stores no credentials.
 Authentication and routing use the local OpenSSH configuration and agent.
 Running the server on the workstation over SSH stdio needs the same account as Revit and opens no additional port.
+The workstation `read-only` file limits MCP action tools only. It does not restrict a person who holds an SSH key for the Revit account.
+For SSH stdio, prefix a dedicated public key entry in `authorized_keys` with `restrict,command="revit-model-mcp --redact-paths"`.
+Windows OpenSSH administrators place this entry in `%ProgramData%\ssh\administrators_authorized_keys`.
 The default multiplexing socket directory has mode `0700` on macOS and Linux.
 The Windows file channel relies on the account's filesystem permissions.
 See [transport](transport.md) and [security reporting](../SECURITY.md).

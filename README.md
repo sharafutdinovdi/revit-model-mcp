@@ -4,7 +4,7 @@
 
 # Revit Model MCP
 
-For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, read-only by default, and act in it only when two explicit gates are on.
+For people reviewing or automating Revit projects with an MCP client: read and act on a live Revit project through MCP. Actions are enabled by default, and either read-only setting disables them.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/codeql.yml?label=CodeQL&style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/codeql.yml)
@@ -82,7 +82,7 @@ Call `revit_ping` in the MCP client and expect `success: true`.
 ## In action
 
 Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation.
-Both action gates are enabled in this recording.
+Actions are enabled in this recording.
 
 <img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
 

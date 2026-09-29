@@ -7,7 +7,7 @@ Changes to this policy are recorded in the repository history.
 
 Revit Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
-Optional actions can change the model when both write gates are enabled.
+Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
 The project includes no analytics, telemetry or crash reporting.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
 The bundle launcher uses uvx to download the package and dependencies from PyPI and its package hosting service during installation or updates.
@@ -19,7 +19,7 @@ These package downloads do not send Revit model data.
 Responses are returned to the MCP client for the requested operation.
 The local and SSH file channels write requests, responses and exported PNG files under `%LOCALAPPDATA%\RevitModelMcp` on the Windows workstation.
 `REVIT_MCP_CHANNEL_DIR` overrides the channel directory.
-Settings and the workstation write gate remain in the default directory.
+Settings and the workstation `read-only` file remain in the default directory.
 HTTP keeps completed job responses in memory until expiry; exported images also use the workstation channel directory.
 Downloaded PNG files are written to the client path specified by `save_to`, or a new `revit-view-*` directory in the client's temporary directory.
 
