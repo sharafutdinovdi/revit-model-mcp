@@ -435,7 +435,9 @@ OpenSSH uses the first value for an option.
 A custom socket path or lifetime requires `REVIT_MCP_SSH_MUX=0` plus all three `Control*` options in `REVIT_MCP_SSH_OPTIONS`.
 Local mode ignores both variables and creates no multiplexing directory.
 
-SSH command starts retain a limit of five per rolling 30 seconds within one host object.
+New SSH connections retain a limit of five per rolling 30 seconds within one host object.
+With built-in multiplexing, the first start and starts after 540 seconds without a successful SSH command count against the limit.
+Other multiplexed starts do not count. Without multiplexing, every SSH start counts.
 Polling waits ten seconds between attempts.
 Job preparation and final response retrieval each use one command.
 Transient failures during polling can be retried within the remaining timeout.

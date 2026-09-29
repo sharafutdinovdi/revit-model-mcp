@@ -353,7 +353,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[IO.FileShare]::Delete", script)
         self.assertIn("Remove-Item", script)
 
-    async def test_connection_budget_delays_sixth_start(self) -> None:
+    async def test_unmuxed_connection_budget_delays_sixth_start(self) -> None:
         class FakeLoop:
             now = 0.0
 
@@ -379,6 +379,47 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             2 + RELAY_WINDOW_SECONDS / POLL_INTERVAL_SECONDS,
             RELAY_CONNECTION_LIMIT,
         )
+
+    async def test_muxed_starts_do_not_use_connection_budget(self) -> None:
+        class FakeLoop:
+            now = 0.0
+
+            def time(self) -> float:
+                return self.now
+
+        loop = FakeLoop()
+        host = SshPowerShellHost()
+
+        with (
+            patch("revit_model_mcp.ssh_host.asyncio.get_running_loop", return_value=loop),
+            patch("revit_model_mcp.ssh_host.asyncio.sleep", new=AsyncMock()) as sleep,
+        ):
+            await host._reserve_connection(multiplexed=True)
+            self.assertEqual(len(host._connection_starts), 1)
+            host._last_successful_ssh_time[0] = loop.time()
+            for _ in range(RELAY_CONNECTION_LIMIT + 1):
+                await host._reserve_connection(multiplexed=True)
+
+        self.assertEqual(len(host._connection_starts), 1)
+        sleep.assert_not_awaited()
+
+    async def test_muxed_start_after_idle_uses_connection_budget(self) -> None:
+        class FakeLoop:
+            now = 0.0
+
+            def time(self) -> float:
+                return self.now
+
+        loop = FakeLoop()
+        host = SshPowerShellHost()
+
+        with patch("revit_model_mcp.ssh_host.asyncio.get_running_loop", return_value=loop):
+            await host._reserve_connection(multiplexed=True)
+            host._last_successful_ssh_time[0] = loop.time()
+            loop.now = 540.0
+            await host._reserve_connection(multiplexed=True)
+
+        self.assertEqual(list(host._connection_starts), [540.0])
 
     async def test_reports_connection_not_established(self) -> None:
         process = FakeSshProcess(
@@ -836,6 +877,25 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
 
 class HostConfigurationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_successful_muxed_ssh_updates_shared_last_success(self) -> None:
+        host = SshPowerShellHost("revit-host")
+        process = FakeSshProcess(0, stdout=b"ok")
+        with (
+            tempfile.TemporaryDirectory() as runtime,
+            patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime, "REVIT_MCP_SSH_MUX": "1"}),
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                AsyncMock(return_value=process),
+            ),
+        ):
+            self.assertEqual(await host._run("'ok'"), "ok")
+
+        self.assertIsNotNone(host._last_successful_ssh_time[0])
+        self.assertIs(
+            host._for_instance(instance_status())._last_successful_ssh_time,
+            host._last_successful_ssh_time,
+        )
+
     async def test_local_mode_runs_powershell_without_ssh(self) -> None:
         host = SshPowerShellHost("local", local=True)
         process = FakeSshProcess(0, stdout=b"ok")
@@ -1009,6 +1069,18 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
         "revit-host",
         "powershell.exe",
     ]
+
+
+def test_ssh_command_without_usable_mux_directory_is_unmuxed(tmp_path, monkeypatch):
+    _mux_directory.cache_clear()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "runtime")
+    monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
+    monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
+    with patch("revit_model_mcp.ssh_host.Path.mkdir", side_effect=OSError):
+        command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    assert "ControlMaster=auto" not in command
+    _mux_directory.cache_clear()
 
 
 def test_ssh_extra_options_follow_mux_options(monkeypatch, tmp_path):

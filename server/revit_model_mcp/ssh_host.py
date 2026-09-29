@@ -37,6 +37,7 @@ from revit_model_mcp.revit_channel import (
 
 RELAY_CONNECTION_LIMIT = 5
 RELAY_WINDOW_SECONDS = 30.0
+MUX_RECONNECT_SECONDS = 540.0
 POLL_INTERVAL_SECONDS = 10.0
 POLL_COMMAND_TIMEOUT_SECONDS = 5.0
 PICKUP_COMMAND_TIMEOUT_SECONDS = 10.0
@@ -75,6 +76,7 @@ class SshPowerShellHost:
         self.connect_timeout_seconds = connect_timeout_seconds
         self._connection_starts: deque[float] = deque()
         self._connection_lock = asyncio.Lock()
+        self._last_successful_ssh_time: list[float | None] = [None]
         self._root_directory = _ps_directory()
         self._directory = self._root_directory
         self._instance: dict[str, object] | None = None
@@ -506,10 +508,11 @@ class SshPowerShellHost:
 
     async def _run(self, script: str, timeout_seconds: float = 60) -> str:
         command = self._build_command(script)
+        multiplexed = os.environ.get("REVIT_MCP_SSH_MUX") != "0" and "ControlMaster=auto" in command
         process: asyncio.subprocess.Process | None = None
         try:
             if not self.local:
-                await self._reserve_connection()
+                await self._reserve_connection(multiplexed)
             process = await asyncio.create_subprocess_exec(
                 *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
@@ -556,13 +559,22 @@ class SshPowerShellHost:
                 f"Transport command on {self.host} exited with code {process.returncode}: "
                 f"{detail or output or 'no reason given.'}",
             )
+        if multiplexed and not self.local:
+            self._last_successful_ssh_time[0] = asyncio.get_running_loop().time()
         return output
 
-    async def _reserve_connection(self) -> None:
+    async def _reserve_connection(self, multiplexed: bool = False) -> None:
         async with self._connection_lock:
             loop = asyncio.get_running_loop()
             while True:
                 now = loop.time()
+                last_success = self._last_successful_ssh_time[0]
+                if (
+                    multiplexed
+                    and last_success is not None
+                    and now - last_success < MUX_RECONNECT_SECONDS
+                ):
+                    return
                 cutoff = now - RELAY_WINDOW_SECONDS
                 while self._connection_starts and self._connection_starts[0] <= cutoff:
                     self._connection_starts.popleft()
