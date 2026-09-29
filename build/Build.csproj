@@ -10,6 +10,7 @@
 
     <ItemGroup>
         <Compile Remove="install\**\*.cs"/>
+        <Compile Remove="RevitApiReferencePin\**\*.cs"/>
         <PackageReference Include="Sourcy.DotNet" Version="1.1.1"/>
         <PackageReference Include="Shouldly" Version="4.3.0"/>
         <PackageReference Include="ModularPipelines" Version="3.2.8"/>
