@@ -109,7 +109,7 @@ nav:
       - Roadmap: roadmap.md
   - Project:
       - Privacy: privacy.md
-      - Code signing policy: code-signing.md
+      - Code signing: code-signing.md
       - Contributing: contributing.md
       - Changelog: changelog.md
       - Security policy: security-policy.md
