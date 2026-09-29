@@ -352,6 +352,20 @@ def test_addin_advertises_bound_http_endpoint_identity():
     assert "StartedUtc = Output.SnapshotFileWriter.StartedUtc" in application
 
 
+def test_addin_rejects_oversized_declared_job_before_reading():
+    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
+    jobs = source.split('method == "POST" && path == "/jobs"', 1)[1].split(
+        'method == "GET" && path.StartsWith("/views/"', 1
+    )[0]
+    declared_limit = jobs.index("context.Request.ContentLength64 > MaxJobBytes")
+    body_read = jobs.index("context.Request.InputStream.ReadAsync")
+
+    assert "private const long MaxJobBytes = 1024 * 1024;" in source
+    assert declared_limit < body_read
+    assert jobs.count("JsonAsync(context, 413") == 2
+    assert "body.Length + read > MaxJobBytes" in jobs
+
+
 def run_powershell(script):
     executable = shutil.which("pwsh")
     if not executable:

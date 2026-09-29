@@ -166,7 +166,9 @@ HTTP 429 with `error:queue_full` means this client already has 16 queued jobs; `
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
 MCP action tools are refused with `read-only mode` when `REVIT_MCP_READ_ONLY=1` in the Python process.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
-Jobs are limited to 1 MiB.
+Jobs are limited to 1 MiB. The add-in returns HTTP 413 before reading a body
+whose `Content-Length` exceeds that limit, and also enforces the limit while
+streaming bodies without a declared length.
 
 View names must be URL-encoded; `pixel` accepts 1-4000.
 Image requests can return HTTP 202 with `jobId` after 120 seconds.

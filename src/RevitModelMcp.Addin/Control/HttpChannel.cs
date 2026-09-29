@@ -19,6 +19,7 @@ namespace RevitModelMcp.Control;
 
 internal sealed class HttpChannel : IDisposable
 {
+    private const long MaxJobBytes = 1024 * 1024;
     private readonly HttpListener _listener = new();
     private readonly ConcurrentDictionary<string, HttpJob> _jobs = new();
     private readonly ControlChannel _channel;
@@ -149,13 +150,18 @@ internal sealed class HttpChannel : IDisposable
             if (method == "POST" && path == "/jobs")
             {
                 if (!TryTimeout(context, out var timeout)) return;
+                if (context.Request.ContentLength64 > MaxJobBytes)
+                {
+                    await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
+                    return;
+                }
                 using var body = new MemoryStream();
                 var buffer = new byte[8192];
                 while (true)
                 {
                     var read = await context.Request.InputStream.ReadAsync(buffer, 0, buffer.Length, _shutdown.Token).ConfigureAwait(false);
                     if (read == 0) break;
-                    if (body.Length + read > 1024 * 1024)
+                    if (body.Length + read > MaxJobBytes)
                     {
                         await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
                         return;
