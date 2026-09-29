@@ -1,5 +1,5 @@
-using Installer;
 using System.Text;
+using Installer;
 using WixSharp;
 using WixSharp.CommonTasks;
 using WixSharp.Controls;
