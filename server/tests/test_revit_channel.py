@@ -579,6 +579,129 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
+    async def test_progress_writes_wait_for_terminal_response(self) -> None:
+        progress_messages = (
+            "Command accepted; preparing the view element list.",
+            "The element list is ready; reading data in batches.",
+            "Processing is waiting for the next ExternalEvent call.",
+            "New job rejected: RevitModelMcp is busy reading elements.",
+            "Processed 3 of 9 views. Current view: 'Level 1'. View elements were not read.",
+            "Command accepted and running.",
+        )
+        jobs = (ReadJob.view_elements("Level 1"), ReadJob.list_views())
+        for job in jobs:
+            for message in progress_messages:
+                for correlated in (False, True):
+                    with self.subTest(command=job.command, message=message, correlated=correlated):
+                        remote = FakeRemoteHost()
+                        reads = 0
+                        terminal = {
+                            "command": job.command,
+                            "success": True,
+                            "partial": False,
+                            "data": {"complete": True},
+                            "elapsedMs": 100,
+                        }
+
+                        async def read_response(name, cleanup_names, download_artifact, save_to):
+                            nonlocal reads
+                            reads += 1
+                            self.assertEqual(cleanup_names, [])
+                            self.assertNotIn(remote.response_name, remote.deleted_names)
+                            identity = json.loads(remote.written_content)["correlationId"]
+                            if reads == 1:
+                                progress = {
+                                    "command": job.command,
+                                    "success": False,
+                                    "partial": True,
+                                    "message": message,
+                                    "elapsedMs": 0
+                                    if message.startswith("Command accepted")
+                                    else 100,
+                                    "data": "accepted"
+                                    if message == "Command accepted and running."
+                                    else {"items": []},
+                                }
+                                if correlated:
+                                    progress["correlationId"] = identity
+                                return json.dumps(progress), None
+                            if correlated:
+                                terminal["correlationId"] = identity
+                            return json.dumps(terminal), None
+
+                        remote.finish_job = AsyncMock(side_effect=read_response)
+                        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+                            result = await RevitReadChannel(remote).execute(job)
+                        self.assertEqual(result, terminal)
+                        self.assertEqual(remote.finish_job.await_count, 2)
+                        self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_list_views_progress_name_containing_terminal_text_is_intermediate(self) -> None:
+        for elapsed_ms in (0, 61000):
+            with self.subTest(elapsed_ms=elapsed_ms):
+                remote = FakeRemoteHost()
+                reads = 0
+                terminal = {
+                    "command": "list-views",
+                    "success": True,
+                    "partial": False,
+                    "data": {"views": [{"name": "Level 1"}]},
+                }
+
+                async def read_response(name, cleanup_names, download_artifact, save_to):
+                    nonlocal reads
+                    reads += 1
+                    self.assertEqual(cleanup_names, [])
+                    self.assertNotIn(remote.response_name, remote.deleted_names)
+                    identity = json.loads(remote.written_content)["correlationId"]
+                    if reads == 1:
+                        return (
+                            json.dumps(
+                                {
+                                    "command": "list-views",
+                                    "success": False,
+                                    "partial": True,
+                                    "message": "Processed 3 of 9 views. Current view: "
+                                    "'The 60-second limit was reached'. View elements were not read.",
+                                    "elapsedMs": elapsed_ms,
+                                    "data": {"views": [{"name": "Level 1"}]},
+                                    "correlationId": identity,
+                                }
+                            ),
+                            None,
+                        )
+                    terminal["correlationId"] = identity
+                    return json.dumps(terminal), None
+
+                remote.finish_job = AsyncMock(side_effect=read_response)
+                with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+                    result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+                self.assertEqual(result, terminal)
+                self.assertEqual(remote.finish_job.await_count, 2)
+                self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_correlated_list_views_limit_partial_is_terminal(self) -> None:
+        remote = FakeRemoteHost()
+        partial = {
+            "command": "list-views",
+            "success": False,
+            "partial": True,
+            "message": "The 60-second limit was reached. Processed 3 of 9 views.",
+            "elapsedMs": 60000,
+            "data": {"views": [{"name": "Level 1"}]},
+        }
+
+        async def read_response(name, cleanup_names, download_artifact, save_to):
+            self.assertEqual(cleanup_names, [])
+            partial["correlationId"] = json.loads(remote.written_content)["correlationId"]
+            return json.dumps(partial), None
+
+        remote.finish_job = AsyncMock(side_effect=read_response)
+        with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+            result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+        self.assertEqual(result, partial)
+        self.assertEqual(remote.finish_job.await_count, 1)
+
     async def test_waits_for_success_after_accepted_response(self) -> None:
         for placeholder in (
             {"data": "accepted", "message": "Command accepted and running.", "elapsedMs": 0},

@@ -701,6 +701,8 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
     if response.get("partial") is not True:
         return False
     message = response.get("message")
+    if isinstance(message, str) and message.startswith("Processed "):
+        return True
     if response.get("correlationId"):
         terminal_partial = isinstance(message, str) and (
             "The 60-second limit was reached" in message
@@ -713,18 +715,13 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
             )
         )
         return not terminal_partial
-    return (
-        message
-        in (
-            "Command accepted and running.",
-            "Command accepted; preparing the view element list.",
-            "The element list is ready; reading data in batches.",
-            "Processing is waiting for the next ExternalEvent call.",
-            "New job rejected: RevitModelMcp is busy reading elements.",
-        )
-        or (isinstance(message, str) and message.startswith("Processed "))
-        or (response.get("data") == "accepted" and response.get("elapsedMs") == 0)
-    )
+    return message in (
+        "Command accepted and running.",
+        "Command accepted; preparing the view element list.",
+        "The element list is ready; reading data in batches.",
+        "Processing is waiting for the next ExternalEvent call.",
+        "New job rejected: RevitModelMcp is busy reading elements.",
+    ) or (response.get("data") == "accepted" and response.get("elapsedMs") == 0)
 
 
 def parse_response(content: str, expected_command: str) -> dict[str, Any]:
