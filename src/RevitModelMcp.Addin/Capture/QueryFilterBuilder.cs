@@ -21,7 +21,8 @@ internal static class QueryFilterBuilder
         Func<FilteredElementCollector> structuralCollector = () => Apply(
             viewId is null ? new FilteredElementCollector(document) : new FilteredElementCollector(document, viewId),
             structuralFilters);
-        var parameterNames = filters.Parameters.Select(filter => filter.Parameter).Concat(requestedFields);
+        var parameterNames = filters.Parameters.Select(filter => filter.Parameter)
+            .Concat(requestedFields.Where(field => !ElementFieldReader.IsBuiltInField(field)));
         var parameters = QueryParameterResolver.Resolve(document, parameterNames, structuralCollector);
         var parameterFilters = filters.Parameters.Select(filter => BuildParameterFilter(document, filter, parameters[filter.Parameter]));
         var allFilters = structuralFilters.Concat(parameterFilters).ToList();
@@ -29,7 +30,7 @@ internal static class QueryFilterBuilder
         {
             ResolvedFields = requestedFields
                 .Where(ElementFieldReader.IsBuiltInField)
-                .Concat(parameters.Keys)
+                .Concat(parameters.Keys.Where(key => !ElementFieldReader.IsBuiltInField(key)))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             CreateCollector = () => Apply(
