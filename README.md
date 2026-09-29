@@ -22,6 +22,11 @@ Revit Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+The [code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) lists what is signed, team roles and the approval rule.
+
 ## Install
 
 ### Claude Desktop bundle
@@ -85,6 +90,8 @@ Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation
 Actions are enabled in this recording.
 
 <img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
+
+If Revit Model MCP saves you time, a :star: on GitHub helps other Revit users find it.
 
 What happens in the recording, in order:
 
