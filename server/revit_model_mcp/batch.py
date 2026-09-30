@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ntpath
 import re
 import uuid
@@ -102,6 +103,21 @@ def _public(state: dict[str, Any]) -> dict[str, Any]:
     return redact_model_paths(public)
 
 
+async def _responsive_instances(host: object) -> list[dict[str, Any]]:
+    return [
+        item for item in await host.list_revit_instances() if item.get("pluginResponding", True)
+    ]
+
+
+async def _wait_for_responsive_instance(host: object) -> list[dict[str, Any]]:
+    for _ in range(120):
+        instances = await _responsive_instances(host)
+        if instances:
+            return instances
+        await asyncio.sleep(1)
+    return []
+
+
 def register_batch(mcp, host_provider, channel_provider) -> None:
     @mcp.tool(
         title="Start batch collection",
@@ -130,18 +146,10 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                 await file_host.batch_discover(folder, recursive) if folder is not None else paths
             )
             selected_paths = _paths(discovered)
-            instances = [
-                item
-                for item in await host.list_revit_instances()
-                if item.get("pluginResponding", True)
-            ]
+            instances = await _responsive_instances(host)
             if not instances and isinstance(host, SshPowerShellHost) and not host.local:
                 await file_host.batch_activate_interactive()
-                instances = [
-                    item
-                    for item in await host.list_revit_instances()
-                    if item.get("pluginResponding", True)
-                ]
+                instances = await _wait_for_responsive_instance(host)
             selected = resolve_instance(instances, None)
             run_id = uuid.uuid4().hex
             state = {

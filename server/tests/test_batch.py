@@ -3,10 +3,12 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
+from revit_model_mcp import batch
 from revit_model_mcp.batch import register_batch
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
@@ -30,9 +32,14 @@ class Host(SshPowerShellHost):
         self.runs = {}
         self.artifacts = {}
         self.activations = 0
+        self.instance_delay = 0
         self.discovery = []
 
     async def list_revit_instances(self):
+        if self.instance_delay:
+            self.instance_delay -= 1
+            if not self.instance_delay:
+                self.instances = [{"processId": 91}]
         return self.instances
 
     async def batch_discover(self, folder, recursive):
@@ -56,7 +63,8 @@ class Host(SshPowerShellHost):
 
     async def batch_activate_interactive(self):
         self.activations += 1
-        self.instances = [{"processId": 91}]
+        if not self.instance_delay:
+            self.instances = [{"processId": 91}]
 
 
 class Channel:
@@ -128,6 +136,8 @@ async def test_invalid_start_has_no_side_effects(boundary, kwargs):
 async def test_scheduled_task_fallback_then_persisted_status_and_cancel(boundary, monkeypatch):
     tools, host, channel = boundary
     host.instances = []
+    host.instance_delay = 3
+    monkeypatch.setattr(batch.asyncio, "sleep", AsyncMock())
     result = await tools["revit_batch_start"](paths=[r"\\server\share\A.rvt"])
     run_id = result["runId"]
     assert host.activations == 1
