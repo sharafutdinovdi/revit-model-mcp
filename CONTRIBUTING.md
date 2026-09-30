@@ -133,9 +133,9 @@ Automated tests do not validate live Revit behavior; see [validation evidence](d
 
 1. Merge PRs with Conventional Commit titles.
 2. release-please maintains a `chore(main): release X.Y.Z` PR with generated changelog entries and version updates.
-3. The maintainer checks the release PR and merges it after required checks pass.
+3. About once a week, the maintainer checks the release PR and merges it after required checks pass.
 4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
-5. Check PyPI, MCP Registry, Smithery and WinGet job results for stable releases; download the manifests if WinGet submission is not configured.
+5. Check PyPI, MCP Registry and Smithery job results for stable releases. Check the weekly WinGet run separately; download its manifests if submission is not configured.
 
 release-please owns [CHANGELOG.md](CHANGELOG.md), the version in `server/pyproject.toml` and both versions in `server/server.json`.
 The manifest starts at `0.3.0`; `server/pyproject.toml` remains the package version checked by the build.
@@ -185,16 +185,17 @@ The pending publisher configuration is listed above the `pypi` job in `.github/w
 PyPI failure does not block the GitHub Release.
 After PyPI succeeds, the workflow updates both versions in `server/server.json` and publishes to the official MCP Registry through GitHub OIDC.
 Registry publishing is best-effort and its response appears in the job log.
-Prerelease tags containing `-` skip PyPI, MCP Registry and WinGet publishing.
+Prerelease tags containing `-` skip PyPI and MCP Registry publishing.
 
-The release workflow calls `.github/workflows/winget.yml` after publishing the GitHub Release.
-`release-please.yml` dispatches `release.yml` for the new tag (a top-level run, which PyPI trusted publishing requires); `release.yml` then calls `winget.yml`. To start the same pipeline by hand from the Actions tab, select the existing tag under "Use workflow from" and enter that same tag as the input.
+`release-please.yml` dispatches `release.yml` for the new tag (a top-level run, which PyPI trusted publishing requires). To start the same pipeline by hand from the Actions tab, select the existing tag under "Use workflow from" and enter that same tag as the input.
 The calling job grants `id-token: write`; the PyPI job retains the `pypi` environment and both publishers retain OIDC permissions.
-WinGet runs only from `release.yml` or by `workflow_dispatch` with a stable release tag, for example after a manually published release.
-It generates and validates manifests for `Sharafutdinov.RevitModelMcp` and uploads a `winget-manifests` artifact.
+WinGet runs weekly on Monday at 06:00 UTC for the latest published stable release, or manually with an optional stable release tag.
+It waits without replacing an open package submission PR while moderation continues. A maintainer can manually select `force_replace` to replace older open PRs after the new PR is submitted.
+Eligible runs generate and validate manifests for `Sharafutdinov.RevitModelMcp` and upload a `winget-manifests` artifact.
+After successful submission, the workflow posts the Microsoft CLA agreement automatically.
 Submission requires the optional `WINGET_TOKEN` repository secret, a classic PAT with `public_repo` and `workflow` scopes.
 The `workflow` scope lets the workflow sync the token owner's `winget-pkgs` fork.
-Without the token, generation and artifact upload still run.
+Without the token, eligible runs still generate and upload manifests.
 On Windows, `build/winget/New-WingetManifests.ps1 -Version 0.2.0 -ReleaseTag v0.2.0 -OutputDir artifacts/winget` downloads the MSIs and reads their hashes and product codes.
 `-SkipDownload` uses matching MSIs already in `output/`.
 
