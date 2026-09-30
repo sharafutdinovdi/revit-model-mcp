@@ -7,6 +7,40 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_ModelSnapshot_PreservesOrderedRulesAndDocument()
+    {
+        var absent = ControlJobParser.Parse("""{"command":"model-snapshot"}""");
+        var empty = ControlJobParser.Parse("""{"command":"model-snapshot","parameterRules":[]}""");
+        await Assert.That(absent.Kind).IsEqualTo(ControlJobKind.ModelSnapshot);
+        await Assert.That(absent.ParameterRules.Count).IsEqualTo(0);
+        await Assert.That(empty.ParameterRules.Count).IsEqualTo(0);
+        var parsed = ControlJobParser.Parse("""
+            {"command":"model-snapshot","targetDocument":" Background ",
+             "parameterRules":[{"category":" Walls ","parameter":" Mark "},
+                               {"category":" Doors ","parameter":" Comments "}]}
+            """);
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.ModelSnapshot);
+        await Assert.That(parsed.TargetDocument).IsEqualTo("Background");
+        await Assert.That(parsed.ParameterRules.Select(rule => (rule.Category, rule.Parameter)).ToArray())
+            .IsEquivalentTo(new[] { ("Walls", "Mark"), ("Doors", "Comments") });
+    }
+
+    [Test]
+    public async Task Parse_ModelSnapshot_RejectsBlankAndMalformedRules()
+    {
+        foreach (var rules in new[]
+        {
+            """[{"category":" ","parameter":"Mark"}]""",
+            """[{"category":"Walls","parameter":" "}]""",
+            """[{}]""", """[null]""", """["bad"]"""
+        })
+        {
+            var result = ControlJobParser.Parse($$"""{"command":"model-snapshot","parameterRules":{{rules}}}""");
+            await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+            await Assert.That(result.Error).IsNotNull();
+        }
+    }
+    [Test]
     public async Task Parse_NwcSettingsCheckRejectsUntrustedUncAndDevicePaths()
     {
         foreach (var path in new[] { @"\\srv\share\settings.xml", @"\\?\UNC\srv\share\settings.xml", @"C:\x\..\settings.xml" })

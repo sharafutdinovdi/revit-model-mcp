@@ -8,7 +8,7 @@ from typing import Annotated, Any
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
@@ -205,6 +205,22 @@ Document = Annotated[
     ),
 ]
 
+
+class ParameterRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category: str
+    parameter: str
+
+    @field_validator("category", "parameter")
+    @classmethod
+    def non_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Category and parameter must be non-blank.")
+        return stripped
+
+
 mcp = MCPServer(
     "Revit Model Reader",
     version=package_version(),
@@ -322,6 +338,7 @@ def addressed_tool(function):
         "revit_list_relations": "List Relations",
         "revit_list_instances": "List Instances",
         "revit_model_health": "Model Health Check",
+        "revit_model_snapshot": "Model Snapshot",
         "revit_links_status": "Links Status",
         "revit_shared_coordinates": "Shared Coordinates",
         "revit_parameter_fill_check": "Parameter Fill Check",
@@ -455,6 +472,32 @@ async def revit_documents(
     """
     return await _execute(
         ReadJob("documents", {"command": "documents", "includeLinked": include_linked}),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
+
+
+@addressed_tool
+async def revit_model_snapshot(
+    parameter_rules: list[ParameterRule] | None = None,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Read a schema version 1 project snapshot for batch audits.
+
+    Each parameter rule pairs one category with one parameter. Warning groups include
+    at most 200 affected element IDs. Closed worksets can make the result incomplete.
+    """
+    return await _execute(
+        ReadJob(
+            "model-snapshot",
+            {
+                "command": "model-snapshot",
+                "parameterRules": [rule.model_dump() for rule in parameter_rules or []],
+            },
+        ),
         timeout_seconds,
         pickup_timeout_seconds,
         document,

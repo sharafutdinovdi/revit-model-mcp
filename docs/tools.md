@@ -36,6 +36,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
 | `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
+| `revit_model_snapshot` | `parameter_rules=null`, `document=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 | `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
 
@@ -54,6 +55,8 @@ The sheets appear in this order: `Summary`, `Warnings`, `Families`, `Parameters`
 | Skipped | Model, What, Reason |
 | Changes | Model, Warnings delta, Families delta, Fill percent delta, Number of saves delta |
 | Findings | Model, Severity, Rule, Element IDs, Recommendation |
+
+`revit_model_snapshot` accepts an ordered list of `{"category": "Walls", "parameter": "Mark"}` rules. Each rule pairs one category and one parameter. No rules return empty `parameterFill.rows`. Warning groups contain at most 200 distinct affected element IDs, with `elementIdsTruncated` showing whether more exist. Closed user worksets add a skipped entry because element, family instance, warning attribution, and parameter fill results can be incomplete. `fileLastWriteUtc` is an operating system file observation, not a Revit save or sync time. `passport.revitServer` is always null and reserved for the later batch runner.
 
 The `settings_xml` path rejects device paths, `..` segments and UNC shares absent from `trustedNetworkRoots`; files over 1 MiB are refused before reading.
 

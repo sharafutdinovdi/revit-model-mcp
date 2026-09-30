@@ -62,7 +62,7 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
-            var document = job.Kind == ControlJobKind.ViewInfo
+            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot
                 ? ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)
                 : application.ActiveUIDocument?.Document
                     ?? throw new InvalidOperationException("No active Revit document.");
@@ -73,6 +73,11 @@ internal static class ReadCommandExecutor
             }
             switch (job.Kind)
             {
+                case ControlJobKind.ModelSnapshot:
+                    var snapshot = ModelSnapshotReader.Read(document, job.ParameterRules);
+                    SkippedReadDiagnostics.Current = new SkippedReadDiagnostics();
+                    WriteSuccess(output, job.Command, snapshot, stopwatch);
+                    break;
                 case ControlJobKind.ModelHealth:
                     WriteSuccess(output, job.Command, ModelHealthReader.Read(document, job.CoordinatorJob), stopwatch);
                     break;
