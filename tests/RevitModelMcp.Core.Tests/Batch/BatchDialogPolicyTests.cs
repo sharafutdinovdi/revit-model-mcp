@@ -36,9 +36,16 @@ public sealed class BatchDialogPolicyTests
     [Test]
     public async Task Load_UnreadablePathFailsWithFileName()
     {
-        var path = Path.GetTempPath();
-        var exception = Assert.Throws<FormatException>(() => BatchDialogPolicy.Load(path));
-        await Assert.That(exception.Message).Contains(path);
+        var path = WriteAllowlist("[]");
+        try
+        {
+            using (var lockedFile = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
+            {
+                var exception = Assert.Throws<FormatException>(() => BatchDialogPolicy.Load(path));
+                await Assert.That(exception.Message).Contains(path);
+            }
+        }
+        finally { File.Delete(path); }
     }
 
     [Test]
