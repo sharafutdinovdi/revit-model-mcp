@@ -29,6 +29,8 @@ The request `{"command":"ping"}` checks connectivity without an active model.
 Read jobs may contain `targetDocument`; actions add `targetProcessId` from instance discovery.
 Every server job contains a GUID `jobId`, a per-process GUID `clientId`, and `clientName` from MCP initialize (or `unknown`).
 The response envelope adds `client:{name,id}`, `jobId`, and `queuedMs`.
+Every read response also has top-level `skipped` and `skippedCount`. Each entry has `what` and `reason`. `skipped:[]` and `skippedCount:0` mean no fields were omitted. A non-empty list means the answer is incomplete. The list keeps the first 100 failures and `skippedCount` continues to count all failures. No overflow entry is added. Actions do not have these fields.
+When `REVIT_MCP_REDACT_PATHS=1`, path text in `reason` is reduced to file names.
 `family-audit` contains `families` only in project mode. `edit-families` contains `operations` and may contain `families`; the addressed Revit document determines the mode.
 `targetDocument` matches a case-insensitive substring of the active document title or path basename in the add-in.
 An HTTP endpoint also rejects jobs addressed to another process.
@@ -95,8 +97,7 @@ Response data shape:
     "groupsModel":0,"groupsDetail":0,"groupTypes":0,"designOptions":0,"worksets":0,
     "linksRvt":0,"linksCad":0,"cadImports":0,"images":0},
   "topWarnings":[{"text":"Warning description","count":1}],
-  "units":{"length":"unit type id","area":"unit type id","volume":"unit type id"},
-  "skipped":[]
+  "units":{"length":"unit type id","area":"unit type id","volume":"unit type id"}
 }
 ```
 
@@ -106,7 +107,7 @@ Response data shape:
 `viewsNotOnSheets` excludes templates and includes plan, section, elevation, 3D, drafting and legend views absent from sheets.
 Unplaced rooms have nonpositive area and no location; not-enclosed rooms have nonpositive area and a location.
 `topWarnings` contains at most ten groups sorted by descending count.
-A failed metric is null and adds `{"metric":"counts.rooms","error":"description"}` to `skipped`.
+A failed metric is null and adds `{"what":"model health counts.rooms","reason":"description"}` to the top-level `skipped` list.
 `fileSizeBytes` is null without a saved path; an inaccessible file also records a skipped metric.
 
 `links-status` job:
@@ -130,7 +131,7 @@ Response data shape:
 Each list contains at most 100 types, ordered by type ID; summary counts cover all types, while `cadImports` counts imported instances.
 RVT/CAD status is `Loaded`, `Unloaded`, `NotFound`, `LocallyUnloaded`, `InClosedWorkset` or `Other`.
 Images preserve Revit's `ImageTypeStatus`: `Loaded`, `Unloaded`, `FailedToLoad`, `Imported`, `Generated` or `Unknown`.
-Per-type read failures return `status:"Other"` and `error`; unavailable paths are omitted.
+Per-type read failures return `status:"Other"` and `error`; each failure also appears in the top-level `skipped` list. Unavailable paths are omitted.
 RVT `pathType` is `Absolute`, `Relative`, `Cloud`, `Server` or `Unknown`.
 The add-in supplies paths; the Python server reduces nested `path` fields to file names when `REVIT_MCP_REDACT_PATHS=1`.
 
@@ -212,7 +213,7 @@ Each sample list is capped independently at `sampleLimit`; `byCategory` contains
 Read failures use `success:false` and `message`; the Python server converts them to MCP tool errors.
 Partial reads use `success:false`, `partial:true` and any available `data`; the server also treats them as errors.
 Action failures retain the response object and add `error`.
-`revit_list_instances` returns a list of instance objects directly, outside this response envelope.
+`revit_list_instances` returns an object with `instances`, `skipped:[]` and `skippedCount:0` outside this response envelope.
 
 | Action response field | Contract |
 |---|---|

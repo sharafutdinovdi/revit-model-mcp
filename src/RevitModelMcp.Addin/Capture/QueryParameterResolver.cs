@@ -82,9 +82,9 @@ internal static class QueryParameterResolver
             {
                 label = LabelUtils.GetLabelFor(builtIn);
             }
-            catch
+            catch (Exception exception)
             {
-                // Some internal built-in parameters have no display label.
+                PluginLog.Skipped($"parameter {enumName} display label", exception);
             }
 
             var requestedName = requested.FirstOrDefault(name =>

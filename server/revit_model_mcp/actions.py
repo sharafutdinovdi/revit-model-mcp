@@ -173,7 +173,7 @@ _WINDOWS_PATH = re.compile(
     r"(?:[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*?\.[A-Za-z0-9]{1,10}\b"
     r"|[^\\/\s\"'`,;:!?()<>|]*[^\\/\s\"'`,;:!?()<>|.])"
 )
-_TEXT_FIELDS = {"confirmationText", "summary", "error", "message", "warning", "warnings"}
+_TEXT_FIELDS = {"confirmationText", "summary", "error", "message", "warning", "warnings", "reason"}
 
 
 def redact_model_paths(value: Any) -> Any:

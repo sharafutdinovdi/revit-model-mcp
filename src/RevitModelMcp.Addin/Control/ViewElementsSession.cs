@@ -21,6 +21,7 @@ internal sealed class ViewElementsSession : IControlSession
     private readonly ViewElementsData _data;
     private readonly CommandResponseFileWriter _output;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+    private readonly SkippedReadDiagnostics _diagnostics = new();
     private readonly List<string> _unknownCategories;
 
     private int _nextElementIndex;
@@ -94,6 +95,7 @@ internal sealed class ViewElementsSession : IControlSession
             return;
         }
 
+        SkippedReadDiagnostics.Current = _diagnostics;
         try
         {
             _executions++;
@@ -121,6 +123,11 @@ internal sealed class ViewElementsSession : IControlSession
                 {
                     _data.Elements.Add(_reader.Read(element));
                 }
+                else
+                {
+                    PluginLog.Skipped($"view {_data.View} element {RevitValueReader.GetId(_pageIds[_nextElementIndex - 1])}",
+                        new InvalidOperationException("Element is unavailable."));
+                }
             }
 
             if (_nextElementIndex >= _pageIds.Count)
@@ -134,21 +141,45 @@ internal sealed class ViewElementsSession : IControlSession
         }
         catch (Exception exception)
         {
+            if (_nextElementIndex > 0 && _nextElementIndex <= _pageIds.Count)
+            {
+                PluginLog.Skipped($"view {_data.View} element {RevitValueReader.GetId(_pageIds[_nextElementIndex - 1])}", exception);
+            }
             PluginLog.Error("View-elements processing failed.", exception);
             StopWithPartial($"Element reading stopped: {exception}");
+        }
+        finally
+        {
+            SkippedReadDiagnostics.Current = null;
         }
     }
 
     public void RejectJobWhileBusy()
     {
         _data.RejectedJobsWhileBusy++;
-        WritePartial("New job rejected: RevitModelMcp is busy reading elements.");
+        SkippedReadDiagnostics.Current = _diagnostics;
+        try
+        {
+            WritePartial("New job rejected: RevitModelMcp is busy reading elements.");
+        }
+        finally
+        {
+            SkippedReadDiagnostics.Current = null;
+        }
     }
 
     public void Abort(Exception exception)
     {
         PluginLog.Error("View-elements session aborted.", exception);
-        StopWithPartial($"Element reading aborted: {exception}");
+        SkippedReadDiagnostics.Current = _diagnostics;
+        try
+        {
+            StopWithPartial($"Element reading aborted: {exception}");
+        }
+        finally
+        {
+            SkippedReadDiagnostics.Current = null;
+        }
     }
 
     private void Complete()

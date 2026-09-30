@@ -39,6 +39,7 @@ internal static class FamilyAuditReader
             }
             catch (Exception exception)
             {
+                PluginLog.Skipped($"family {family.Name} audit", exception);
                 result.Families.Add(new FamilyAuditFamily { Name = family.Name, Status = "failed", Reason = exception.Message });
             }
             finally
@@ -87,10 +88,10 @@ internal static class FamilyAuditReader
     {
         var parameters = familyDocument.FamilyManager.Parameters.Cast<FamilyParameter>().ToList();
         var dimensionLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(Dimension))
-            .Cast<Dimension>().Select(dimension => ReadLabel(() => dimension.FamilyLabel)?.Definition.Name)
+            .Cast<Dimension>().Select(dimension => ReadLabel(() => dimension.FamilyLabel, $"dimension {RevitValueReader.GetId(dimension.Id)} label")?.Definition.Name)
             .OfType<string>().ToList();
         var arrayLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(BaseArray))
-            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label)?.Definition.Name)
+            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label, $"array {RevitValueReader.GetId(array.Id)} label")?.Definition.Name)
             .OfType<string>().ToList();
         var usage = ParameterUsage.Evaluate(parameters.Select(parameter => new ParameterUsageInput(
             parameter.Definition.Name, parameter.IsShared,
@@ -118,14 +119,15 @@ internal static class FamilyAuditReader
             }).ToList();
     }
 
-    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel)
+    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel, string what)
     {
         try
         {
             return getLabel();
         }
-        catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
         {
+            PluginLog.Skipped(what, exception);
             return null;
         }
     }

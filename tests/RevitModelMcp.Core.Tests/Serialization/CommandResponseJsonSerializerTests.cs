@@ -140,14 +140,26 @@ public sealed class CommandResponseJsonSerializerTests
         var data = RoundTripCoordinator("model-health", new ModelHealthData
         {
             Counts = { ["elements"] = 12, ["rooms"] = null },
-            TopWarnings = [new HealthWarning { Text = "Warning", Count = 2 }],
-            Skipped = [new SkippedMetric { Metric = "counts.rooms", Error = "Unavailable" }]
+            TopWarnings = [new HealthWarning { Text = "Warning", Count = 2 }]
         });
         await Assert.That(data.Counts["elements"]).IsEqualTo(12);
         await Assert.That(data.Counts["rooms"]).IsNull();
         await Assert.That(data.FileSizeBytes).IsNull();
         await Assert.That(data.TopWarnings[0].Count).IsEqualTo(2);
-        await Assert.That(data.Skipped[0].Metric).IsEqualTo("counts.rooms");
+        var diagnostics = new SkippedReadDiagnostics();
+        diagnostics.Add("model health counts.rooms", new InvalidOperationException("Unavailable"));
+        SkippedReadDiagnostics.Current = diagnostics;
+        try
+        {
+            using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+                CommandResponse<ModelHealthData>.Ok("model-health", data, 1)));
+            await Assert.That(json.RootElement.GetProperty("skipped")[0].GetProperty("what").GetString())
+                .IsEqualTo("model health counts.rooms");
+        }
+        finally
+        {
+            SkippedReadDiagnostics.Current = null;
+        }
     }
 
     [Test]

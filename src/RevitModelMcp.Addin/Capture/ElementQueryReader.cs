@@ -1,5 +1,4 @@
 using Autodesk.Revit.DB;
-using Nice3point.Revit.Extensions;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Query;
@@ -26,19 +25,19 @@ internal static class ElementQueryReader
                 : ids.OrderBy(RevitValueReader.GetId).ToList();
             var page = PageSlice.Create(orderedIds, job.Offset, job.Limit);
             hasMore = page.HasMore;
-            preparedPage = page.Items.Select(id => document.GetElement(id))
+            preparedPage = page.Items.Select(id => ReadElement(document, id))
                 .Where(element => element is not null)
                 .Select(element => reader.Prepare(element!, fields))
                 .ToList();
         }
         else
         {
-            var sortable = ids.Select(document.GetElement)
+            var sortable = ids.Select(id => ReadElement(document, id))
                 .Where(element => element is not null)
                 .Select(element => reader.Prepare(element!, new[] { job.Sort.Field }))
                 .ToList();
             var page = QueryResultProcessor.SortAndPage(sortable, job.Sort, job.Offset, job.Limit, out hasMore);
-            preparedPage = page.Select(record => document.GetElement(CreateElementId(record.Id)))
+            preparedPage = page.Select(record => ReadElement(document, CreateElementId(record.Id)))
                 .Where(element => element is not null)
                 .Select(element => reader.Prepare(element!, fields))
                 .ToList();
@@ -49,7 +48,7 @@ internal static class ElementQueryReader
         {
             foreach (var item in elements)
             {
-                var element = CreateElementId(item.Id).ToElement(document);
+                var element = ReadElement(document, CreateElementId(item.Id));
                 if (element is not null) ViewElementReader.ReadGeometry(element, item);
             }
         }
@@ -89,5 +88,15 @@ internal static class ElementQueryReader
 #else
         return new ElementId(checked((int)value));
 #endif
+    }
+
+    private static Element? ReadElement(Document document, ElementId id)
+    {
+        var element = document.GetElement(id);
+        if (element is null)
+        {
+            PluginLog.Skipped($"element {RevitValueReader.GetId(id)}", new InvalidOperationException("Element is unavailable."));
+        }
+        return element;
     }
 }

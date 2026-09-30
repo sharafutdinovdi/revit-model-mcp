@@ -230,9 +230,9 @@ internal static class QueryFilterBuilder
         {
             localizedName = LabelUtils.GetLabelFor(builtInCategory.Value);
         }
-        catch
+        catch (Exception exception)
         {
-            // Some internal categories have no display label.
+            PluginLog.Skipped($"category {builtInCategory.Value} display label", exception);
         }
 
         if (!string.IsNullOrWhiteSpace(localizedName))
