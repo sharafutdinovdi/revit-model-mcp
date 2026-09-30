@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import errno
 import json
 import os
 import tempfile
@@ -48,19 +49,32 @@ def save_batch_artifact(result: dict[str, object], dest_dir: str) -> str:
     content = base64.b64decode(encoded, validate=True)
     snapshot = redact_model_paths(json.loads(content))
     content = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
-    directory = Path(dest_dir).expanduser().absolute()
-    directory.mkdir(parents=True, exist_ok=True)
-    target = directory.resolve() / name
-    descriptor, temporary = tempfile.mkstemp(prefix=f".{name}.", dir=directory)
     try:
-        with os.fdopen(descriptor, "wb") as output:
-            output.write(content)
-            output.flush()
-            os.fsync(output.fileno())
+        directory = Path(dest_dir).expanduser().absolute()
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory.resolve() / name
+        descriptor, temporary = tempfile.mkstemp(prefix=f".{name}.", dir=directory)
         try:
-            os.link(temporary, target)
-        except FileExistsError as error:
-            raise ValueError(f"Local file already exists: {target}") from error
-    finally:
-        os.unlink(temporary)
+            with os.fdopen(descriptor, "wb") as output:
+                output.write(content)
+                output.flush()
+                os.fsync(output.fileno())
+            try:
+                os.link(temporary, target)
+            except FileExistsError as error:
+                raise ValueError(f"Local file already exists: {target}") from error
+            except OSError as error:
+                if error.errno not in {errno.EXDEV, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}:
+                    raise
+                try:
+                    with target.open("xb") as output:
+                        output.write(content)
+                        output.flush()
+                        os.fsync(output.fileno())
+                except FileExistsError as collision:
+                    raise ValueError(f"Local file already exists: {target}") from collision
+        finally:
+            os.unlink(temporary)
+    except OSError as error:
+        raise ValueError(f"Cannot save batch artifact: {error}") from error
     return str(target)

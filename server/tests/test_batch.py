@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import errno
 import json
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -9,6 +11,7 @@ import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp import batch
+from revit_model_mcp.artifact_download import save_batch_artifact
 from revit_model_mcp.batch import register_batch
 from revit_model_mcp.ssh_host import SshPowerShellHost, _fail_dead_supervisor
 
@@ -186,6 +189,9 @@ async def test_fetch_redacts_snapshot_file_without_changing_host_artifact(
     host.artifacts[(run_id, "snapshot_0001.json")] = raw
     monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
     fetched = await tools["revit_batch_fetch"](run_id, str(tmp_path / "redacted"))
+    assert fetched["models"] == [
+        {"path": "A.rvt", "status": "completed", "localPath": fetched["localPaths"][0]}
+    ]
     local = Path(fetched["localPaths"][0])
     assert json.loads(local.read_text()) == {
         "schemaVersion": 1,
@@ -196,12 +202,119 @@ async def test_fetch_redacts_snapshot_file_without_changing_host_artifact(
     assert host.artifacts[(run_id, "snapshot_0001.json")] == raw
     host.runs[run_id]["status"] = 4
     failed_run_fetch = await tools["revit_batch_fetch"](run_id, str(tmp_path / "failed_run"))
+    assert failed_run_fetch["models"][0]["status"] == "completed"
     assert (
         json.loads(Path(failed_run_fetch["localPaths"][0]).read_text())["source"]["path"] == "A.rvt"
     )
     monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "0")
     unredacted = await tools["revit_batch_fetch"](run_id, str(tmp_path / "unredacted"))
     assert json.loads(Path(unredacted["localPaths"][0]).read_text()) == snapshot
+    assert unredacted["models"][0]["path"] == r"C:\models\A.rvt"
+
+
+@pytest.mark.anyio
+async def test_fetch_cancelled_run_reports_all_models(boundary, tmp_path):
+    tools, host, _channel = boundary
+    run_id = (await tools["revit_batch_start"](paths=[r"C:\A.rvt", r"C:\B.rvt"]))["runId"]
+    host.runs[run_id]["status"] = 3
+    host.runs[run_id]["models"][0].update(status=2, snapshotFile="snapshot_0001.json")
+    host.runs[run_id]["models"][1].update(status=4, error="Cancelled by user.")
+    host.artifacts[(run_id, "snapshot_0001.json")] = b'{"schemaVersion":1}'
+    result = await tools["revit_batch_fetch"](run_id, str(tmp_path))
+    assert result["localPaths"] == [str(tmp_path / "snapshot_0001.json")]
+    assert result["models"] == [
+        {"path": r"C:\A.rvt", "status": "completed", "localPath": result["localPaths"][0]},
+        {
+            "path": r"C:\B.rvt",
+            "status": "cancelled",
+            "localPath": None,
+            "error": "Cancelled by user.",
+        },
+    ]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", [1, "running"])
+async def test_fetch_running_reports_progress(boundary, tmp_path, status):
+    tools, host, _channel = boundary
+    run_id = (await tools["revit_batch_start"](paths=[r"C:\A.rvt", r"C:\B.rvt"]))["runId"]
+    host.runs[run_id]["status"] = status
+    host.runs[run_id]["models"][0].update(status=2, snapshotFile="snapshot_0001.json")
+    with pytest.raises(ToolError, match=r"1 of 2"):
+        await tools["revit_batch_fetch"](run_id, str(tmp_path))
+
+
+@pytest.mark.anyio
+async def test_fetch_completed_model_requires_valid_snapshot_name(boundary, tmp_path):
+    tools, host, _channel = boundary
+    run_id = (await tools["revit_batch_start"](paths=[r"C:\A.rvt"]))["runId"]
+    host.runs[run_id]["status"] = 4
+    host.runs[run_id]["models"][0].update(status=2, snapshotFile="wrong.json")
+    with pytest.raises(ToolError, match="snapshot"):
+        await tools["revit_batch_fetch"](run_id, str(tmp_path))
+
+
+@pytest.mark.anyio
+async def test_fetch_failed_run_without_snapshots_reports_model_reason(boundary, tmp_path):
+    tools, host, _channel = boundary
+    run_id = (await tools["revit_batch_start"](paths=[r"C:\A.rvt"]))["runId"]
+    host.runs[run_id]["status"] = 4
+    host.runs[run_id]["models"][0].update(status=3, reason="Open failed.")
+    result = await tools["revit_batch_fetch"](run_id, str(tmp_path))
+    assert result["localPaths"] == []
+    assert result["models"] == [
+        {"path": r"C:\A.rvt", "status": "failed", "localPath": None, "reason": "Open failed."}
+    ]
+
+
+def test_batch_artifact_falls_back_when_hard_links_unsupported(tmp_path, monkeypatch):
+    def unsupported_link(_source, _target):
+        raise OSError(errno.EOPNOTSUPP, "Hard links unsupported")
+
+    monkeypatch.setattr(os, "link", unsupported_link)
+    artifact = {
+        "artifactName": "snapshot_0001.json",
+        "artifact": base64.b64encode(b'{"schemaVersion":1}').decode(),
+    }
+    target = tmp_path / "snapshot_0001.json"
+    assert save_batch_artifact(artifact, str(tmp_path)) == str(target)
+    assert json.loads(target.read_text()) == {"schemaVersion": 1}
+    with pytest.raises(ValueError, match="already exists"):
+        save_batch_artifact(artifact, str(tmp_path))
+    assert target.read_bytes() == b'{"schemaVersion": 1}'
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_batch_artifact_does_not_fall_back_for_other_link_errors(tmp_path, monkeypatch):
+    def denied_link(_source, _target):
+        raise OSError(errno.EACCES, "Permission denied")
+
+    monkeypatch.setattr(os, "link", denied_link)
+    artifact = {
+        "artifactName": "snapshot_0001.json",
+        "artifact": base64.b64encode(b'{"schemaVersion":1}').decode(),
+    }
+    with pytest.raises(ValueError, match="Cannot save batch artifact"):
+        save_batch_artifact(artifact, str(tmp_path))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_batch_artifact_fallback_preserves_racing_destination(tmp_path, monkeypatch):
+    target = tmp_path / "snapshot_0001.json"
+
+    def unsupported_link(_source, _target):
+        target.write_bytes(b"original")
+        raise OSError(errno.EOPNOTSUPP, "Hard links unsupported")
+
+    monkeypatch.setattr(os, "link", unsupported_link)
+    artifact = {
+        "artifactName": "snapshot_0001.json",
+        "artifact": base64.b64encode(b'{"schemaVersion":1}').decode(),
+    }
+    with pytest.raises(ValueError, match="already exists"):
+        save_batch_artifact(artifact, str(tmp_path))
+    assert target.read_bytes() == b"original"
+    assert list(tmp_path.iterdir()) == [target]
 
 
 def test_dead_supervisor_terminalizes_only_unfinished_models():
