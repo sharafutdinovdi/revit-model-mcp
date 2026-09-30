@@ -1,6 +1,7 @@
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.Json;
+using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -86,6 +87,98 @@ public sealed class CommandResponseJsonSerializerTests
             typeof(CommandResponse<T>), new System.Runtime.Serialization.Json.DataContractJsonSerializerSettings
             { UseSimpleDictionaryFormat = true });
         return ((CommandResponse<T>)serializer.ReadObject(stream)!).Data!;
+    }
+
+    [Test]
+    public async Task Serialize_BatchSupervisorStart_RoundTripsRunId()
+    {
+        var result = RoundTripCoordinator("batch-supervisor-start", new BatchStartResult
+        {
+            RunId = "b6834588269d44b6985a6721f333573d"
+        });
+
+        await Assert.That(result.RunId).IsEqualTo("b6834588269d44b6985a6721f333573d");
+    }
+
+    [Test]
+    public async Task Serialize_BatchRun_RoundTripsStatusCancelAndFetchState()
+    {
+        var dialog = new BatchDialogRecord
+        {
+            DialogId = "missing-link",
+            Type = "TaskDialogShowingEventArgs",
+            Message = "Link unavailable",
+            Decision = "unknown",
+            ModelPath = @"C:\Models\A.rvt",
+            Phase = "snapshot",
+            TimeUtc = "2026-09-30T12:00:00Z"
+        };
+        var run = new BatchRun
+        {
+            RunId = "run-1",
+            Status = BatchRunStatus.Running,
+            Years = [2026],
+            Models = [new BatchModel
+            {
+                Path = @"C:\Models\A.rvt", Status = BatchModelStatus.Running,
+                Phase = BatchPhase.Snapshot, SavedYear = 2025,
+                PhaseTimingsMs = new() { ["open"] = 42 }, Dialogs = [dialog],
+                SnapshotFile = "snapshot.json"
+            }]
+        };
+
+        var status = RoundTripCoordinator("batch-status", run);
+        await Assert.That(status.Status).IsEqualTo(BatchRunStatus.Running);
+        await Assert.That(status.Models[0].PhaseTimingsMs["open"]).IsEqualTo(42);
+        await Assert.That(status.Models[0].Dialogs[0].Message).IsEqualTo("Link unavailable");
+
+        var cancelled = RoundTripCoordinator("batch-cancel", run with
+        {
+            Status = BatchRunStatus.Cancelled,
+            CancelRequested = true
+        });
+        await Assert.That(cancelled.CancelRequested).IsTrue();
+        await Assert.That(cancelled.Status).IsEqualTo(BatchRunStatus.Cancelled);
+
+        var fetched = RoundTripCoordinator("batch-fetch", run with { Status = BatchRunStatus.Completed });
+        await Assert.That(fetched.Models[0].SnapshotFile).IsEqualTo("snapshot.json");
+        await Assert.That(fetched.Models[0].Dialogs[0].DialogId).IsEqualTo("missing-link");
+    }
+
+    [Test]
+    public async Task Serialize_BatchPhases_RoundTripConcreteResultsAndDialogs()
+    {
+        var open = RoundTripCoordinator("batch-open", new BatchPhaseResult<ActionResultData>
+        {
+            Result = new ActionResultData { Title = "Model A", OpenedAs = "detached" }
+        });
+        await Assert.That(open.Result!.Title).IsEqualTo("Model A");
+
+        var close = RoundTripCoordinator("batch-close", new BatchPhaseResult<ActionResultData>
+        {
+            Result = new ActionResultData { Saved = false, Path = @"C:\Models\A.rvt" }
+        });
+        await Assert.That(close.Result!.Saved).IsFalse();
+
+        var snapshot = RoundTripCoordinator("batch-snapshot", new BatchPhaseResult<ModelSnapshotData>
+        {
+            Result = new ModelSnapshotData
+            {
+                CollectedAtUtc = "2026-09-30T12:00:00Z",
+                Source = new ModelSnapshotSource { RuntimeYear = 2026 },
+                Passport = new ModelSnapshotPassport { Title = "Model A" }
+            },
+            Dialogs = [new BatchDialogRecord
+            {
+                DialogId = "warning", Type = "TaskDialogShowingEventArgs", Decision = "allowed",
+                ModelPath = @"C:\Models\A.rvt", Phase = "snapshot", TimeUtc = "2026-09-30T12:00:00Z",
+                Result = 1001
+            }]
+        });
+        await Assert.That(snapshot.Result!.Source.RuntimeYear).IsEqualTo(2026);
+        await Assert.That(snapshot.Result.Passport.Title).IsEqualTo("Model A");
+        await Assert.That(snapshot.Dialogs[0].Result).IsEqualTo(1001);
+        await Assert.That(snapshot.Dialogs[0].Phase).IsEqualTo("snapshot");
     }
 
     [Test]

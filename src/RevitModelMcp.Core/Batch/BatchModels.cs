@@ -7,6 +7,12 @@ public enum BatchRunStatus { Pending, Running, Completed, Cancelled, Failed }
 public enum BatchPhase { Startup, PrePass, Open, Snapshot, Close }
 
 [DataContract]
+public sealed record BatchStartResult
+{
+    [DataMember(Name = "runId")] public required string RunId { get; init; }
+}
+
+[DataContract]
 public sealed record BatchDialogRecord
 {
     [DataMember(Name = "dialogId")] public required string DialogId { get; init; }
