@@ -10,7 +10,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp import batch
 from revit_model_mcp.batch import register_batch
-from revit_model_mcp.ssh_host import SshPowerShellHost
+from revit_model_mcp.ssh_host import SshPowerShellHost, _fail_dead_supervisor
 
 
 class Registry:
@@ -106,6 +106,7 @@ async def test_start_persists_inputs_and_chooses_process(boundary):
     ]
     assert state["years"] == [2026, 2027]
     assert state["parameterRules"] == [{"category": "Walls", "parameter": "Mark"}]
+    assert all(model["phaseTimingsMs"] == {} for model in state["models"])
     assert channel.jobs[0].payload["targetProcessId"] == 41
     assert channel.jobs[0].payload["runId"] == result["runId"]
 
@@ -165,3 +166,92 @@ async def test_fetch_copies_json_and_rejects_incomplete_or_collision(boundary, t
     assert json.loads(Path(copied["localPaths"][0]).read_text()) == {"schemaVersion": 1}
     with pytest.raises(ToolError, match="already exists"):
         await tools["revit_batch_fetch"](run_id, str(tmp_path))
+
+
+@pytest.mark.anyio
+async def test_fetch_redacts_snapshot_file_without_changing_host_artifact(
+    boundary, tmp_path, monkeypatch
+):
+    tools, host, _channel = boundary
+    result = await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"])
+    run_id = result["runId"]
+    host.runs[run_id]["models"][0].update(status=2, snapshotFile="snapshot_0001.json")
+    host.runs[run_id]["status"] = 2
+    snapshot = {
+        "schemaVersion": 1,
+        "source": {"path": r"C:\models\A.rvt"},
+        "passport": {"centralPath": r"\\server\share\Central.rvt"},
+    }
+    raw = json.dumps(snapshot).encode()
+    host.artifacts[(run_id, "snapshot_0001.json")] = raw
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    fetched = await tools["revit_batch_fetch"](run_id, str(tmp_path / "redacted"))
+    local = Path(fetched["localPaths"][0])
+    assert json.loads(local.read_text()) == {
+        "schemaVersion": 1,
+        "source": {"path": "A.rvt"},
+        "passport": {"centralPath": "Central.rvt"},
+    }
+    assert b"models" not in local.read_bytes()
+    assert host.artifacts[(run_id, "snapshot_0001.json")] == raw
+    host.runs[run_id]["status"] = 4
+    failed_run_fetch = await tools["revit_batch_fetch"](run_id, str(tmp_path / "failed_run"))
+    assert (
+        json.loads(Path(failed_run_fetch["localPaths"][0]).read_text())["source"]["path"] == "A.rvt"
+    )
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "0")
+    unredacted = await tools["revit_batch_fetch"](run_id, str(tmp_path / "unredacted"))
+    assert json.loads(Path(unredacted["localPaths"][0]).read_text()) == snapshot
+
+
+def test_dead_supervisor_terminalizes_only_unfinished_models():
+    state = {
+        "status": 1,
+        "models": [
+            {"status": 2, "path": "A.rvt"},
+            {"status": 1, "path": "B.rvt"},
+            {"status": 0, "path": "C.rvt"},
+        ],
+    }
+    failed = _fail_dead_supervisor(state)
+    assert failed["status"] == 4
+    assert [model["status"] for model in failed["models"]] == [2, 3, 3]
+    assert all(model["error"] for model in failed["models"][1:])
+    assert state["status"] == 1
+    assert state["models"][1]["status"] == 1
+
+
+@pytest.mark.anyio
+async def test_host_status_persists_failed_when_owned_supervisor_is_dead():
+    class DeadSupervisorHost(SshPowerShellHost):
+        def __init__(self):
+            super().__init__("test-host")
+            self.state = {
+                "runId": "a" * 32,
+                "status": 1,
+                "supervisorProcessId": 123,
+                "supervisorProcessStartedUtc": "2026-01-01T00:00:00.0000000Z",
+                "models": [{"status": 1, "path": "A.rvt"}],
+            }
+            self.writes = []
+
+        async def _run(self, script, **_kwargs):
+            if "supervisorAlive" in script:
+                return json.dumps(
+                    {
+                        "state": base64.b64encode(json.dumps(self.state).encode()).decode(),
+                        "cancel": False,
+                        "supervisorAlive": False,
+                    }
+                )
+            self.writes.append(script)
+            self.state = _fail_dead_supervisor(self.state)
+            return ""
+
+    host = DeadSupervisorHost()
+    state = await host.batch_status("a" * 32)
+    assert state["status"] == 4
+    assert state["models"][0]["status"] == 3
+    assert len(host.writes) == 1
+    assert "[IO.File]::Replace" in host.writes[0]
+    assert "Stop-Process" not in host.writes[0]

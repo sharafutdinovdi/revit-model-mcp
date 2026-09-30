@@ -1,12 +1,31 @@
 # Batch model collection
 
-Batch collection runs on a Windows Revit workstation. It starts a separate Revit worker, opens one model at a time in the background, asks the add-in for `model-snapshot`, and closes the model without saving. The snapshot is opaque schema-version-1 JSON supplied by the separate snapshot reader. Batch collection does not save, synchronize, start transactions, or expose action commands to the worker.
+Batch collection runs on a Windows Revit workstation.
+It starts a separate Revit worker, opens one model at a time in the background, reads the opened document through the worker-only `batch-snapshot` command, and closes the model without saving.
+The existing snapshot reader supplies schema version 1 JSON.
+Batch collection does not save, synchronize, start transactions, or expose action commands to the worker.
 
 ## Tools and inputs
 
-`revit_batch_start(paths=null, folder=null, recursive=false, parameter_rules=null, years=null)` accepts exactly one source. `paths` is a nonempty list of absolute `.rvt` or `.rfa` local, UNC, or RSN paths. A `folder` discovers those extensions at its top level unless `recursive=true`. Blank entries, duplicate normalized paths, unsupported extensions, and both or neither source fail before a run is created. `years` is a distinct list of supported integers from 2022 through 2027 and limits the installed Revit versions available for routing. `parameter_rules` is a list of nonblank `{category, parameter}` objects passed to `model-snapshot`.
+`revit_batch_start(paths=null, folder=null, recursive=false, parameter_rules=null, years=null)` accepts exactly one source.
+`paths` is a nonempty list of absolute `.rvt` or `.rfa` local, UNC, or RSN paths.
+A `folder` discovers those extensions at its top level unless `recursive=true`.
+Blank entries, duplicate normalized paths, unsupported extensions, and both or neither source fail before a run is created.
+`years` is a distinct list of supported integers from 2022 through 2027 and limits the installed Revit versions available for routing.
+`parameter_rules` is a list of nonblank `{category, parameter}` objects passed to `batch-snapshot`.
 
-Start returns a `runId` and accepted model count. The workstation stores immutable inputs and mutable state in `ROOT\runs\<runId>\run.json`. The supervisor replaces this file atomically. Its lifetime is independent of the MCP client. `revit_batch_status(run_id)` reads the persisted run and model statuses, saved and runtime years, `upgradedInMemory`, phase timings, worker identity, errors, and snapshot names. Completed and failed models stay terminal on restart. An interrupted running model returns to pending. `revit_batch_cancel(run_id)` writes a durable cancellation marker, stops new work, closes an opened model without saving when possible, and marks remaining models cancelled. `revit_batch_fetch(run_id, dest_dir)` copies completed snapshots to new client files. It requires a terminal run, rejects missing snapshots and existing destination names, and returns local paths. Fetch uses the existing SSH artifact transfer path for a remote workstation.
+Start returns a `runId` and accepted model count.
+The workstation stores immutable inputs and mutable state in `ROOT\runs\<runId>\run.json`.
+The supervisor replaces this file atomically.
+Its lifetime is independent of the MCP client.
+`revit_batch_status(run_id)` reads persisted progress and marks unfinished models failed when the recorded supervisor process has exited.
+Completed and failed models stay terminal on restart.
+An interrupted running model returns to pending when the supervisor restarts.
+`revit_batch_cancel(run_id)` writes a durable cancellation marker, stops new work, closes an opened model without saving when possible, and marks remaining models cancelled.
+`revit_batch_fetch(run_id, dest_dir)` copies completed snapshots from a completed or failed run to new client files.
+It rejects missing snapshots and existing destination names, and returns local paths.
+Fetched snapshot paths follow `REVIT_MCP_REDACT_PATHS` without changing workstation snapshots.
+Fetch uses the existing SSH artifact transfer path for a remote workstation.
 
 Each model can fail at worker startup, metadata pre-pass, open, snapshot collection, or close. A deadline, stale heartbeat, worker exit, or unknown modal dialog fails that model and recycles only the supervisor-owned worker. The next model continues. A timeout after an operation may have occurred is reported as an error; inspect persisted state before retrying.
 

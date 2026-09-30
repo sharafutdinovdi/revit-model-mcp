@@ -319,7 +319,7 @@ internal sealed class ControlChannel
             return;
         }
         if (parsed.Kind is ControlJobKind.BatchSupervisorStart or ControlJobKind.BatchPrePass or
-            ControlJobKind.BatchOpen or ControlJobKind.BatchClose)
+            ControlJobKind.BatchOpen or ControlJobKind.BatchSnapshot or ControlJobKind.BatchClose)
         {
             BatchCommands.Execute(application, parsed, startedAt);
             return;

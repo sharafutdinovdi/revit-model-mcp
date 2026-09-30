@@ -86,7 +86,7 @@ def _rules(rules: list[dict[str, str]] | None) -> list[dict[str, str]]:
 
 
 def _public(state: dict[str, Any]) -> dict[str, Any]:
-    status_names = ["pending", "running", "completed", "cancelled"]
+    status_names = ["pending", "running", "completed", "cancelled", "failed"]
     model_names = ["pending", "running", "completed", "failed", "cancelled"]
     public = dict(state)
     if type(public.get("status")) is int and 0 <= public["status"] < len(status_names):
@@ -158,7 +158,9 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                 "cancelRequested": False,
                 "years": selected_years,
                 "parameterRules": selected_rules,
-                "models": [{"path": path, "status": 0} for path in selected_paths],
+                "models": [
+                    {"path": path, "status": 0, "phaseTimingsMs": {}} for path in selected_paths
+                ],
             }
             import json
 
@@ -222,7 +224,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             run_id = _run_id(run_id)
             file_host = _file_host(host_provider())
             state = await file_host.batch_status(run_id)
-            if state.get("status") not in (2, "completed"):
+            if state.get("status") not in (2, 4, "completed", "failed"):
                 raise ToolError("Batch run is incomplete; fetch requires a terminal run.")
             names = [
                 model.get("snapshotFile")

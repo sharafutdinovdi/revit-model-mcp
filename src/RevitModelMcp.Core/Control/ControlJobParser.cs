@@ -40,6 +40,7 @@ public enum ControlJobKind
     BatchSupervisorStart,
     BatchPrePass,
     BatchOpen,
+    BatchSnapshot,
     BatchClose
 }
 
@@ -188,6 +189,7 @@ public sealed class ControlJobParseResult
             "batch-supervisor-start" => Create(ControlJobKind.BatchSupervisorStart, command),
             "batch-prepass" => Create(ControlJobKind.BatchPrePass, command),
             "batch-open" => Create(ControlJobKind.BatchOpen, command),
+            "batch-snapshot" => ParseModelSnapshot(job, ControlJobKind.BatchSnapshot, command),
             "batch-close" => Create(ControlJobKind.BatchClose, command),
             "jobs" => Create(ControlJobKind.Jobs, command),
             "model-health" => Create(ControlJobKind.ModelHealth, command),
@@ -221,7 +223,7 @@ public sealed class ControlJobParseResult
         result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
         result.CancelJobId = job.CancelJobId;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
-        if (command is "family-audit" or "nwc-settings-check" or "batch-supervisor-start" or "batch-prepass" or "batch-open" or "batch-close" or "model-snapshot") result.CoordinatorJob = job;
+        if (command is "family-audit" or "nwc-settings-check" or "batch-supervisor-start" or "batch-prepass" or "batch-open" or "batch-snapshot" or "batch-close" or "model-snapshot") result.CoordinatorJob = job;
         result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
         if (job.TargetProcessId is <= 0)
@@ -297,9 +299,9 @@ public sealed class ControlJobParseResult
         return result;
     }
 
-    private static ControlJobParseResult ParseModelSnapshot(ControlJobContract job)
+    private static ControlJobParseResult ParseModelSnapshot(ControlJobContract job,
+        ControlJobKind kind = ControlJobKind.ModelSnapshot, string command = "model-snapshot")
     {
-        const string command = "model-snapshot";
         var rules = new List<ModelSnapshotParameterRule>();
         foreach (var rule in job.ParameterRules ?? [])
         {
@@ -307,7 +309,7 @@ public sealed class ControlJobParseResult
                 return Invalid(command, "Each parameterRules entry requires a non-blank category and parameter.");
             rules.Add(new ModelSnapshotParameterRule { Category = rule.Category.Trim(), Parameter = rule.Parameter.Trim() });
         }
-        var result = Create(ControlJobKind.ModelSnapshot, command);
+        var result = Create(kind, command);
         result.ParameterRules = rules;
         return result;
     }

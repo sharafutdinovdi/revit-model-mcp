@@ -102,6 +102,9 @@ internal static class DocumentActions
 
     private static Document? _batchDocument;
 
+    internal static Document BatchDocument => _batchDocument ??
+        throw new InvalidOperationException("No batch document is open.");
+
     internal static ActionResultData BatchOpen(UIApplication application, string path)
     {
         if (_batchDocument is not null) throw new InvalidOperationException("A batch document is already open.");

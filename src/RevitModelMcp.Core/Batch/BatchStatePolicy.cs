@@ -21,6 +21,7 @@ public static class BatchStatePolicy
 
     public static BatchRun Resume(BatchRun run)
     {
+        if (run.Status == BatchRunStatus.Failed) return run;
         if (run.CancelRequested) return Cancel(run);
         var models = run.Models.Select(model => model.Status == BatchModelStatus.Running
             ? model with { Status = BatchModelStatus.Pending, Phase = null, WorkerProcessId = null, WorkerStartedUtc = null, WorkerProcessStartedUtc = null, SnapshotFile = null }
@@ -33,6 +34,19 @@ public static class BatchStatePolicy
         var models = run.Models.Select(model => model.Status == BatchModelStatus.Pending
             ? model with { Status = BatchModelStatus.Cancelled } : model).ToArray();
         return run with { CancelRequested = true, Status = BatchRunStatus.Cancelled, Models = models };
+    }
+
+    public static BatchRun FailSupervisor(BatchRun run, string error)
+    {
+        var models = run.Models.Select(model => IsTerminal(model.Status)
+            ? model : model with { Status = BatchModelStatus.Failed, Error = error }).ToArray();
+        return run with { Status = BatchRunStatus.Failed, Models = models };
+    }
+
+    public static BatchModel Timed(BatchModel model, BatchPhase phase, long elapsed)
+    {
+        var timings = new Dictionary<string, long>(model.PhaseTimingsMs) { [phase.ToString()] = elapsed };
+        return model with { Phase = phase, PhaseTimingsMs = timings };
     }
 
     public static BatchRunStatus ResolveStatus(IReadOnlyList<BatchModel> models, bool cancelled)

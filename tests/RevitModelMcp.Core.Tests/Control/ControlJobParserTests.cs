@@ -40,6 +40,20 @@ public sealed class ControlJobParserTests
             await Assert.That(result.Error).IsNotNull();
         }
     }
+
+    [Test]
+    public async Task Parse_BatchSnapshot_UsesSnapshotRulesAndDistinctCommand()
+    {
+        var parsed = ControlJobParser.Parse("""
+            {"command":"batch-snapshot","parameterRules":[{"category":" Walls ","parameter":" Mark "}]}
+            """);
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.BatchSnapshot);
+        await Assert.That(parsed.Command).IsEqualTo("batch-snapshot");
+        await Assert.That(parsed.ParameterRules[0].Category).IsEqualTo("Walls");
+        await Assert.That(parsed.ParameterRules[0].Parameter).IsEqualTo("Mark");
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch-snapshot","parameterRules":[{}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
     [Test]
     public async Task Parse_NwcSettingsCheckRejectsUntrustedUncAndDevicePaths()
     {

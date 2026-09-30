@@ -55,6 +55,18 @@ STARTED_UTC = re.compile(
 )
 
 
+def _fail_dead_supervisor(state: dict[str, object]) -> dict[str, object]:
+    if state.get("status") not in (0, 1):
+        return state
+    failed = copy.deepcopy(state)
+    failed["status"] = 4
+    for model in failed.get("models", []):
+        if model.get("status") in (0, 1):
+            model["status"] = 3
+            model["error"] = "Batch supervisor process exited unexpectedly."
+    return failed
+
+
 class RemoteCommandTimeoutError(RevitChannelError):
     pass
 
@@ -128,13 +140,46 @@ class SshPowerShellHost:
             "$path = Join-Path $run 'run.json'; "
             "if (!(Test-Path -LiteralPath $path)) { throw 'Batch run was not found.' }; "
             "$state = [IO.File]::ReadAllBytes($path); "
+            "$parsed = ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($state)); "
+            "$alive = $null; "
+            "if ($parsed.supervisorProcessId -and $parsed.supervisorProcessStartedUtc) { "
+            "$supervisor = Get-Process -Id $parsed.supervisorProcessId -ErrorAction SilentlyContinue; "
+            "$alive = $false; "
+            "if ($supervisor) { try { $alive = $supervisor.StartTime.ToUniversalTime().ToString('o') -eq "
+            "([DateTimeOffset]::Parse($parsed.supervisorProcessStartedUtc)).UtcDateTime.ToString('o') "
+            "} catch { $alive = $true } } }; "
             "$cancel = Test-Path -LiteralPath (Join-Path $run 'cancel.json'); "
-            "[ordered]@{ state = [Convert]::ToBase64String($state); cancel = $cancel } | ConvertTo-Json -Compress"
+            "[ordered]@{ state = [Convert]::ToBase64String($state); cancel = $cancel; "
+            "supervisorAlive = $alive } | ConvertTo-Json -Compress"
         )
         package = json.loads(output)
         state = json.loads(base64.b64decode(package["state"], validate=True))
         if not isinstance(state, dict):
             raise ResponseParseError("Batch run state is invalid.")
+        if package.get("supervisorAlive") is False and state.get("status") in (0, 1):
+            supervisor_id = state.get("supervisorProcessId")
+            supervisor_started = state.get("supervisorProcessStartedUtc")
+            if (
+                type(supervisor_id) is not int
+                or supervisor_id <= 0
+                or not isinstance(supervisor_started, str)
+            ):
+                raise ResponseParseError("Batch supervisor identity is invalid.")
+            failed = _fail_dead_supervisor(state)
+            encoded = base64.b64encode(json.dumps(failed).encode("utf-8")).decode("ascii")
+            await self._run(
+                f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+                "$path = Join-Path $run 'run.json'; "
+                "$current = ConvertFrom-Json ([IO.File]::ReadAllText($path)); "
+                f"if ($current.supervisorProcessId -eq {supervisor_id} -and "
+                f"$current.supervisorProcessStartedUtc -eq '{_ps_quote(supervisor_started)}' "
+                "-and $current.status -in 0, 1) { "
+                "$temporary = Join-Path $run ('run.' + [Guid]::NewGuid().ToString('N') + '.tmp'); "
+                f"[IO.File]::WriteAllBytes($temporary, [Convert]::FromBase64String('{encoded}')); "
+                "try { [IO.File]::Replace($temporary, $path, $null) } finally { "
+                "if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } } }"
+            )
+            return await self.batch_status(run_id)
         if package["cancel"]:
             state["cancelRequested"] = True
         return state

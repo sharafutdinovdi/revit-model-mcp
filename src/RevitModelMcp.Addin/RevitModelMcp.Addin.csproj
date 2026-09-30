@@ -72,6 +72,8 @@
   <Target Name="CopyBatchSupervisor" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.BatchSupervisor.exe"
           DestinationFolder="$(TargetDir)"/>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
+          DestinationFolder="$(TargetDir)"/>
   </Target>
 
   <ItemGroup>

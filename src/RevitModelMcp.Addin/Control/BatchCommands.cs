@@ -33,6 +33,11 @@ internal static class BatchCommands
                 case ControlJobKind.BatchClose:
                     Write(application, job, startedAt, stopwatch, DocumentActions.BatchClose());
                     break;
+                case ControlJobKind.BatchSnapshot:
+                    EnsureWorker();
+                    Write(application, job, startedAt, stopwatch,
+                        ModelSnapshotReader.Read(DocumentActions.BatchDocument, job.ParameterRules));
+                    break;
                 default: throw new ArgumentException("Unknown batch command.");
             }
         }

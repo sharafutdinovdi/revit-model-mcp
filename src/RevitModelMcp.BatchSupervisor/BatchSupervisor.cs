@@ -88,7 +88,7 @@ internal sealed class BatchSupervisor(
                 _store.Write(Replace(run, index, model));
                 var startupStopwatch = Stopwatch.StartNew();
                 worker = await StartWorkerAsync(executables[allowed[allowed.Length - 1]], cancellationToken);
-                model = Timed(model, BatchPhase.Startup, startupStopwatch.ElapsedMilliseconds) with
+                model = BatchStatePolicy.Timed(model, BatchPhase.Startup, startupStopwatch.ElapsedMilliseconds) with
                 { WorkerProcessId = worker.ProcessId, WorkerStartedUtc = worker.HeartbeatStartedUtc, WorkerProcessStartedUtc = worker.ProcessStartedUtc };
                 _store.Write(Replace(run, index, model));
                 model = model with { Phase = BatchPhase.PrePass };
@@ -100,7 +100,7 @@ internal sealed class BatchSupervisor(
                 savedYear = Convert.ToInt32(data["savedYear"]);
                 savedSource = Convert.ToString(data["source"]) ?? "BasicFileInfo.Format";
             }
-            model = Timed(model, BatchPhase.PrePass, prepassStopwatch.ElapsedMilliseconds);
+            model = BatchStatePolicy.Timed(model, BatchPhase.PrePass, prepassStopwatch.ElapsedMilliseconds);
             var route = BatchYearRouter.Route(savedYear, executables.Keys, run.Years.Length == 0 ? null : run.Years);
             model = model with
             {
@@ -124,7 +124,7 @@ internal sealed class BatchSupervisor(
                 _store.Write(Replace(run, index, model));
                 var startupStopwatch = Stopwatch.StartNew();
                 worker = await StartWorkerAsync(executables[route.RuntimeYear.Value], cancellationToken);
-                model = Timed(model, BatchPhase.Startup, startupStopwatch.ElapsedMilliseconds);
+                model = BatchStatePolicy.Timed(model, BatchPhase.Startup, startupStopwatch.ElapsedMilliseconds);
             }
             model = model with
             {
@@ -138,12 +138,12 @@ internal sealed class BatchSupervisor(
             await PhaseAsync(worker, "batch-open", new() { ["path"] = model.Path },
                 BatchPhase.Open, TimeSpan.FromMinutes(10), cancellationToken);
             opened = true;
-            model = Timed(model, BatchPhase.Open, stopwatch.ElapsedMilliseconds);
+            model = BatchStatePolicy.Timed(model, BatchPhase.Open, stopwatch.ElapsedMilliseconds);
             _store.Write(Replace(run, index, model));
             stopwatch.Restart();
             model = model with { Phase = BatchPhase.Snapshot };
             _store.Write(Replace(run, index, model));
-            var snapshot = await PhaseAsync(worker, "model-snapshot", new()
+            var snapshot = await PhaseAsync(worker, "batch-snapshot", new()
             {
                 ["parameterRules"] = run.ParameterRules.Select(rule => new Dictionary<string, string>
                 {
@@ -151,7 +151,7 @@ internal sealed class BatchSupervisor(
                     ["parameter"] = rule.Parameter
                 }).ToArray()
             }, BatchPhase.Snapshot, TimeSpan.FromMinutes(20), cancellationToken);
-            model = Timed(model, BatchPhase.Snapshot, stopwatch.ElapsedMilliseconds);
+            model = BatchStatePolicy.Timed(model, BatchPhase.Snapshot, stopwatch.ElapsedMilliseconds);
             var snapshotName = $"snapshot_{index + 1:D4}.json";
             _store.WriteSnapshot(snapshotName, _channel.SerializeData(snapshot));
             model = model with { SnapshotFile = snapshotName };
@@ -170,7 +170,7 @@ internal sealed class BatchSupervisor(
                         var stopwatch = Stopwatch.StartNew();
                         await PhaseAsync(worker, "batch-close", new(), BatchPhase.Close,
                             TimeSpan.FromMinutes(2), CancellationToken.None, ignoreCancellation: true);
-                        model = Timed(model, BatchPhase.Close, stopwatch.ElapsedMilliseconds);
+                        model = BatchStatePolicy.Timed(model, BatchPhase.Close, stopwatch.ElapsedMilliseconds);
                         _store.Write(Replace(run, index, model));
                     }
                     catch (Exception exception) { closeFailure = exception; }
@@ -214,12 +214,6 @@ internal sealed class BatchSupervisor(
     private static Dictionary<string, object> Data(Dictionary<string, object> response) =>
         response.TryGetValue("data", out var value) && value is Dictionary<string, object> data
             ? data : throw new InvalidDataException("Worker response has no data object.");
-
-    private static BatchModel Timed(BatchModel model, BatchPhase phase, long elapsed)
-    {
-        var timings = new Dictionary<string, long>(model.PhaseTimingsMs) { [phase.ToString()] = elapsed };
-        return model with { Phase = phase, PhaseTimingsMs = timings };
-    }
 
     private static BatchRun Replace(BatchRun run, int index, BatchModel model)
     {
