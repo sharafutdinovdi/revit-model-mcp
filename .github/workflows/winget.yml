@@ -5,43 +5,108 @@
 name: WinGet
 
 on:
+  schedule:
+    - cron: '0 6 * * 1'
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Stable release tag, for example v0.2.0
-        required: true
-        type: string
-  workflow_call:
-    inputs:
-      release_tag:
-        required: true
-        type: string
-    secrets:
-      WINGET_TOKEN:
+        description: Stable release tag; blank selects the latest published stable release
         required: false
+        type: string
+      force_replace:
+        description: Replace older open package pull requests after submission; requires an explicit release tag
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
 
 jobs:
   manifests:
-    if: >-
-      !contains(inputs.release_tag, '-')
+    if: github.repository == 'sharafutdinovdi/revit-model-mcp'
     runs-on: windows-latest
+    concurrency:
+      group: winget-submission
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Generate manifests
+      - name: Select stable release
+        id: release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:RELEASE_TAG)) {
+            $releasesJson = gh release list --repo '${{ github.repository }}' --exclude-drafts --exclude-pre-releases --limit 1 --json tagName,isDraft,isPrerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Stable release lookup failed' }
+            $releases = @($releasesJson | ConvertFrom-Json)
+            if ($releases.Count -eq 0) { throw 'No published stable release exists' }
+            $env:RELEASE_TAG = $releases[0].tagName
+          }
           $releaseJson = gh release view $env:RELEASE_TAG --repo '${{ github.repository }}' --json isPrerelease,isDraft,tagName
           if ($LASTEXITCODE -ne 0) { throw 'Release lookup failed' }
           $release = $releaseJson | ConvertFrom-Json
           if ($release.isPrerelease -or $release.isDraft) { throw 'A published stable release is required' }
-          ./build/winget/New-WingetManifests.ps1 -Version $env:RELEASE_TAG.Substring(1) -ReleaseTag $env:RELEASE_TAG -OutputDir artifacts/winget
+          if ($release.tagName -cnotmatch '^v\d+\.\d+\.\d+$') { throw 'Expected a stable v<major>.<minor>.<patch> release tag' }
+          "tag=$($release.tagName)" >> $env:GITHUB_OUTPUT
+          "version=$($release.tagName.Substring(1))" >> $env:GITHUB_OUTPUT
+      - name: Decide whether to submit
+        id: decision
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          REQUESTED_RELEASE_TAG: ${{ inputs.release_tag }}
+          FORCE_REPLACE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_replace }}
+        run: |
+          $rows = @(gh api --paginate -X GET search/issues -f 'q=repo:microsoft/winget-pkgs is:pr is:open in:title "Sharafutdinov.RevitModelMcp version"' -f per_page=100 --jq '.items[] | [.number, .title, .html_url] | @tsv')
+          if ($LASTEXITCODE -ne 0) { throw 'Could not list open WinGet pull requests' }
+          $matching = @($rows | ForEach-Object {
+            $fields = $_ -split "`t", 3
+            if ($fields.Count -eq 3 -and $fields[1] -cmatch '^Sharafutdinov\.RevitModelMcp version (?<version>\S+)$') {
+              [pscustomobject]@{ number = [int]$fields[0]; version = $Matches.version; url = $fields[2] }
+            }
+          })
+          $forced = $env:FORCE_REPLACE -eq 'true' -and -not [string]::IsNullOrWhiteSpace($env:REQUESTED_RELEASE_TAG)
+          if ($matching.Count -gt 0 -and -not $forced) {
+            $open = $matching[0]
+            Write-Host "Skip: package version $($open.version) is still under moderation at $($open.url)"
+            'proceed=false' >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          $path = "repos/microsoft/winget-pkgs/contents/manifests/s/Sharafutdinov/RevitModelMcp/$env:RELEASE_VERSION" + '?ref=master'
+          $response = gh api --include $path 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Skip: package version $env:RELEASE_VERSION already exists in winget-pkgs master"
+            'proceed=false' >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+          if ($response -notmatch '(?m)HTTP/\S+\s+404\b|HTTP 404\b') { throw 'Could not check the target version in winget-pkgs master' }
+          $older = @()
+          foreach ($open in $matching) {
+            $openVersion = $null
+            if (-not [version]::TryParse($open.version, [ref]$openVersion) -or $openVersion -ge [version]$env:RELEASE_VERSION) {
+              Write-Host "Skip: package version $($open.version) already has an open PR at $($open.url)"
+              'proceed=false' >> $env:GITHUB_OUTPUT
+              exit 0
+            }
+            $older += $open
+          }
+          "older_prs=$(ConvertTo-Json -InputObject $older -Compress -Depth 3)" >> $env:GITHUB_OUTPUT
+          'proceed=true' >> $env:GITHUB_OUTPUT
+          Write-Host "Submit package version $env:RELEASE_VERSION"
+      - name: Generate manifests
+        if: steps.decision.outputs.proceed == 'true'
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          ./build/winget/New-WingetManifests.ps1 -Version $env:RELEASE_VERSION -ReleaseTag $env:RELEASE_TAG -OutputDir artifacts/winget
       - name: Validate manifests
+        if: steps.decision.outputs.proceed == 'true'
         shell: pwsh
         run: |
           winget --version
@@ -51,6 +116,7 @@ jobs:
           if ($output -notmatch 'Manifest validation succeeded') { throw 'WinGet validation failed' }
           $global:LASTEXITCODE = 0
       - name: Test manifest install and uninstall
+        if: steps.decision.outputs.proceed == 'true'
         id: install_test
         shell: pwsh
         run: |
@@ -79,11 +145,13 @@ jobs:
           "install_tested=$tested" >> $env:GITHUB_OUTPUT
           $global:LASTEXITCODE = 0
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: steps.decision.outputs.proceed == 'true'
         with:
           name: winget-manifests
           path: artifacts/winget/*.yaml
           if-no-files-found: error
       - name: Submit manifests
+        if: steps.decision.outputs.proceed == 'true'
         id: submit
         shell: pwsh
         env:
@@ -91,7 +159,9 @@ jobs:
           WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           INSTALL_TESTED: ${{ steps.install_test.outputs.install_tested }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          OLDER_PRS: ${{ steps.decision.outputs.older_prs }}
         run: |
           if (!$env:WINGET_TOKEN) {
             Write-Host 'WINGET_TOKEN is not set. Manifests are available in the artifact.'
@@ -103,18 +173,8 @@ jobs:
           if ($actualHash -ne '24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea') {
             throw 'wingetcreate SHA256 mismatch'
           }
-          $version = $env:RELEASE_TAG.Substring(1)
-          # One PR per package version: a pipeline re-run must not open a duplicate in winget-pkgs.
+          $version = $env:RELEASE_VERSION
           $env:GH_TOKEN = $env:WINGET_TOKEN
-          $title = "Sharafutdinov.RevitModelMcp version $version"
-          $existingJson = gh pr list --repo microsoft/winget-pkgs --state open --search "$title in:title" --json number,title
-          if ($LASTEXITCODE -ne 0) { throw 'Could not check for an open WinGet pull request' }
-          $existing = $existingJson | ConvertFrom-Json | Where-Object { $_.title -eq $title } | Select-Object -First 1 -ExpandProperty number
-          if ($existing) {
-            Write-Host "A pull request for Sharafutdinov.RevitModelMcp $version is already open: https://github.com/microsoft/winget-pkgs/pull/$existing"
-            $global:LASTEXITCODE = 0
-            exit 0
-          }
           $forkOwner = gh api user --jq .login
           if ($LASTEXITCODE -ne 0) { throw 'Could not determine the WinGet token owner' }
           gh repo view "$forkOwner/winget-pkgs" --json name > $null 2>&1
@@ -130,14 +190,14 @@ jobs:
           "prUrl=$prUrl" >> $env:GITHUB_OUTPUT
           # wingetcreate submits the PR template unfilled; complete it with what this workflow verified.
           if ($env:INSTALL_TESTED -eq 'true') {
-            $installLine = '- [x] Tested manifest locally with ``winget install --manifest <path>`` (installed and uninstalled in the release workflow on windows-latest; the project CI also runs silent install and uninstall smoke tests)'
+            $installLine = '- [x] Tested manifest locally with ``winget install --manifest <path>`` (installed and uninstalled in the WinGet workflow on windows-latest; the project CI also runs silent install and uninstall smoke tests)'
           } else {
             $installLine = '- [ ] Tested manifest locally with ``winget install --manifest <path>`` (winget did not complete on the hosted runner; the installers pass silent install and uninstall smoke tests in the project CI)'
           }
           $body = @"
           ## 📖 Description
 
-          Revit Model MCP $version, an MIT-licensed MCP server and add-in that reads live Autodesk Revit models (Revit 2022-2027). Single-user and multi-user MSI installers from https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG. Submitted by the project's release workflow.
+          Revit Model MCP $version, an MIT-licensed MCP server and add-in that reads live Autodesk Revit models (Revit 2022-2027). Single-user and multi-user MSI installers from https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG. Submitted by the project's WinGet workflow.
 
           ## ✅ Checklist
 
@@ -148,7 +208,7 @@ jobs:
 
           - [x] Checked that there aren't other open [pull requests](https://github.com/microsoft/winget-pkgs/pulls) for the same manifest update/change
           - [x] This PR only modifies one (1) manifest
-          - [x] Validated manifest locally with ``winget validate --manifest <path>`` (in the release workflow on windows-latest)
+          - [x] Validated manifest locally with ``winget validate --manifest <path>`` (in the WinGet workflow on windows-latest)
           $installLine
           - [x] Manifest conforms to the [1.12 schema](https://github.com/microsoft/winget-pkgs/tree/master/doc/manifest/schema/1.12.0)
           "@
@@ -157,4 +217,16 @@ jobs:
           $env:GH_TOKEN = $env:WINGET_TOKEN
           $body | gh api -X PATCH "repos/microsoft/winget-pkgs/pulls/$prNumber" -F body=@-
           if ($LASTEXITCODE -ne 0) { throw 'Could not update the WinGet pull request body' }
+          gh api -X POST "repos/microsoft/winget-pkgs/issues/$prNumber/comments" -f 'body=@microsoft-github-policy-service agree' --silent
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::warning::Could not post the Microsoft CLA agreement on $prUrl"
+            $global:LASTEXITCODE = 0
+          }
+          foreach ($old in @($env:OLDER_PRS | ConvertFrom-Json)) {
+            $comment = "Superseded by #$prNumber, which submits the current release $version."
+            gh api -X POST "repos/microsoft/winget-pkgs/issues/$($old.number)/comments" -f "body=$comment" --silent
+            if ($LASTEXITCODE -ne 0) { throw "Could not comment on superseded WinGet PR $($old.url)" }
+            gh api -X PATCH "repos/microsoft/winget-pkgs/pulls/$($old.number)" -f state=closed --silent
+            if ($LASTEXITCODE -ne 0) { throw "Could not close superseded WinGet PR $($old.url)" }
+          }
           Write-Host "WinGet PR: $prUrl"

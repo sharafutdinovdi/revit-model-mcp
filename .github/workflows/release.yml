@@ -408,12 +408,3 @@ jobs:
           bundle="$(realpath "${bundles[0]}")"
           uv run --frozen --directory server python ../build/bundle_manifest.py --smithery "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" --from "$bundle"
           npx --yes smithery@1.2.0 mcp publish "$RUNNER_TEMP/revit-model-mcp-smithery.mcpb" -n sharafutdinovdi/revit-model-mcp
-
-  winget:
-    needs: publish
-    if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
-    uses: ./.github/workflows/winget.yml
-    with:
-      release_tag: ${{ inputs.tag || github.ref_name }}
-    secrets:
-      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
