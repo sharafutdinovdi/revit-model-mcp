@@ -102,6 +102,7 @@ def endpoint():
             if state["status"] == 302:
                 self.send_response(302)
                 self.send_header("Location", state["redirect"])
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
             if state["status"] not in (200, 202):
