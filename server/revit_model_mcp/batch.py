@@ -224,18 +224,24 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             run_id = _run_id(run_id)
             file_host = _file_host(host_provider())
             state = await file_host.batch_status(run_id)
-            if state.get("status") not in (2, 4, "completed", "failed"):
-                raise ToolError("Batch run is incomplete; fetch requires a terminal run.")
-            names = [
-                model.get("snapshotFile")
-                for model in state.get("models", [])
-                if model.get("status") in (2, "completed")
-            ]
-            if not names or any(
-                not isinstance(name, str) or not re.fullmatch(r"snapshot_[0-9]{4}\.json", name)
-                for name in names
-            ):
-                raise ToolError("Completed batch snapshots are missing from run state.")
+            models = state.get("models", [])
+            if state.get("status") not in (2, 3, 4, "completed", "cancelled", "failed"):
+                completed = sum(model.get("status") in (2, "completed") for model in models)
+                raise ToolError(
+                    f"Batch run is incomplete ({completed} of {len(models)} models completed); "
+                    "fetch requires a terminal run."
+                )
+            names = []
+            for model in models:
+                if model.get("status") in (2, "completed"):
+                    name = model.get("snapshotFile")
+                    if not isinstance(name, str) or not re.fullmatch(
+                        r"snapshot_[0-9]{4}\.json", name
+                    ):
+                        raise ToolError(
+                            "Completed batch snapshot is missing or invalid in run state."
+                        )
+                    names.append(name)
             from pathlib import Path
 
             destination = Path(dest_dir).expanduser().absolute()
@@ -243,9 +249,26 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             if collisions:
                 raise ToolError(f"Local batch snapshot already exists: {collisions[0]}")
             artifacts = [await file_host.batch_fetch_artifact(run_id, name) for name in names]
+            local_paths = [save_batch_artifact(artifact, dest_dir) for artifact in artifacts]
+            paths_by_name = dict(zip(names, local_paths, strict=True))
+            public_models = _public(state)["models"]
+            outcomes = []
+            for model, public_model in zip(models, public_models, strict=True):
+                outcome = {
+                    "path": public_model.get("path"),
+                    "status": public_model.get("status"),
+                    "localPath": paths_by_name.get(model.get("snapshotFile"))
+                    if model.get("status") in (2, "completed")
+                    else None,
+                }
+                for field in ("error", "reason"):
+                    if public_model.get(field):
+                        outcome[field] = public_model[field]
+                outcomes.append(outcome)
             return {
                 "runId": run_id,
-                "localPaths": [save_batch_artifact(artifact, dest_dir) for artifact in artifacts],
+                "localPaths": local_paths,
+                "models": outcomes,
             }
         except (RevitChannelError, ValueError) as error:
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error

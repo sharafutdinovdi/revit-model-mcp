@@ -22,8 +22,15 @@ Its lifetime is independent of the MCP client.
 Completed and failed models stay terminal on restart.
 An interrupted running model returns to pending when the supervisor restarts.
 `revit_batch_cancel(run_id)` writes a durable cancellation marker, stops new work, closes an opened model without saving when possible, and marks remaining models cancelled.
-`revit_batch_fetch(run_id, dest_dir)` copies completed snapshots from a completed or failed run to new client files.
-It rejects missing snapshots and existing destination names, and returns local paths.
+`revit_batch_fetch(run_id, dest_dir)` accepts completed, failed, and cancelled runs.
+It downloads snapshots from completed models to new client files.
+An active run is refused with the completed and total model counts.
+A completed model with a missing or invalid snapshot name is an error.
+Local files are never overwritten, including when a destination appears during download.
+The response has `runId`, `localPaths`, and `models`.
+Each entry in `models` has `path`, `status`, and `localPath`.
+`localPath` is null when no snapshot was downloaded.
+An existing model `error` or `reason` is included when present.
 Fetched snapshot paths follow `REVIT_MCP_REDACT_PATHS` without changing workstation snapshots.
 Fetch uses the existing SSH artifact transfer path for a remote workstation.
 
