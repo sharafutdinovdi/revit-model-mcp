@@ -58,7 +58,11 @@ internal static class SharedCoordinatesReader
     private static bool? ReadClipped(BasePoint point)
     {
         try { return point.Clipped; }
-        catch (Exception) { return null; }
+        catch (Exception exception)
+        {
+            PluginLog.Skipped($"base point {RevitValueReader.GetId(point.Id)} clipped state", exception);
+            return null;
+        }
     }
 
     private static CoordinateOffset Offset(XYZ point) => new()

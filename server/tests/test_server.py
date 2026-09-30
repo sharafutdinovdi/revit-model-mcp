@@ -460,7 +460,14 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(host.document, "Sample Model")
-        self.assertIn("42", str(result))
+        content = result.structured_content
+        self.assertEqual(set(content), {"instances", "skipped", "skippedCount"})
+        self.assertEqual(
+            content["instances"],
+            [{"processId": 42, "documentName": "SampleModel"}],
+        )
+        self.assertEqual(content["skipped"], [])
+        self.assertEqual(content["skippedCount"], 0)
 
     async def test_list_instances_ignores_stale_instance_file(self) -> None:
         host = SshPowerShellHost()
@@ -579,10 +586,39 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["responder"]["documentPath"], "Sample.rvt")
         self.assertEqual(result["data"][0]["documentPath"], "Linked.rvt")
         self.assertEqual(result["data"][0]["localPath"], "/tmp/view.png")
-        self.assertEqual(listed[0]["documentPath"], "Sample.rvt")
+        self.assertEqual(listed["instances"][0]["documentPath"], "Sample.rvt")
         self.assertEqual(response["responder"]["documentPath"], r"C:\Models\Sample.rvt")
         with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "0"}):
             self.assertEqual(revit_server.redact_model_paths(response), response)
+
+    async def test_read_diagnostics_survive_tool_response_and_redact_reason(self) -> None:
+        response = {
+            "command": "links-status",
+            "success": True,
+            "data": {"rvtLinks": [{"typeId": 10, "error": r"Could not read C:\Models\A.rvt"}]},
+            "skipped": [{"what": "RVT link type 10", "reason": r"Could not read C:\Models\A.rvt"}],
+            "skippedCount": 101,
+        }
+        with (
+            patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}),
+            patch.object(revit_server.channel, "execute", AsyncMock(return_value=response)),
+        ):
+            result = await revit_server.revit_links_status()
+        self.assertEqual(result["skippedCount"], 101)
+        self.assertEqual(
+            result["skipped"], [{"what": "RVT link type 10", "reason": "Could not read A.rvt"}]
+        )
+        self.assertEqual(result["data"]["rvtLinks"][0]["error"], "Could not read A.rvt")
+
+    async def test_complete_read_adds_empty_diagnostics(self) -> None:
+        with patch.object(
+            revit_server.channel,
+            "execute",
+            AsyncMock(return_value={"command": "ping", "success": True, "data": "pong"}),
+        ):
+            result = await revit_server.revit_ping()
+        self.assertEqual(result["skipped"], [])
+        self.assertEqual(result["skippedCount"], 0)
 
     async def test_redaction_covers_failed_read_tool_error(self) -> None:
         failure = {

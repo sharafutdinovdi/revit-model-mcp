@@ -28,16 +28,16 @@ internal sealed partial class SnapshotCollector
         {
             collector._snapshot.Responder = ReadCommandReader.ReadResponder(uiApplication);
         }
-        collector.TryCapture(() => collector.CaptureMetadata(localNow));
-        collector.TryCapture(collector.CaptureActiveView);
-        collector.TryCapture(collector.CaptureRegions);
-        collector.TryCapture(collector.CaptureElementsOnView);
-        collector.TryCapture(collector.CaptureAnnotations);
-        collector.TryCapture(collector.CaptureCurtainPanels);
-        collector.TryCapture(collector.CaptureSelection);
-        collector.TryCapture(collector.CaptureModelCounts);
-        collector.TryCapture(collector.CaptureSectionViewInventory);
-        collector.TryCapture(collector.CaptureDuplicateBaseNames);
+        collector.TryCapture("snapshot metadata", () => collector.CaptureMetadata(localNow));
+        collector.TryCapture("snapshot active view", collector.CaptureActiveView);
+        collector.TryCapture("snapshot regions", collector.CaptureRegions);
+        collector.TryCapture("snapshot elements on view", collector.CaptureElementsOnView);
+        collector.TryCapture("snapshot annotations", collector.CaptureAnnotations);
+        collector.TryCapture("snapshot curtain panels", collector.CaptureCurtainPanels);
+        collector.TryCapture("snapshot selection", collector.CaptureSelection);
+        collector.TryCapture("snapshot model counts", collector.CaptureModelCounts);
+        collector.TryCapture("snapshot section view inventory", collector.CaptureSectionViewInventory);
+        collector.TryCapture("snapshot duplicate base names", collector.CaptureDuplicateBaseNames);
         return collector._snapshot;
     }
 
@@ -47,10 +47,10 @@ internal sealed partial class SnapshotCollector
         metadata.Utc = localNow.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
         metadata.Local = localNow.ToString("O", CultureInfo.InvariantCulture);
 
-        TryCapture(() => metadata.RevitVersion = _uiApplication?.Application?.VersionNumber);
-        TryCapture(() => metadata.DocumentTitle = _document?.Title);
-        TryCapture(() => metadata.DocumentPath = _document?.PathName);
-        TryCapture(() => metadata.ActiveViewId = _view is null ? null : RevitValueReader.GetId(_view.Id));
+        TryCapture("snapshot metadata Revit version", () => metadata.RevitVersion = _uiApplication?.Application?.VersionNumber);
+        TryCapture("snapshot metadata document title", () => metadata.DocumentTitle = _document?.Title);
+        TryCapture("snapshot metadata document path", () => metadata.DocumentPath = _document?.PathName);
+        TryCapture("snapshot metadata active view id", () => metadata.ActiveViewId = _view is null ? null : RevitValueReader.GetId(_view.Id));
     }
 
     private void CaptureActiveView()
@@ -61,22 +61,22 @@ internal sealed partial class SnapshotCollector
         }
 
         var target = _snapshot.ActiveView;
-        TryCapture(() => target.Name = _view.Name);
-        TryCapture(() => target.Id = RevitValueReader.GetId(_view.Id));
-        TryCapture(() => target.ViewType = _view.ViewType.ToString());
-        TryCapture(() => target.Scale = _view.Scale);
-        TryCapture(() => target.DetailLevel = _view.DetailLevel.ToString());
-        TryCapture(() => target.IsSection = _view.ViewType == ViewType.Section);
-        TryCapture(() => target.CropBoxActive = _view.CropBoxActive);
-        TryCapture(() => CaptureViewTemplate(target));
-        TryCapture(() => CaptureCrop(target));
-        TryCapture(() => CaptureScopeBox(target));
-        TryCapture(() => target.ViewDirection = RevitValueReader.ToVector(_view.ViewDirection, false));
-        TryCapture(() => target.OriginMm = RevitValueReader.ToVector(_view.Origin, true));
-        TryCapture(() => target.FarClipOffsetMm = RevitValueReader.GetLengthParameterMm(
+        TryCapture("snapshot active view name", () => target.Name = _view.Name);
+        TryCapture("snapshot active view id", () => target.Id = RevitValueReader.GetId(_view.Id));
+        TryCapture("snapshot active view type", () => target.ViewType = _view.ViewType.ToString());
+        TryCapture("snapshot active view scale", () => target.Scale = _view.Scale);
+        TryCapture("snapshot active view detail level", () => target.DetailLevel = _view.DetailLevel.ToString());
+        TryCapture("snapshot active view section state", () => target.IsSection = _view.ViewType == ViewType.Section);
+        TryCapture("snapshot active view crop active", () => target.CropBoxActive = _view.CropBoxActive);
+        TryCapture("snapshot active view template", () => CaptureViewTemplate(target));
+        TryCapture("snapshot active view crop", () => CaptureCrop(target));
+        TryCapture("snapshot active view scope box", () => CaptureScopeBox(target));
+        TryCapture("snapshot active view direction", () => target.ViewDirection = RevitValueReader.ToVector(_view.ViewDirection, false));
+        TryCapture("snapshot active view origin", () => target.OriginMm = RevitValueReader.ToVector(_view.Origin, true));
+        TryCapture("snapshot active view far clip offset", () => target.FarClipOffsetMm = RevitValueReader.GetLengthParameterMm(
             _view,
             BuiltInParameter.VIEWER_BOUND_OFFSET_FAR));
-        TryCapture(() => CaptureDependency(target));
+        TryCapture("snapshot active view dependency", () => CaptureDependency(target));
     }
 
     private void CaptureViewTemplate(ActiveViewSnapshot target)
@@ -128,15 +128,15 @@ internal sealed partial class SnapshotCollector
         target.DependentsCount = _view.GetDependentViewIds()?.Count ?? 0;
     }
 
-    private void TryCapture(Action action)
+    private void TryCapture(string what, Action action)
     {
         try
         {
             action();
         }
-        catch
+        catch (Exception exception)
         {
-            // Every snapshot section is best-effort by contract.
+            PluginLog.Skipped(what, exception);
         }
     }
 }

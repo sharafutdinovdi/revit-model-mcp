@@ -15,6 +15,7 @@ internal static class ReadCommandExecutor
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
+        SkippedReadDiagnostics.Current = new SkippedReadDiagnostics();
         var output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             job.Command,
@@ -183,6 +184,10 @@ internal static class ReadCommandExecutor
                 $"Failed to execute the command: {exception.Message}",
                 stopwatch.ElapsedMilliseconds));
             LogFinished(job.Command, "error", stopwatch.ElapsedMilliseconds, output.FilePath, exception.Message);
+        }
+        finally
+        {
+            SkippedReadDiagnostics.Current = null;
         }
     }
 

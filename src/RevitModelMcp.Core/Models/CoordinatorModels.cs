@@ -23,8 +23,6 @@ public sealed record ModelHealthData
     public List<HealthWarning> TopWarnings { get; set; } = new();
     [DataMember(Name = "units")]
     public Dictionary<string, string?> Units { get; set; } = new();
-    [DataMember(Name = "skipped")]
-    public List<SkippedMetric> Skipped { get; set; } = new();
 }
 
 [DataContract]
@@ -34,15 +32,6 @@ public sealed record HealthWarning
     public string Text { get; set; } = string.Empty;
     [DataMember(Name = "count")]
     public int Count { get; set; }
-}
-
-[DataContract]
-public sealed record SkippedMetric
-{
-    [DataMember(Name = "metric")]
-    public string Metric { get; set; } = string.Empty;
-    [DataMember(Name = "error")]
-    public string Error { get; set; } = string.Empty;
 }
 
 [DataContract]

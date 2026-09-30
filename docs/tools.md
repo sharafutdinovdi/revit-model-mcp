@@ -9,6 +9,8 @@ Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
 
+Every successful read result returns top-level `skipped` and `skippedCount`. Each skipped entry has `what` and `reason`. An empty list means no fields were omitted. A non-empty list means the answer is incomplete. The list keeps the first 100 entries; `skippedCount` reports the uncapped total. `revit_list_instances` returns `instances` with empty diagnostics. Model health uses this common shape instead of a nested metric/error list. Links status also keeps each link's `error` and mirrors it in `skipped`.
+
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
 | `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
@@ -28,7 +30,7 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 | `revit_view_warnings` | `view` | Read warnings involving elements in a view. |
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
-| `revit_list_instances` | `document=null`; no timeout arguments | List endpoint or heartbeat information. |
+| `revit_list_instances` | `document=null`; no timeout arguments | Return endpoint or heartbeat information in `instances`. |
 | `revit_model_health` | None | Read model quality counts and top warnings before hand-over. |
 | `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |

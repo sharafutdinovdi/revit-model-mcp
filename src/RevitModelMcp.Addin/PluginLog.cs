@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Text;
+using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp;
 
@@ -41,6 +42,17 @@ internal static class PluginLog
         Write("ERR", message, exception);
     }
 
+    public static void Debug(string message, Exception exception)
+    {
+        Write("DBG", message, exception);
+    }
+
+    public static void Skipped(string what, Exception exception)
+    {
+        SkippedReadDiagnostics.Current?.Add(what, exception);
+        Debug($"Skipped {what}.", exception);
+    }
+
     public static void Shutdown()
     {
         Info("Logging stopped.");
@@ -58,7 +70,9 @@ internal static class PluginLog
                 var line = $"{timestamp} [{level}] {Sanitize(message)}";
                 if (exception is not null)
                 {
-                    line += $"{Environment.NewLine}{exception}";
+                    line += Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1"
+                        ? $"{Environment.NewLine}{exception.GetType().FullName}"
+                        : $"{Environment.NewLine}{exception}";
                 }
 
                 File.AppendAllText(path, line + Environment.NewLine, Utf8WithoutBom);

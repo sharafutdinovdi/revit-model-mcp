@@ -17,14 +17,14 @@ internal sealed partial class SnapshotCollector
             return;
         }
 
-        TryCapture(() => _snapshot.ModelCounts.TotalRegions = CountAllRegions());
-        TryCapture(() => _snapshot.ModelCounts.CoordinationViews = CountViewsWithPrefix("Coordination_"));
-        TryCapture(() => _snapshot.ModelCounts.ConstructionViews = CountViewsWithPrefix("Construction_"));
-        TryCapture(() => _snapshot.ModelCounts.Sheets = new FilteredElementCollector(_document)
+        TryCapture("snapshot model counts total regions", () => _snapshot.ModelCounts.TotalRegions = CountAllRegions());
+        TryCapture("snapshot model counts coordination views", () => _snapshot.ModelCounts.CoordinationViews = CountViewsWithPrefix("Coordination_"));
+        TryCapture("snapshot model counts construction views", () => _snapshot.ModelCounts.ConstructionViews = CountViewsWithPrefix("Construction_"));
+        TryCapture("snapshot model counts sheets", () => _snapshot.ModelCounts.Sheets = new FilteredElementCollector(_document)
             .OfClass(typeof(ViewSheet))
             .WhereElementIsNotElementType()
             .GetElementCount());
-        TryCapture(() => _snapshot.ModelCounts.SectionViews = new FilteredElementCollector(_document)
+        TryCapture("snapshot model counts section views", () => _snapshot.ModelCounts.SectionViews = new FilteredElementCollector(_document)
             .OfClass(typeof(View))
             .Cast<View>()
             .Count(view => !view.IsTemplate && view.ViewType == ViewType.Section));
@@ -46,9 +46,9 @@ internal sealed partial class SnapshotCollector
                     count++;
                 }
             }
-            catch
+            catch (Exception exception)
             {
-                // Count every readable family instance and skip only the broken one.
+                PluginLog.Skipped($"snapshot model counts region element {RevitValueReader.GetId(element.Id)}", exception);
             }
         }
 
@@ -77,12 +77,12 @@ internal sealed partial class SnapshotCollector
         foreach (var section in sections)
         {
             var target = new SectionViewSnapshot();
-            TryCapture(() => target.Id = RevitValueReader.GetId(section.Id));
-            TryCapture(() => target.Name = section.Name);
-            TryCapture(() => target.TemplateName = GetTemplateName(section));
-            TryCapture(() => target.Scale = section.Scale);
-            TryCapture(() => target.CropActive = section.CropBoxActive);
-            TryCapture(() =>
+            TryCapture("snapshot section view inventory id", () => target.Id = RevitValueReader.GetId(section.Id));
+            TryCapture($"snapshot section view {target.Id} name", () => target.Name = section.Name);
+            TryCapture($"snapshot section view {target.Id} template", () => target.TemplateName = GetTemplateName(section));
+            TryCapture($"snapshot section view {target.Id} scale", () => target.Scale = section.Scale);
+            TryCapture($"snapshot section view {target.Id} crop active", () => target.CropActive = section.CropBoxActive);
+            TryCapture($"snapshot section view {target.Id} crop bounds", () =>
             {
                 var cropBox = section.CropBox;
                 target.CropBboxMm = cropBox is null
@@ -119,9 +119,9 @@ internal sealed partial class SnapshotCollector
                 var baseName = DuplicateNameSuffixRegex.Replace(name, string.Empty);
                 counts[baseName] = counts.TryGetValue(baseName, out var count) ? count + 1 : 1;
             }
-            catch
+            catch (Exception exception)
             {
-                // One unreadable view must not hide duplicate names from the rest of the model.
+                PluginLog.Skipped($"snapshot duplicate base names view {RevitValueReader.GetId(view.Id)}", exception);
             }
         }
 

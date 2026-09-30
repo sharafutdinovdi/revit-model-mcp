@@ -217,6 +217,7 @@ mcp = MCPServer(
         "disable actions without hiding them; they then return `read-only mode` instead of running. "
         "For universal model analysis, call revit_list_catalog first, revit_aggregate_elements second, "
         "and revit_query_elements only when rows are needed."
+        " Every read result has skipped and skippedCount. Non-empty skipped means the answer is incomplete."
     ),
 )
 
@@ -233,6 +234,8 @@ async def _execute(
         )
         if job.command == "ping":
             result.update(serverVersion=package_version(), **update_status())
+        result.setdefault("skipped", [])
+        result.setdefault("skippedCount", 0)
         return redact_model_paths(result)
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
@@ -241,7 +244,8 @@ async def _execute(
 def addressed_tool(function):
     function.__doc__ = (function.__doc__ or "") + (
         "\n\nIf more than one Revit instance is running, document is required; "
-        "otherwise any instance may respond."
+        "otherwise any instance may respond. Non-empty skipped means the answer is incomplete; "
+        "skippedCount includes entries beyond the first 100."
     )
     title = {
         "revit_ping": "Check Revit Connection",
@@ -410,7 +414,7 @@ async def revit_model_health(
     """Read model quality counts before an export or hand-over.
 
     Returns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.
-    Absent objects have zero counts; unavailable metrics are null and listed in skipped with their errors.
+    Absent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.
     Use revit_list_warnings to inspect affected elements.
     A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
     """
@@ -838,19 +842,26 @@ async def revit_list_relations(
     title="List Instances",
     annotations=READ_ONLY_TOOL.model_copy(update={"title": "List Instances"}),
 )
-async def revit_list_instances(document: Document = None) -> list[dict[str, object]]:
+async def revit_list_instances(document: Document = None) -> dict[str, Any]:
     """List Revit processes and their active documents.
 
-    Returns documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.
+    Returns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.
     For file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.
     Busy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.
-    Legacy heartbeat presence is only a pre-check. No matching instances return [].
+    Legacy heartbeat presence is only a pre-check. No matching instances return instances=[].
     Local and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.
     HTTP mode reports only its connected process; transport failures raise errors.
     Use this tool before choosing a unique document substring for other tools.
+    Every successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete.
     """
     try:
-        return redact_model_paths(await host.list_revit_instances(document))
+        return redact_model_paths(
+            {
+                "instances": await host.list_revit_instances(document),
+                "skipped": [],
+                "skippedCount": 0,
+            }
+        )
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 

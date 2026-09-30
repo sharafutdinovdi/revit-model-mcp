@@ -56,9 +56,9 @@ internal sealed partial class SnapshotCollector
                     BboxOnViewMm = RevitValueReader.GetBoundingBoxOnView(element, _view)
                 });
             }
-            catch
+            catch (Exception exception)
             {
-                // One malformed family instance must not hide the remaining regions.
+                PluginLog.Skipped($"snapshot regions element {RevitValueReader.GetId(element.Id)}", exception);
             }
         }
 
@@ -84,9 +84,9 @@ internal sealed partial class SnapshotCollector
                 var categoryName = element.Category?.Name ?? "<no category>";
                 counts[categoryName] = counts.TryGetValue(categoryName, out var count) ? count + 1 : 1;
             }
-            catch
+            catch (Exception exception)
             {
-                // Continue counting categories that remain readable.
+                PluginLog.Skipped($"snapshot elements on view {_view.Id} element {RevitValueReader.GetId(element.Id)} category", exception);
             }
         }
 
@@ -132,9 +132,9 @@ internal sealed partial class SnapshotCollector
                     Params = ReadAnnotationParameters(element)
                 });
             }
-            catch
+            catch (Exception exception)
             {
-                // Continue with the next visible annotation.
+                PluginLog.Skipped($"snapshot annotation element {RevitValueReader.GetId(element.Id)}", exception);
             }
         }
     }
@@ -166,9 +166,9 @@ internal sealed partial class SnapshotCollector
                     BboxOnViewMm = RevitValueReader.GetBoundingBoxOnView(element, _view)
                 });
             }
-            catch
+            catch (Exception exception)
             {
-                // Stale selection ids are ignored without aborting the snapshot.
+                PluginLog.Skipped($"snapshot selection element {RevitValueReader.GetId(id)}", exception);
             }
         }
     }
@@ -208,9 +208,9 @@ internal sealed partial class SnapshotCollector
                     });
                 }
             }
-            catch
+            catch (Exception exception)
             {
-                // One malformed panel must not hide the remaining visible panels.
+                PluginLog.Skipped($"snapshot curtain panel element {RevitValueReader.GetId(element.Id)}", exception);
             }
         }
 

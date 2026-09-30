@@ -52,6 +52,12 @@ public sealed class ViewDumpReport
 
     [DataMember(Name = "views", Order = 16)]
     public List<ViewDumpView> Views { get; set; } = new();
+
+    [DataMember(Name = "skipped", Order = 17)]
+    public List<SkippedRead> Skipped { get; set; } = [];
+
+    [DataMember(Name = "skippedCount", Order = 18)]
+    public int SkippedCount { get; set; }
 }
 
 [DataContract]

@@ -97,7 +97,10 @@ internal static class ViewInfoReader
                 if (view.GetCategoryHidden(category.Id))
                     result.HiddenCategories.Add(new CategoryInfo { Id = RevitValueReader.GetId(category.Id), Name = category.Name, Type = category.CategoryType.ToString() });
             }
-            catch (Autodesk.Revit.Exceptions.ArgumentException) { }
+            catch (Autodesk.Revit.Exceptions.ArgumentException exception)
+            {
+                PluginLog.Skipped($"view {RevitValueReader.GetId(view.Id)} category {RevitValueReader.GetId(category.Id)} visibility", exception);
+            }
         }
         if (document.IsWorkshared)
         {
@@ -135,7 +138,11 @@ internal static class ViewInfoReader
     private static bool LinkHidden(View view, RevitLinkInstance link)
     {
         try { return link.IsHidden(view) || link.Category is not null && view.GetCategoryHidden(link.Category.Id); }
-        catch (Autodesk.Revit.Exceptions.InvalidOperationException) { return link.IsHidden(view); }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+        {
+            PluginLog.Skipped($"view {RevitValueReader.GetId(view.Id)} link {RevitValueReader.GetId(link.Id)} category visibility", exception);
+            return link.IsHidden(view);
+        }
     }
 
     private static string? LinkOverrideType(View view, RevitLinkInstance link)
@@ -146,7 +153,10 @@ internal static class ViewInfoReader
             using var settings = view.GetLinkOverrides(link.Id);
             return settings?.LinkVisibilityType.ToString();
         }
-        catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+        {
+            PluginLog.Skipped($"view {RevitValueReader.GetId(view.Id)} link {RevitValueReader.GetId(link.Id)} overrides", exception);
+        }
 #endif
         return null;
     }

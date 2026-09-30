@@ -26,6 +26,7 @@ internal sealed class ViewDumpSession : IControlSession
     private readonly ViewDumpOutput _output;
     private readonly ViewDumpReport _report;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+    private readonly SkippedReadDiagnostics _diagnostics = new();
 
     private int _nextViewIndex;
     private ViewDumpView? _currentResult;
@@ -67,6 +68,7 @@ internal sealed class ViewDumpSession : IControlSession
             return;
         }
 
+        SkippedReadDiagnostics.Current = _diagnostics;
         try
         {
             _executions++;
@@ -94,8 +96,13 @@ internal sealed class ViewDumpSession : IControlSession
         }
         catch (Exception exception)
         {
+            PluginLog.Skipped($"views dump {_currentResult?.RequestedName ?? "current view"}", exception);
             PluginLog.Error("Views-dump processing failed.", exception);
             Fail($"Dump stopped: {exception}");
+        }
+        finally
+        {
+            SkippedReadDiagnostics.Current = null;
         }
     }
 
@@ -120,6 +127,7 @@ internal sealed class ViewDumpSession : IControlSession
             var view = FindView(requestedName);
             if (view is null)
             {
+                PluginLog.Skipped($"view {requestedName}", new InvalidOperationException("View was not found."));
                 _report.Views.Add(ViewDumpView.Missing(requestedName));
                 WriteReport();
                 continue;
@@ -150,6 +158,7 @@ internal sealed class ViewDumpSession : IControlSession
             }
             catch (Exception exception)
             {
+                PluginLog.Skipped($"view {requestedName} dump", exception);
                 PluginLog.Error($"Views-dump view failed. View='{requestedName}'.", exception);
                 _report.Views.Add(new ViewDumpView
                 {
@@ -176,6 +185,8 @@ internal sealed class ViewDumpSession : IControlSession
             var element = _document.GetElement(elementId);
             if (element is null)
             {
+                PluginLog.Skipped($"view {_currentResult!.RequestedName} element {RevitValueReader.GetId(elementId)}",
+                    new InvalidOperationException("Element is unavailable."));
                 continue;
             }
 
@@ -374,6 +385,8 @@ internal sealed class ViewDumpSession : IControlSession
 
     private void WriteReport(bool updateTime = true)
     {
+        _report.Skipped = _diagnostics.Items;
+        _report.SkippedCount = _diagnostics.Count;
         if (updateTime)
         {
             _report.UpdatedAt = FormatTime(DateTimeOffset.Now);

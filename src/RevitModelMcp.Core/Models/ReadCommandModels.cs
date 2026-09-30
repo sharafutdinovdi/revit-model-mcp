@@ -60,9 +60,20 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "retryAfterMs", Order = 17, EmitDefaultValue = false)]
     public int? RetryAfterMs { get; set; }
 
+    [DataMember(Name = "skipped", Order = 18, EmitDefaultValue = false)]
+    public List<SkippedRead>? Skipped { get; set; }
+
+    [DataMember(Name = "skippedCount", Order = 19, EmitDefaultValue = false)]
+    public int? SkippedCount { get; set; }
+
     [OnSerializing]
     private void AddJobMetadata(StreamingContext context)
     {
+        if (SkippedReadDiagnostics.Current is { } diagnostics)
+        {
+            Skipped = diagnostics.Items;
+            SkippedCount = diagnostics.Count;
+        }
         var metadata = JobResponseMetadata.Current;
         if (metadata is null || JobId is not null) return;
         Client = metadata.Client;

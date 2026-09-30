@@ -18,7 +18,7 @@ internal static class ModelHealthReader
             IsWorkshared = document.IsWorkshared
         };
         if (string.IsNullOrEmpty(result.FileName)) result.FileName = document.Title;
-        result.FileSizeBytes = Try<long?>(result, "fileSizeBytes", () =>
+        result.FileSizeBytes = Try<long?>("fileSizeBytes", () =>
             string.IsNullOrEmpty(document.PathName) ? null : new FileInfo(document.PathName).Length);
         foreach (var metric in new Dictionary<string, Func<string>>
         {
@@ -29,7 +29,7 @@ internal static class ModelHealthReader
             ["buildingName"] = () => document.ProjectInformation.BuildingName,
             ["status"] = () => document.ProjectInformation.Status,
             ["author"] = () => document.ProjectInformation.Author
-        }) result.ProjectInfo[metric.Key] = Try(result, "projectInfo." + metric.Key, metric.Value);
+        }) result.ProjectInfo[metric.Key] = Try("projectInfo." + metric.Key, metric.Value);
 
         var metrics = new Dictionary<string, Func<int>>
         {
@@ -62,25 +62,25 @@ internal static class ModelHealthReader
             ["images"] = () => CountClass<ImageInstance>(document)
         };
         foreach (var metric in metrics)
-            result.Counts[metric.Key] = Try<int?>(result, "counts." + metric.Key, () => metric.Value());
-        result.TopWarnings = Try(result, "topWarnings", () => ModelWarningReader.Read(document, null, false)
+            result.Counts[metric.Key] = Try<int?>("counts." + metric.Key, () => metric.Value());
+        result.TopWarnings = Try("topWarnings", () => ModelWarningReader.Read(document, null, false)
             .Groups.Take(10).Select(group => new HealthWarning { Text = group.Text, Count = group.Count }).ToList())!;
         foreach (var unit in new Dictionary<string, ForgeTypeId>
         {
             ["length"] = SpecTypeId.Length,
             ["area"] = SpecTypeId.Area,
             ["volume"] = SpecTypeId.Volume
-        }) result.Units[unit.Key] = Try(result, "units." + unit.Key,
+        }) result.Units[unit.Key] = Try("units." + unit.Key,
             () => document.GetUnits().GetFormatOptions(unit.Value).GetUnitTypeId().TypeId);
         return result;
     }
 
-    private static T? Try<T>(ModelHealthData result, string metric, Func<T> read)
+    private static T? Try<T>(string metric, Func<T> read)
     {
         try { return read(); }
         catch (Exception exception)
         {
-            result.Skipped.Add(new SkippedMetric { Metric = metric, Error = exception.Message });
+            PluginLog.Skipped($"model health {metric}", exception);
             return default;
         }
     }

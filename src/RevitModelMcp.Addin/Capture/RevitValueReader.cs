@@ -79,8 +79,9 @@ internal static class RevitValueReader
                 XMax = ToMillimeters(box.Max.X)
             };
         }
-        catch
+        catch (Exception exception)
         {
+            PluginLog.Skipped($"element {GetId(element.Id)} bounding box on view {GetId(view.Id)}", exception);
             return null;
         }
     }
@@ -118,8 +119,9 @@ internal static class RevitValueReader
         {
             return GetParameterText(element.LookupParameter(name));
         }
-        catch
+        catch (Exception exception)
         {
+            PluginLog.Skipped($"element {GetId(element.Id)} parameter {name}", exception);
             return null;
         }
     }
@@ -133,8 +135,9 @@ internal static class RevitValueReader
                 ? null
                 : ToMillimeters(parameter.AsDouble());
         }
-        catch
+        catch (Exception exception)
         {
+            PluginLog.Skipped($"element {GetId(element.Id)} parameter {parameterId}", exception);
             return null;
         }
     }

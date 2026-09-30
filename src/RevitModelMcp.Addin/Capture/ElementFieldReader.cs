@@ -37,7 +37,15 @@ internal sealed class ElementFieldReader
                 continue;
             }
 
-            record.Values[field] = ReadValue(element, field);
+            try
+            {
+                record.Values[field] = ReadValue(element, field);
+            }
+            catch (Exception exception)
+            {
+                PluginLog.Skipped($"element {record.Id} field {field}", exception);
+                record.Values[field] = new PreparedQueryValue();
+            }
         }
 
         return record;
