@@ -120,7 +120,6 @@ class SshPowerShellHost:
     async def batch_create(self, run_id: str, content: str) -> None:
         if not re.fullmatch(r"[0-9a-f]{32}", run_id):
             raise RevitChannelError("Invalid batch run id.")
-        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
         await self._run(
             f"$root = Join-Path ({self._root_directory}) 'runs'; "
             f"$run = Join-Path $root '{run_id}'; "
@@ -128,8 +127,11 @@ class SshPowerShellHost:
             "if (Test-Path -LiteralPath $run) { throw 'Batch run already exists.' }; "
             "New-Item -ItemType Directory -Path $run -ErrorAction Stop | Out-Null; "
             "$temporary = Join-Path $run 'run.tmp'; $target = Join-Path $run 'run.json'; "
-            f"[IO.File]::WriteAllBytes($temporary, [Convert]::FromBase64String('{encoded}')); "
-            "[IO.File]::Move($temporary, $target)"
+            "try { $stream = [IO.File]::Create($temporary); "
+            "try { [Console]::OpenStandardInput().CopyTo($stream) } finally { $stream.Dispose() }; "
+            "[IO.File]::Move($temporary, $target) } catch { "
+            "Remove-Item -LiteralPath $run -Recurse -Force -ErrorAction SilentlyContinue; throw }",
+            input=content.encode("utf-8"),
         )
 
     async def batch_status(self, run_id: str) -> dict[str, object]:
@@ -646,7 +648,9 @@ class SshPowerShellHost:
         command.extend(shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", "")))
         return command + [self.host] + powershell
 
-    async def _run(self, script: str, timeout_seconds: float = 60) -> str:
+    async def _run(
+        self, script: str, timeout_seconds: float = 60, *, input: bytes | None = None
+    ) -> str:
         command = self._build_command(script)
         multiplexed = os.environ.get("REVIT_MCP_SSH_MUX") != "0" and "ControlMaster=auto" in command
         process: asyncio.subprocess.Process | None = None
@@ -654,9 +658,14 @@ class SshPowerShellHost:
             if not self.local:
                 await self._reserve_connection(multiplexed)
             process = await asyncio.create_subprocess_exec(
-                *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                *command,
+                stdin=asyncio.subprocess.PIPE if input is not None else None,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout_seconds)
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(input=input), timeout=timeout_seconds
+            )
         except asyncio.CancelledError:
             if process is not None and process.returncode is None:
                 process.kill()

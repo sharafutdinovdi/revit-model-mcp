@@ -70,8 +70,10 @@ class FakeSshProcess:
         self.stderr = stderr
         self.hang = hang
         self.killed = False
+        self.input: bytes | None = None
 
-    async def communicate(self) -> tuple[bytes, bytes]:
+    async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
+        self.input = input
         if self.hang and not self.killed:
             await asyncio.Future()
         return self.stdout, self.stderr
@@ -1025,6 +1027,55 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
 
 class HostConfigurationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_batch_create_transfers_long_unicode_state_on_stdin(self) -> None:
+        run_id = "a" * 32
+        state = json.dumps(
+            {
+                "runId": run_id,
+                "status": 0,
+                "cancelRequested": False,
+                "years": [2024, 2025, 2026],
+                "parameterRules": [
+                    {"category": "Walls", "parameter": "Mark"},
+                    {"category": "Doors", "parameter": "Comments"},
+                ],
+                "models": [
+                    {
+                        "path": f"C:\\Models\\Проект 東京 {number:02d}\\" + "Модель " * 12 + ".rvt",
+                        "status": 0,
+                        "phaseTimingsMs": {},
+                    }
+                    for number in range(13)
+                ],
+            },
+            ensure_ascii=False,
+        )
+        encoded_state = base64.b64encode(state.encode("utf-8")).decode("ascii")
+        self.assertGreater(len(base64.b64encode(encoded_state.encode("utf-16le"))), 8191)
+
+        for local in (False, True):
+            with self.subTest(local=local):
+                host = SshPowerShellHost("local" if local else "revit-host", local=local)
+                process = FakeSshProcess(0)
+                with patch(
+                    "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                    AsyncMock(return_value=process),
+                ) as start:
+                    await host.batch_create(run_id, state)
+
+                command = start.call_args.args
+                script = base64.b64decode(command[-1]).decode("utf-16le")
+                self.assertEqual(command[0], "powershell.exe" if local else "ssh")
+                self.assertLess(len(command[-1]), 8191)
+                self.assertNotIn(encoded_state, script)
+                self.assertNotIn("Проект", script)
+                self.assertIn("[Console]::OpenStandardInput().CopyTo($stream)", script)
+                self.assertIn("[IO.File]::Move($temporary, $target)", script)
+                self.assertIn("Batch run already exists.", script)
+                self.assertIn("Remove-Item -LiteralPath $run", script)
+                self.assertEqual(start.call_args.kwargs["stdin"], asyncio.subprocess.PIPE)
+                self.assertEqual(process.input, state.encode("utf-8"))
+
     async def test_successful_muxed_ssh_updates_shared_last_success(self) -> None:
         host = SshPowerShellHost("revit-host")
         process = FakeSshProcess(0, stdout=b"ok")
