@@ -15,6 +15,7 @@ It does not mean the source file was saved or upgraded on disk.
 `passport.fileLastWriteUtc` is an OS file-system timestamp, not a Revit save or synchronization time.
 When `passport.revitServer` data is present, its server history is authoritative for Revit Server modification history.
 Keep failed models visible and never treat them as zero results.
+When dialogs fail a model, list their DialogIds for maintainer allowlist review.
 `skipped` and `skippedCount` limit completeness, and `skippedCount` can exceed the listed entries.
 Prioritize findings across models by severity, likely project impact, affected count, explicit project rules, and evidence completeness.
 Keep observations separate from project requirements.

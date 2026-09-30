@@ -12,7 +12,7 @@ from typing import Any
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from revit_model_mcp.actions import redact_model_paths
+from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
 from revit_model_mcp.revit_channel import ReadJob, RevitChannelError, resolve_instance
 from revit_model_mcp.ssh_host import SshPowerShellHost
@@ -95,6 +95,16 @@ def _public(state: dict[str, Any]) -> dict[str, Any]:
     public["models"] = []
     for model in state.get("models", []):
         record = dict(model)
+        if env_flag("REVIT_MCP_REDACT_PATHS", False) and "dialogs" in record:
+            record["dialogs"] = [
+                {
+                    **dialog,
+                    "modelPath": PureWindowsPath(dialog["modelPath"]).name,
+                }
+                if isinstance(dialog, dict) and isinstance(dialog.get("modelPath"), str)
+                else dialog
+                for dialog in record["dialogs"]
+            ]
         if type(record.get("status")) is int and 0 <= record["status"] < len(model_names):
             record["status"] = model_names[record["status"]]
         if type(record.get("phase")) is int and 0 <= record["phase"] < len(phase_names):
@@ -261,8 +271,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                     if model.get("status") in (2, "completed")
                     else None,
                 }
-                for field in ("error", "reason"):
-                    if public_model.get(field):
+                for field in ("error", "reason", "dialogs"):
+                    if field in public_model and (field == "dialogs" or public_model[field]):
                         outcome[field] = public_model[field]
                 outcomes.append(outcome)
             return {

@@ -96,6 +96,7 @@ internal sealed class BatchSupervisor(
                 prepassStopwatch.Restart();
                 var prepass = await PhaseAsync(worker, "batch-prepass", new() { ["path"] = model.Path },
                     BatchPhase.PrePass, TimeSpan.FromMinutes(2), cancellationToken);
+                EnsurePhaseSucceeded(prepass, "batch-prepass");
                 var data = Data(prepass);
                 savedYear = Convert.ToInt32(data["savedYear"]);
                 savedSource = Convert.ToString(data["source"]) ?? "BasicFileInfo.Format";
@@ -135,7 +136,7 @@ internal sealed class BatchSupervisor(
             };
             _store.Write(Replace(run, index, model));
             var stopwatch = Stopwatch.StartNew();
-            await PhaseAsync(worker, "batch-open", new() { ["path"] = model.Path },
+            await ModelPhaseAsync(run, model, index, worker, "batch-open", new() { ["path"] = model.Path },
                 BatchPhase.Open, TimeSpan.FromMinutes(10), cancellationToken);
             opened = true;
             model = BatchStatePolicy.Timed(model, BatchPhase.Open, stopwatch.ElapsedMilliseconds);
@@ -143,8 +144,9 @@ internal sealed class BatchSupervisor(
             stopwatch.Restart();
             model = model with { Phase = BatchPhase.Snapshot };
             _store.Write(Replace(run, index, model));
-            var snapshot = await PhaseAsync(worker, "batch-snapshot", new()
+            var snapshot = await ModelPhaseAsync(run, model, index, worker, "batch-snapshot", new()
             {
+                ["path"] = model.Path,
                 ["parameterRules"] = run.ParameterRules.Select(rule => new Dictionary<string, string>
                 {
                     ["category"] = rule.Category,
@@ -168,7 +170,8 @@ internal sealed class BatchSupervisor(
                         model = model with { Phase = BatchPhase.Close };
                         _store.Write(Replace(run, index, model));
                         var stopwatch = Stopwatch.StartNew();
-                        await PhaseAsync(worker, "batch-close", new(), BatchPhase.Close,
+                        await ModelPhaseAsync(run, model, index, worker, "batch-close",
+                            new() { ["path"] = model.Path }, BatchPhase.Close,
                             TimeSpan.FromMinutes(2), CancellationToken.None, ignoreCancellation: true);
                         model = BatchStatePolicy.Timed(model, BatchPhase.Close, stopwatch.ElapsedMilliseconds);
                         _store.Write(Replace(run, index, model));
@@ -180,8 +183,46 @@ internal sealed class BatchSupervisor(
                 worker.Dispose();
             }
         }
-        if (closeFailure is not null) throw new InvalidOperationException("Batch document could not close without saving.", closeFailure);
+        if (closeFailure is not null) throw new InvalidOperationException(
+            $"Batch document could not close without saving: {closeFailure.Message}", closeFailure);
         return model;
+    }
+
+    private async Task<Dictionary<string, object>> ModelPhaseAsync(BatchRun run, BatchModel model, int index,
+        RevitWorkerProcess worker, string command, Dictionary<string, object> payload, BatchPhase phase,
+        TimeSpan budget, CancellationToken cancellationToken, bool ignoreCancellation = false)
+    {
+        var response = await PhaseAsync(worker, command, payload, phase, budget, cancellationToken, ignoreCancellation);
+        RecordDialogs(run, model, index, response);
+        EnsurePhaseSucceeded(response, command);
+        return response;
+    }
+
+    private void RecordDialogs(BatchRun run, BatchModel model, int index, Dictionary<string, object> response)
+    {
+        if (response.TryGetValue("data", out var value) && value is Dictionary<string, object> data &&
+            data.TryGetValue("dialogs", out var dialogs) && dialogs is System.Collections.IEnumerable items)
+        {
+            BatchDialogPolicy.Append(model, items.Cast<object>().OfType<Dictionary<string, object>>().Select(fields => new BatchDialogRecord
+            {
+                DialogId = Convert.ToString(fields["dialogId"])!,
+                Type = Convert.ToString(fields["type"])!,
+                Message = fields.TryGetValue("message", out var message) ? Convert.ToString(message) : null,
+                Decision = Convert.ToString(fields["decision"])!,
+                Result = fields.TryGetValue("result", out var result) && result is not null ? Convert.ToInt32(result) : null,
+                ModelPath = Convert.ToString(fields["modelPath"])!,
+                Phase = Convert.ToString(fields["phase"])!,
+                TimeUtc = Convert.ToString(fields["timeUtc"])!
+            }));
+            _store.Write(Replace(run, index, model));
+        }
+    }
+
+    private static void EnsurePhaseSucceeded(Dictionary<string, object> response, string command)
+    {
+        if (response.TryGetValue("success", out var value) && value is true) return;
+        throw new InvalidOperationException(Convert.ToString(response.TryGetValue("error", out var error) ? error :
+            response.TryGetValue("message", out var message) ? message : null) ?? $"{command} failed.");
     }
 
     private async Task<RevitWorkerProcess> StartWorkerAsync(string executable, CancellationToken cancellationToken)

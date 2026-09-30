@@ -28,15 +28,15 @@ internal static class BatchCommands
                     Write(application, job, startedAt, stopwatch, PrePass(job.CoordinatorJob.Path));
                     break;
                 case ControlJobKind.BatchOpen:
-                    Write(application, job, startedAt, stopwatch, Open(application, job.CoordinatorJob.Path));
+                    ExecuteModelPhase(application, job, startedAt, stopwatch, "open",
+                        () => DocumentActions.BatchOpen(application, job.CoordinatorJob.Path!));
                     break;
                 case ControlJobKind.BatchClose:
-                    Write(application, job, startedAt, stopwatch, DocumentActions.BatchClose());
+                    ExecuteModelPhase(application, job, startedAt, stopwatch, "close", DocumentActions.BatchClose);
                     break;
                 case ControlJobKind.BatchSnapshot:
-                    EnsureWorker();
-                    Write(application, job, startedAt, stopwatch,
-                        ModelSnapshotReader.Read(DocumentActions.BatchDocument, job.ParameterRules));
+                    ExecuteModelPhase(application, job, startedAt, stopwatch, "snapshot",
+                        () => ModelSnapshotReader.Read(DocumentActions.BatchDocument, job.ParameterRules));
                     break;
                 default: throw new ArgumentException("Unknown batch command.");
             }
@@ -102,22 +102,50 @@ internal static class BatchCommands
         };
     }
 
-    private static ActionResultData Open(UIApplication application, string? path)
+    private static void ExecuteModelPhase<T>(UIApplication application, ControlJobParseResult job,
+        DateTimeOffset startedAt, Stopwatch stopwatch, string phase, Func<T> operation)
     {
-        EnsureWorker();
-        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Model path is required.");
-        var dialogHandler = new BatchDialogHandler();
-        application.DialogBoxShowing += dialogHandler.OnDialog;
+        BatchDialogHandler? dialogHandler = null;
+        var published = false;
+        var writer = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+            ReadCommandReader.ReadResponder(application), job.CorrelationId);
+        void Publish(T? result, string? error)
+        {
+            if (published) return;
+            published = true;
+            var data = new BatchPhaseResult<T> { Dialogs = dialogHandler?.Dialogs.ToList() ?? [], Result = result };
+            var response = error is null
+                ? CommandResponse<BatchPhaseResult<T>>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds)
+                : CommandResponse<BatchPhaseResult<T>>.Fail(job.Command, error, stopwatch.ElapsedMilliseconds);
+            response.Data = data;
+            writer.Write(response);
+        }
         try
         {
-            var result = DocumentActions.BatchOpen(application, path);
-            if (!dialogHandler.UnknownDialogSeen) return result;
-            DocumentActions.BatchClose();
-            throw new InvalidOperationException("An unknown modal dialog interrupted the batch open.");
+            EnsureWorker();
+            var path = job.CoordinatorJob.Path;
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Model path is required.");
+            var allowlistPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "RevitModelMcp", "batch-dialogs.json");
+            var choices = BatchDialogPolicy.Load(allowlistPath);
+            dialogHandler = new BatchDialogHandler(path, phase, choices, unknown =>
+                Publish(default, $"Unknown dialog '{unknown.DialogId}': {unknown.Message ?? "No message available."}"));
+            application.DialogBoxShowing += dialogHandler.OnDialog;
+            var result = operation();
+            if (dialogHandler.UnknownDialog is not null)
+                throw new InvalidOperationException("Unknown modal dialog interrupted the batch phase.");
+            Publish(result, null);
+        }
+        catch (Exception exception)
+        {
+            var unknown = dialogHandler?.UnknownDialog;
+            var reason = unknown is null ? exception.Message :
+                $"Unknown dialog '{unknown.DialogId}': {unknown.Message ?? "No message available."}";
+            Publish(default, reason);
         }
         finally
         {
-            application.DialogBoxShowing -= dialogHandler.OnDialog;
+            if (dialogHandler is not null) application.DialogBoxShowing -= dialogHandler.OnDialog;
         }
     }
 
