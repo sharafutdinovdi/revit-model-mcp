@@ -42,7 +42,7 @@ def endpoint():
         def log_message(self, *args):
             pass
 
-        def reply(self, status, body, content_type="application/json", proof=None):
+        def reply(self, status, body, content_type="application/json", proof=None, location=None):
             if not isinstance(body, bytes):
                 body = json.dumps(body).encode()
             self.send_response(status)
@@ -51,6 +51,8 @@ def endpoint():
             self.send_header("X-Revit-Job-Id", "job-1")
             if proof is not None:
                 self.send_header("X-RevitMcp-Proof", proof)
+            if location is not None:
+                self.send_header("Location", location)
             self.end_headers()
             self.wfile.write(body)
 
@@ -100,10 +102,7 @@ def endpoint():
                 self.close_connection = True
                 return
             if state["status"] == 302:
-                self.send_response(302)
-                self.send_header("Location", state["redirect"])
-                self.end_headers()
-                return
+                return self.reply(302, b"", location=state["redirect"])
             if state["status"] not in (200, 202):
                 return self.reply(state["status"], {"error": "error"})
             if self.command == "POST":
