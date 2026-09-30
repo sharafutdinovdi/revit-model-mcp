@@ -50,6 +50,10 @@ EXPECTED_TOOLS = {
     "revit_family_audit",
     "revit_compare_link_datums",
     "revit_nwc_settings_check",
+    "revit_batch_start",
+    "revit_batch_status",
+    "revit_batch_cancel",
+    "revit_batch_fetch",
 }
 ACTION_TOOL_NAMES = {
     "revit_select",
@@ -235,6 +239,18 @@ EXPECTED_PARAMETERS = {
         "pickup_timeout_seconds",
         "document",
     ],
+}
+
+UNADDRESSED_TOOLS = {
+    "revit_list_instances",
+    "revit_batch_start",
+    "revit_batch_status",
+    "revit_batch_cancel",
+    "revit_batch_fetch",
+}
+EXPECTED_PARAMETERS = {
+    name: parameters if name in UNADDRESSED_TOOLS else [*parameters, "process_id"]
+    for name, parameters in EXPECTED_PARAMETERS.items()
 }
 
 

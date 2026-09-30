@@ -77,6 +77,8 @@ jobs:
           global-json-file: global.json
       - name: Restore Revit API reference pin helper with lock
         run: dotnet restore build/RevitApiReferencePin/RevitApiReferencePin.csproj --locked-mode -p:Configuration=Release
+      - name: Restore batch supervisor with lock
+        run: dotnet restore src/RevitModelMcp.BatchSupervisor/RevitModelMcp.BatchSupervisor.csproj --locked-mode -p:Configuration=Release.R26
       - name: Build installer Revit versions
         shell: pwsh
         run: |
@@ -138,6 +140,7 @@ jobs:
               if ($manifest.Count -ne 1) { throw "Missing or duplicate R$year manifest in MSI" }
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year assembly in MSI" }
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.Updater.exe")) { throw "Missing R$year updater in MSI" }
+              if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe")) { throw "Missing R$year batch supervisor in MSI" }
               Write-Host "ASSERT: $($msi.Name) contains R$year manifest and assembly"
             }
             Write-Host "ASSERT: $($msi.Name) contains no Autodesk DLLs"
@@ -153,7 +156,7 @@ jobs:
             if ($process.ExitCode -ne 0) { throw "SingleUser install failed: $($process.ExitCode)" }
             Write-Host 'ASSERT: SingleUser install exit code 0'
             foreach ($root in $roots) {
-              foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe') {
+              foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe', 'RevitModelMcp/RevitModelMcp.BatchSupervisor.exe') {
                 if (!(Test-Path "$root/$relative")) { throw "Missing installed file: $root/$relative" }
                 Write-Host "ASSERT: installed $root/$relative"
               }
@@ -164,7 +167,7 @@ jobs:
             Write-Host 'ASSERT: SingleUser uninstall exit code 0'
           }
           foreach ($root in $roots) {
-            foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe') {
+            foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe', 'RevitModelMcp/RevitModelMcp.BatchSupervisor.exe') {
               if (Test-Path "$root/$relative") { throw "File remains after uninstall: $root/$relative" }
               Write-Host "ASSERT: removed $root/$relative"
             }
@@ -180,7 +183,7 @@ jobs:
             if ($process.ExitCode -ne 0) { throw "MultiUser install failed: $($process.ExitCode)" }
             Write-Host 'ASSERT: MultiUser install exit code 0'
             foreach ($root in $roots) {
-              foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe') {
+              foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe', 'RevitModelMcp/RevitModelMcp.BatchSupervisor.exe') {
                 if (!(Test-Path "$root/$relative")) { throw "Missing installed file: $root/$relative" }
                 Write-Host "ASSERT: installed $root/$relative"
               }
@@ -191,7 +194,7 @@ jobs:
             Write-Host 'ASSERT: MultiUser uninstall exit code 0'
           }
           foreach ($root in $roots) {
-            foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe') {
+            foreach ($relative in 'RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe', 'RevitModelMcp/RevitModelMcp.BatchSupervisor.exe') {
               if (Test-Path "$root/$relative") { throw "File remains after uninstall: $root/$relative" }
               Write-Host "ASSERT: removed $root/$relative"
             }
@@ -230,6 +233,7 @@ jobs:
             Copy-Item src/RevitModelMcp.Addin/RevitModelMcp.addin, LICENSE, THIRD-PARTY-NOTICES.md $stage
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year add-in" }
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.Updater.exe")) { throw "Missing R$year updater" }
+            if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe")) { throw "Missing R$year batch supervisor" }
             $blocked = @(Get-ChildItem $stage -Recurse -Filter '*.dll' -File | Where-Object {
               $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
               $_.VersionInfo.CompanyName -match 'Autodesk'

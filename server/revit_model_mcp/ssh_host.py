@@ -90,6 +90,92 @@ class SshPowerShellHost:
     def requires_identity(self) -> bool:
         return self._instance is not None and self._instance.get("fileChannelVersion") == 2
 
+    async def batch_discover(self, folder: str, recursive: bool) -> list[str]:
+        recurse = "-Recurse" if recursive else ""
+        script = (
+            f"$files = @(Get-ChildItem -LiteralPath '{_ps_quote(folder)}' -File {recurse} "
+            "-ErrorAction Stop | Where-Object { $_.Extension -in '.rvt', '.rfa' } | "
+            "ForEach-Object { $_.FullName }); "
+            "$json = ConvertTo-Json -InputObject $files -Compress; "
+            "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))"
+        )
+        output = await self._run(script)
+        result = json.loads(base64.b64decode(output, validate=True))
+        if not isinstance(result, list) or not all(isinstance(path, str) for path in result):
+            raise ResponseParseError("Batch folder discovery returned invalid paths.")
+        return result
+
+    async def batch_create(self, run_id: str, content: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RevitChannelError("Invalid batch run id.")
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        await self._run(
+            f"$root = Join-Path ({self._root_directory}) 'runs'; "
+            f"$run = Join-Path $root '{run_id}'; "
+            "New-Item -ItemType Directory -Force -Path $root | Out-Null; "
+            "if (Test-Path -LiteralPath $run) { throw 'Batch run already exists.' }; "
+            "New-Item -ItemType Directory -Path $run -ErrorAction Stop | Out-Null; "
+            "$temporary = Join-Path $run 'run.tmp'; $target = Join-Path $run 'run.json'; "
+            f"[IO.File]::WriteAllBytes($temporary, [Convert]::FromBase64String('{encoded}')); "
+            "[IO.File]::Move($temporary, $target)"
+        )
+
+    async def batch_status(self, run_id: str) -> dict[str, object]:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RevitChannelError("Invalid batch run id.")
+        output = await self._run(
+            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            "$path = Join-Path $run 'run.json'; "
+            "if (!(Test-Path -LiteralPath $path)) { throw 'Batch run was not found.' }; "
+            "$state = [IO.File]::ReadAllBytes($path); "
+            "$cancel = Test-Path -LiteralPath (Join-Path $run 'cancel.json'); "
+            "[ordered]@{ state = [Convert]::ToBase64String($state); cancel = $cancel } | ConvertTo-Json -Compress"
+        )
+        package = json.loads(output)
+        state = json.loads(base64.b64decode(package["state"], validate=True))
+        if not isinstance(state, dict):
+            raise ResponseParseError("Batch run state is invalid.")
+        if package["cancel"]:
+            state["cancelRequested"] = True
+        return state
+
+    async def batch_cancel(self, run_id: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RevitChannelError("Invalid batch run id.")
+        await self._run(
+            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            "if (!(Test-Path -LiteralPath (Join-Path $run 'run.json'))) { throw 'Batch run was not found.' }; "
+            "$target = Join-Path $run 'cancel.json'; "
+            "if (!(Test-Path -LiteralPath $target)) { "
+            "$temporary = Join-Path $run ('cancel.' + [Guid]::NewGuid().ToString('N') + '.tmp'); "
+            "[IO.File]::WriteAllText($temporary, '{\"cancelRequested\":true}'); "
+            "try { [IO.File]::Move($temporary, $target) } finally { "
+            "if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } } }"
+        )
+
+    async def batch_fetch_artifact(self, run_id: str, name: str) -> dict[str, str]:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id) or not re.fullmatch(
+            r"snapshot_[0-9]{4}\.json", name
+        ):
+            raise RevitChannelError("Invalid batch artifact address.")
+        output = await self._run(
+            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            f"$path = Join-Path $run '{name}'; "
+            "if (!(Test-Path -LiteralPath $path)) { throw 'Batch snapshot is missing.' }; "
+            f"[ordered]@{{ artifactName = '{name}'; artifact = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }} | ConvertTo-Json -Compress"
+        )
+        result = json.loads(output)
+        if not isinstance(result, dict):
+            raise ResponseParseError("Batch artifact response is invalid.")
+        return result
+
+    async def batch_activate_interactive(self) -> None:
+        if not ACTIVATION_TASK:
+            raise ActivationError(
+                "No interactive Revit scheduled task is configured in REVIT_MCP_ACTIVATE_TASK."
+            )
+        await self._run(self._activation_script())
+
     async def _discover_instances(self) -> list[dict[str, object]]:
         script = (
             f"$directory = {self._root_directory}; "

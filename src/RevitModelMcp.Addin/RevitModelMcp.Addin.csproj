@@ -58,10 +58,19 @@
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true"
                       SetTargetFramework="TargetFramework=net48"/>
+    <ProjectReference Include="..\RevitModelMcp.BatchSupervisor\RevitModelMcp.BatchSupervisor.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true"
+                      SetTargetFramework="TargetFramework=net48"/>
   </ItemGroup>
 
   <Target Name="CopyUpdater" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
+          DestinationFolder="$(TargetDir)"/>
+  </Target>
+
+  <Target Name="CopyBatchSupervisor" AfterTargets="Build">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.BatchSupervisor.exe"
           DestinationFolder="$(TargetDir)"/>
   </Target>
 

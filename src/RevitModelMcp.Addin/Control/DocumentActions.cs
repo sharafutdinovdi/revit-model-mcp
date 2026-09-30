@@ -42,7 +42,7 @@ internal static class DocumentActions
                 CentralPath = CentralPath(document)
             }).ToList();
 
-    private static ActionResultData Open(UIApplication application, ActionJobContract action)
+    private static ActionResultData Open(UIApplication application, ActionJobContract action, bool batch = false)
     {
         var stopwatch = Stopwatch.StartNew();
         var path = action.DocumentPath!;
@@ -74,7 +74,7 @@ internal static class DocumentActions
         var options = new OpenOptions
         {
             Audit = false,
-            DetachFromCentralOption = isCentral && action.Mode.StartsWith("detached", StringComparison.Ordinal)
+            DetachFromCentralOption = batch ? DetachFromCentralOption.DetachAndPreserveWorksets : isCentral && action.Mode.StartsWith("detached", StringComparison.Ordinal)
                 ? action.Mode == "detached_discard_worksets"
                     ? DetachFromCentralOption.DetachAndDiscardWorksets
                     : DetachFromCentralOption.DetachAndPreserveWorksets
@@ -98,6 +98,34 @@ internal static class DocumentActions
             WorksetsOpen = WorksetNames(document),
             ElapsedMs = stopwatch.ElapsedMilliseconds
         };
+    }
+
+    private static Document? _batchDocument;
+
+    internal static ActionResultData BatchOpen(UIApplication application, string path)
+    {
+        if (_batchDocument is not null) throw new InvalidOperationException("A batch document is already open.");
+        var result = Open(application, new ActionJobContract
+        {
+            DocumentPath = path,
+            Mode = "detached",
+            Worksets = "all",
+            Activate = false
+        }, batch: true);
+        _batchDocument = application.Application.Documents.Cast<Document>()
+            .Single(document => document.Title == result.Title && document.PathName == result.Path);
+        return result;
+    }
+
+    internal static ActionResultData BatchClose()
+    {
+        var document = _batchDocument ?? throw new InvalidOperationException("No batch document is open.");
+        var title = document.Title;
+        var path = document.PathName;
+        _batchDocument = null;
+        Opened.Remove(document);
+        if (!document.Close(false)) throw new InvalidOperationException("Revit did not close the batch document.");
+        return new ActionResultData { Title = title, Path = path, Saved = false };
     }
 
     private static WorksetConfiguration WorksetConfiguration(ModelPath path, string selection, List<string>? openNames)

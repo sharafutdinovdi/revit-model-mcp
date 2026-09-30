@@ -116,3 +116,7 @@ Transport failures become MCP tool errors for both reads and actions.
 Model data and add-in error messages retain their source language.
 
 See the [feed format](feed-format.md) for field names and directories and [known gaps](roadmap.md#known-gaps) for protocol limitations.
+
+## Batch supervisor
+
+The [batch supervisor](../src/RevitModelMcp.BatchSupervisor/BatchSupervisor.cs) is a separate net48 process with a Core reference and no Revit API reference. It owns only workers it launched, records phase progress atomically in `run.json`, and resumes unfinished models after restart. The add-in exposes a small launch, pre-pass, open, and close command set. The worker sends `model-snapshot` through the existing v2 file channel. See [batch collection](batch.md) for routing and failure behavior.

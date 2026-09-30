@@ -1,0 +1,27 @@
+# Batch model collection
+
+Batch collection runs on a Windows Revit workstation. It starts a separate Revit worker, opens one model at a time in the background, asks the add-in for `model-snapshot`, and closes the model without saving. The snapshot is opaque schema-version-1 JSON supplied by the separate snapshot reader. Batch collection does not save, synchronize, start transactions, or expose action commands to the worker.
+
+## Tools and inputs
+
+`revit_batch_start(paths=null, folder=null, recursive=false, parameter_rules=null, years=null)` accepts exactly one source. `paths` is a nonempty list of absolute `.rvt` or `.rfa` local, UNC, or RSN paths. A `folder` discovers those extensions at its top level unless `recursive=true`. Blank entries, duplicate normalized paths, unsupported extensions, and both or neither source fail before a run is created. `years` is a distinct list of supported integers from 2022 through 2027 and limits the installed Revit versions available for routing. `parameter_rules` is a list of nonblank `{category, parameter}` objects passed to `model-snapshot`.
+
+Start returns a `runId` and accepted model count. The workstation stores immutable inputs and mutable state in `ROOT\runs\<runId>\run.json`. The supervisor replaces this file atomically. Its lifetime is independent of the MCP client. `revit_batch_status(run_id)` reads the persisted run and model statuses, saved and runtime years, `upgradedInMemory`, phase timings, worker identity, errors, and snapshot names. Completed and failed models stay terminal on restart. An interrupted running model returns to pending. `revit_batch_cancel(run_id)` writes a durable cancellation marker, stops new work, closes an opened model without saving when possible, and marks remaining models cancelled. `revit_batch_fetch(run_id, dest_dir)` copies completed snapshots to new client files. It requires a terminal run, rejects missing snapshots and existing destination names, and returns local paths. Fetch uses the existing SSH artifact transfer path for a remote workstation.
+
+Each model can fail at worker startup, metadata pre-pass, open, snapshot collection, or close. A deadline, stale heartbeat, worker exit, or unknown modal dialog fails that model and recycles only the supervisor-owned worker. The next model continues. A timeout after an operation may have occurred is reported as an error; inspect persisted state before retrying.
+
+## Year routing and sources
+
+For local and UNC files, a worker reads `BasicFileInfo.Format` before open. For RSN, the configured Revit Server REST `/contents` response supplies `ProductVersion`; `/modelInfo` and `/history` supply activity metadata. The saved-year source is recorded separately from activity provenance. Set `REVIT_MCP_RSN_REST_BASE` to the matching `AdminRESTService.svc/` URL. The configured host must match the RSN path. Windows credentials used by the supervisor must have access. A missing endpoint, authentication failure, or unsupported response fails that model's pre-pass; the supervisor does not guess credentials or endpoints. Cloud model paths are unsupported.
+
+Routing prefers the exact installed saved year. Otherwise it chooses the nearest allowed installed newer year and records `upgradedInMemory=true`. It refuses a saved year newer than all allowed installed versions. The saved year is never rewritten by routing. The detached document is never saved.
+
+The workstation can run multiple Revit processes. This uses memory and may consume another Revit license or seat. Check local licensing and available resources before starting large runs.
+
+## Interactive task for SSH
+
+An SSH service session cannot launch a usable GUI Revit worker. Configure a Windows Scheduled Task named by `REVIT_MCP_ACTIVATE_TASK` to run interactively as the same signed-in user as the add-in. Use the task's **Run only when user is logged on** setting and `/IT` when creating it. Its action should start or restore the user's Revit session and leave the add-in available. The server invokes `schtasks /Run /TN <task-name>` when no suitable Revit instance is available, then discovers the instance again. `/IT` requires the user to be logged in. Behavior while the desktop is locked, an RDP session is disconnected, or the user is logged off must be tested on the target workstation; it is not guaranteed by this protocol.
+
+## Explicit process addressing
+
+Read and document lifecycle tools accept optional positive integer `process_id` (alias `processId`). An explicit PID takes precedence over document selection. If both are supplied, the document must match that instance. The selected heartbeat identity is checked again before job publication. Omitted PID keeps the existing single-instance and document selection rules. Use `revit_list_instances` to discover current PIDs; a stale or replaced PID fails before submission.

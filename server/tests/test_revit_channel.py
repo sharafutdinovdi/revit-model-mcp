@@ -1521,6 +1521,25 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(r"instances\42", selected._directory)
         self.assertEqual(host._directory, host._root_directory)
 
+    async def test_explicit_pid_selects_exact_instance_and_rejects_contradiction(self):
+        host = SshPowerShellHost()
+        host._discover_instances = AsyncMock(
+            return_value=[instance_status(42, "Structural"), instance_status(84, "Architectural")]
+        )
+        with patch.object(SshPowerShellHost, "_handshake", AsyncMock()):
+            selected, job = await host.select_job(ReadJob.document_info().for_process(84))
+            self.assertEqual(selected._instance["processId"], 84)
+            self.assertEqual(job.payload["targetProcessId"], 84)
+            with self.assertRaisesRegex(RevitChannelError, "contradict"):
+                await host.select_job(
+                    ReadJob.document_info().for_document("Structural").for_process(84)
+                )
+            with self.assertRaisesRegex(RevitChannelError, "absent or ambiguous"):
+                await host.select_job(ReadJob.document_info().for_process(99))
+        for value in (0, -1, True, "84"):
+            with self.assertRaisesRegex(RevitChannelError, "strict positive"):
+                ReadJob.document_info().for_process(value)
+
     async def test_zero_many_and_undirected_matches_fail_before_publish(self):
         for document, message in [
             ("Missing", "No running"),
@@ -1610,7 +1629,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_previously_pinned_action_does_not_switch_process(self):
         host = SshPowerShellHost()
         host._discover_instances = AsyncMock(return_value=[instance_status(84)])
-        with self.assertRaisesRegex(RevitChannelError, "process changed"):
+        with self.assertRaisesRegex(RevitChannelError, "absent or ambiguous"):
             await host.select_job(ReadJob("select", {"command": "select", "targetProcessId": 42}))
 
     async def test_discovery_keeps_busy_and_timed_out_instances(self):

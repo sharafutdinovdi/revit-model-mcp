@@ -4,6 +4,8 @@ All tools support local, SSH and HTTP transports.
 `revit_export_view` downloads PNG through `/views/{name}/image` in HTTP mode.
 `revit_list_instances` reports the connected Revit process in HTTP mode.
 
+Every addressed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
+
 Every read tool except `revit_export_view`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. Family audit accepts `response_timeout_s=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Arguments without defaults in these tables are required.
@@ -36,6 +38,10 @@ Every successful read result returns top-level `skipped` and `skippedCount`. Eac
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
 | `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
+| `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null` | Start persistent read-only collection; see [batch collection](batch.md). |
+| `revit_batch_status` | `run_id` | Read persisted run and model status. |
+| `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
+| `revit_batch_fetch` | `run_id`, `dest_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 
 The `settings_xml` path rejects device paths, `..` segments and UNC shares absent from `trustedNetworkRoots`; files over 1 MiB are refused before reading.
@@ -47,14 +53,14 @@ Geometric alignment does not create a monitor relationship or later Coordination
 
 ### Family audit
 
-On an open `.rfa`, omit `families`; the audit reads that family without saving it. In a project, pass 1–200 exact family names (case-insensitive) or `["*"]` for every editable loadable family. The add-in opens each family with `EditFamily` and closes it without loading it back. In-place, non-editable and missing families have a `skipped` result with a reason. A project transaction must be closed before the call.
+On an open `.rfa`, omit `families`; the audit reads that family without saving it. In a project, pass 1-200 exact family names (case-insensitive) or `["*"]` for every editable loadable family. The add-in opens each family with `EditFamily` and closes it without loading it back. In-place, non-editable and missing families have a `skipped` result with a reason. A project transaction must be closed before the call.
 
 Each parameter reports scope, shared GUID, group type ID, formula, reporting status and use. Associations, formula substrings and dimension or array labels count as use. Formula matching is deliberately over-inclusive. An unused shared parameter has `dataCarrierRisk:true` because project schedules and tags can still depend on its values.
 
-`purgeable` groups Revit's unused-element candidates by category. Coverage is `full` in Revit 2024 and later. In Revit 2022–2023, coverage is `families-and-types`; materials, patterns and styles are not included.
+`purgeable` groups Revit's unused-element candidates by category. Coverage is `full` in Revit 2024 and later. In Revit 2022-2023, coverage is `families-and-types`; materials, patterns and styles are not included.
 
 **Coordinator checks.** Call `revit_model_health` → `revit_links_status` → `revit_shared_coordinates` → `revit_parameter_fill_check(categories=["Walls","Doors"], parameters=["Mark","Comments"])` before an export or hand-over.
-Category and parameter names use the model language; the fill check accepts 1–20 categories, 1–30 parameters and a sample limit of 1–100.
+Category and parameter names use the model language; the fill check accepts 1-20 categories, 1-30 parameters and a sample limit of 1-100.
 Coordinator location and link lists are capped at 100 without pagination; locations are sorted by name and links by ID.
 `pinned` and `viewSpecific` are true when any instance of the reported type qualifies.
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.

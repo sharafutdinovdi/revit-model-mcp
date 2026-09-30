@@ -54,7 +54,7 @@ internal static class ActionCommandExecutor
         if (job.Command == "open-document") application.Application.FailuresProcessing += SuppressOpenWarnings;
         try
         {
-            if (ReadOnlyMode) throw new InvalidOperationException("read-only mode");
+            if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1") throw new InvalidOperationException("read-only mode");
             if (job.Error is not null) throw new ArgumentException(job.Error);
             if (job.Command is "open-document" or "close-document" or "save-document" or "sync-document")
             {
@@ -141,7 +141,7 @@ internal static class ActionCommandExecutor
         CommandResponse<FamilyEditData>? response = null;
         try
         {
-            if (ReadOnlyMode)
+            if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
                 throw new InvalidOperationException("read-only mode");
             if (job.Error is not null) throw new ArgumentException(job.Error);
             document = ResolveDocument(application, job.TargetDocument);

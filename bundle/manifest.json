@@ -220,6 +220,22 @@
     {
       "name": "revit_edit_families",
       "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode."
+    },
+    {
+      "name": "revit_batch_start",
+      "description": "Start a persistent, read-only run over local, UNC, or RSN models."
+    },
+    {
+      "name": "revit_batch_status",
+      "description": "Read durable run and model status after the initiating client exits."
+    },
+    {
+      "name": "revit_batch_cancel",
+      "description": "Persist cancellation and prevent unstarted models from running."
+    },
+    {
+      "name": "revit_batch_fetch",
+      "description": "Download completed snapshots to new local files without overwriting."
     }
   ],
   "tools_generated": true,

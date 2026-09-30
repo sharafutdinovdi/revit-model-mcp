@@ -15,6 +15,7 @@ from revit_model_mcp.revit_channel import (
     ReadJob,
     RevitChannelError,
     resolve_instance,
+    select_instance,
     with_client_identity,
 )
 
@@ -24,6 +25,9 @@ NonEmptyIds = Annotated[ElementIds, Field(min_length=1)]
 Number = Annotated[float, Field(allow_inf_nan=False)]
 PositiveLength = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Name = Annotated[str, Field(min_length=1, pattern=r"\S")]
+ProcessId = Annotated[
+    int | None, Field(strict=True, gt=0, validation_alias=AliasChoices("process_id", "processId"))
+]
 ParameterId = Annotated[
     str,
     Field(
@@ -229,12 +233,20 @@ async def _send_action(
     command: str,
     *,
     document: str | None = None,
+    process_id: int | None = None,
     response_timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
     **payload,
 ) -> dict[str, Any]:
     try:
         instances = await host_provider().list_revit_instances()
-        selected = resolve_instance(instances, document)
+        selected = (
+            select_instance(
+                instances,
+                ReadJob(command, {"targetProcessId": process_id, "targetDocument": document}),
+            )
+            if process_id is not None
+            else resolve_instance(instances, document)
+        )
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
     if document is not None:
@@ -259,6 +271,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         command: str,
         *,
         document: str | None = None,
+        process_id: int | None = None,
         response_timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
         **payload,
     ) -> dict[str, Any]:
@@ -269,6 +282,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             host_provider,
             command,
             document=document,
+            process_id=process_id,
             response_timeout_s=response_timeout_s,
             **payload,
         )
@@ -316,6 +330,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         worksets: Literal["all", "none"] | dict[str, list[Name]] = "all",
         activate: bool = False,
         audit: bool = False,
+        process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."""
         if isinstance(worksets, dict) and (set(worksets) != {"open"} or not worksets["open"]):
@@ -330,15 +345,23 @@ def register_actions(mcp, execute, host_provider) -> None:
             worksetsOpen=worksets["open"] if isinstance(worksets, dict) else None,
             activate=activate,
             audit=audit,
+            process_id=process_id,
         )
 
     @action
     async def revit_close_document(
-        document: Name, save: bool = False, confirm_token: str | None = None
+        document: Name,
+        save: bool = False,
+        confirm_token: str | None = None,
+        process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Close a background document. Show confirmationText and retry with the token only after explicit chat approval."""
         return await send(
-            "close-document", document=document, save=save, confirmToken=confirm_token
+            "close-document",
+            document=document,
+            save=save,
+            confirmToken=confirm_token,
+            process_id=process_id,
         )
 
     @action
@@ -348,6 +371,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         overwrite: bool = False,
         compact: bool = False,
         confirm_token: str | None = None,
+        process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Save only after showing confirmationText and receiving explicit chat approval for the token retry."""
         return await send(
@@ -357,6 +381,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             overwrite=overwrite,
             compact=compact,
             confirmToken=confirm_token,
+            process_id=process_id,
         )
 
     @action
@@ -368,6 +393,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         save_local_before: bool = True,
         save_local_after: bool = True,
         confirm_token: str | None = None,
+        process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Synchronize only after showing confirmationText and receiving explicit chat approval for the token retry."""
         allowed = {
@@ -389,6 +415,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             saveLocalBefore=save_local_before,
             saveLocalAfter=save_local_after,
             confirmToken=confirm_token,
+            process_id=process_id,
         )
 
     @action
