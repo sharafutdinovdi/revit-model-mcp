@@ -13,6 +13,7 @@
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

@@ -1,17 +1,17 @@
 # Read tool reference
 
-All tools support local, SSH and HTTP transports.
+Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` runs on the MCP client machine from snapshot files and needs no Revit transport or running instance.
 `revit_export_view` downloads PNG through `/views/{name}/image` in HTTP mode.
 `revit_list_instances` reports the connected Revit process in HTTP mode.
 
-Every addressed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
+Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every read tool except `revit_export_view`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. Family audit accepts `response_timeout_s=600` and `document=null`.
+Every Revit-backed read tool except `revit_export_view`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. Family audit accepts `response_timeout_s=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
 
-Every successful read result returns top-level `skipped` and `skippedCount`. Each skipped entry has `what` and `reason`. An empty list means no fields were omitted. A non-empty list means the answer is incomplete. The list keeps the first 100 entries; `skippedCount` reports the uncapped total. `revit_list_instances` returns `instances` with empty diagnostics. Model health uses this common shape instead of a nested metric/error list. Links status also keeps each link's `error` and mirrors it in `skipped`.
+Every successful Revit-backed read result returns top-level `skipped` and `skippedCount`. Each skipped entry has `what` and `reason`. An empty list means no fields were omitted. A non-empty list means the answer is incomplete. The list keeps the first 100 entries; `skippedCount` reports the uncapped total. `revit_list_instances` returns `instances` with empty diagnostics. Model health uses this common shape instead of a nested metric/error list. Links status also keeps each link's `error` and mirrors it in `skipped`.
 
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
@@ -38,11 +38,31 @@ Every successful read result returns top-level `skipped` and `skippedCount`. Eac
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
 | `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
+| `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null` | Start persistent read-only collection; see [batch collection](batch.md). |
 | `revit_batch_status` | `run_id` | Read persisted run and model status. |
 | `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
 | `revit_batch_fetch` | `run_id`, `dest_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
+| `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
+
+### Snapshot report
+
+`snapshots_dir` contains regular `*.json` files directly in that directory. Files are read in filename order. `output_path` is a client-machine `.xlsx` path; missing parent directories are created and an existing file is never overwritten. `previous_dir`, when supplied, follows the same input rules and matches models by `passport.title`. Duplicate titles are rejected. `findings` is an optional list with `model`, `severity`, `rule`, `element_ids` (or `elementIds`) and `recommendation`; IDs are integers.
+
+The sheets appear in this order: `Summary`, `Warnings`, `Families`, `Parameters`, `Skipped`, optional `Changes`, `Findings`. Summary has one row per current snapshot and uses `passport.fileLastWriteUtc` for **File system time**: this is the OS-observed file timestamp, not a save or sync timestamp. Revit Server change and user cells are blank when that data is absent. Warning and parameter sample IDs are comma-separated; truncated warning IDs have a marker. Parameters and Changes percentages are numeric values. Changes subtracts previous values from current values, with weighted model fill percent computed as total filled divided by total elements across parameter rows. Models without a previous match have blank deltas. Findings is header-only when omitted. Every sheet freezes the header and has an auto-filter.
+
+| Sheet | Columns |
+| --- | --- |
+| Summary | Model, Saved-in year, Runtime year, Upgraded, Workshared, Number of saves, File system time, Revit Server last change, Revit Server last user, Elements, Views, Sheets, Families, Family types, Links, Warnings total, Families total, In-place families, Family signals, Skipped |
+| Warnings | Model, Warning, Count, Element IDs |
+| Families | Model, Family, Category, In-place, Editable, Type count, Instance count, Warning count, Signals |
+| Parameters | Model, Category, Parameter, Total, Filled, Empty, Missing, Fill percent, Sample IDs |
+| Skipped | Model, What, Reason |
+| Changes | Model, Warnings delta, Families delta, Fill percent delta, Number of saves delta |
+| Findings | Model, Severity, Rule, Element IDs, Recommendation |
+
+`revit_model_snapshot` accepts an ordered list of `{"category": "Walls", "parameter": "Mark"}` rules. Each rule pairs one category and one parameter. No rules return empty `parameterFill.rows`. Warning groups contain at most 200 distinct affected element IDs, with `elementIdsTruncated` showing whether more exist. Closed user worksets add a skipped entry because element, family instance, warning attribution, and parameter fill results can be incomplete. `fileLastWriteUtc` is an operating system file observation, not a Revit save or sync time. `passport.revitServer` is always null and reserved for the later batch runner.
 
 The `settings_xml` path rejects device paths, `..` segments and UNC shares absent from `trustedNetworkRoots`; files over 1 MiB are refused before reading.
 

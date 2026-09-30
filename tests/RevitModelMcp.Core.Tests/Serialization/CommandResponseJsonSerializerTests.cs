@@ -9,6 +9,75 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 
 public sealed class CommandResponseJsonSerializerTests
 {
+    [Test]
+    public async Task Serialize_ModelSnapshot_UsesExactSchemaNamesAndNulls()
+    {
+        var snapshot = new ModelSnapshotData
+        {
+            CollectedAtUtc = "2026-09-30T12:00:00Z",
+            Source = new ModelSnapshotSource { Path = @"C:\Models\Model.rvt", RuntimeYear = 2026 },
+            Passport = new ModelSnapshotPassport
+            {
+                Title = "Model",
+                RevitServer = null,
+                Counts = new()
+                {
+                    ["elements"] = 0,
+                    ["views"] = 0,
+                    ["sheets"] = 0,
+                    ["families"] = 0,
+                    ["familyTypes"] = 0,
+                    ["links"] = 0
+                }
+            },
+            Warnings = new ModelSnapshotWarnings
+            {
+                Total = 201,
+                Groups =
+                [ModelSnapshotWarningGroup.Create("Warning", 201, Enumerable.Range(1, 201).Select(id => (long)id))]
+            },
+            Skipped = [new SkippedRead { What = "source file", Reason = "Unavailable" }],
+            SkippedCount = 1
+        };
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ModelSnapshotData>.Ok("model-snapshot", snapshot, 1)));
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.EnumerateObject().Select(property => property.Name).Order().ToArray())
+            .IsEquivalentTo(new[] { "schemaVersion", "collectedAtUtc", "source", "passport", "warnings",
+                "families", "parameterFill", "skipped", "skippedCount" });
+        await Assert.That(data.GetProperty("schemaVersion").GetInt32()).IsEqualTo(1);
+        await Assert.That(data.GetProperty("source").EnumerateObject().Select(property => property.Name).Order().ToArray())
+            .IsEquivalentTo(new[] { "path", "kind", "runtimeYear", "savedInYear", "upgradedInMemory" });
+        await Assert.That(data.GetProperty("passport").EnumerateObject().Select(property => property.Name).Order().ToArray())
+            .IsEquivalentTo(new[] { "title", "isWorkshared", "centralPath", "numberOfSaves", "versionGuid",
+                "basicFileInfoUsername", "fileLastWriteUtc", "fileSizeBytes", "revitServer", "counts", "worksets" });
+        await Assert.That(data.GetProperty("warnings").EnumerateObject().Select(property => property.Name).Order().ToArray())
+            .IsEquivalentTo(new[] { "total", "groups" });
+        await Assert.That(data.GetProperty("families").EnumerateObject().Select(property => property.Name).Order().ToArray())
+            .IsEquivalentTo(new[] { "total", "inPlace", "nonEditable", "items", "signals" });
+        await Assert.That(data.GetProperty("passport").GetProperty("revitServer").ValueKind).IsEqualTo(JsonValueKind.Null);
+        await Assert.That(data.GetProperty("warnings").GetProperty("groups")[0].GetProperty("elementIds").GetArrayLength()).IsEqualTo(200);
+        await Assert.That(data.GetProperty("warnings").GetProperty("groups")[0].GetProperty("elementIdsTruncated").GetBoolean()).IsTrue();
+        await Assert.That(data.GetProperty("parameterFill").GetProperty("rows").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(data.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("source file");
+        await Assert.That(data.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+        await Assert.That(RoundTripCoordinator("model-snapshot", snapshot).Passport.RevitServer).IsNull();
+    }
+
+    [Test]
+    public async Task ModelSnapshotWarningGroup_CapsDistinctElementIdsAt201stId()
+    {
+        var firstTwoHundred = Enumerable.Range(1, 200).Reverse().Select(id => (long)id).ToArray();
+        var atLimit = ModelSnapshotWarningGroup.Create("Warning", 1, firstTwoHundred.Append(1).Append(200));
+        var overLimit = ModelSnapshotWarningGroup.Create("Warning", 1,
+            new long[] { 200, 200 }.Concat(firstTwoHundred).Append(1).Append(201).Append(202));
+
+        await Assert.That(atLimit.ElementIds.SequenceEqual(firstTwoHundred)).IsTrue();
+        await Assert.That(atLimit.ElementIdsTruncated).IsFalse();
+        await Assert.That(overLimit.ElementIds.SequenceEqual(firstTwoHundred)).IsTrue();
+        await Assert.That(overLimit.ElementIdsTruncated).IsTrue();
+    }
+
     private static T RoundTripCoordinator<T>(string command, T data)
     {
         var json = CommandResponseJsonSerializer.Serialize(CommandResponse<T>.Ok(command, data, 1));

@@ -8,7 +8,7 @@ namespace RevitModelMcp.Capture;
 
 internal static class ModelHealthReader
 {
-    public static ModelHealthData Read(Document document, ControlJobContract job)
+    public static ModelHealthData Read(Document document, ControlJobContract job, bool observeFileSize = true)
     {
         var result = new ModelHealthData
         {
@@ -18,8 +18,9 @@ internal static class ModelHealthReader
             IsWorkshared = document.IsWorkshared
         };
         if (string.IsNullOrEmpty(result.FileName)) result.FileName = document.Title;
-        result.FileSizeBytes = Try<long?>("fileSizeBytes", () =>
-            string.IsNullOrEmpty(document.PathName) ? null : new FileInfo(document.PathName).Length);
+        if (observeFileSize)
+            result.FileSizeBytes = Try<long?>("fileSizeBytes", () =>
+                string.IsNullOrEmpty(document.PathName) ? null : new FileInfo(document.PathName).Length);
         foreach (var metric in new Dictionary<string, Func<string>>
         {
             ["name"] = () => document.ProjectInformation.Name,
@@ -31,6 +32,21 @@ internal static class ModelHealthReader
             ["author"] = () => document.ProjectInformation.Author
         }) result.ProjectInfo[metric.Key] = Try("projectInfo." + metric.Key, metric.Value);
 
+        result.Counts = ReadCounts(document);
+        result.TopWarnings = Try("topWarnings", () => ModelWarningReader.Read(document, null, false)
+            .Groups.Take(10).Select(group => new HealthWarning { Text = group.Text, Count = group.Count }).ToList())!;
+        foreach (var unit in new Dictionary<string, ForgeTypeId>
+        {
+            ["length"] = SpecTypeId.Length,
+            ["area"] = SpecTypeId.Area,
+            ["volume"] = SpecTypeId.Volume
+        }) result.Units[unit.Key] = Try("units." + unit.Key,
+            () => document.GetUnits().GetFormatOptions(unit.Value).GetUnitTypeId().TypeId);
+        return result;
+    }
+
+    public static Dictionary<string, int?> ReadCounts(Document document, IReadOnlyCollection<string>? requested = null)
+    {
         var metrics = new Dictionary<string, Func<int>>
         {
             ["elements"] = () => Count(document, collector => collector.WhereElementIsNotElementType()),
@@ -61,18 +77,11 @@ internal static class ModelHealthReader
             ["cadImports"] = () => Imports(document).Count(instance => !instance.IsLinked),
             ["images"] = () => CountClass<ImageInstance>(document)
         };
+        var counts = new Dictionary<string, int?>();
         foreach (var metric in metrics)
-            result.Counts[metric.Key] = Try<int?>("counts." + metric.Key, () => metric.Value());
-        result.TopWarnings = Try("topWarnings", () => ModelWarningReader.Read(document, null, false)
-            .Groups.Take(10).Select(group => new HealthWarning { Text = group.Text, Count = group.Count }).ToList())!;
-        foreach (var unit in new Dictionary<string, ForgeTypeId>
-        {
-            ["length"] = SpecTypeId.Length,
-            ["area"] = SpecTypeId.Area,
-            ["volume"] = SpecTypeId.Volume
-        }) result.Units[unit.Key] = Try("units." + unit.Key,
-            () => document.GetUnits().GetFormatOptions(unit.Value).GetUnitTypeId().TypeId);
-        return result;
+            if (requested is null || requested.Contains(metric.Key))
+                counts[metric.Key] = Try<int?>("counts." + metric.Key, () => metric.Value());
+        return counts;
     }
 
     private static T? Try<T>(string metric, Func<T> read)

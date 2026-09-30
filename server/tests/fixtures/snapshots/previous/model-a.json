@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "collectedAtUtc": "2026-09-30T12:00:00Z",
+  "source": {
+    "path": "\\\\server\\share\\model-a.rvt",
+    "kind": "unc",
+    "runtimeYear": 2026,
+    "savedInYear": 2024,
+    "upgradedInMemory": true
+  },
+  "passport": {
+    "title": "Model A",
+    "isWorkshared": true,
+    "centralPath": "\\\\server\\share\\model-a.rvt",
+    "numberOfSaves": 10,
+    "versionGuid": "guid-a",
+    "basicFileInfoUsername": "user",
+    "fileLastWriteUtc": "2026-09-29T10:00:00Z",
+    "fileSizeBytes": 123456,
+    "revitServer": null,
+    "counts": {
+      "elements": 100,
+      "views": 10,
+      "sheets": 2,
+      "families": 3,
+      "familyTypes": 8,
+      "links": 1
+    },
+    "worksets": [
+      {
+        "name": "Shared Levels and Grids",
+        "owner": "user",
+        "isOpen": true
+      }
+    ]
+  },
+  "warnings": {
+    "total": 7,
+    "groups": [
+      {
+        "text": "=Check constraints",
+        "count": 3,
+        "elementIds": [
+          1,
+          2
+        ],
+        "elementIdsTruncated": true
+      }
+    ]
+  },
+  "families": {
+    "total": 4,
+    "inPlace": 1,
+    "nonEditable": 0,
+    "items": [
+      {
+        "name": "=Door",
+        "category": "Doors",
+        "isInPlace": false,
+        "isEditable": true,
+        "typeCount": 2,
+        "instanceCount": 30,
+        "warningCount": 2
+      },
+      {
+        "name": "Chair",
+        "category": "Furniture",
+        "isInPlace": true,
+        "isEditable": true,
+        "typeCount": 1,
+        "instanceCount": 4,
+        "warningCount": 0
+      }
+    ],
+    "signals": [
+      {
+        "family": "=Door",
+        "signal": "in-warnings",
+        "detail": "warning"
+      },
+      {
+        "family": "=Door",
+        "signal": "large",
+        "detail": "count"
+      }
+    ]
+  },
+  "parameterFill": {
+    "rows": [
+      {
+        "category": "Doors",
+        "parameter": "Mark",
+        "total": 10,
+        "filled": 4,
+        "empty": 2,
+        "missing": 0,
+        "sampleEmptyIds": [
+          1,
+          2
+        ]
+      },
+      {
+        "category": "Walls",
+        "parameter": "Code",
+        "total": 30,
+        "filled": 16,
+        "empty": 2,
+        "missing": 0,
+        "sampleEmptyIds": []
+      },
+      {
+        "category": "Rooms",
+        "parameter": "Empty",
+        "total": 0,
+        "filled": 0,
+        "empty": 0,
+        "missing": 0,
+        "sampleEmptyIds": []
+      }
+    ]
+  },
+  "skipped": [
+    {
+      "what": "=Hidden set",
+      "reason": "Not available"
+    }
+  ],
+  "skippedCount": 1
+}

@@ -64,7 +64,7 @@ internal sealed class BatchSupervisor(
     private async Task<BatchModel> CollectAsync(BatchRun run, BatchModel model, int index,
         Dictionary<int, string> executables, CancellationToken cancellationToken)
     {
-        var allowed = executables.Keys.Where(year => run.Years.Length == 0 || run.Years.Contains(year)).Order().ToArray();
+        var allowed = executables.Keys.Where(year => run.Years.Length == 0 || run.Years.Contains(year)).OrderBy(year => year).ToArray();
         if (allowed.Length == 0) throw new InvalidOperationException("No allowed installed Revit executable is available.");
         RevitWorkerProcess? worker = null;
         var opened = false;

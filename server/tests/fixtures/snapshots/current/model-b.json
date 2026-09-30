@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "collectedAtUtc": "2026-09-30T12:00:00Z",
+  "source": {
+    "path": "RSN://server/model-b",
+    "kind": "rsn",
+    "runtimeYear": 2026,
+    "savedInYear": 2026,
+    "upgradedInMemory": false
+  },
+  "passport": {
+    "title": "Model B",
+    "isWorkshared": false,
+    "centralPath": null,
+    "numberOfSaves": 18,
+    "versionGuid": "guid-b",
+    "basicFileInfoUsername": "user",
+    "fileLastWriteUtc": "2026-09-29T10:00:00Z",
+    "fileSizeBytes": 123456,
+    "revitServer": {
+      "lastModifiedUtc": "2026-09-30T11:00:00Z",
+      "lastModifiedBy": "RS User",
+      "history": []
+    },
+    "counts": {
+      "elements": 50,
+      "views": 10,
+      "sheets": 2,
+      "families": 3,
+      "familyTypes": 8,
+      "links": 1
+    },
+    "worksets": [
+      {
+        "name": "Shared Levels and Grids",
+        "owner": "user",
+        "isOpen": true
+      }
+    ]
+  },
+  "warnings": {
+    "total": 5,
+    "groups": [
+      {
+        "text": "Overlap",
+        "count": 3,
+        "elementIds": [
+          1,
+          2
+        ],
+        "elementIdsTruncated": false
+      }
+    ]
+  },
+  "families": {
+    "total": 7,
+    "inPlace": 1,
+    "nonEditable": 0,
+    "items": [
+      {
+        "name": "Window",
+        "category": "Windows",
+        "isInPlace": false,
+        "isEditable": true,
+        "typeCount": 2,
+        "instanceCount": 30,
+        "warningCount": 2
+      },
+      {
+        "name": "Chair",
+        "category": "Furniture",
+        "isInPlace": true,
+        "isEditable": true,
+        "typeCount": 1,
+        "instanceCount": 4,
+        "warningCount": 0
+      }
+    ],
+    "signals": [
+      {
+        "family": "Window",
+        "signal": "in-warnings",
+        "detail": "warning"
+      },
+      {
+        "family": "Window",
+        "signal": "large",
+        "detail": "count"
+      }
+    ]
+  },
+  "parameterFill": {
+    "rows": [
+      {
+        "category": "Doors",
+        "parameter": "Mark",
+        "total": 10,
+        "filled": 4,
+        "empty": 2,
+        "missing": 0,
+        "sampleEmptyIds": [
+          1,
+          2
+        ]
+      },
+      {
+        "category": "Walls",
+        "parameter": "Code",
+        "total": 10,
+        "filled": 4,
+        "empty": 2,
+        "missing": 0,
+        "sampleEmptyIds": []
+      },
+      {
+        "category": "Rooms",
+        "parameter": "Empty",
+        "total": 0,
+        "filled": 0,
+        "empty": 0,
+        "missing": 0,
+        "sampleEmptyIds": []
+      }
+    ]
+  },
+  "skipped": [],
+  "skippedCount": 0
+}

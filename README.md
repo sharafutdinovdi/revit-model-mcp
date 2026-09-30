@@ -87,6 +87,12 @@ For macOS or Linux clients, configure a [remote workstation](#remote-workstation
 
 Call `revit_ping` in the MCP client and expect `success: true`.
 
+### Prompts and skill
+
+The [prompts and coordinator guide](docs/prompts.md) describe read-only model review workflows.
+For Claude Code, copy `skills/revit-model-coordinator` into `~/.claude/skills/`.
+For Claude Desktop, zip that skill folder and upload it as a skill.
+
 ## In action
 
 Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation.

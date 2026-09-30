@@ -74,6 +74,10 @@
       "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
+      "name": "revit_model_snapshot",
+      "description": "Read a schema version 1 project snapshot for batch audits.\n\nEach parameter rule pairs one category with one parameter. Warning groups include\nat most 200 affected element IDs. Closed worksets can make the result incomplete.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+    },
+    {
       "name": "revit_model_health",
       "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\nUse revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
@@ -236,6 +240,10 @@
     {
       "name": "revit_batch_fetch",
       "description": "Download completed snapshots to new local files without overwriting."
+    },
+    {
+      "name": "revit_build_report",
+      "description": "Build a local Excel report from snapshots without contacting Revit."
     }
   ],
   "tools_generated": true,
