@@ -23,6 +23,7 @@ from revit_model_mcp.revit_channel import (
     RevitReadChannel,
     with_client_identity,
 )
+from revit_model_mcp.snapshot_report import build_report
 from revit_model_mcp.ssh_host import SshPowerShellHost
 from revit_model_mcp.updates import check_for_updates, update_status
 
@@ -890,6 +891,46 @@ async def revit_family_audit(
 
 
 register_actions(mcp, _execute, lambda: host)
+
+
+@mcp.tool(
+    title="Build Snapshot Report",
+    annotations=READ_ONLY_TOOL.model_copy(update={"title": "Build Snapshot Report"}),
+)
+def revit_build_report(
+    snapshots_dir: Annotated[
+        str,
+        Field(
+            validation_alias=AliasChoices("snapshots_dir", "snapshotsDir"),
+            description="Directory of schema-version-1 JSON snapshots on the MCP client machine.",
+        ),
+    ],
+    output_path: Annotated[
+        str,
+        Field(
+            validation_alias=AliasChoices("output_path", "outputPath"),
+            description="New .xlsx file path on the MCP client machine; existing files are never replaced.",
+        ),
+    ],
+    previous_dir: Annotated[
+        str | None,
+        Field(
+            validation_alias=AliasChoices("previous_dir", "previousDir"),
+            description="Optional directory of earlier snapshots matched by model title for the Changes sheet.",
+        ),
+    ] = None,
+    findings: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Optional findings with model, severity, rule, element_ids (or elementIds), and recommendation."
+        ),
+    ] = None,
+) -> dict[str, Any]:
+    """Build a local Excel report from snapshots without contacting Revit."""
+    try:
+        return build_report(snapshots_dir, output_path, previous_dir, findings)
+    except (OSError, ValueError, TypeError) as error:
+        raise ToolError(str(error)) from error
 
 
 def main() -> None:

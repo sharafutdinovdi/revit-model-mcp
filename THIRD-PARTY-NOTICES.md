@@ -2,7 +2,7 @@
 
 This project is licensed under MIT.
 Dependencies retain their own licenses and copyright notices.
-These entries record package metadata inspected on 2026-09-11.
+These entries record package metadata inspected on 2026-09-11, except openpyxl inspected on 2026-09-30.
 Floating version ranges can resolve to other versions during a future restore.
 
 ## Runtime and test dependencies
@@ -14,6 +14,7 @@ Floating version ranges can resolve to other versions during a future restore.
 | Nice3point.Revit.Api.RevitAPI | 2026.4.10 | MIT, `License.md` inside the [NuGet package](https://www.nuget.org/packages/Nice3point.Revit.Api.RevitAPI/2026.4.10) |
 | Nice3point.Revit.Api.RevitAPIUI | 2022.1.80 | MIT, `License.md` inside the [NuGet package](https://www.nuget.org/packages/Nice3point.Revit.Api.RevitAPIUI/2022.1.80) |
 | MCP Python SDK (`mcp`) | 2.2.0 | MIT, [PyPI metadata](https://pypi.org/pypi/mcp/2.2.0/json) |
+| openpyxl | 3.1.5 | MIT, [PyPI metadata](https://pypi.org/pypi/openpyxl/3.1.5/json) |
 | TUnit | 1.66.27 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/tunit/1.66.27/tunit.nuspec) |
 
 The Revit API packages include a Nice3point MIT license file.
