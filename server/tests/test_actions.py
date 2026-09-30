@@ -476,6 +476,16 @@ def test_action_response_timeout_reaches_channel(response_timeout_s):
             {"element_id": 1, "parameter": "Comments", "value": ""},
             {"elementId": 1, "parameter": "Comments", "value": ""},
         ),
+        (
+            "revit_set_parameter",
+            {"element_id": 1, "parameter": "Mark", "parameter_id": "ALL_MODEL_MARK", "value": 12},
+            {"elementId": 1, "parameter": "Mark", "parameterId": "ALL_MODEL_MARK", "value": 12},
+        ),
+        (
+            "revit_set_parameter",
+            {"element_id": 1, "parameter": "Area", "parameter_id": "123", "value": 2.5},
+            {"elementId": 1, "parameter": "Area", "parameterId": "123", "value": 2.5},
+        ),
         ("revit_delete", {"element_ids": [1, 2]}, {"elementIds": [1, 2]}),
     ],
 )
@@ -541,6 +551,20 @@ def test_action_arguments_reach_channel_in_millimeters(
             {"family": " ", "type_name": None, "x_mm": 0, "y_mm": 0, "level": "Level 1"},
         ),
         ("revit_set_parameter", {"element_id": 1, "parameter": " ", "value": "x"}),
+        (
+            "revit_set_parameter",
+            {"element_id": 1, "parameter": "Mark", "parameter_id": " ", "value": 1},
+        ),
+        (
+            "revit_set_parameter",
+            {"element_id": 1, "parameter": "Mark", "parameter_id": "0", "value": 1},
+        ),
+        (
+            "revit_set_parameter",
+            {"element_id": 1, "parameter": "Mark", "parameter_id": "invalid", "value": 1},
+        ),
+        ("revit_set_parameter", {"element_id": 1, "parameter": "Mark", "value": True}),
+        ("revit_set_parameter", {"element_id": 1, "parameter": "Mark", "value": math.inf}),
     ],
 )
 def test_invalid_arguments_never_reach_channel(name, arguments):
@@ -678,6 +702,24 @@ def test_show_response_preserves_view_opened_and_dialogs(view_opened, success):
         [{"action": "move", "args": {"element_ids": [True], "dx_mm": 1, "dy_mm": 0}}],
         [{"action": "move", "args": {"element_ids": [1], "dx_mm": math.inf, "dy_mm": 0}}],
         [{"action": "move", "args": {"element_ids": [1], "dx_mm": 1}}],
+        [
+            {
+                "action": "set_parameter",
+                "args": {"element_id": 1, "parameter": "Mark", "parameter_id": " ", "value": 1},
+            }
+        ],
+        [
+            {
+                "action": "set_parameter",
+                "args": {"element_id": 1, "parameter": "Mark", "parameter_id": "0", "value": 1},
+            }
+        ],
+        [
+            {
+                "action": "set_parameter",
+                "args": {"element_id": 1, "parameter": "Mark", "value": True},
+            }
+        ],
         [{"action": "isolate", "args": {"element_ids": []}}],
         [
             {
@@ -714,7 +756,12 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
                     {"action": "move", "args": {"element_ids": [1], "dx_mm": 10, "dy_mm": 0}},
                     {
                         "action": "set_parameter",
-                        "args": {"element_id": 1, "parameter": "Comments", "value": "Reviewed"},
+                        "args": {
+                            "element_id": 1,
+                            "parameter": "Comments",
+                            "parameter_id": "123",
+                            "value": 7,
+                        },
                     },
                 ],
                 "dry_run": dry_run,
@@ -746,7 +793,8 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
                 "command": "set-parameter",
                 "elementId": 1,
                 "parameter": "Comments",
-                "value": "Reviewed",
+                "parameterId": "123",
+                "value": 7,
                 "dryRun": False,
             },
         ],

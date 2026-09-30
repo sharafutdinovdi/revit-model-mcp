@@ -203,7 +203,7 @@
     },
     {
       "name": "revit_set_parameter",
-      "description": "Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.\n`parameter` accepts the Revit UI name, a BuiltInParameter name (ALL_MODEL_INSTANCE_COMMENTS) or the English name of a common built-in (Comments, Mark, Type Mark, Description, Level, Offset).\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Set exactly one instance or type parameter. Supply parameter_id to select by BuiltInParameter name, shared GUID or positive ParameterElement ID.\nWithout parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.\nUse a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_delete",

@@ -7,6 +7,33 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
+    {
+        var direct = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Mark","parameterId":"ALL_MODEL_MARK","value":42}""");
+        var batch = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"set-parameter","elementId":1,"parameter":"Mark","parameterId":"123","value":3.5}]}""");
+        await Assert.That(direct.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(direct.Action!.ParameterId).IsEqualTo("ALL_MODEL_MARK");
+        await Assert.That(direct.Action.Value).IsEqualTo(42);
+        await Assert.That(batch.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(batch.Action!.Steps[0].Action!.ParameterId).IsEqualTo("123");
+        await Assert.That(Convert.ToDouble(batch.Action.Steps[0].Action!.Value)).IsEqualTo(3.5);
+        var shared = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Code","parameterId":"f5257291-6b0b-4ef4-a9a1-b5aa937127a4","value":"ok"}""");
+        await Assert.That(shared.Action!.ParameterId).IsEqualTo("f5257291-6b0b-4ef4-a9a1-b5aa937127a4");
+    }
+
+    [Test]
+    [Arguments(" ", "\"x\"")]
+    [Arguments("-1", "\"x\"")]
+    [Arguments("123", "true")]
+    public async Task SetParameter_RejectsInvalidIdentifierOrValue(string identifier, string value)
+    {
+        var json = $"{{\"command\":\"set-parameter\",\"elementId\":1,\"parameter\":\"Mark\",\"parameterId\":\"{identifier}\",\"value\":{value}}}";
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+        var batch = $"{{\"command\":\"batch\",\"steps\":[{json}]}}";
+        await Assert.That(ControlJobParser.Parse(batch).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task DocumentConfirmationTokens_AreSingleUseBoundAndExpire()
     {
         var now = DateTimeOffset.UtcNow;

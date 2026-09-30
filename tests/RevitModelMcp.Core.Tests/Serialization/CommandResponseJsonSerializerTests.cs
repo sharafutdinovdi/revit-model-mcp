@@ -241,8 +241,8 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var verification = new ActionVerification
         {
-            Before = new ActionFacts { Id = 1, Parameter = "Comments", Value = "", StorageType = "String", Owner = "instance" },
-            After = new ActionFacts { Id = 1, Parameter = "Comments", Value = "Reviewed", StorageType = "String", Owner = "instance" },
+            Before = new ActionFacts { Id = 1, Parameter = "Comments", ParameterId = "ALL_MODEL_INSTANCE_COMMENTS", Value = "", StorageType = "String", Owner = "instance" },
+            After = new ActionFacts { Id = 1, Parameter = "Comments", ParameterId = "ALL_MODEL_INSTANCE_COMMENTS", Value = "Reviewed", StorageType = "String", Owner = "instance" },
             Changed = [1]
         };
         var data = new ActionResultData
@@ -265,6 +265,8 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(payload.GetProperty("dryRun").GetBoolean()).IsFalse();
         await Assert.That(payload.GetProperty("committed").GetBoolean()).IsFalse();
         await Assert.That(payload.GetProperty("steps")[0].GetProperty("index").GetInt32()).IsEqualTo(0);
+        await Assert.That(payload.GetProperty("steps")[0].GetProperty("data").GetProperty("verification").GetProperty("before").GetProperty("parameterId").GetString()).IsEqualTo("ALL_MODEL_INSTANCE_COMMENTS");
+        await Assert.That(payload.GetProperty("steps")[0].GetProperty("data").GetProperty("verification").GetProperty("after").GetProperty("parameterId").GetString()).IsEqualTo("ALL_MODEL_INSTANCE_COMMENTS");
         await Assert.That(payload.GetProperty("steps")[1].GetProperty("success").GetBoolean()).IsFalse();
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serialized));
         var serializer = new DataContractJsonSerializer(typeof(CommandResponse<ActionResultData>));
