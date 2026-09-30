@@ -1,9 +1,23 @@
 # Revit model coordination guide
 
-This guide describes a read-only review of one open Revit model.
+This guide describes read-only review of one open Revit model or a batch of models.
 Use the server's read tools to collect evidence before making a judgment.
 The model may use localized names and project-specific rules.
 Treat every result as evidence with a scope and a completeness limit.
+
+## Audit many models
+
+A persistent batch collects schema-version-1 snapshots across the supplied models and can outlive the initiating client.
+The passport records each model's title and identity, worksharing state, save count, file size, and model counts.
+The source records the collection runtime year, the saved-in year, and `upgradedInMemory`.
+`source.upgradedInMemory` means the model was collected in a newer Revit runtime without a save.
+It does not mean the source file was saved or upgraded on disk.
+`passport.fileLastWriteUtc` is an OS file-system timestamp, not a Revit save or synchronization time.
+When `passport.revitServer` data is present, its server history is authoritative for Revit Server modification history.
+Keep failed models visible and never treat them as zero results.
+`skipped` and `skippedCount` limit completeness, and `skippedCount` can exceed the listed entries.
+Prioritize findings across models by severity, likely project impact, affected count, explicit project rules, and evidence completeness.
+Keep observations separate from project requirements.
 
 ## Establish the document
 
