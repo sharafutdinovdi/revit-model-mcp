@@ -105,13 +105,19 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var dialog = new BatchDialogRecord
         {
-            DialogId = "missing-link", Type = "TaskDialogShowingEventArgs", Message = "Link unavailable",
-            Decision = "unknown", ModelPath = @"C:\Models\A.rvt", Phase = "snapshot",
+            DialogId = "missing-link",
+            Type = "TaskDialogShowingEventArgs",
+            Message = "Link unavailable",
+            Decision = "unknown",
+            ModelPath = @"C:\Models\A.rvt",
+            Phase = "snapshot",
             TimeUtc = "2026-09-30T12:00:00Z"
         };
         var run = new BatchRun
         {
-            RunId = "run-1", Status = BatchRunStatus.Running, Years = [2026],
+            RunId = "run-1",
+            Status = BatchRunStatus.Running,
+            Years = [2026],
             Models = [new BatchModel
             {
                 Path = @"C:\Models\A.rvt", Status = BatchModelStatus.Running,
@@ -128,7 +134,8 @@ public sealed class CommandResponseJsonSerializerTests
 
         var cancelled = RoundTripCoordinator("batch-cancel", run with
         {
-            Status = BatchRunStatus.Cancelled, CancelRequested = true
+            Status = BatchRunStatus.Cancelled,
+            CancelRequested = true
         });
         await Assert.That(cancelled.CancelRequested).IsTrue();
         await Assert.That(cancelled.Status).IsEqualTo(BatchRunStatus.Cancelled);
