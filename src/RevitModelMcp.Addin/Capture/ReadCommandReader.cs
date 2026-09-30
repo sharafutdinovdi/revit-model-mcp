@@ -26,7 +26,16 @@ internal static class ReadCommandReader
     public static DocumentInfoData ReadDocumentInfo(UIApplication application)
     {
         var uiDocument = application.ActiveUIDocument ?? throw new InvalidOperationException("No active Revit document.");
-        var document = uiDocument.Document;
+        return ReadDocumentInfo(uiDocument.Document);
+    }
+
+    public static IReadOnlyList<Workset> ReadUserWorksets(Document document) => document.IsWorkshared
+        ? new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset).ToWorksets()
+            .OrderBy(workset => workset.Name, StringComparer.Ordinal).ToList()
+        : [];
+
+    public static DocumentInfoData ReadDocumentInfo(Document document)
+    {
         var roomCounts = new Dictionary<long, int>();
         foreach (var room in new FilteredElementCollector(document)
                      .OfCategory(BuiltInCategory.OST_Rooms)
@@ -67,19 +76,14 @@ internal static class ReadCommandReader
                 AreaCount = areaCounts.GetValueOrDefault(RevitValueReader.GetId(scheme.Id))
             })
             .ToList();
-        var worksets = document.IsWorkshared
-            ? new FilteredWorksetCollector(document)
-                .OfKind(WorksetKind.UserWorkset)
-                .ToWorksets()
-                .OrderBy(workset => workset.Name, StringComparer.Ordinal)
+        var worksets = ReadUserWorksets(document)
                 .Select(workset => new DocumentWorksetInfo
                 {
                     Name = workset.Name,
                     Kind = workset.Kind.ToString(),
                     IsOpen = workset.IsOpen
                 })
-                .ToList()
-            : new List<DocumentWorksetInfo>();
+                .ToList();
         var viewCount = new FilteredElementCollector(document)
             .OfClass(typeof(View))
             .Cast<View>()
@@ -90,7 +94,7 @@ internal static class ReadCommandReader
             FileName = string.IsNullOrWhiteSpace(document.PathName)
                 ? document.Title
                 : Path.GetFileName(document.PathName),
-            RevitVersion = application.Application.VersionNumber,
+            RevitVersion = document.Application.VersionNumber,
             IsWorkshared = document.IsWorkshared,
             Levels = levels,
             AreaSchemes = schemes,

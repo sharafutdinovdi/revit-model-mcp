@@ -28,6 +28,7 @@ REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
     "revit_jobs",
     "revit_model_health",
+    "revit_model_snapshot",
     "revit_links_status",
     "revit_shared_coordinates",
     "revit_parameter_fill_check",
@@ -146,6 +147,12 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
+    "revit_model_snapshot": [
+        "parameter_rules",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],

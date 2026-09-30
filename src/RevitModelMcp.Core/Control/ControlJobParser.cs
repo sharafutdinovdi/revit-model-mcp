@@ -15,6 +15,7 @@ public enum ControlJobKind
     DocumentInfo,
     Documents,
     ModelHealth,
+    ModelSnapshot,
     LinksStatus,
     SharedCoordinates,
     ParameterFillCheck,
@@ -78,6 +79,7 @@ public sealed class ControlJobParseResult
     public int PixelSize { get; internal set; } = 1600;
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
+    public IReadOnlyList<ModelSnapshotParameterRule> ParameterRules { get; internal set; } = [];
     public int? TargetProcessId { get; internal set; }
     public bool IncludeLinked { get; internal set; }
     public ActionJobContract? Action { get; internal set; }
@@ -181,6 +183,7 @@ public sealed class ControlJobParseResult
             "ping" => Create(ControlJobKind.Ping, command),
             "jobs" => Create(ControlJobKind.Jobs, command),
             "model-health" => Create(ControlJobKind.ModelHealth, command),
+            "model-snapshot" => ParseModelSnapshot(job),
             "links-status" => Create(ControlJobKind.LinksStatus, command),
             "shared-coordinates" => Create(ControlJobKind.SharedCoordinates, command),
             "parameter-fill-check" => ParseParameterFill(job),
@@ -281,6 +284,21 @@ public sealed class ControlJobParseResult
             SampleLimit = job.SampleLimit ?? 20,
             IncludeTypes = job.IncludeTypes ?? true
         };
+        return result;
+    }
+
+    private static ControlJobParseResult ParseModelSnapshot(ControlJobContract job)
+    {
+        const string command = "model-snapshot";
+        var rules = new List<ModelSnapshotParameterRule>();
+        foreach (var rule in job.ParameterRules ?? [])
+        {
+            if (rule is null || string.IsNullOrWhiteSpace(rule.Category) || string.IsNullOrWhiteSpace(rule.Parameter))
+                return Invalid(command, "Each parameterRules entry requires a non-blank category and parameter.");
+            rules.Add(new ModelSnapshotParameterRule { Category = rule.Category.Trim(), Parameter = rule.Parameter.Trim() });
+        }
+        var result = Create(ControlJobKind.ModelSnapshot, command);
+        result.ParameterRules = rules;
         return result;
     }
 
@@ -425,6 +443,8 @@ public sealed partial class ControlJobContract
     public string? CorrelationId { get; set; }
     [DataMember(Name = "parameters", EmitDefaultValue = false)]
     public List<string>? Parameters { get; set; }
+    [DataMember(Name = "parameterRules", EmitDefaultValue = false)]
+    public List<ModelSnapshotParameterRule?>? ParameterRules { get; set; }
     [DataMember(Name = "sampleLimit", EmitDefaultValue = false)]
     public int? SampleLimit { get; set; }
     [DataMember(Name = "includeTypes", EmitDefaultValue = false)]

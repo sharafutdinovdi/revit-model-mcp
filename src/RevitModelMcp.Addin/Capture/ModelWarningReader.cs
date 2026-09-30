@@ -8,6 +8,11 @@ internal static class ModelWarningReader
     public static ModelWarningsData Read(Document document, string? warningText, bool includeElements)
     {
         var warnings = document.GetWarnings();
+        return Read(document, warnings, warningText, includeElements);
+    }
+
+    private static ModelWarningsData Read(Document document, IList<FailureMessage> warnings, string? warningText, bool includeElements)
+    {
         var selected = warningText is null
             ? warnings
             : warnings.Where(warning => string.Equals(
@@ -29,6 +34,17 @@ internal static class ModelWarningReader
                 .ThenBy(group => group.Text, StringComparer.OrdinalIgnoreCase)
                 .ToList()
         };
+    }
+
+    public static ModelSnapshotWarnings ReadSnapshot(IList<FailureMessage> warnings)
+    {
+        var grouped = warnings.GroupBy(warning => warning.GetDescriptionText(), StringComparer.OrdinalIgnoreCase);
+        var groups = grouped.Select(group => ModelSnapshotWarningGroup.Create(
+                group.First().GetDescriptionText(), group.Count(),
+                group.SelectMany(warning => warning.GetFailingElements().Concat(warning.GetAdditionalElements()))
+                    .Select(RevitValueReader.GetId)))
+            .OrderByDescending(group => group.Count).ThenBy(group => group.Text, StringComparer.OrdinalIgnoreCase).ToList();
+        return new ModelSnapshotWarnings { Total = warnings.Count, Groups = groups };
     }
 
     private static ModelWarningGroup CreateGroup(
