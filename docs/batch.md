@@ -31,10 +31,34 @@ The response has `runId`, `localPaths`, and `models`.
 Each entry in `models` has `path`, `status`, and `localPath`.
 `localPath` is null when no snapshot was downloaded.
 An existing model `error` or `reason` is included when present.
+Dialog diagnostics appear in `revit_batch_status` and `revit_batch_fetch` when present.
+Each dialog record includes its ID, runtime type, available message, decision, result, model path, phase, and UTC time.
+Path redaction applies to nested dialog paths and paths in messages without changing workstation state.
 Fetched snapshot paths follow `REVIT_MCP_REDACT_PATHS` without changing workstation snapshots.
 Fetch uses the existing SSH artifact transfer path for a remote workstation.
 
 Each model can fail at worker startup, metadata pre-pass, open, snapshot collection, or close. A deadline, stale heartbeat, worker exit, or unknown modal dialog fails that model and recycles only the supervisor-owned worker. The next model continues. A timeout after an operation may have occurred is reported as an error; inspect persisted state before retrying.
+
+## Dialog allowlist
+
+The workstation reads `%LOCALAPPDATA%\RevitModelMcp\batch-dialogs.json` before each model open, snapshot, and close phase.
+A missing file leaves the built-in allowlist empty.
+The file contains a JSON array:
+
+```json
+[
+  {
+    "dialogId": "TaskDialog_Example",
+    "type": "TaskDialogShowingEventArgs",
+    "result": 1
+  }
+]
+```
+
+An entry matches only the exact dialog ID and runtime event args type.
+An invalid or unreadable file fails the current phase before model work. During open, the model is not opened.
+An unknown dialog is never overridden and fails the model.
+Allow only dialogs whose selected answer does not modify or save the model.
 
 ## Year routing and sources
 

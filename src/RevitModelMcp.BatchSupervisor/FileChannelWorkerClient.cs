@@ -88,8 +88,8 @@ internal sealed class FileChannelWorkerClient
                 if (Value(response, "responder") is not Dictionary<string, object> responder ||
                     Convert.ToInt32(Value(responder, "processId")) != processId)
                     throw new InvalidOperationException("Unconfirmed worker response identity.");
-                if (Value(response, "success") is not bool success || !success)
-                    throw new InvalidOperationException(Convert.ToString(Value(response, "error")) ?? "Worker job failed.");
+                if (Value(response, "success") is not bool)
+                    throw new InvalidDataException("Worker response has no success flag.");
                 return response;
             }
             await Task.Delay(250, cancellationToken);
@@ -98,8 +98,9 @@ internal sealed class FileChannelWorkerClient
     }
 
     public string SerializeData(Dictionary<string, object> response) =>
-        _json.Serialize(response.TryGetValue("data", out var data) ? data :
-            throw new InvalidDataException("Snapshot response has no data."));
+        _json.Serialize(response.TryGetValue("data", out var data) && data is Dictionary<string, object> fields &&
+            fields.TryGetValue("result", out var result) ? result :
+            throw new InvalidDataException("Snapshot response has no result."));
 
     private static object? Value(Dictionary<string, object> values, string key) =>
         values.TryGetValue(key, out var value) ? value : null;

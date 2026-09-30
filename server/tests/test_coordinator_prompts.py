@@ -116,6 +116,7 @@ def test_coordinator_prompts_render_read_only_workflows(name: str):
     if arguments:
         assert all(value in rendered for value in arguments.values())
     if name == "batch_audit":
+        assert "DialogIds for maintainer allowlist review" in rendered
         assert "exactly one" in rendered
         assert "terminal" in rendered
         assert "client closes" in rendered

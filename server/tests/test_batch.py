@@ -155,6 +155,46 @@ async def test_scheduled_task_fallback_then_persisted_status_and_cancel(boundary
 
 
 @pytest.mark.anyio
+async def test_status_and_fetch_expose_redacted_dialogs_without_mutating_state(
+    boundary, tmp_path, monkeypatch
+):
+    tools, host, _channel = boundary
+    run_id = (await tools["revit_batch_start"](paths=[r"C:\models\A.rvt", r"C:\models\B.rvt"]))[
+        "runId"
+    ]
+    dialog = {
+        "dialogId": "TaskDialog_Example",
+        "type": "TaskDialogShowingEventArgs",
+        "message": r"Review C:\models\linked\A.rvt before opening",
+        "decision": "unknown",
+        "result": None,
+        "modelPath": r"C:\models\A.rvt",
+        "phase": "open",
+        "timeUtc": "2026-09-30T00:00:00Z",
+    }
+    host.runs[run_id]["status"] = 4
+    host.runs[run_id]["models"][0].update(status=3, error="Dialog failed.", dialogs=[dialog])
+    host.runs[run_id]["models"][1].update(
+        status=2,
+        snapshotFile="snapshot_0002.json",
+        dialogs=[{**dialog, "decision": "allowed:1", "result": 1}],
+    )
+    host.artifacts[(run_id, "snapshot_0002.json")] = b'{"schemaVersion":1}'
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+
+    status = await tools["revit_batch_status"](run_id)
+    fetched = await tools["revit_batch_fetch"](run_id, str(tmp_path))
+    for result in (status, fetched):
+        assert result["models"][0]["dialogs"][0]["modelPath"] == "A.rvt"
+        assert result["models"][0]["dialogs"][0]["message"] == "Review A.rvt before opening"
+        assert result["models"][1]["dialogs"][0]["decision"] == "allowed:1"
+    assert fetched["models"][0]["error"] == "Dialog failed."
+    assert fetched["models"][1]["status"] == "completed"
+    assert host.runs[run_id]["models"][0]["dialogs"][0] == dialog
+    assert json.loads(Path(fetched["localPaths"][0]).read_text()) == {"schemaVersion": 1}
+
+
+@pytest.mark.anyio
 async def test_fetch_copies_json_and_rejects_incomplete_or_collision(boundary, tmp_path):
     tools, host, _channel = boundary
     result = await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"])

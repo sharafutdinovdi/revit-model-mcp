@@ -7,6 +7,26 @@ public enum BatchRunStatus { Pending, Running, Completed, Cancelled, Failed }
 public enum BatchPhase { Startup, PrePass, Open, Snapshot, Close }
 
 [DataContract]
+public sealed record BatchDialogRecord
+{
+    [DataMember(Name = "dialogId")] public required string DialogId { get; init; }
+    [DataMember(Name = "type")] public required string Type { get; init; }
+    [DataMember(Name = "message")] public string? Message { get; init; }
+    [DataMember(Name = "decision")] public required string Decision { get; init; }
+    [DataMember(Name = "result")] public int? Result { get; init; }
+    [DataMember(Name = "modelPath")] public required string ModelPath { get; init; }
+    [DataMember(Name = "phase")] public required string Phase { get; init; }
+    [DataMember(Name = "timeUtc")] public required string TimeUtc { get; init; }
+}
+
+[DataContract]
+public sealed record BatchPhaseResult<T>
+{
+    [DataMember(Name = "dialogs")] public List<BatchDialogRecord> Dialogs { get; init; } = [];
+    [DataMember(Name = "result", EmitDefaultValue = false)] public T? Result { get; init; }
+}
+
+[DataContract]
 public sealed record BatchParameterRule
 {
     [DataMember(Name = "category")] public required string Category { get; init; }
@@ -30,9 +50,14 @@ public sealed record BatchModel
     [DataMember(Name = "workerProcessId")] public int? WorkerProcessId { get; init; }
     [DataMember(Name = "workerStartedUtc")] public string? WorkerStartedUtc { get; init; }
     [DataMember(Name = "workerProcessStartedUtc")] public string? WorkerProcessStartedUtc { get; init; }
+    [DataMember(Name = "dialogs")] public List<BatchDialogRecord> Dialogs { get; set; } = [];
 
     [OnDeserialized]
-    private void OnDeserialized(StreamingContext context) => PhaseTimingsMs ??= new();
+    private void OnDeserialized(StreamingContext context)
+    {
+        PhaseTimingsMs ??= new();
+        Dialogs ??= [];
+    }
 }
 
 [DataContract]
