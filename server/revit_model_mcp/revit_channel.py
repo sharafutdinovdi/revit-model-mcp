@@ -330,6 +330,13 @@ class ReadJob:
         payload["targetDocument"] = normalized
         return replace(self, payload=payload)
 
+    def for_process(self, process_id: int | None) -> ReadJob:
+        if process_id is None:
+            return self
+        if type(process_id) is not int or process_id <= 0:
+            raise RevitChannelError("process_id must be a strict positive integer.")
+        return replace(self, payload={**self.payload, "targetProcessId": process_id})
+
 
 @dataclass(frozen=True)
 class JobPickupStatus:
@@ -415,11 +422,18 @@ def resolve_instance(instances: list[dict[str, Any]], document: str | None) -> d
 
 def select_instance(instances: list[dict[str, Any]], job: ReadJob) -> dict[str, Any]:
     document = job.payload.get("targetDocument")
-    selected = resolve_instance(instances, document)
-    if job.payload.get("targetProcessId", selected["processId"]) != selected["processId"]:
-        raise RevitChannelError(
-            "The selected Revit process changed before submission. Retry discovery."
-        )
+    process_id = job.payload.get("targetProcessId")
+    if process_id is not None:
+        if type(process_id) is not int or process_id <= 0:
+            raise RevitChannelError("process_id must be a strict positive integer.")
+        matches = [item for item in instances if item.get("processId") == process_id]
+        if len(matches) != 1:
+            raise RevitChannelError("The explicitly selected Revit process is absent or ambiguous.")
+        selected = matches[0]
+        if document and not matches_document(selected, document):
+            raise RevitChannelError("The explicit process and document contradict each other.")
+    else:
+        selected = resolve_instance(instances, document)
     return selected
 
 

@@ -100,10 +100,3 @@ namespace RevitModelMcp.Core.Models
         [DataMember(Name = "elevationMm")] public double ElevationMm { get; set; }
     }
 }
-
-#if NET48
-namespace System.Runtime.CompilerServices
-{
-    internal static class IsExternalInit { }
-}
-#endif

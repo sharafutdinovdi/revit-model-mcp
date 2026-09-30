@@ -80,6 +80,7 @@ plugins:
         Concepts:
           - how-it-works.md
           - transport.md
+          - batch.md
           - security.md
           - architecture.md
           - updates.md
@@ -99,6 +100,7 @@ nav:
       - Server: server.md
       - How it works: how-it-works.md
       - Transport: transport.md
+      - Batch: batch.md
       - Security: security.md
       - Architecture: architecture.md
       - Automatic updates: updates.md

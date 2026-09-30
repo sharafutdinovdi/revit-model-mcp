@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -265,6 +266,12 @@ internal sealed class ControlChannel
     private void ProcessJob(UIApplication application, ControlJobParseResult parsed)
     {
         var startedAt = _currentStartedAt;
+        if (Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1" &&
+            !BatchReadOnlyPolicy.Allows(parsed.Command))
+        {
+            TryWriteError(application, parsed.Command, "read-only batch mode", startedAt, parsed.CorrelationId);
+            return;
+        }
         PluginLog.Info($"Job received. Command='{parsed.Command}'. Client='{parsed.ClientName}'. JobId='{_current?.JobId}'.");
         var document = application.ActiveUIDocument?.Document;
         if (!ActionJobParser.IsAction(parsed.Command) && parsed.TargetDocument is not null &&
@@ -309,6 +316,12 @@ internal sealed class ControlChannel
         if (ActionJobParser.IsAction(parsed.Command))
         {
             ActionCommandExecutor.Execute(application, parsed, startedAt);
+            return;
+        }
+        if (parsed.Kind is ControlJobKind.BatchSupervisorStart or ControlJobKind.BatchPrePass or
+            ControlJobKind.BatchOpen or ControlJobKind.BatchSnapshot or ControlJobKind.BatchClose)
+        {
+            BatchCommands.Execute(application, parsed, startedAt);
             return;
         }
         if (parsed.Kind == ControlJobKind.Invalid)

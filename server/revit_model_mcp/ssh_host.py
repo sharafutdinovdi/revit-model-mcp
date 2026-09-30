@@ -55,6 +55,18 @@ STARTED_UTC = re.compile(
 )
 
 
+def _fail_dead_supervisor(state: dict[str, object]) -> dict[str, object]:
+    if state.get("status") not in (0, 1):
+        return state
+    failed = copy.deepcopy(state)
+    failed["status"] = 4
+    for model in failed.get("models", []):
+        if model.get("status") in (0, 1):
+            model["status"] = 3
+            model["error"] = "Batch supervisor process exited unexpectedly."
+    return failed
+
+
 class RemoteCommandTimeoutError(RevitChannelError):
     pass
 
@@ -89,6 +101,125 @@ class SshPowerShellHost:
     @property
     def requires_identity(self) -> bool:
         return self._instance is not None and self._instance.get("fileChannelVersion") == 2
+
+    async def batch_discover(self, folder: str, recursive: bool) -> list[str]:
+        recurse = "-Recurse" if recursive else ""
+        script = (
+            f"$files = @(Get-ChildItem -LiteralPath '{_ps_quote(folder)}' -File {recurse} "
+            "-ErrorAction Stop | Where-Object { $_.Extension -in '.rvt', '.rfa' } | "
+            "ForEach-Object { $_.FullName }); "
+            "$json = ConvertTo-Json -InputObject $files -Compress; "
+            "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))"
+        )
+        output = await self._run(script)
+        result = json.loads(base64.b64decode(output, validate=True))
+        if not isinstance(result, list) or not all(isinstance(path, str) for path in result):
+            raise ResponseParseError("Batch folder discovery returned invalid paths.")
+        return result
+
+    async def batch_create(self, run_id: str, content: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RevitChannelError("Invalid batch run id.")
+        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+        await self._run(
+            f"$root = Join-Path ({self._root_directory}) 'runs'; "
+            f"$run = Join-Path $root '{run_id}'; "
+            "New-Item -ItemType Directory -Force -Path $root | Out-Null; "
+            "if (Test-Path -LiteralPath $run) { throw 'Batch run already exists.' }; "
+            "New-Item -ItemType Directory -Path $run -ErrorAction Stop | Out-Null; "
+            "$temporary = Join-Path $run 'run.tmp'; $target = Join-Path $run 'run.json'; "
+            f"[IO.File]::WriteAllBytes($temporary, [Convert]::FromBase64String('{encoded}')); "
+            "[IO.File]::Move($temporary, $target)"
+        )
+
+    async def batch_status(self, run_id: str) -> dict[str, object]:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RevitChannelError("Invalid batch run id.")
+        output = await self._run(
+            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            "$path = Join-Path $run 'run.json'; "
+            "if (!(Test-Path -LiteralPath $path)) { throw 'Batch run was not found.' }; "
+            "$state = [IO.File]::ReadAllBytes($path); "
+            "$parsed = ConvertFrom-Json ([Text.Encoding]::UTF8.GetString($state)); "
+            "$alive = $null; "
+            "if ($parsed.supervisorProcessId -and $parsed.supervisorProcessStartedUtc) { "
+            "$supervisor = Get-Process -Id $parsed.supervisorProcessId -ErrorAction SilentlyContinue; "
+            "$alive = $false; "
+            "if ($supervisor) { try { $alive = $supervisor.StartTime.ToUniversalTime().ToString('o') -eq "
+            "([DateTimeOffset]::Parse($parsed.supervisorProcessStartedUtc)).UtcDateTime.ToString('o') "
+            "} catch { $alive = $true } } }; "
+            "$cancel = Test-Path -LiteralPath (Join-Path $run 'cancel.json'); "
+            "[ordered]@{ state = [Convert]::ToBase64String($state); cancel = $cancel; "
+            "supervisorAlive = $alive } | ConvertTo-Json -Compress"
+        )
+        package = json.loads(output)
+        state = json.loads(base64.b64decode(package["state"], validate=True))
+        if not isinstance(state, dict):
+            raise ResponseParseError("Batch run state is invalid.")
+        if package.get("supervisorAlive") is False and state.get("status") in (0, 1):
+            supervisor_id = state.get("supervisorProcessId")
+            supervisor_started = state.get("supervisorProcessStartedUtc")
+            if (
+                type(supervisor_id) is not int
+                or supervisor_id <= 0
+                or not isinstance(supervisor_started, str)
+            ):
+                raise ResponseParseError("Batch supervisor identity is invalid.")
+            failed = _fail_dead_supervisor(state)
+            encoded = base64.b64encode(json.dumps(failed).encode("utf-8")).decode("ascii")
+            await self._run(
+                f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+                "$path = Join-Path $run 'run.json'; "
+                "$current = ConvertFrom-Json ([IO.File]::ReadAllText($path)); "
+                f"if ($current.supervisorProcessId -eq {supervisor_id} -and "
+                f"$current.supervisorProcessStartedUtc -eq '{_ps_quote(supervisor_started)}' "
+                "-and $current.status -in 0, 1) { "
+                "$temporary = Join-Path $run ('run.' + [Guid]::NewGuid().ToString('N') + '.tmp'); "
+                f"[IO.File]::WriteAllBytes($temporary, [Convert]::FromBase64String('{encoded}')); "
+                "try { [IO.File]::Replace($temporary, $path, $null) } finally { "
+                "if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } } }"
+            )
+            return await self.batch_status(run_id)
+        if package["cancel"]:
+            state["cancelRequested"] = True
+        return state
+
+    async def batch_cancel(self, run_id: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+            raise RevitChannelError("Invalid batch run id.")
+        await self._run(
+            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            "if (!(Test-Path -LiteralPath (Join-Path $run 'run.json'))) { throw 'Batch run was not found.' }; "
+            "$target = Join-Path $run 'cancel.json'; "
+            "if (!(Test-Path -LiteralPath $target)) { "
+            "$temporary = Join-Path $run ('cancel.' + [Guid]::NewGuid().ToString('N') + '.tmp'); "
+            "[IO.File]::WriteAllText($temporary, '{\"cancelRequested\":true}'); "
+            "try { [IO.File]::Move($temporary, $target) } finally { "
+            "if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } } }"
+        )
+
+    async def batch_fetch_artifact(self, run_id: str, name: str) -> dict[str, str]:
+        if not re.fullmatch(r"[0-9a-f]{32}", run_id) or not re.fullmatch(
+            r"snapshot_[0-9]{4}\.json", name
+        ):
+            raise RevitChannelError("Invalid batch artifact address.")
+        output = await self._run(
+            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            f"$path = Join-Path $run '{name}'; "
+            "if (!(Test-Path -LiteralPath $path)) { throw 'Batch snapshot is missing.' }; "
+            f"[ordered]@{{ artifactName = '{name}'; artifact = [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) }} | ConvertTo-Json -Compress"
+        )
+        result = json.loads(output)
+        if not isinstance(result, dict):
+            raise ResponseParseError("Batch artifact response is invalid.")
+        return result
+
+    async def batch_activate_interactive(self) -> None:
+        if not ACTIVATION_TASK:
+            raise ActivationError(
+                "No interactive Revit scheduled task is configured in REVIT_MCP_ACTIVATE_TASK."
+            )
+        await self._run(self._activation_script())
 
     async def _discover_instances(self) -> list[dict[str, object]]:
         script = (

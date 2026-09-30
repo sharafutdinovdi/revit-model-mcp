@@ -862,3 +862,28 @@ def test_edit_families_rejects_unknown_op_and_empty_names():
         with pytest.raises(Exception):
             asyncio.run(server.call_tool("revit_edit_families", {"operations": operations}))
     execute.assert_not_awaited()
+
+
+def test_document_lifecycle_explicit_pid_precedes_document_and_rejects_contradiction():
+    import asyncio
+
+    server, execute, host = action_server()
+    host.list_revit_instances.return_value = [
+        {"processId": 42, "documentTitle": "Tower"},
+        {"processId": 84, "documentTitle": "Depot"},
+    ]
+    asyncio.run(
+        server.call_tool("revit_open_document", {"path": r"C:\models\new.rvt", "processId": 84})
+    )
+    assert execute.await_args.args[0].payload["targetProcessId"] == 84
+    execute.reset_mock()
+    with pytest.raises(Exception, match="contradict"):
+        asyncio.run(
+            server.call_tool("revit_close_document", {"document": "Tower", "process_id": 84})
+        )
+    execute.assert_not_awaited()
+    with pytest.raises(Exception):
+        asyncio.run(
+            server.call_tool("revit_open_document", {"path": r"C:\models\new.rvt", "process_id": 0})
+        )
+    execute.assert_not_awaited()

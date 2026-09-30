@@ -36,7 +36,12 @@ public enum ControlJobKind
     NwcSettingsCheck,
     Invalid,
     CompareLinkDatums,
-    Jobs
+    Jobs,
+    BatchSupervisorStart,
+    BatchPrePass,
+    BatchOpen,
+    BatchSnapshot,
+    BatchClose
 }
 
 public sealed class ControlJobParseResult
@@ -181,6 +186,11 @@ public sealed class ControlJobParseResult
             "views-dump" when views.Count == 0 => Invalid(command, "The views-dump command requires a non-empty views list."),
             "views-dump" => ViewsDump(views),
             "ping" => Create(ControlJobKind.Ping, command),
+            "batch-supervisor-start" => Create(ControlJobKind.BatchSupervisorStart, command),
+            "batch-prepass" => Create(ControlJobKind.BatchPrePass, command),
+            "batch-open" => Create(ControlJobKind.BatchOpen, command),
+            "batch-snapshot" => ParseModelSnapshot(job, ControlJobKind.BatchSnapshot, command),
+            "batch-close" => Create(ControlJobKind.BatchClose, command),
             "jobs" => Create(ControlJobKind.Jobs, command),
             "model-health" => Create(ControlJobKind.ModelHealth, command),
             "model-snapshot" => ParseModelSnapshot(job),
@@ -213,9 +223,11 @@ public sealed class ControlJobParseResult
         result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
         result.CancelJobId = job.CancelJobId;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
-        if (command is "family-audit" or "nwc-settings-check") result.CoordinatorJob = job;
+        if (command is "family-audit" or "nwc-settings-check" or "batch-supervisor-start" or "batch-prepass" or "batch-open" or "batch-snapshot" or "batch-close" or "model-snapshot") result.CoordinatorJob = job;
         result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
+        if (job.TargetProcessId is <= 0)
+            return Invalid(command, "targetProcessId must be a strict positive integer.");
         return result;
     }
 
@@ -287,9 +299,9 @@ public sealed class ControlJobParseResult
         return result;
     }
 
-    private static ControlJobParseResult ParseModelSnapshot(ControlJobContract job)
+    private static ControlJobParseResult ParseModelSnapshot(ControlJobContract job,
+        ControlJobKind kind = ControlJobKind.ModelSnapshot, string command = "model-snapshot")
     {
-        const string command = "model-snapshot";
         var rules = new List<ModelSnapshotParameterRule>();
         foreach (var rule in job.ParameterRules ?? [])
         {
@@ -297,7 +309,7 @@ public sealed class ControlJobParseResult
                 return Invalid(command, "Each parameterRules entry requires a non-blank category and parameter.");
             rules.Add(new ModelSnapshotParameterRule { Category = rule.Category.Trim(), Parameter = rule.Parameter.Trim() });
         }
-        var result = Create(ControlJobKind.ModelSnapshot, command);
+        var result = Create(kind, command);
         result.ParameterRules = rules;
         return result;
     }
@@ -431,6 +443,8 @@ public static class ControlJobParser
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "runId", EmitDefaultValue = false)]
+    public string? RunId { get; set; }
     [DataMember(Name = "jobId", EmitDefaultValue = false)]
     public string? JobId { get; set; }
     [DataMember(Name = "clientId", EmitDefaultValue = false)]

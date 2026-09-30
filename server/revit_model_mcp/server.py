@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import contextvars
+import functools
+import inspect
 import os
 from importlib.resources import files
-from typing import Annotated, Any
+from typing import Annotated, Any, get_type_hints
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -12,6 +15,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
+from revit_model_mcp.batch import register_batch
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.revit_channel import (
@@ -204,6 +208,16 @@ Document = Annotated[
         description="Case-insensitive substring of the target active document title or file name. Reads require exactly one matching instance; omitted document requires exactly one running instance. Zero or multiple matches fail before publishing. revit_list_instances returns all matching instances, or all running instances when omitted.",
     ),
 ]
+ProcessId = Annotated[
+    int | None,
+    Field(
+        validation_alias=AliasChoices("process_id", "processId"),
+        description="Exact positive Revit process ID. Takes precedence over document; if both are supplied they must agree.",
+    ),
+]
+_addressed_process_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
+    "addressed_process_id", default=None
+)
 
 
 class ParameterRule(BaseModel):
@@ -302,7 +316,9 @@ async def _execute(
 ) -> dict[str, Any]:
     try:
         result = await channel.execute(
-            job.for_document(document), timeout_seconds, pickup_timeout_seconds
+            job.for_document(document).for_process(_addressed_process_id.get()),
+            timeout_seconds,
+            pickup_timeout_seconds,
         )
         if job.command == "ping":
             result.update(serverVersion=package_version(), **update_status())
@@ -346,8 +362,34 @@ def addressed_tool(function):
         "revit_nwc_settings_check": "Check NWC Settings",
         "revit_compare_link_datums": "Compare Link Datums",
     }[function.__name__]
+    signature = inspect.signature(function)
+    hints = get_type_hints(function, include_extras=True)
+
+    @functools.wraps(function)
+    async def with_process(*args, process_id: ProcessId = None, **kwargs):
+        if process_id is not None and (type(process_id) is not int or process_id <= 0):
+            raise ToolError("process_id must be a strict positive integer.")
+        token = _addressed_process_id.set(process_id)
+        try:
+            return await function(*args, **kwargs)
+        finally:
+            _addressed_process_id.reset(token)
+
+    with_process.__signature__ = signature.replace(
+        parameters=[
+            *[
+                parameter.replace(annotation=hints.get(parameter.name, parameter.annotation))
+                for parameter in signature.parameters.values()
+            ],
+            inspect.Parameter(
+                "process_id", inspect.Parameter.KEYWORD_ONLY, default=None, annotation=ProcessId
+            ),
+        ],
+        return_annotation=hints.get("return", signature.return_annotation),
+    )
+    with_process.__annotations__ = {**hints, "process_id": ProcessId}
     return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
-        with_client_identity(function)
+        with_client_identity(with_process)
     )
 
 
@@ -989,6 +1031,7 @@ async def revit_family_audit(
 
 
 register_actions(mcp, _execute, lambda: host)
+register_batch(mcp, lambda: host, lambda: channel)
 
 
 @mcp.tool(

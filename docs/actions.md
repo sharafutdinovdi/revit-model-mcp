@@ -17,7 +17,7 @@ Revit remains busy for the whole action duration.
 Other listed tools use the default response timeout of 120 seconds. All actions use a pickup timeout of 300 seconds and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
 All IDs are unitless Revit element IDs.
-Revit 2022–2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
+Revit 2022-2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
 
 Action jobs with `targetDocument` resolve that reference when the add-in executes the job.
 The reference must match exactly one open document by a case-insensitive substring of its title or file name.
@@ -41,7 +41,7 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
-| `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions in one `MCP (<clientName>): ...` undo entry. |
+| `revit_batch` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. |
 | `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `response_timeout_s=1800` | Edit open family or named project families; one load cycle per family. |
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `response_timeout_s=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
@@ -84,14 +84,14 @@ The API export uses explicit arguments, then values from `settings_xml`, then th
 | `faceting_factor` | `1.0` | `FacetingFactor`, greater than 0 and at most 100 |
 | `overwrite` | `false` | Replace an existing NWC only after successful export |
 | `dry_run` | `false` | Validate without exporting |
-| `response_timeout_s` | `1800` | Channel response timeout, 30–3600 seconds |
+| `response_timeout_s` | `1800` | Channel response timeout, 30-3600 seconds |
 
 `path` must be an absolute drive path or a UNC path whose share is in `trustedNetworkRoots`, ending in `.nwc` with an existing parent directory. Relative paths, `..` segments, device paths, invalid file names and existing files without `overwrite=true` are rejected. A dry run checks the path, exporter and resolved view or selection, then returns effective options without writing. `scope="view"` exports the specified 3D view with its section box. The response `options` contains effective values and a `sources` object with `argument`, `xml` or `default` for each option. `revit_nwc_settings_check(settings_xml=...)` parses the same file without exporting and returns `values`, exporter-ID-to-API `mapping`, `notApplied` and `ignored`. The XML options `nwexportrevit_embed_textures`, `nwexportrevit_with_type_props`, `nwexportrevit_separate_custom_props` and `nwexportrevit_strict_sectioning` have no Revit API property and appear in `notApplied`. Unknown IDs appear in `ignored`. The mappings for parameter, scope and coordinate enum order await verification against an owner-exported XML file.
 `settings_xml` for export uses the same share rule and rejects device paths and `..` segments.
 
 ### Family edits
 
-In an open `.rfa`, omit `families`. The add-in edits it in place and leaves saving to the user. In a project, pass 1–200 exact family names or `["*"]`; in-place, non-editable, missing and other-user-owned families are skipped with reasons. The add-in opens each family, applies operations in order inside one family transaction, then loads it into the project with one project undo entry. A dry run re-reads the prospective family and rolls back without loading. The command is excluded from `revit_batch`.
+In an open `.rfa`, omit `families`. The add-in edits it in place and leaves saving to the user. In a project, pass 1-200 exact family names or `["*"]`; in-place, non-editable, missing and other-user-owned families are skipped with reasons. The add-in opens each family, applies operations in order inside one family transaction, then loads it into the project with one project undo entry. A dry run re-reads the prospective family and rolls back without loading. The command is excluded from `revit_batch`.
 
 Operations use snake_case `op` values:
 
@@ -104,7 +104,7 @@ Operations use snake_case `op` values:
 ]}
 ```
 
-`add_shared_parameters` reads definitions from the named absolute workstation file or Revit's current shared parameter file. A GUID identifies a definition; name lookup must be unique across groups. `group` is a `GroupTypeId` property name. Existing GUIDs are unchanged; same-name conflicts need `replace_family_parameter=true`. `remove_parameters` removes only unused parameters. Formula references, associations and labels keep a parameter; shared parameters also need `include_shared=true`. Built-in parameters remain. `purge` repeats up to five passes and reports deletion counts. Revit 2022–2023 covers only unused families and types; Revit 2024 and later uses full purge candidates. `set_shared` reports unsupported families and verifies the loaded project state. Shared nested families keep the project version during load. `overwrite_parameter_values=true` replaces existing project type parameter values; instance values remain.
+`add_shared_parameters` reads definitions from the named absolute workstation file or Revit's current shared parameter file. A GUID identifies a definition; name lookup must be unique across groups. `group` is a `GroupTypeId` property name. Existing GUIDs are unchanged; same-name conflicts need `replace_family_parameter=true`. `remove_parameters` removes only unused parameters. Formula references, associations and labels keep a parameter; shared parameters also need `include_shared=true`. Built-in parameters remain. `purge` repeats up to five passes and reports deletion counts. Revit 2022-2023 covers only unused families and types; Revit 2024 and later uses full purge candidates. `set_shared` reports unsupported families and verifies the loaded project state. Shared nested families keep the project version during load. `overwrite_parameter_values=true` replaces existing project type parameter values; instance values remain.
 Client supplied `shared_parameter_file` must be a drive path or a UNC path whose share is in `trustedNetworkRoots`.
 
 With `stop_on_error=true`, the first failed family rolls back the whole project group and reports `failedFamily`. With `false`, that family's load is rolled back and later families continue. A shared-to-non-shared overwrite may fail verification; delete and reload that family manually if Revit keeps its previous shared state.
@@ -157,7 +157,7 @@ Results include zero-based `index`, `command`, `success` and `data` or `error` p
 A batch dry run previews each step against the unchanged model, rolls back each step's transaction and the batch group, and restores the original selection. A later step cannot use an element created by an earlier preview step.
 A per-step `dry_run:true` inside a real batch is accepted and previews only that step.
 Verification describes each step's immediate result; subsequent steps may change those elements again.
-Batches accept 1–50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
+Batches accept 1-50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
 
 `revit_show` checks the open UI views before calling `ShowElements`.
 If none contains a requested element, it opens a non-template plan for an element's level.
@@ -312,3 +312,7 @@ A live strip above the log names the running job and opens the queue of jobs sti
 instance, each with a "Cancel" link. The API `summary` stays in English.
 `Document` is always `Document.Title`, a file name, never a directory, so nothing in the log needs path
 redaction.
+
+## Supervised batch mode
+
+The [batch collector](batch.md) uses a separate worker with an add-in read-only allowlist. Every action command is refused in that worker. Document lifecycle tools accept `process_id` (alias `processId`) to select one running instance; an explicit PID and supplied document must agree.

@@ -528,7 +528,7 @@ Or install the latest GitHub release for every detected Revit year (2022-2027):
 The inline build, copy and manifest-patching commands live in [`install.ps1`](../install.ps1).
 Installation uses `RevitModelMcp\` and `RevitModelMcp.addin` under `%APPDATA%\Autodesk\Revit\Addins\<year>`.
 Use `-Year 2024,2026` to select years and `-Version 0.2.0` to pin a release.
-`-Source Release` requires a release with an asset for each requested year: v0.1.0 ships R22–R26; v0.2.0 adds R27.
+`-Source Release` requires a release with an asset for each requested year: v0.1.0 ships R22-R26; v0.2.0 adds R27.
 Add `-SignThumbprint <thumbprint>` to sign installed DLLs with a local code-signing certificate on workstations where Revit shows the unsigned add-in dialog on every rebuild.
 Add `-RegisterClaude` to register the local server with Claude Code; both `claude` and `uv` must be on PATH.
 Use `-Uninstall -Year 2026` to remove that year's add-in; local settings remain intact.
@@ -536,3 +536,7 @@ The script refuses to run while Revit is open unless `-Force` is supplied.
 Start Revit and open a model after installation, or restart it if it was already running.
 The add-in creates `%LOCALAPPDATA%\RevitModelMcp\instance_<processId>.json` and updates it every five seconds.
 It adds one "Activity" button in the MCP panel on the Add-Ins tab, which opens the MCP activity pane.
+
+## Batch transport
+
+[Batch collection](batch.md) writes durable run state under the workstation channel root. Its supervisor uses only the existing v2 per-PID file channel and validates the worker heartbeat identity before publication and termination. The Python tools use the existing local or SSH workstation host for state and artifact transfer. Direct HTTP batch tools are unavailable.
