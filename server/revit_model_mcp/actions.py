@@ -24,6 +24,17 @@ NonEmptyIds = Annotated[ElementIds, Field(min_length=1)]
 Number = Annotated[float, Field(allow_inf_nan=False)]
 PositiveLength = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 Name = Annotated[str, Field(min_length=1, pattern=r"\S")]
+ParameterId = Annotated[
+    str,
+    Field(
+        pattern=r"^(?:[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+|[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}|0*[1-9][0-9]*)$"
+    ),
+]
+ParameterValue = Union[
+    Annotated[str, Field(strict=True)],
+    Annotated[int, Field(strict=True)],
+    Annotated[float, Field(strict=True, allow_inf_nan=False)],
+]
 Point = Annotated[list[Number], Field(min_length=2, max_length=2)]
 Document = Annotated[
     str | None,
@@ -61,7 +72,8 @@ _BATCH_FIELDS = {
     "set_parameter": {
         "element_id": (ElementId, ...),
         "parameter": (Name, ...),
-        "value": (str, ...),
+        "parameter_id": (ParameterId | None, None),
+        "value": (ParameterValue, ...),
     },
     "delete": {"element_ids": (NonEmptyIds, ...)},
 }
@@ -96,7 +108,11 @@ class BatchStep(BaseModel):
 
         return {
             "command": self.action.replace("_", "-"),
-            **{camel(key): value for key, value in self.args.items()},
+            **{
+                camel(key): value
+                for key, value in self.args.items()
+                if key != "parameter_id" or value is not None
+            },
         }
 
 
@@ -599,12 +615,14 @@ def register_actions(mcp, execute, host_provider) -> None:
     async def revit_set_parameter(
         element_id: ElementId,
         parameter: Name,
-        value: str,
+        value: ParameterValue,
         dry_run: bool = False,
         document: Document = None,
+        parameter_id: ParameterId | None = None,
     ) -> dict[str, Any]:
-        """Set a named instance parameter, falling back to its shared type; use for edits, with length in mm, area in m2 and other doubles in internal units.
-        `parameter` accepts the Revit UI name, a BuiltInParameter name (ALL_MODEL_INSTANCE_COMMENTS) or the English name of a common built-in (Comments, Mark, Type Mark, Description, Level, Offset).
+        """Set exactly one instance or type parameter. Supply parameter_id to select by BuiltInParameter name, shared GUID or positive ParameterElement ID.
+        Without parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.
+        Use a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.
         dry_run executes and rolls back, returning the same verification block without changing the model.
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
@@ -615,6 +633,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             value=value,
             dryRun=dry_run,
             document=document,
+            **({"parameterId": parameter_id} if parameter_id is not None else {}),
         )
 
     @action

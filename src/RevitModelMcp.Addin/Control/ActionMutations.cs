@@ -4,7 +4,6 @@ using Autodesk.Revit.DB.Structure;
 using Nice3point.Revit.Extensions;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
-using RevitModelMcp.Core.Naming;
 
 namespace RevitModelMcp.Control;
 
@@ -62,16 +61,15 @@ internal static class ActionMutations
     {
         var element = CreateId(action.ElementId).ToElement(document)
                       ?? throw new ArgumentException($"Element {action.ElementId} was not found.");
-        var parameter = ResolveParameter(element, action.Parameter!)
-                        ?? throw new ArgumentException($"Parameter '{action.Parameter}' was not found on the instance or type.");
+        var (parameter, candidate) = ResolveParameter(element, action.Parameter!, action.ParameterId);
         if (parameter.IsReadOnly) throw new InvalidOperationException($"Parameter '{action.Parameter}' is read-only.");
         var oldValue = ParameterValue(parameter);
-        var value = action.Value!;
+        var value = ParameterResolution.ValidateValue(action.Parameter!, parameter.StorageType.ToString(), action.Value!);
         var changed = parameter.StorageType switch
         {
-            StorageType.String => parameter.Set(value),
-            StorageType.Integer => parameter.Set(int.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture)),
-            StorageType.Double => parameter.Set(ParameterDouble(parameter, value)),
+            StorageType.String => parameter.Set((string)value),
+            StorageType.Integer => parameter.Set((int)value),
+            StorageType.Double => parameter.Set(ParameterDouble(parameter, (double)value)),
             _ => throw new ArgumentException("Only String, Integer and Double parameters are supported; ElementId parameters cannot be set.")
         };
         if (!changed)
@@ -80,30 +78,36 @@ internal static class ActionMutations
         {
             OldValue = oldValue,
             NewValue = ParameterValue(parameter),
-            ParameterScope = parameter.Element.Id == element.Id ? "instance" : "type"
+            ParameterScope = candidate.Owner
         };
     }
 
-    /// <summary>
-    /// Finds a parameter on the instance or its type by localized name, then by <c>BuiltInParameter</c> name or
-    /// the English label of a common built-in, so requests work in any Revit UI language.
-    /// </summary>
-    internal static Parameter? ResolveParameter(Element element, string name)
+    internal static (Parameter Parameter, ParameterCandidate Candidate) ResolveParameter(Element element, string name, string? parameterId)
     {
-        if (element.FindParameter(name) is { } byName) return byName;
-        var type = element.Document.GetElement(element.GetTypeId());
-        foreach (var candidate in ParameterNames.BuiltInCandidates(name))
+        var found = new List<(Parameter Parameter, ParameterCandidate Candidate)>();
+        void Collect(Element owner, string scope)
         {
-            if (!Enum.TryParse(candidate, out BuiltInParameter builtIn) || !Enum.IsDefined(typeof(BuiltInParameter), builtIn)) continue;
-            if ((element.get_Parameter(builtIn) ?? type?.get_Parameter(builtIn)) is { } parameter) return parameter;
+            foreach (Parameter parameter in owner.Parameters)
+            {
+                var id = RevitValueReader.GetId(parameter.Id);
+                var builtInName = id is >= int.MinValue and < 0
+                    ? Enum.GetName(typeof(BuiltInParameter), (int)id) : null;
+                var kind = parameter.IsShared ? "shared" : builtInName is not null ? "built-in" : "project";
+                var stableId = parameter.IsShared ? parameter.GUID.ToString("D")
+                    : builtInName ?? id.ToString(CultureInfo.InvariantCulture);
+                found.Add((parameter, new ParameterCandidate(stableId, parameter.Definition.Name,
+                    parameter.StorageType.ToString(), scope, kind, builtInName, id > 0 ? id : null)));
+            }
         }
-        return null;
+        Collect(element, "instance");
+        var type = element.Document.GetElement(element.GetTypeId());
+        if (type is not null) Collect(type, "type");
+        var selected = ParameterResolution.Resolve(name, parameterId, found.Select(item => item.Candidate));
+        return found.First(item => item.Candidate == selected);
     }
 
-    private static double ParameterDouble(Parameter parameter, string text)
+    private static double ParameterDouble(Parameter parameter, double value)
     {
-        var value = double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
-        if (double.IsNaN(value) || double.IsInfinity(value)) throw new ArgumentException("Parameter value must be finite.");
         var spec = parameter.Definition.GetDataType();
         if (spec == SpecTypeId.Length) return Millimeters(value);
         if (spec == SpecTypeId.Area) return UnitUtils.ConvertToInternalUnits(value, UnitTypeId.SquareMeters);
