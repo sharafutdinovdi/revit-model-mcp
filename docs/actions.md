@@ -39,7 +39,7 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
 | `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
-| `revit_set_parameter` | `element_id`, `parameter`, `value` | Set a string value by parameter name; lengths use mm, areas m2, other doubles internal units. `parameter` accepts the Revit UI name, a `BuiltInParameter` name such as `ALL_MODEL_INSTANCE_COMMENTS`, or the English name of a common built-in (`Comments`, `Mark`, `Type Mark`, `Description`, `Level`, `Offset` and a few more), so it works in any Revit UI language. |
+| `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1–50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. |
@@ -143,7 +143,7 @@ For example, setting Comments on element 123 returns:
 {
   "steps": [
     {"action": "move", "args": {"element_ids": [123], "dx_mm": 100, "dy_mm": 0}},
-    {"action": "set_parameter", "args": {"element_id": 123, "parameter": "Comments", "value": "Reviewed"}}
+    {"action": "set_parameter", "args": {"element_id": 123, "parameter": "Comments", "parameter_id": "ALL_MODEL_INSTANCE_COMMENTS", "value": "Reviewed"}}
   ],
   "dry_run": false
 }

@@ -60,15 +60,15 @@ internal static class ActionVerifier
     private static ActionFacts ParameterFacts(Document targetDocument, ActionJobContract action)
     {
         var element = RequiredElement(targetDocument, action.ElementId);
-        var parameter = ActionMutations.ResolveParameter(element, action.Parameter!)
-                        ?? throw new ArgumentException($"Parameter '{action.Parameter}' was not found on the instance or type.");
+        var (parameter, candidate) = ActionMutations.ResolveParameter(element, action.Parameter!, action.ParameterId);
         return new ActionFacts
         {
             Id = RevitValueReader.GetId(element.Id),
             Parameter = parameter.Definition.Name,
+            ParameterId = candidate.Id,
             Value = ActionMutations.ParameterValue(parameter),
             StorageType = parameter.StorageType.ToString(),
-            Owner = parameter.Element.Id == element.Id ? "instance" : "type"
+            Owner = candidate.Owner
         };
     }
 

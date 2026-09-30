@@ -38,6 +38,7 @@ An HTTP endpoint also rejects jobs addressed to another process.
 | `document` | `targetDocument` |
 | `cancel_job_id` | `cancelJobId` for the `jobs` read command |
 | `element_id` | `id` for `element-details`; `elementId` for `set-parameter` |
+| `parameter_id` | `parameterId` for `set-parameter` |
 | `element_ids` | `elementIds` |
 | `dry_run` | `dryRun` (optional boolean, defaults to false) |
 | `view_type`, `name_contains` | `viewType`, `nameContains` |
@@ -240,12 +241,15 @@ Real writes re-read `verification.after` after commit.
 `verification.error` reports a failed post-commit re-read; the change itself is committed.
 Unavailable bounding boxes are omitted; available bounds are XYZ arrays in model mm rounded to one decimal.
 Parameter values are invariant strings with lengths in mm, areas in m2 and other doubles in internal units.
+For `set-parameter`, Python `parameter_id` maps to channel `parameterId`. The optional ID is a `BuiltInParameter` enum name, shared GUID or positive decimal `ParameterElement` ID. `parameter` remains required. A supplied ID must match exactly; there is no name fallback. Without an ID, a localized name, enum name or supported English alias must identify one parameter. Ambiguous matches fail and list every candidate with ID, name, storage type, owner and shared, built-in or project kind.
+Input `value` must be a JSON string for String storage, integer for Integer storage or finite number for Double storage. An integer JSON value is valid for Double storage. Boolean values and numeric strings are rejected. Empty strings clear String parameters.
+`verification.before.parameterId` and `verification.after.parameterId` contain the resolved stable ID.
 `owner` is `instance` or `type`.
 
 | Command | `data.verification` shape |
 |---|---|
 | `move` | `{"before":{"elements":[{"id":1,"category":"Walls","boundingBoxMinMm":[0,0,0],"boundingBoxMaxMm":[100,100,3000]}]},"after":{"elements":[{"id":1,"category":"Walls","boundingBoxMinMm":[10,0,0],"boundingBoxMaxMm":[110,100,3000]}]},"changed":[1]}` |
-| `set-parameter` | `{"before":{"id":1,"parameter":"Comments","value":"","storageType":"String","owner":"instance"},"after":{"id":1,"parameter":"Comments","value":"Reviewed","storageType":"String","owner":"instance"},"changed":[1]}` |
+| `set-parameter` | `{"before":{"id":1,"parameter":"Comments","parameterId":"ALL_MODEL_INSTANCE_COMMENTS","value":"","storageType":"String","owner":"instance"},"after":{"id":1,"parameter":"Comments","parameterId":"ALL_MODEL_INSTANCE_COMMENTS","value":"Reviewed","storageType":"String","owner":"instance"},"changed":[1]}` |
 | `place-family`, `create-wall` | `{"after":{"id":2,"category":"Walls","family":"Basic Wall","type":"Generic","level":"01","boundingBoxMinMm":[0,0,0],"boundingBoxMaxMm":[1000,200,3000]}}`; dry runs add `"wouldCreate":true` inside `verification`. |
 | `delete` | `{"before":{"requested":[1],"dependents":[2]},"after":{"stillPresent":[]},"changed":[1,2]}` |
 

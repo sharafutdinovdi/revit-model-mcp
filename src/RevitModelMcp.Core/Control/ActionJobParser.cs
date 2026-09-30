@@ -45,6 +45,7 @@ public static class ActionJobParser
                 HeightMm = job.HeightMm ?? 3000,
                 ElementId = job.ActionElementId ?? 0,
                 Parameter = job.Parameter,
+                ParameterId = job.ParameterId,
                 Value = job.Value,
                 Nwc = new NwcExportJob
                 {
@@ -212,6 +213,8 @@ public static class ActionJobParser
                 Require(action.ElementId > 0, "elementId must be positive.");
                 Require(!string.IsNullOrWhiteSpace(action.Parameter), "parameter is required.");
                 Require(action.Value is not null, "value is required (an empty string is allowed).");
+                if (action.ParameterId is not null) ParameterResolution.ValidateIdentifier(action.ParameterId);
+                ParameterResolution.ValidateJsonValue(action.Parameter!, action.Value!);
             }
             if (command == "export-nwc")
             {
@@ -521,7 +524,8 @@ public sealed class ActionJobContract
     public double HeightMm { get; set; }
     public long ElementId { get; set; }
     public string? Parameter { get; set; }
-    public string? Value { get; set; }
+    public string? ParameterId { get; set; }
+    public object? Value { get; set; }
     public List<string>? Families { get; set; }
     public List<FamilyEditOperationContract> Operations { get; set; } = [];
     public bool OverwriteParameterValues { get; set; }
@@ -765,7 +769,8 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "heightMm")] public double? HeightMm { get; set; }
     [DataMember(Name = "elementId")] public long? ActionElementId { get; set; }
     [DataMember(Name = "parameter")] public string? Parameter { get; set; }
-    [DataMember(Name = "value")] public string? Value { get; set; }
+    [DataMember(Name = "parameterId")] public string? ParameterId { get; set; }
+    [DataMember(Name = "value")] public object? Value { get; set; }
     [DataMember(Name = "families")] public List<string>? Families { get; set; }
     [DataMember(Name = "operations")] public List<FamilyEditOperationContract>? Operations { get; set; }
     [DataMember(Name = "overwriteParameterValues")] public bool? OverwriteParameterValues { get; set; }

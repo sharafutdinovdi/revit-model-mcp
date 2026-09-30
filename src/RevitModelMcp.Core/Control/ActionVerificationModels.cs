@@ -24,6 +24,7 @@ public sealed class ActionFacts
     [DataMember(Name = "type", EmitDefaultValue = false)] public string? Type { get; set; }
     [DataMember(Name = "level", EmitDefaultValue = false)] public string? Level { get; set; }
     [DataMember(Name = "parameter", EmitDefaultValue = false)] public string? Parameter { get; set; }
+    [DataMember(Name = "parameterId", EmitDefaultValue = false)] public string? ParameterId { get; set; }
     [DataMember(Name = "value", EmitDefaultValue = false)] public string? Value { get; set; }
     [DataMember(Name = "storageType", EmitDefaultValue = false)] public string? StorageType { get; set; }
     [DataMember(Name = "owner", EmitDefaultValue = false)] public string? Owner { get; set; }
