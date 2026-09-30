@@ -26,6 +26,7 @@ from revit_model_mcp.ssh_host import SshPowerShellHost
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
+    "revit_build_report",
     "revit_jobs",
     "revit_model_health",
     "revit_model_snapshot",
@@ -153,6 +154,7 @@ EXPECTED_PARAMETERS = {
         "pickup_timeout_seconds",
         "document",
     ],
+    "revit_build_report": ["snapshots_dir", "output_path", "previous_dir", "findings"],
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],

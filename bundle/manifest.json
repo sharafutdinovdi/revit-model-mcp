@@ -224,6 +224,10 @@
     {
       "name": "revit_edit_families",
       "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode."
+    },
+    {
+      "name": "revit_build_report",
+      "description": "Build a local Excel report from snapshots without contacting Revit."
     }
   ],
   "tools_generated": true,
