@@ -57,7 +57,7 @@ internal static class BatchCommands
             .Write(CommandResponse<T>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds));
     }
 
-    private static object StartSupervisor(string? runId)
+    private static BatchStartResult StartSupervisor(string? runId)
     {
         if (Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
             throw new InvalidOperationException("A batch worker cannot start a supervisor.");
@@ -161,11 +161,5 @@ internal static class BatchCommands
         [DataMember(Name = "savedYear")] public int SavedYear { get; init; }
         [DataMember(Name = "format")] public required string Format { get; init; }
         [DataMember(Name = "source")] public required string Source { get; init; }
-    }
-
-    [DataContract]
-    private sealed record BatchStartResult
-    {
-        [DataMember(Name = "runId")] public required string RunId { get; init; }
     }
 }
