@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\RevitModelMcp.Core\RevitModelMcp.Core.csproj" />
+    <Compile Include="..\..\src\RevitModelMcp.BatchSupervisor\BatchRunStore.cs" Link="BatchRunStore.cs" />
   </ItemGroup>
 
 </Project>

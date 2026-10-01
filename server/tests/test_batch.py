@@ -4,6 +4,8 @@ import base64
 import errno
 import json
 import os
+import shutil
+import subprocess
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -408,3 +410,43 @@ async def test_host_status_persists_failed_when_owned_supervisor_is_dead():
     assert len(host.writes) == 1
     assert "[IO.File]::Replace" in host.writes[0]
     assert "Stop-Process" not in host.writes[0]
+
+
+def _powershell_runs() -> bool:
+    executable = shutil.which("pwsh")
+    if executable is None:
+        return False
+    result = subprocess.run(
+        [executable, "-NoProfile", "-NonInteractive", "-Command", "'ready'"],
+        capture_output=True,
+        check=False,
+    )
+    return result.returncode == 0
+
+
+@pytest.mark.anyio
+@pytest.mark.skipif(not _powershell_runs(), reason="Working PowerShell is required")
+async def test_host_status_reads_bom_prefixed_run_file(tmp_path):
+    run_id = "a" * 32
+    run_directory = tmp_path / "runs" / run_id
+    run_directory.mkdir(parents=True)
+    state = {"runId": run_id, "status": 2, "models": []}
+    run_file = run_directory / "run.json"
+    run_file.write_bytes(b"\xef\xbb\xbf" + json.dumps(state).encode("utf-8"))
+
+    async def run_script(script, **_kwargs):
+        result = subprocess.run(
+            [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-Command", script],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    host = SshPowerShellHost("test-host")
+    host._root_directory = "'" + str(tmp_path).replace("'", "''") + "'"
+    host._run = run_script
+    actual = await host.batch_status(run_id)
+    assert actual["status"] == 2
+    assert run_file.read_bytes().startswith(b"\xef\xbb\xbf")
