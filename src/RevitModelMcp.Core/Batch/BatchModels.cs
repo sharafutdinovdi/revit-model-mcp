@@ -73,6 +73,7 @@ public sealed record BatchRun
     [DataMember(Name = "status")] public BatchRunStatus Status { get; init; }
     [DataMember(Name = "cancelRequested")] public bool CancelRequested { get; init; }
     [DataMember(Name = "years")] public int[] Years { get; set; } = [];
+    [DataMember(Name = "openTimeoutMinutes", EmitDefaultValue = false)] public int? OpenTimeoutMinutes { get; set; }
     [DataMember(Name = "parameterRules")] public BatchParameterRule[] ParameterRules { get; set; } = [];
     [DataMember(Name = "models")] public required BatchModel[] Models { get; set; }
     [DataMember(Name = "supervisorProcessId")] public int? SupervisorProcessId { get; init; }

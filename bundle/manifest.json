@@ -227,7 +227,7 @@
     },
     {
       "name": "revit_batch_start",
-      "description": "Start a persistent, read-only run over local, UNC, or RSN models."
+      "description": "Start a persistent, read-only run over local, UNC, or RSN models.\n\nopen_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory)."
     },
     {
       "name": "revit_batch_status",

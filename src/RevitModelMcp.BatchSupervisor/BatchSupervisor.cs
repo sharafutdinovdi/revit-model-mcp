@@ -138,7 +138,7 @@ internal sealed class BatchSupervisor(
             _store.Write(Replace(run, index, model));
             var stopwatch = Stopwatch.StartNew();
             await ModelPhaseAsync(run, model, index, worker, "batch-open", new() { ["path"] = model.Path },
-                BatchPhase.Open, TimeSpan.FromMinutes(10), cancellationToken);
+                BatchPhase.Open, BatchOpenDeadline.Resolve(run.OpenTimeoutMinutes, route.UpgradedInMemory), cancellationToken);
             opened = true;
             model = BatchStatePolicy.Timed(model, BatchPhase.Open, stopwatch.ElapsedMilliseconds);
             _store.Write(Replace(run, index, model));

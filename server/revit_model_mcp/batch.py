@@ -139,8 +139,12 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         recursive: bool = False,
         parameter_rules: list[dict[str, str]] | None = None,
         years: list[int] | None = None,
+        open_timeout_minutes: int | None = None,
     ) -> dict[str, Any]:
-        """Start a persistent, read-only run over local, UNC, or RSN models."""
+        """Start a persistent, read-only run over local, UNC, or RSN models.
+
+        open_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory).
+        """
         if (paths is None) == (folder is None):
             raise ToolError("Supply exactly one of paths or folder.")
         if folder is not None and (not isinstance(folder, str) or not folder.strip()):
@@ -149,6 +153,10 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             raise ToolError("paths must be a non-empty list.")
         selected_years = _years(years)
         selected_rules = _rules(parameter_rules)
+        if open_timeout_minutes is not None and (
+            type(open_timeout_minutes) is not int or not 5 <= open_timeout_minutes <= 180
+        ):
+            raise ToolError("open_timeout_minutes must be an integer from 5 through 180.")
         host = host_provider()
         file_host = _file_host(host)
         try:
@@ -172,6 +180,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                     {"path": path, "status": 0, "phaseTimingsMs": {}} for path in selected_paths
                 ],
             }
+            if open_timeout_minutes is not None:
+                state["openTimeoutMinutes"] = open_timeout_minutes
             import json
 
             await file_host.batch_create(run_id, json.dumps(state))
