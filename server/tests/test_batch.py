@@ -111,9 +111,31 @@ async def test_start_persists_inputs_and_chooses_process(boundary):
     ]
     assert state["years"] == [2026, 2027]
     assert state["parameterRules"] == [{"category": "Walls", "parameter": "Mark"}]
+    assert "openTimeoutMinutes" not in state
     assert all(model["phaseTimingsMs"] == {} for model in state["models"])
     assert channel.jobs[0].payload["targetProcessId"] == 41
     assert channel.jobs[0].payload["runId"] == result["runId"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("minutes", [5, 30, 180])
+async def test_start_persists_open_timeout(boundary, minutes):
+    tools, host, _channel = boundary
+    result = await tools["revit_batch_start"](
+        paths=[r"C:\models\A.rvt"], open_timeout_minutes=minutes
+    )
+    assert host.runs[result["runId"]]["openTimeoutMinutes"] == minutes
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("minutes", [4, 181, True, "30", 30.5])
+async def test_invalid_open_timeout_creates_no_run(boundary, minutes):
+    tools, host, channel = boundary
+    with pytest.raises(
+        ToolError, match=r"open_timeout_minutes must be an integer from 5 through 180\."
+    ):
+        await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], open_timeout_minutes=minutes)
+    assert not host.runs and not channel.jobs
 
 
 @pytest.mark.anyio

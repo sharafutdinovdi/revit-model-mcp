@@ -17,12 +17,17 @@ Other Revit years continue in the same run.
 
 ## Tools and inputs
 
-`revit_batch_start(paths=null, folder=null, recursive=false, parameter_rules=null, years=null)` accepts exactly one source.
+`revit_batch_start(paths=null, folder=null, recursive=false, parameter_rules=null, years=null, open_timeout_minutes=null)` accepts exactly one source.
 `paths` is a nonempty list of absolute `.rvt` or `.rfa` local, UNC, or RSN paths.
 A `folder` discovers those extensions at its top level unless `recursive=true`.
 Blank entries, duplicate normalized paths, unsupported extensions, and both or neither source fail before a run is created.
 `years` is a distinct list of supported integers from 2022 through 2027 and limits the installed Revit versions available for routing.
 `parameter_rules` is a list of nonblank `{category, parameter}` objects passed to `batch-snapshot`.
+The per-model open deadline is 30 minutes, or 45 minutes when the model is upgraded in memory from an older Revit year.
+An in-memory upgrade can take many minutes during open.
+`open_timeout_minutes` accepts an integer from 5 through 180 and overrides either default for the run.
+An explicit value is persisted in `run.json` as `openTimeoutMinutes`.
+Startup, pre-pass, snapshot, and close deadlines are fixed.
 
 Start returns a `runId` and accepted model count.
 The workstation stores immutable inputs and mutable state in `ROOT\runs\<runId>\run.json`.
