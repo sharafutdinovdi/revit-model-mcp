@@ -53,7 +53,7 @@ Path redaction applies to nested dialog paths and paths in messages and button c
 Fetched snapshot paths follow `REVIT_MCP_REDACT_PATHS` without changing workstation snapshots.
 Fetch uses the existing SSH artifact transfer path for a remote workstation.
 
-Each model can fail at worker startup, metadata pre-pass, open, snapshot collection, or close. A deadline, stale heartbeat, worker exit, or unknown modal dialog fails that model and recycles only the supervisor-owned worker. The next model continues. A timeout after an operation may have occurred is reported as an error; inspect persisted state before retrying.
+Each model can fail at worker startup, metadata pre-pass, open, snapshot collection, or close. A deadline, stale heartbeat, worker exit, or unknown modal dialog fails that model and recycles only the supervisor-owned worker. Warning-severity failures raised while a model opens are dismissed as in interactive open, while error-severity failures still fail the model through the unknown dialog path. The next model continues. A timeout after an operation may have occurred is reported as an error; inspect persisted state before retrying.
 The supervisor briefly retries heartbeat reads when the file is temporarily missing or inaccessible.
 
 ## Dialog allowlist
@@ -81,7 +81,7 @@ Allow only dialogs whose selected answer does not modify or save the model.
 
 Read `dialogId` and `type` as the exact match keys. `message` contains up to 2000 characters of available dialog text. Each entry in `buttons` has a `caption` and a numeric `result`. `decision` shows whether the dialog was allowed or unknown. `phase` identifies the batch operation, and `modelPath` identifies the affected model.
 
-For task dialogs, `result` is the task dialog result value, such as 1 for OK, 2 for Cancel, 6 for Yes, 7 for No, or 1001 and up for command links. For other dialogs, use a button's `result` from the record. Choose only an answer that does not modify or save the model.
+For task dialogs, `result` is the task dialog result value, such as 1 for OK, 2 for Cancel, 6 for Yes, 7 for No, or 1001 and up for command links. For dialogs that are not task dialogs or message boxes, captured button results are control ids that may not be accepted as an override result, so verify an allowlist entry on one model first. Choose only an answer that does not modify or save the model.
 
 For example, this record offers a Cancel result:
 
