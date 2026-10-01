@@ -14,7 +14,7 @@ internal sealed class BatchSupervisor(
     private readonly RevitServerClient _revitServer = revitServer;
     private readonly Func<DateTimeOffset> _clock = clock;
     private readonly string _channelRoot = Path.GetFullPath(Path.Combine(store.DirectoryPath, "..", ".."));
-    private readonly HashSet<int> _blockedTrustYears = [];
+    private readonly BatchStartupYearAvailability _startupAvailability = new();
 
     public async Task RunAsync(CancellationToken cancellationToken)
     {
@@ -228,7 +228,7 @@ internal sealed class BatchSupervisor(
 
     private async Task<RevitWorkerProcess> StartWorkerAsync(int year, string executable, CancellationToken cancellationToken)
     {
-        if (_blockedTrustYears.Contains(year)) throw new InvalidOperationException(BatchStartupTrustPolicy.Message(year));
+        if (_startupAvailability.TryGetReason(year, out var reason)) throw new InvalidOperationException(reason);
         var worker = RevitWorkerProcess.Start(executable, _channelRoot);
         try
         {
@@ -238,9 +238,11 @@ internal sealed class BatchSupervisor(
             var heartbeat = _channel.WaitForHeartbeatAsync(worker.ProcessId, _channelRoot,
                 deadline, () => _store.CancellationRequested, () => worker.HasExited,
                 heartbeatCancellation.Token);
+            const string startupFailure = "Worker startup deadline expired.";
             try
             {
-                while (!heartbeat.IsCompleted)
+                var deadlineReached = false;
+                while (!heartbeat.IsCompleted && !deadlineReached)
                 {
                     var now = DateTimeOffset.UtcNow;
                     var promptVisible = BatchStartupTrustPolicy.ShouldInspect(launched, now) && worker.TrustPromptVisible();
@@ -253,13 +255,24 @@ internal sealed class BatchSupervisor(
                         case BatchStartupDecision.WorkerExited:
                             throw new InvalidOperationException("Worker exited before its heartbeat.");
                         case BatchStartupDecision.TrustPrompt:
-                            _blockedTrustYears.Add(year);
-                            throw new InvalidOperationException(BatchStartupTrustPolicy.Message(year));
+                            var trustMessage = BatchStartupTrustPolicy.Message(year);
+                            _startupAvailability.MarkTrustPrompt(year);
+                            throw new InvalidOperationException(trustMessage);
                         case BatchStartupDecision.StartupDeadline:
-                            throw new TimeoutException("Worker startup deadline expired.");
+                            deadlineReached = true;
+                            break;
                     }
-                    await Task.WhenAny(heartbeat, Task.Delay(250, cancellationToken));
+                    if (!deadlineReached) await Task.WhenAny(heartbeat, Task.Delay(250, cancellationToken));
                 }
+                string started;
+                try { started = await heartbeat; }
+                catch (TimeoutException exception) when (exception.Message == startupFailure)
+                {
+                    _startupAvailability.MarkStartupDeadline(year, exception.Message);
+                    throw;
+                }
+                worker.SetHeartbeatIdentity(started);
+                return worker;
             }
             finally
             {
@@ -268,11 +281,9 @@ internal sealed class BatchSupervisor(
                     heartbeatCancellation.Cancel();
                     try { await heartbeat; }
                     catch (OperationCanceledException) { }
+                    catch (TimeoutException exception) when (exception.Message == startupFailure) { }
                 }
             }
-            var started = await heartbeat;
-            worker.SetHeartbeatIdentity(started);
-            return worker;
         }
         catch
         {
