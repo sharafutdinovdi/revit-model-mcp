@@ -15,12 +15,13 @@ namespace RevitModelMcp.Core.Tests.Batch
             using var lockedFile = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
             var release = Task.Run(async () =>
             {
-                await Task.Delay(200);
+                await Task.Delay(100);
                 lockedFile.Dispose();
             });
             try
             {
-                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true)).IsTrue();
+                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true,
+                    attempts: 400, delay: TimeSpan.FromMilliseconds(10))).IsTrue();
             }
             finally
             {
@@ -38,12 +39,13 @@ namespace RevitModelMcp.Core.Tests.Batch
             File.WriteAllText(temporary, HeartbeatJson(1234, startedUtc));
             var publish = Task.Run(async () =>
             {
-                await Task.Delay(200);
+                await Task.Delay(100);
                 File.Move(temporary, path);
             });
             try
             {
-                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true)).IsTrue();
+                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true,
+                    attempts: 400, delay: TimeSpan.FromMilliseconds(10))).IsTrue();
             }
             finally
             {
@@ -69,8 +71,9 @@ namespace RevitModelMcp.Core.Tests.Batch
             try
             {
                 var stopwatch = Stopwatch.StartNew();
-                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true)).IsFalse();
-                await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromMilliseconds(300));
+                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true,
+                    attempts: 400, delay: TimeSpan.FromMilliseconds(50))).IsFalse();
+                await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromSeconds(2));
             }
             finally { File.Delete(path); }
         }
@@ -83,7 +86,10 @@ namespace RevitModelMcp.Core.Tests.Batch
             File.WriteAllText(path, HeartbeatJson(1234, startedUtc.AddMinutes(-1)));
             try
             {
-                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true)).IsFalse();
+                var stopwatch = Stopwatch.StartNew();
+                await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true,
+                    attempts: 400, delay: TimeSpan.FromMilliseconds(50))).IsFalse();
+                await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromSeconds(2));
             }
             finally { File.Delete(path); }
         }
