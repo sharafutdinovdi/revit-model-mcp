@@ -219,11 +219,11 @@ jobs:
           function Get-MsiProperty($path, $name) {
             $database = $installer.OpenDatabase($path, 0)
             $view = $database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = '$name'")
-            $view.Execute()
+            [void]$view.Execute()
             $record = $view.Fetch()
             if ($null -eq $record) { throw "Missing MSI property: $name in $path" }
             $value = $record.StringData(1)
-            $view.Close()
+            [void]$view.Close()
             return $value
           }
 
@@ -237,7 +237,7 @@ jobs:
             $upgradeB = Get-MsiProperty $msiB 'UpgradeCode'
             $versionA = Get-MsiProperty $msiA 'ProductVersion'
             $versionB = Get-MsiProperty $msiB 'ProductVersion'
-            if ($versionA -ne $versionB) { throw "$scope MSI versions differ" }
+            if ($versionA -ne $versionB) { throw "$scope MSI versions differ: [$versionA] [$versionB]" }
             if ($upgradeA -ne $upgradeB) { throw "$scope MSI UpgradeCodes differ" }
             if ($productA -eq $productB) { throw "$scope MSI ProductCodes are equal" }
             Write-Host "ASSERT: $scope MSI version and UpgradeCode match, ProductCodes differ"
