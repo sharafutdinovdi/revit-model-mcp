@@ -28,6 +28,7 @@ Project CreateProject(InstallScope scope)
             DowngradeErrorMessage = "A newer version of [ProductName] is already installed."
         },
         GUID = new Guid("75e1b812-23a4-45ce-9e7c-84d7d43b8c70"),
+        ProductId = Guid.NewGuid(),
         BannerImage = @"build\install\Resources\Icons\BannerImage.png",
         BackgroundImage = @"build\install\Resources\Icons\BackgroundImage.png",
         Version = versioning.VersionPrefix,
