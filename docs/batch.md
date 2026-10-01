@@ -49,6 +49,7 @@ Fetched snapshot paths follow `REVIT_MCP_REDACT_PATHS` without changing workstat
 Fetch uses the existing SSH artifact transfer path for a remote workstation.
 
 Each model can fail at worker startup, metadata pre-pass, open, snapshot collection, or close. A deadline, stale heartbeat, worker exit, or unknown modal dialog fails that model and recycles only the supervisor-owned worker. The next model continues. A timeout after an operation may have occurred is reported as an error; inspect persisted state before retrying.
+The supervisor briefly retries heartbeat reads when the file is temporarily missing or inaccessible.
 
 ## Dialog allowlist
 
