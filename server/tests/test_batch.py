@@ -190,6 +190,7 @@ async def test_status_and_fetch_expose_redacted_dialogs_without_mutating_state(
         "dialogId": "TaskDialog_Example",
         "type": "TaskDialogShowingEventArgs",
         "message": r"Review C:\models\linked\A.rvt before opening",
+        "buttons": [{"caption": r"Open C:\models\linked\B.rvt", "result": 1}],
         "decision": "unknown",
         "result": None,
         "modelPath": r"C:\models\A.rvt",
@@ -204,13 +205,23 @@ async def test_status_and_fetch_expose_redacted_dialogs_without_mutating_state(
         dialogs=[{**dialog, "decision": "allowed:1", "result": 1}],
     )
     host.artifacts[(run_id, "snapshot_0002.json")] = b'{"schemaVersion":1}'
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "redacted").mkdir()
+    unredacted_status = await tools["revit_batch_status"](run_id)
+    unredacted_fetch = await tools["revit_batch_fetch"](run_id, str(tmp_path / "plain"))
+    for unredacted in (unredacted_status, unredacted_fetch):
+        assert unredacted["models"][0]["dialogs"][0]["buttons"] == dialog["buttons"]
+        assert unredacted["models"][0]["dialogs"][0]["message"] == dialog["message"]
     monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
 
     status = await tools["revit_batch_status"](run_id)
-    fetched = await tools["revit_batch_fetch"](run_id, str(tmp_path))
+    fetched = await tools["revit_batch_fetch"](run_id, str(tmp_path / "redacted"))
     for result in (status, fetched):
         assert result["models"][0]["dialogs"][0]["modelPath"] == "A.rvt"
         assert result["models"][0]["dialogs"][0]["message"] == "Review A.rvt before opening"
+        assert result["models"][0]["dialogs"][0]["buttons"] == [
+            {"caption": "Open B.rvt", "result": 1}
+        ]
         assert result["models"][1]["dialogs"][0]["decision"] == "allowed:1"
     assert fetched["models"][0]["error"] == "Dialog failed."
     assert fetched["models"][1]["status"] == "completed"

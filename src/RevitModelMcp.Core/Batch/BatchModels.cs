@@ -18,11 +18,19 @@ public sealed record BatchDialogRecord
     [DataMember(Name = "dialogId")] public required string DialogId { get; init; }
     [DataMember(Name = "type")] public required string Type { get; init; }
     [DataMember(Name = "message")] public string? Message { get; init; }
+    [DataMember(Name = "buttons")] public List<BatchDialogButton>? Buttons { get; init; }
     [DataMember(Name = "decision")] public required string Decision { get; init; }
     [DataMember(Name = "result")] public int? Result { get; init; }
     [DataMember(Name = "modelPath")] public required string ModelPath { get; init; }
     [DataMember(Name = "phase")] public required string Phase { get; init; }
     [DataMember(Name = "timeUtc")] public required string TimeUtc { get; init; }
+}
+
+[DataContract]
+public sealed record BatchDialogButton
+{
+    [DataMember(Name = "caption")] public required string Caption { get; init; }
+    [DataMember(Name = "result")] public int Result { get; init; }
 }
 
 [DataContract]

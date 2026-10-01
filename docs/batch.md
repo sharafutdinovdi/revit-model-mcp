@@ -48,8 +48,8 @@ Each entry in `models` has `path`, `status`, and `localPath`.
 `localPath` is null when no snapshot was downloaded.
 An existing model `error` or `reason` is included when present.
 Dialog diagnostics appear in `revit_batch_status` and `revit_batch_fetch` when present.
-Each dialog record includes its ID, runtime type, available message, decision, result, model path, phase, and UTC time.
-Path redaction applies to nested dialog paths and paths in messages without changing workstation state.
+Each dialog record includes its ID, runtime type, available message capped at 2000 characters, available buttons, decision, result, model path, phase, and UTC time.
+Path redaction applies to nested dialog paths and paths in messages and button captions without changing workstation state.
 Fetched snapshot paths follow `REVIT_MCP_REDACT_PATHS` without changing workstation snapshots.
 Fetch uses the existing SSH artifact transfer path for a remote workstation.
 
@@ -76,6 +76,36 @@ An entry matches only the exact dialog ID and runtime event args type.
 An invalid or unreadable file fails the current phase before model work. During open, the model is not opened.
 An unknown dialog is never overridden and fails the model.
 Allow only dialogs whose selected answer does not modify or save the model.
+
+### Reading a dialog record and choosing a result
+
+Read `dialogId` and `type` as the exact match keys. `message` contains up to 2000 characters of available dialog text. Each entry in `buttons` has a `caption` and a numeric `result`. `decision` shows whether the dialog was allowed or unknown. `phase` identifies the batch operation, and `modelPath` identifies the affected model.
+
+For task dialogs, `result` is the task dialog result value, such as 1 for OK, 2 for Cancel, 6 for Yes, 7 for No, or 1001 and up for command links. For other dialogs, use a button's `result` from the record. Choose only an answer that does not modify or save the model.
+
+For example, this record offers a Cancel result:
+
+```json
+{
+  "dialogId": "Dialog_Revit_DocWarnDialog",
+  "type": "DialogBoxShowingEventArgs",
+  "message": "The document requires review.",
+  "buttons": [{"caption": "Cancel", "result": 2}],
+  "decision": "unknown",
+  "result": null,
+  "modelPath": "Example.rvt",
+  "phase": "open",
+  "timeUtc": "2026-09-30T00:00:00Z"
+}
+```
+
+The matching allowlist entry uses the exact `dialogId` and `type` and the chosen button result:
+
+```json
+{"dialogId": "Dialog_Revit_DocWarnDialog", "type": "DialogBoxShowingEventArgs", "result": 2}
+```
+
+Message and buttons are read from the displayed dialog window on a best effort basis. Custom drawn dialogs may expose no text or buttons. Allowlisted dialogs are answered without display, so only a message provided by Revit in the event can be recorded.
 
 ## Year routing and sources
 

@@ -204,17 +204,7 @@ internal sealed class BatchSupervisor(
         if (response.TryGetValue("data", out var value) && value is Dictionary<string, object> data &&
             data.TryGetValue("dialogs", out var dialogs) && dialogs is System.Collections.IEnumerable items)
         {
-            BatchDialogPolicy.Append(model, items.Cast<object>().OfType<Dictionary<string, object>>().Select(fields => new BatchDialogRecord
-            {
-                DialogId = Convert.ToString(fields["dialogId"])!,
-                Type = Convert.ToString(fields["type"])!,
-                Message = fields.TryGetValue("message", out var message) ? Convert.ToString(message) : null,
-                Decision = Convert.ToString(fields["decision"])!,
-                Result = fields.TryGetValue("result", out var result) && result is not null ? Convert.ToInt32(result) : null,
-                ModelPath = Convert.ToString(fields["modelPath"])!,
-                Phase = Convert.ToString(fields["phase"])!,
-                TimeUtc = Convert.ToString(fields["timeUtc"])!
-            }));
+            BatchDialogPolicy.Append(model, items.Cast<object>().OfType<Dictionary<string, object>>().Select(BatchDialogText.FromFields));
             _store.Write(Replace(run, index, model));
         }
     }

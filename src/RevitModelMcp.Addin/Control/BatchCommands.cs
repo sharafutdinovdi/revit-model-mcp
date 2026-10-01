@@ -107,18 +107,22 @@ internal static class BatchCommands
     {
         BatchDialogHandler? dialogHandler = null;
         var published = false;
+        var publishSync = new object();
         var writer = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId);
         void Publish(T? result, string? error)
         {
-            if (published) return;
-            published = true;
-            var data = new BatchPhaseResult<T> { Dialogs = dialogHandler?.Dialogs.ToList() ?? [], Result = result };
-            var response = error is null
-                ? CommandResponse<BatchPhaseResult<T>>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds)
-                : CommandResponse<BatchPhaseResult<T>>.Fail(job.Command, error, stopwatch.ElapsedMilliseconds);
-            response.Data = data;
-            writer.Write(response);
+            lock (publishSync)
+            {
+                if (published) return;
+                published = true;
+                var data = new BatchPhaseResult<T> { Dialogs = dialogHandler?.Dialogs ?? [], Result = result };
+                var response = error is null
+                    ? CommandResponse<BatchPhaseResult<T>>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds)
+                    : CommandResponse<BatchPhaseResult<T>>.Fail(job.Command, error, stopwatch.ElapsedMilliseconds);
+                response.Data = data;
+                writer.Write(response);
+            }
         }
         try
         {
@@ -129,18 +133,20 @@ internal static class BatchCommands
                 "RevitModelMcp", "batch-dialogs.json");
             var choices = BatchDialogPolicy.Load(allowlistPath);
             dialogHandler = new BatchDialogHandler(path, phase, choices, unknown =>
-                Publish(default, $"Unknown dialog '{unknown.DialogId}': {unknown.Message ?? "No message available."}"));
+                Publish(default, BatchDialogText.DescribeUnknown(unknown)));
             application.DialogBoxShowing += dialogHandler.OnDialog;
             var result = operation();
+            dialogHandler.WaitForPendingCapture();
             if (dialogHandler.UnknownDialog is not null)
                 throw new InvalidOperationException("Unknown modal dialog interrupted the batch phase.");
             Publish(result, null);
         }
         catch (Exception exception)
         {
+            dialogHandler?.WaitForPendingCapture();
             var unknown = dialogHandler?.UnknownDialog;
             var reason = unknown is null ? exception.Message :
-                $"Unknown dialog '{unknown.DialogId}': {unknown.Message ?? "No message available."}";
+                BatchDialogText.DescribeUnknown(unknown);
             Publish(default, reason);
         }
         finally
