@@ -200,6 +200,103 @@ jobs:
               Write-Host "ASSERT: removed $root/$relative"
             }
           }
+      - name: Smoke test same-version MSI upgrade
+        shell: pwsh
+        env:
+          Build__Version: 0.0.0-ci
+        run: |
+          $buildA = Join-Path $env:RUNNER_TEMP 'msi-a'
+          $buildB = Join-Path $env:RUNNER_TEMP 'msi-b'
+          New-Item -ItemType Directory -Force $buildA, $buildB | Out-Null
+          Copy-Item output/*.msi $buildA
+          dotnet run --no-restore --project build -- pack --no-build
+          if ($LASTEXITCODE -ne 0) { throw 'Second installer build failed' }
+          Copy-Item output/*.msi $buildB
+          Copy-Item "$buildB/*.msi" output -Force
+          if (@(Get-ChildItem output/*.msi).Count -ne 2) { throw 'Expected two MSIs in output after rebuild' }
+
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          function Get-MsiProperty($path, $name) {
+            $database = $installer.OpenDatabase($path, 0)
+            $view = $database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = '$name'")
+            $view.Execute()
+            $record = $view.Fetch()
+            if ($null -eq $record) { throw "Missing MSI property: $name in $path" }
+            $value = $record.StringData(1)
+            $view.Close()
+            return $value
+          }
+
+          $relativeFiles = @('RevitModelMcp.addin', 'RevitModelMcp/RevitModelMcp.dll', 'RevitModelMcp/RevitModelMcp.Updater.exe', 'RevitModelMcp/RevitModelMcp.BatchSupervisor.exe', 'RevitModelMcp/RevitModelMcp.Core.dll')
+          foreach ($scope in 'SingleUser', 'MultiUser') {
+            $msiA = (Get-ChildItem "$buildA/*-$scope.msi").FullName
+            $msiB = (Get-ChildItem "$buildB/*-$scope.msi").FullName
+            $productA = Get-MsiProperty $msiA 'ProductCode'
+            $productB = Get-MsiProperty $msiB 'ProductCode'
+            $upgradeA = Get-MsiProperty $msiA 'UpgradeCode'
+            $upgradeB = Get-MsiProperty $msiB 'UpgradeCode'
+            $versionA = Get-MsiProperty $msiA 'ProductVersion'
+            $versionB = Get-MsiProperty $msiB 'ProductVersion'
+            if ($versionA -ne $versionB) { throw "$scope MSI versions differ" }
+            if ($upgradeA -ne $upgradeB) { throw "$scope MSI UpgradeCodes differ" }
+            if ($productA -eq $productB) { throw "$scope MSI ProductCodes are equal" }
+            Write-Host "ASSERT: $scope MSI version and UpgradeCode match, ProductCodes differ"
+
+            if ($scope -eq 'SingleUser') {
+              $roots = @("$env:APPDATA/Autodesk/Revit/Addins/2022", "$env:APPDATA/Autodesk/Revit/Addins/2026", "$env:APPDATA/Autodesk/Revit/Addins/2027")
+            } else {
+              $roots = @("$env:ProgramData/Autodesk/Revit/Addins/2022", "$env:ProgramData/Autodesk/Revit/Addins/2026", "$env:ProgramFiles/Autodesk/Revit/Addins/2027")
+            }
+            $extract = Join-Path $env:RUNNER_TEMP "mcp-upgrade-$scope-extract"
+            $log = Join-Path $env:RUNNER_TEMP "mcp-upgrade-$scope-extract.log"
+            $process = Start-Process msiexec.exe -ArgumentList "/a `"$msiB`" /qn /norestart TARGETDIR=`"$extract`" /l*v `"$log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "$scope MSI B extraction failed: $($process.ExitCode)" }
+            $installedProductCode = $null
+            try {
+              $log = Join-Path $env:RUNNER_TEMP "mcp-upgrade-$scope-a-install.log"
+              $process = Start-Process msiexec.exe -ArgumentList "/i `"$msiA`" /qn /norestart /l*v `"$log`"" -Wait -PassThru
+              if ($process.ExitCode -ne 0) { throw "$scope MSI A install failed: $($process.ExitCode)" }
+              $installedProductCode = $productA
+              Write-Host "ASSERT: $scope MSI A install exit code 0"
+              $log = Join-Path $env:RUNNER_TEMP "mcp-upgrade-$scope-b-install.log"
+              $process = Start-Process msiexec.exe -ArgumentList "/i `"$msiB`" /qn /norestart /l*v `"$log`"" -Wait -PassThru
+              if ($process.ExitCode -ne 0) { throw "$scope MSI B upgrade failed: $($process.ExitCode)" }
+              $installedProductCode = $productB
+              Write-Host "ASSERT: $scope MSI B upgrade exit code 0"
+              $related = $installer.RelatedProducts($upgradeB)
+              if ($related.Count -ne 1 -or $related.Item(0) -ne $productB) { throw "$scope upgrade did not leave exactly MSI B registered" }
+              Write-Host "ASSERT: $scope exactly MSI B is registered for the UpgradeCode"
+              $years = @('2022', '2026', '2027')
+              for ($index = 0; $index -lt $years.Count; $index++) {
+                $year = $years[$index]
+                $root = $roots[$index]
+                foreach ($relative in $relativeFiles) {
+                  if (!(Test-Path "$root/$relative")) { throw "Missing installed file: $root/$relative" }
+                  Write-Host "ASSERT: installed $root/$relative"
+                }
+                $manifest = @(Get-ChildItem $extract -Recurse -File -Filter RevitModelMcp.addin | Where-Object { $_.Directory.Name -eq $year })
+                if ($manifest.Count -ne 1) { throw "Missing or duplicate $scope R$year manifest in MSI B" }
+                $expectedDll = "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll"
+                if ((Get-FileHash "$root/RevitModelMcp/RevitModelMcp.dll" -Algorithm SHA256).Hash -ne (Get-FileHash $expectedDll -Algorithm SHA256).Hash) {
+                  throw "$scope R$year installed assembly differs from MSI B"
+                }
+                Write-Host "ASSERT: $scope R$year installed assembly matches MSI B"
+              }
+            } finally {
+              if ($null -ne $installedProductCode) {
+                $log = Join-Path $env:RUNNER_TEMP "mcp-upgrade-$scope-uninstall.log"
+                $process = Start-Process msiexec.exe -ArgumentList "/x $installedProductCode /qn /norestart /l*v `"$log`"" -Wait -PassThru
+                if ($process.ExitCode -ne 0) { throw "$scope uninstall failed: $($process.ExitCode)" }
+                Write-Host "ASSERT: $scope uninstall exit code 0"
+                foreach ($root in $roots) {
+                  foreach ($relative in $relativeFiles) {
+                    if (Test-Path "$root/$relative") { throw "File remains after uninstall: $root/$relative" }
+                    Write-Host "ASSERT: removed $root/$relative"
+                  }
+                }
+              }
+            }
+          }
       - name: Upload MSI logs on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

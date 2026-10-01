@@ -22,7 +22,11 @@ Project CreateProject(InstallScope scope)
         Scope = scope,
         Platform = Platform.x64,
         UI = WUI.WixUI_FeatureTree,
-        MajorUpgrade = MajorUpgrade.Default,
+        MajorUpgrade = new MajorUpgrade
+        {
+            AllowSameVersionUpgrades = true,
+            DowngradeErrorMessage = "A newer version of [ProductName] is already installed."
+        },
         GUID = new Guid("75e1b812-23a4-45ce-9e7c-84d7d43b8c70"),
         BannerImage = @"build\install\Resources\Icons\BannerImage.png",
         BackgroundImage = @"build\install\Resources\Icons\BackgroundImage.png",
