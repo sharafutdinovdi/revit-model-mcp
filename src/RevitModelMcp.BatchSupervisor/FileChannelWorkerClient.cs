@@ -79,7 +79,7 @@ internal sealed class FileChannelWorkerClient
         {
             if (cancelled()) throw new OperationCanceledException("Batch run cancelled.");
             if (exited()) throw new InvalidOperationException("Worker exited during the job.");
-            if (!MatchesHeartbeat(heartbeat, processId, startedUtc, true))
+            if (!MatchesHeartbeat(heartbeat, processId, startedUtc, false))
                 throw new InvalidOperationException("Worker heartbeat is stale or identity changed.");
             foreach (var responsePath in Directory.EnumerateFiles(directory, $"response_*_{command}_{correlation}.json"))
             {
