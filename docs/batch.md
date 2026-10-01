@@ -11,6 +11,9 @@ For each installed Revit year, start Revit once and verify that any unsigned add
 Choose Always Load, then close Revit normally before starting a batch run.
 Revit remembers Always Load for the same add-in location and AddInId; replacing identical DLL contents or changing only the file timestamp does not require trust again.
 If a batch worker encounters this dialog, startup fails with the affected year and the worker is stopped.
+If a worker reaches its startup deadline before any heartbeat, the supervisor skips worker startup for later models that need the same Revit year.
+Those models fail immediately with the original startup failure.
+Other Revit years continue in the same run.
 
 ## Tools and inputs
 

@@ -49,4 +49,19 @@ public sealed class BatchStartupTrustPolicyTests
         await Assert.That(BatchStartupTrustPolicy.Message(2026)).IsEqualTo(
             "Revit 2026 asks to trust the unsigned Revit Model MCP add-in. Start Revit 2026 once, choose Always Load, close Revit normally, then rerun.");
     }
+
+    [Test]
+    public async Task YearAvailability_TracksDistinctStartupFailuresPerYear()
+    {
+        var availability = new BatchStartupYearAvailability();
+        availability.MarkStartupDeadline(2026, "Worker startup deadline expired.");
+        availability.MarkTrustPrompt(2025);
+
+        await Assert.That(availability.TryGetReason(2026, out var deadlineReason)).IsTrue();
+        await Assert.That(deadlineReason).IsEqualTo(
+            "Revit 2026 is unavailable for this batch run. Worker startup deadline expired.");
+        await Assert.That(availability.TryGetReason(2025, out var trustReason)).IsTrue();
+        await Assert.That(trustReason).IsEqualTo(BatchStartupTrustPolicy.Message(2025));
+        await Assert.That(availability.TryGetReason(2024, out _)).IsFalse();
+    }
 }
