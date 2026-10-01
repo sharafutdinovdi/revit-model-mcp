@@ -8,19 +8,34 @@ internal sealed class FileChannelWorkerClient
 
     public static bool MatchesHeartbeat(string path, int processId, string startedUtc, bool requireFresh)
     {
-        if (!File.Exists(path)) return false;
-        try
+        for (var attempt = 0; attempt < 10; attempt++)
         {
-            var json = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
-            if (Convert.ToInt32(json["processId"]) != processId ||
-                !DateTimeOffset.TryParse(Convert.ToString(json["startedUtc"]), out var actual) ||
-                !DateTimeOffset.TryParse(startedUtc, out var expected) || actual != expected)
-                return false;
-            return !requireFresh || DateTimeOffset.TryParse(Convert.ToString(json["updatedUtc"]), out var updated) &&
-                DateTimeOffset.UtcNow - updated < TimeSpan.FromSeconds(60);
+            if (File.Exists(path))
+            {
+                string contents;
+                try { contents = File.ReadAllText(path); }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt < 9) Thread.Sleep(50);
+                    continue;
+                }
+
+                try
+                {
+                    var json = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(contents);
+                    if (Convert.ToInt32(json["processId"]) != processId ||
+                        !DateTimeOffset.TryParse(Convert.ToString(json["startedUtc"]), out var actual) ||
+                        !DateTimeOffset.TryParse(startedUtc, out var expected) || actual != expected)
+                        return false;
+                    return !requireFresh || DateTimeOffset.TryParse(Convert.ToString(json["updatedUtc"]), out var updated) &&
+                        DateTimeOffset.UtcNow - updated < TimeSpan.FromSeconds(60);
+                }
+                catch (Exception exception) when (exception is KeyNotFoundException or FormatException or ArgumentException)
+                { return false; }
+            }
+            if (attempt < 9) Thread.Sleep(50);
         }
-        catch (Exception exception) when (exception is IOException or KeyNotFoundException or FormatException or ArgumentException)
-        { return false; }
+        return false;
     }
 
     public async Task<string> WaitForHeartbeatAsync(int processId, string root, DateTimeOffset deadline,
