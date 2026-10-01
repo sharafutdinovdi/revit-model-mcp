@@ -9,7 +9,6 @@ internal sealed class RevitWorkerProcess : IDisposable
 {
     private readonly Process _process;
     private readonly DateTime _startedUtc;
-    private readonly string _heartbeatPath;
     private string? _heartbeatStartedUtc;
     private readonly EnumWindowsCallback _windowCallback;
     private readonly EnumWindowsCallback _childCallback;
@@ -17,11 +16,10 @@ internal sealed class RevitWorkerProcess : IDisposable
     private readonly StringBuilder _dialogText = new(2048);
     private bool _trustPromptVisible;
 
-    private RevitWorkerProcess(Process process, string channelRoot)
+    private RevitWorkerProcess(Process process)
     {
         _process = process;
         _startedUtc = process.StartTime.ToUniversalTime();
-        _heartbeatPath = Path.Combine(channelRoot, $"instance_{process.Id}.json");
         _windowCallback = InspectWindow;
         _childCallback = InspectChild;
     }
@@ -46,7 +44,7 @@ internal sealed class RevitWorkerProcess : IDisposable
         start.EnvironmentVariables["REVIT_MCP_BATCH_WORKER"] = "1";
         start.EnvironmentVariables["REVIT_MCP_CHANNEL_DIR"] = channelRoot;
         var process = Process.Start(start) ?? throw new InvalidOperationException("Revit did not start.");
-        return new RevitWorkerProcess(process, channelRoot);
+        return new RevitWorkerProcess(process);
     }
 
     public void SetHeartbeatIdentity(string startedUtc)
@@ -63,9 +61,6 @@ internal sealed class RevitWorkerProcess : IDisposable
         using var current = Process.GetProcessById(_process.Id);
         if (current.StartTime.ToUniversalTime() != _startedUtc)
             throw new InvalidOperationException("The worker PID was replaced; termination refused.");
-        if (_heartbeatStartedUtc is not null &&
-            !FileChannelWorkerClient.MatchesHeartbeat(_heartbeatPath, _process.Id, _heartbeatStartedUtc, false))
-            throw new InvalidOperationException("The worker heartbeat changed; termination refused.");
         current.Kill();
     }
 
