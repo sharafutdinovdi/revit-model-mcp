@@ -54,6 +54,8 @@ internal sealed class BatchRunStore(string directory)
     private static T ReadJson<T>(string path)
     {
         using var stream = File.OpenRead(path);
+        if (stream.ReadByte() != 0xEF || stream.ReadByte() != 0xBB || stream.ReadByte() != 0xBF)
+            stream.Position = 0;
         return (T)(Serializer<T>().ReadObject(stream) ?? throw new InvalidDataException("Empty batch JSON."));
     }
 

@@ -20,7 +20,10 @@ public static class BatchDialogPolicy
         var choices = (builtInChoices ?? SafeChoices).ToDictionary(pair => pair.Key, pair => pair.Value);
         try
         {
-            using var reader = JsonReaderWriterFactory.CreateJsonReader(File.ReadAllBytes(path), XmlDictionaryReaderQuotas.Max);
+            var bytes = File.ReadAllBytes(path);
+            var offset = bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF ? 3 : 0;
+            using var reader = JsonReaderWriterFactory.CreateJsonReader(bytes, offset, bytes.Length - offset,
+                XmlDictionaryReaderQuotas.Max);
             var root = XElement.Load(reader);
             if ((string?)root.Attribute("type") != "array") throw new FormatException("Root must be an array.");
             foreach (var entry in root.Elements())

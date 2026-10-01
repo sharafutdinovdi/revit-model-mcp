@@ -1,5 +1,6 @@
 using System.Runtime.Serialization.Json;
 using System.Text;
+using RevitModelMcp.BatchSupervisor;
 using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -63,6 +64,39 @@ public sealed class BatchDialogPolicyTests
             await Assert.That(BatchDialogPolicy.Decide("known", "DialogBoxShowingEventArgs", choices).Allowed).IsFalse();
         }
         finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task Load_AcceptsUtf8BomBeforeExactPair()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"batch-dialogs-{Guid.NewGuid():N}.json");
+        var json = """[{"dialogId":"known","type":"TaskDialogShowingEventArgs","result":1}]""";
+        try
+        {
+            File.WriteAllBytes(path, [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes(json)]);
+            var choices = BatchDialogPolicy.Load(path);
+            await Assert.That(BatchDialogPolicy.Decide("known", "TaskDialogShowingEventArgs", choices).OverrideResult).IsEqualTo(1);
+            await Assert.That(BatchDialogPolicy.Decide("known", "DialogBoxShowingEventArgs", choices).Allowed).IsFalse();
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task RunStore_ReadsBomPrefixedRunAndLaunchFiles()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"batch-run-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(directory, "run.json"),
+                [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("""{"runId":"known","status":0,"models":[]}""")]);
+            File.WriteAllBytes(Path.Combine(directory, "launch.json"),
+                [0xEF, 0xBB, 0xBF, .. Encoding.UTF8.GetBytes("""{"executables":{"2026":"Revit.exe"}}""")]);
+            var store = new BatchRunStore(directory);
+            await Assert.That(store.Read().RunId).IsEqualTo("known");
+            await Assert.That(store.ReadLaunch().Executables[2026]).IsEqualTo("Revit.exe");
+        }
+        finally { Directory.Delete(directory, true); }
     }
 
     [Test]

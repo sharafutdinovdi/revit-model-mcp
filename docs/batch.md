@@ -26,6 +26,7 @@ Blank entries, duplicate normalized paths, unsupported extensions, and both or n
 
 Start returns a `runId` and accepted model count.
 The workstation stores immutable inputs and mutable state in `ROOT\runs\<runId>\run.json`.
+Workstation batch JSON inputs, including the dialog allowlist, accept UTF-8 with or without a BOM.
 The supervisor replaces this file atomically.
 Its lifetime is independent of the MCP client.
 `revit_batch_status(run_id)` reads persisted progress and marks unfinished models failed when the recorded supervisor process has exited.
