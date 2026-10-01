@@ -7,8 +7,11 @@ internal sealed class FileChannelWorkerClient
     private readonly JavaScriptSerializer _json = new() { MaxJsonLength = int.MaxValue };
 
     public static bool MatchesHeartbeat(string path, int processId, string startedUtc, bool requireFresh)
+        => MatchesHeartbeat(path, processId, startedUtc, requireFresh, 10, TimeSpan.FromMilliseconds(50));
+
+    internal static bool MatchesHeartbeat(string path, int processId, string startedUtc, bool requireFresh, int attempts, TimeSpan delay)
     {
-        for (var attempt = 0; attempt < 10; attempt++)
+        for (var attempt = 0; attempt < attempts; attempt++)
         {
             if (File.Exists(path))
             {
@@ -16,7 +19,7 @@ internal sealed class FileChannelWorkerClient
                 try { contents = File.ReadAllText(path); }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    if (attempt < 9) Thread.Sleep(50);
+                    if (attempt < attempts - 1) Thread.Sleep(delay);
                     continue;
                 }
 
@@ -33,7 +36,7 @@ internal sealed class FileChannelWorkerClient
                 catch (Exception exception) when (exception is KeyNotFoundException or FormatException or ArgumentException)
                 { return false; }
             }
-            if (attempt < 9) Thread.Sleep(50);
+            if (attempt < attempts - 1) Thread.Sleep(delay);
         }
         return false;
     }
