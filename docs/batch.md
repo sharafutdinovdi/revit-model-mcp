@@ -5,6 +5,13 @@ It starts a separate Revit worker, opens one model at a time in the background, 
 The existing snapshot reader supplies schema version 1 JSON.
 Batch collection does not save, synchronize, start transactions, or expose action commands to the worker.
 
+## Before the first batch run
+
+For each installed Revit year, start Revit once and verify that any unsigned add-in trust dialog names Revit Model MCP and `RevitModelMcp.dll`.
+Choose Always Load, then close Revit normally before starting a batch run.
+Revit remembers Always Load for the same add-in location and AddInId; replacing identical DLL contents or changing only the file timestamp does not require trust again.
+If a batch worker encounters this dialog, startup fails with the affected year and the worker is stopped.
+
 ## Tools and inputs
 
 `revit_batch_start(paths=null, folder=null, recursive=false, parameter_rules=null, years=null)` accepts exactly one source.
