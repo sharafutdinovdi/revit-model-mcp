@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Batch;
@@ -106,6 +107,8 @@ internal static class BatchCommands
         DateTimeOffset startedAt, Stopwatch stopwatch, string phase, Func<T> operation)
     {
         BatchDialogHandler? dialogHandler = null;
+        var openWarningCount = 0;
+        var openAttempted = false;
         var published = false;
         var publishSync = new object();
         var writer = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
@@ -124,6 +127,10 @@ internal static class BatchCommands
                 writer.Write(response);
             }
         }
+        void SuppressOpenWarnings(object? sender, FailuresProcessingEventArgs arguments)
+        {
+            openWarningCount += ActionCommandExecutor.DismissOpenWarnings(arguments);
+        }
         try
         {
             EnsureWorker();
@@ -135,6 +142,11 @@ internal static class BatchCommands
             dialogHandler = new BatchDialogHandler(path, phase, choices, unknown =>
                 Publish(default, BatchDialogText.DescribeUnknown(unknown)));
             application.DialogBoxShowing += dialogHandler.OnDialog;
+            if (phase == "open")
+            {
+                application.Application.FailuresProcessing += SuppressOpenWarnings;
+                openAttempted = true;
+            }
             var result = operation();
             dialogHandler.WaitForPendingCapture();
             if (dialogHandler.UnknownDialog is not null)
@@ -152,6 +164,8 @@ internal static class BatchCommands
         finally
         {
             if (dialogHandler is not null) application.DialogBoxShowing -= dialogHandler.OnDialog;
+            if (phase == "open") application.Application.FailuresProcessing -= SuppressOpenWarnings;
+            if (openAttempted) PluginLog.Info($"Dismissed {openWarningCount} warnings during model open.");
         }
     }
 

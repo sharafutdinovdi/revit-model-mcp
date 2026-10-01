@@ -31,6 +31,8 @@ internal static class ActionCommandExecutor
         CommandResponse<ActionResultData> response;
         var dialogsSuppressed = new List<string>();
         var openWarningsDismissed = new List<string>();
+        var openWarningCount = 0;
+        var openAttempted = false;
         var viewOpened = false;
         var failures = new ActionFailures();
         Document? document = null;
@@ -42,13 +44,7 @@ internal static class ActionCommandExecutor
         }
         void SuppressOpenWarnings(object? sender, FailuresProcessingEventArgs arguments)
         {
-            var accessor = arguments.GetFailuresAccessor();
-            foreach (var warning in accessor.GetFailureMessages().Where(message => message.GetSeverity() == FailureSeverity.Warning))
-            {
-                openWarningsDismissed.Add(warning.GetDescriptionText());
-                accessor.DeleteWarning(warning);
-            }
-            arguments.SetProcessingResult(FailureProcessingResult.Continue);
+            openWarningCount += DismissOpenWarnings(arguments, openWarningsDismissed);
         }
         application.DialogBoxShowing += SuppressDialog;
         if (job.Command == "open-document") application.Application.FailuresProcessing += SuppressOpenWarnings;
@@ -60,6 +56,7 @@ internal static class ActionCommandExecutor
             {
                 var documentAction = job.Action ?? throw new ArgumentException("Missing document arguments.");
                 documentAction.Document ??= job.TargetDocument;
+                if (job.Command == "open-document") openAttempted = true;
                 var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
                 documentResult.Summary = BuildDocumentSummary(job.Command, documentAction, documentResult);
                 response = CommandResponse<ActionResultData>.Ok(job.Command, documentResult, stopwatch.ElapsedMilliseconds);
@@ -117,6 +114,7 @@ internal static class ActionCommandExecutor
             application.DialogBoxShowing -= SuppressDialog;
             changes?.Dispose();
             if (job.Command == "open-document") application.Application.FailuresProcessing -= SuppressOpenWarnings;
+            if (openAttempted) PluginLog.Info($"Dismissed {openWarningCount} warnings during model open.");
         }
         response.DialogsSuppressed = dialogsSuppressed;
         if (job.Command == "show") response.ViewOpened = viewOpened;
@@ -124,6 +122,20 @@ internal static class ActionCommandExecutor
         ActivityRecorder.RecordAction(job, document, data, response, changes);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+    }
+
+    internal static int DismissOpenWarnings(FailuresProcessingEventArgs arguments, ICollection<string>? descriptions = null)
+    {
+        var accessor = arguments.GetFailuresAccessor();
+        var count = 0;
+        foreach (var warning in accessor.GetFailureMessages().Where(message => message.GetSeverity() == FailureSeverity.Warning))
+        {
+            descriptions?.Add(warning.GetDescriptionText());
+            accessor.DeleteWarning(warning);
+            count++;
+        }
+        arguments.SetProcessingResult(FailureProcessingResult.Continue);
+        return count;
     }
 
     private static void ExecuteFamilies(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
