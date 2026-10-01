@@ -209,6 +209,10 @@ jobs:
           $buildB = Join-Path $env:RUNNER_TEMP 'msi-b'
           New-Item -ItemType Directory -Force $buildA, $buildB | Out-Null
           Copy-Item output/*.msi $buildA
+          $marker = [guid]::NewGuid().ToString()
+          foreach ($dir in Get-ChildItem src/RevitModelMcp.Addin/bin -Directory -Filter 'Release.R*') {
+            Set-Content -LiteralPath (Join-Path $dir.FullName 'upgrade-marker.txt') -Value $marker -NoNewline
+          }
           dotnet run --no-restore --project build -- pack --no-build
           if ($LASTEXITCODE -ne 0) { throw 'Second installer build failed' }
           Copy-Item output/*.msi $buildB
@@ -281,6 +285,8 @@ jobs:
                   throw "$scope R$year installed assembly differs from MSI B"
                 }
                 Write-Host "ASSERT: $scope R$year installed assembly matches MSI B"
+                if ((Get-Content -LiteralPath "$root/RevitModelMcp/upgrade-marker.txt" -Raw) -ne $marker) { throw "$scope R$year installed files are not from MSI B" }
+                Write-Host "ASSERT: $scope R$year installed marker file is from MSI B"
               }
             } finally {
               if ($null -ne $installedProductCode) {
