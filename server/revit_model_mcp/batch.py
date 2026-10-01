@@ -100,6 +100,24 @@ def _public(state: dict[str, Any]) -> dict[str, Any]:
                 {
                     **dialog,
                     "modelPath": PureWindowsPath(dialog["modelPath"]).name,
+                    **(
+                        {
+                            "buttons": [
+                                {
+                                    **button,
+                                    "caption": redact_model_paths({"message": button["caption"]})[
+                                        "message"
+                                    ],
+                                }
+                                if isinstance(button, dict)
+                                and isinstance(button.get("caption"), str)
+                                else button
+                                for button in dialog["buttons"]
+                            ]
+                        }
+                        if isinstance(dialog.get("buttons"), list)
+                        else {}
+                    ),
                 }
                 if isinstance(dialog, dict) and isinstance(dialog.get("modelPath"), str)
                 else dialog
