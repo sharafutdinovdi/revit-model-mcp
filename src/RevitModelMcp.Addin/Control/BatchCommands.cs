@@ -37,7 +37,8 @@ internal static class BatchCommands
                     break;
                 case ControlJobKind.BatchSnapshot:
                     ExecuteModelPhase(application, job, startedAt, stopwatch, "snapshot",
-                        () => ModelSnapshotReader.Read(DocumentActions.BatchDocument, job.ParameterRules));
+                        () => ModelSnapshotReader.Read(DocumentActions.BatchDocument, job.ParameterRules,
+                            job.CoordinatorJob.Path, job.CoordinatorJob.SavedInYear, job.CoordinatorJob.UpgradedInMemory));
                     break;
                 default: throw new ArgumentException("Unknown batch command.");
             }

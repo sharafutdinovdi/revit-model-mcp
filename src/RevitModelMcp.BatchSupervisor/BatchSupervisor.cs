@@ -148,6 +148,8 @@ internal sealed class BatchSupervisor(
             var snapshot = await ModelPhaseAsync(run, model, index, worker, "batch-snapshot", new()
             {
                 ["path"] = model.Path,
+                ["savedInYear"] = model.SavedYear!.Value,
+                ["upgradedInMemory"] = model.UpgradedInMemory,
                 ["parameterRules"] = run.ParameterRules.Select(rule => new Dictionary<string, string>
                 {
                     ["category"] = rule.Category,
