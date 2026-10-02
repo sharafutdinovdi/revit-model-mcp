@@ -45,12 +45,16 @@ public sealed class ControlJobParserTests
     public async Task Parse_BatchSnapshot_UsesSnapshotRulesAndDistinctCommand()
     {
         var parsed = ControlJobParser.Parse("""
-            {"command":"batch-snapshot","parameterRules":[{"category":" Walls ","parameter":" Mark "}]}
+            {"command":"batch-snapshot","path":"C:\\models\\source.rvt","savedInYear":2024,
+             "upgradedInMemory":true,"parameterRules":[{"category":" Walls ","parameter":" Mark "}]}
             """);
         await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.BatchSnapshot);
         await Assert.That(parsed.Command).IsEqualTo("batch-snapshot");
         await Assert.That(parsed.ParameterRules[0].Category).IsEqualTo("Walls");
         await Assert.That(parsed.ParameterRules[0].Parameter).IsEqualTo("Mark");
+        await Assert.That(parsed.CoordinatorJob.Path).IsEqualTo(@"C:\models\source.rvt");
+        await Assert.That(parsed.CoordinatorJob.SavedInYear).IsEqualTo(2024);
+        await Assert.That(parsed.CoordinatorJob.UpgradedInMemory).IsTrue();
         await Assert.That(ControlJobParser.Parse("""{"command":"batch-snapshot","parameterRules":[{}]}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
     }

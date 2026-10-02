@@ -111,7 +111,7 @@ Message and buttons are read from the displayed dialog window on a best effort b
 
 For local and UNC files, a worker reads `BasicFileInfo.Format` before open. For RSN, the configured Revit Server REST `/contents` response supplies `ProductVersion`; `/modelInfo` and `/history` supply activity metadata. The saved-year source is recorded separately from activity provenance. Set `REVIT_MCP_RSN_REST_BASE` to the matching `AdminRESTService.svc/` URL. The configured host must match the RSN path. Windows credentials used by the supervisor must have access. A missing endpoint, authentication failure, or unsupported response fails that model's pre-pass; the supervisor does not guess credentials or endpoints. Cloud model paths are unsupported.
 
-Routing prefers the exact installed saved year. Otherwise it chooses the nearest allowed installed newer year and records `upgradedInMemory=true`. It refuses a saved year newer than all allowed installed versions. The saved year is never rewritten by routing. The detached document is never saved.
+Routing prefers the exact installed saved year. Otherwise it chooses the nearest allowed installed newer year and records `upgradedInMemory=true`. It refuses a saved year newer than all allowed installed versions. The saved year is never rewritten by routing. The snapshot records the original model path and the pre-pass saved year and upgrade decision, even though the worker reads a detached document. For local and UNC sources, file timestamps and size come from the original file. The detached document is never saved.
 
 The workstation can run multiple Revit processes. This uses memory and may consume another Revit license or seat. Check local licensing and available resources before starting large runs.
 
