@@ -459,6 +459,10 @@ public sealed partial class ControlJobContract
     public List<string>? Parameters { get; set; }
     [DataMember(Name = "parameterRules", EmitDefaultValue = false)]
     public List<ModelSnapshotParameterRule?>? ParameterRules { get; set; }
+    [DataMember(Name = "savedInYear", EmitDefaultValue = false)]
+    public int? SavedInYear { get; set; }
+    [DataMember(Name = "upgradedInMemory", EmitDefaultValue = false)]
+    public bool? UpgradedInMemory { get; set; }
     [DataMember(Name = "sampleLimit", EmitDefaultValue = false)]
     public int? SampleLimit { get; set; }
     [DataMember(Name = "includeTypes", EmitDefaultValue = false)]

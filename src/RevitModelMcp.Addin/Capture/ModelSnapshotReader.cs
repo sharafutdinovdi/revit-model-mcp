@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
+using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 
@@ -9,20 +10,24 @@ namespace RevitModelMcp.Capture;
 
 internal static class ModelSnapshotReader
 {
-    public static ModelSnapshotData Read(Document document, IReadOnlyList<ModelSnapshotParameterRule> rules)
+    public static ModelSnapshotData Read(Document document, IReadOnlyList<ModelSnapshotParameterRule> rules,
+        string? batchPath = null, int? batchSavedInYear = null, bool? batchUpgradedInMemory = null)
     {
         if (document.IsFamilyDocument) throw new ArgumentException("A project document is required.");
+        var source = SnapshotSourceResolution.Resolve(document.PathName, document.IsDetached,
+            batchPath, batchSavedInYear, batchUpgradedInMemory);
         var diagnostics = new SkippedReadDiagnostics();
         var result = new ModelSnapshotData
         {
             CollectedAtUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
-            Source = { Path = string.IsNullOrWhiteSpace(document.PathName) ? null : document.PathName,
-                Kind = Kind(document.PathName), RuntimeYear = ParseYear(document.Application.VersionNumber) },
+            Source = { Path = source.Path, Kind = source.Kind, SavedInYear = source.SavedInYear,
+                UpgradedInMemory = source.UpgradedInMemory ?? false,
+                RuntimeYear = ParseYear(document.Application.VersionNumber) },
             Passport = { Title = document.Title, IsWorkshared = document.IsWorkshared }
         };
         try
         {
-            ReadSource(document, result, diagnostics);
+            ReadSource(document, source, result, diagnostics);
             result.Passport.Worksets = ReadCommandReader.ReadUserWorksets(document).Select(workset => new ModelSnapshotWorkset
             {
                 Name = workset.Name,
@@ -74,9 +79,10 @@ internal static class ModelSnapshotReader
         return result;
     }
 
-    private static void ReadSource(Document document, ModelSnapshotData result, SkippedReadDiagnostics diagnostics)
+    private static void ReadSource(Document document, SnapshotSourceResolution source,
+        ModelSnapshotData result, SkippedReadDiagnostics diagnostics)
     {
-        var path = document.PathName;
+        var path = source.Path;
         if (document.IsWorkshared)
             result.Passport.CentralPath = Try("central path", () =>
                 ModelPathUtils.ConvertModelPathToUserVisiblePath(document.GetWorksharingCentralModelPath()), diagnostics);
@@ -85,6 +91,11 @@ internal static class ModelSnapshotReader
         {
             result.Passport.NumberOfSaves = version.NumberOfSaves;
             result.Passport.VersionGuid = version.VersionGUID.ToString();
+        }
+        if (source.SkipReason is not null)
+        {
+            diagnostics.Add("source file", new FileNotFoundException(source.SkipReason));
+            return;
         }
         if (string.IsNullOrWhiteSpace(path))
         {
@@ -97,7 +108,8 @@ internal static class ModelSnapshotReader
         {
             using (basic)
             {
-                result.Source.SavedInYear = ParseYear(basic.Format);
+                if (source.SavedInYear is null)
+                    result.Source.SavedInYear = ParseYear(basic.Format);
                 result.Passport.BasicFileInfoUsername = Try("basic file info username", () => basic.Username, diagnostics);
                 if (version is null)
                 {
@@ -110,8 +122,9 @@ internal static class ModelSnapshotReader
                 }
             }
         }
-        result.Source.UpgradedInMemory = result.Source.SavedInYear is int saved &&
-            result.Source.RuntimeYear is int runtime && saved < runtime;
+        if (source.UpgradedInMemory is null)
+            result.Source.UpgradedInMemory = result.Source.SavedInYear is int saved &&
+                result.Source.RuntimeYear is int runtime && saved < runtime;
         var file = Try("source file metadata", () => new FileInfo(path), diagnostics);
         if (file is null) return;
         if (!file.Exists)
@@ -178,9 +191,6 @@ internal static class ModelSnapshotReader
         try { return read(); }
         catch (Exception exception) { diagnostics.Add(what, exception); return default; }
     }
-
-    private static string Kind(string? path) => path?.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase) == true
-        ? "rsn" : path?.StartsWith(@"\\", StringComparison.Ordinal) == true ? "unc" : "local";
 
     private static int? ParseYear(string? value)
     {
