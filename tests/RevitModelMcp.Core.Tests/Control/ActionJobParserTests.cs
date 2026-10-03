@@ -715,4 +715,34 @@ public sealed class ActionJobParserTests
             """{"command":"batch","steps":[{"command":"remove-links","links":["*"]}]}""");
         await Assert.That(linkRemovalBatch.Kind).IsEqualTo(ControlJobKind.Invalid);
     }
+    [Test]
+    public async Task ViewAndSheetActions_ValidateArgumentsAndBatchAllowlist()
+    {
+        foreach (var json in new[]
+        {
+            """{"command":"create-view","kind":"floor_plan","level":"L1"}""",
+            """{"command":"create-view","kind":"section","box":{"minMm":[0,0,0],"maxMm":[100,100,100]}}""",
+            """{"command":"create-view","kind":"3d","elementIds":[1,2]}""",
+            """{"command":"duplicate-view","view":"Level 1","mode":"dependent"}""",
+            """{"command":"apply-view-template","views":["Level 1"],"template":"Plan"}""",
+            """{"command":"create-sheet","number":"A101","name":"Plan"}""",
+            """{"command":"place-views-on-sheet","sheet":"A101","placements":[{"view":"Level 1"}]}"""
+        })
+            await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Action);
+        foreach (var json in new[]
+        {
+            """{"command":"create-view","kind":"floor_plan"}""",
+            """{"command":"create-view","kind":"section","box":{"minMm":[0,0,0],"maxMm":[0,1,1]}}""",
+            """{"command":"create-view","kind":"3d","box":{"minMm":[0,0,0],"maxMm":[1,1,1]},"elementIds":[1]}""",
+            """{"command":"duplicate-view","view":"a","mode":"bad"}""",
+            """{"command":"apply-view-template","views":[],"template":"Plan"}""",
+            """{"command":"create-sheet","number":"","name":"Plan"}""",
+            """{"command":"place-views-on-sheet","sheet":"A101","placements":[{"view":"Level 1","xMm":1}]}""",
+            """{"command":"batch","steps":[{"command":"place-views-on-sheet","sheet":"A101","placements":[{"view":"Level 1"}]}]}"""
+        })
+            await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"create-sheet","number":"A101","name":"Plan"}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Action);
+    }
+
 }

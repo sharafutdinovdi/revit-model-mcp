@@ -44,6 +44,21 @@ internal static class ActionVerifier
                 verification.After = facts;
                 verification.WouldCreate = action.DryRun ? true : null;
                 break;
+            case "create-view":
+            case "duplicate-view":
+            case "create-sheet":
+                var created = RequiredElement(targetDocument, result.Id!.Value);
+                verification.After = new ActionFacts { Id = RevitValueReader.GetId(created.Id), Category = created.Category?.Name };
+                verification.WouldCreate = action.DryRun ? true : null;
+                break;
+            case "apply-view-template":
+                var affected = action.Views!.Select(reference => ReadCommandReader.FindView(targetDocument, reference)
+                    ?? throw new InvalidOperationException($"View '{reference}' was not found after applying template.")).ToList();
+                verification.After = new ActionFacts { Elements = affected.Select(view => new ActionFacts { Id = RevitValueReader.GetId(view.Id) }).ToList() };
+                break;
+            case "place-views-on-sheet":
+                verification.After = new ActionFacts { Elements = result.Verification!.Changed!.Select(id => new ActionFacts { Id = RevitValueReader.GetId(RequiredElement(targetDocument, id).Id) }).ToList() };
+                break;
             case "delete":
                 var stillPresent = verification.Changed!
                     .Where(id => ActionCommandExecutor.CreateId(id).ToElement(targetDocument) is not null).ToList();

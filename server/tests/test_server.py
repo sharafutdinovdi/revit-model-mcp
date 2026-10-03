@@ -64,6 +64,11 @@ ACTION_TOOL_NAMES = {
     "revit_move",
     "revit_place_family",
     "revit_create_wall",
+    "revit_create_view",
+    "revit_duplicate_view",
+    "revit_apply_view_template",
+    "revit_create_sheet",
+    "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
@@ -385,6 +390,17 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
         self.assertTrue(all(not tool.annotations.read_only_hint for tool in action_tools.values()))
+        for name, required in {
+            "revit_create_view": {"kind"},
+            "revit_duplicate_view": {"view"},
+            "revit_apply_view_template": {"views", "template"},
+            "revit_create_sheet": {"number", "name"},
+            "revit_place_views_on_sheet": {"sheet", "views"},
+        }.items():
+            properties = action_tools[name].input_schema["properties"]
+            self.assertTrue(required.issubset(action_tools[name].input_schema["required"]))
+            self.assertIn("dry_run", properties)
+            self.assertIn("document", properties)
         self.assertIn(
             "Call revit_list_views next",
             tools["revit_document_info"].description,

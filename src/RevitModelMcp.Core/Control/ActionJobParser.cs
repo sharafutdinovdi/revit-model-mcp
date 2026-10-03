@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -76,7 +76,7 @@ public static class ActionJobParser
                 StopOnError = job.StopOnError ?? true,
                 Document = job.Document ?? job.TargetDocument,
                 DocumentPath = job.Path,
-                Mode = job.Mode ?? "detached",
+                Mode = job.Mode ?? (command == "duplicate-view" ? "duplicate" : "detached"),
                 Worksets = job.Worksets ?? "all",
                 WorksetsOpenNames = job.WorksetsOpen,
                 Activate = job.Activate ?? false,
@@ -90,7 +90,19 @@ public static class ActionJobParser
                 RelinquishFlags = job.RelinquishFlags,
                 SaveLocalBefore = job.SaveLocalBefore ?? true,
                 SaveLocalAfter = job.SaveLocalAfter ?? true,
-                ConfirmToken = job.ConfirmToken
+                ConfirmToken = job.ConfirmToken,
+                Kind = job.Kind,
+                Name = job.Name,
+                View = job.View,
+                Views = job.Views,
+                ViewFamilyType = job.ViewFamilyType,
+                Template = job.Template,
+                Scale = job.Scale,
+                Box = job.Box,
+                Sheet = job.Sheet,
+                Number = job.Number,
+                TitleBlock = job.TitleBlock,
+                Placements = job.Placements
             };
             if (command == "open-document")
             {
@@ -125,8 +137,8 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(stepCommand is "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
-                        "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
+                    Require(stepCommand is "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet",
+                        "Batch step command is not supported.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
                     action.Steps.Add(parsed);
@@ -166,6 +178,40 @@ public static class ActionJobParser
                     if (operation.Op == "set_shared")
                         Require(operation.Shared.HasValue, "set_shared requires shared.");
                 }
+            }
+            if (command == "create-view")
+            {
+                Require(action.Kind is "floor_plan" or "ceiling_plan" or "structural_plan" or "section" or "3d" or "drafting", "kind is invalid.");
+                Require(action.Kind is not ("floor_plan" or "ceiling_plan" or "structural_plan") || !string.IsNullOrWhiteSpace(action.Level), "level is required for plans.");
+                Require(action.Kind is not ("section" or "3d") || (action.Box is not null) != (job.ElementIds is { Count: > 0 }), "Supply exactly one of box or element_ids.");
+                Require(action.Kind is "section" or "3d" || action.Box is null && job.ElementIds is null, "box and element_ids require section or 3d.");
+                Require(action.Box is null || ValidBox(action.Box), "box requires finite min_mm and max_mm coordinates with positive extents.");
+                Require(job.ElementIds is null || action.ElementIds.Count > 0 && action.ElementIds.All(id => id > 0), "element_ids must contain positive IDs.");
+                Require(action.Scale is null || action.Scale > 0, "scale must be positive.");
+                Require(ValidOptional(action.Name) && ValidOptional(action.ViewFamilyType) && ValidOptional(action.Template), "Optional names must not be blank.");
+            }
+            if (command == "duplicate-view")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.View), "view is required.");
+                Require(action.Mode is "duplicate" or "with_detailing" or "dependent", "mode is invalid.");
+                Require(ValidOptional(action.Name), "name must not be blank.");
+            }
+            if (command == "apply-view-template")
+            {
+                Require(action.Views is { Count: > 0 } && action.Views.All(name => !string.IsNullOrWhiteSpace(name)), "views must contain names.");
+                Require(!string.IsNullOrWhiteSpace(action.Template), "template is required.");
+            }
+            if (command == "create-sheet")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.Number) && !string.IsNullOrWhiteSpace(action.Name), "number and name are required.");
+                Require(ValidOptional(action.TitleBlock), "title_block must not be blank.");
+            }
+            if (command == "place-views-on-sheet")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.Sheet), "sheet is required.");
+                Require(action.Placements is { Count: > 0 } && action.Placements.All(item => item is not null && !string.IsNullOrWhiteSpace(item.View) &&
+                    item.XMm.HasValue == item.YMm.HasValue && (!item.XMm.HasValue || Finite(item.XMm.Value, item.YMm!.Value))),
+                    "views require names and paired finite coordinates.");
             }
             if (command is "select" or "show" or "isolate" or "move" or "delete")
             {
@@ -240,6 +286,11 @@ public static class ActionJobParser
             return ControlJobParseResult.Invalid(command, exception.Message);
         }
     }
+
+    private static bool ValidOptional(string? value) => value is null || !string.IsNullOrWhiteSpace(value);
+
+    private static bool ValidBox(ViewBoxContract box) => box.MinMm is { Count: 3 } && box.MaxMm is { Count: 3 } &&
+        Finite(box.MinMm.Concat(box.MaxMm).ToArray()) && Enumerable.Range(0, 3).All(index => box.MinMm[index] < box.MaxMm[index]);
 
     public static List<string> ClosestFamilyNames(string requested, IEnumerable<string> candidates) =>
         candidates.Distinct(StringComparer.OrdinalIgnoreCase)
@@ -530,6 +581,33 @@ public sealed class ActionJobContract
     public List<FamilyEditOperationContract> Operations { get; set; } = [];
     public bool OverwriteParameterValues { get; set; }
     public bool StopOnError { get; set; }
+    public string? Kind { get; set; }
+    public string? Name { get; set; }
+    public string? View { get; set; }
+    public List<string>? Views { get; set; }
+    public string? ViewFamilyType { get; set; }
+    public string? Template { get; set; }
+    public int? Scale { get; set; }
+    public ViewBoxContract? Box { get; set; }
+    public string? Sheet { get; set; }
+    public string? Number { get; set; }
+    public string? TitleBlock { get; set; }
+    public List<SheetViewPlacement>? Placements { get; set; }
+}
+
+[DataContract]
+public sealed class ViewBoxContract
+{
+    [DataMember(Name = "minMm")] public List<double> MinMm { get; set; } = [];
+    [DataMember(Name = "maxMm")] public List<double> MaxMm { get; set; } = [];
+}
+
+[DataContract]
+public sealed class SheetViewPlacement
+{
+    [DataMember(Name = "view")] public string View { get; set; } = "";
+    [DataMember(Name = "xMm")] public double? XMm { get; set; }
+    [DataMember(Name = "yMm")] public double? YMm { get; set; }
 }
 
 public sealed class NwcExportJob
@@ -751,6 +829,16 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "includePinned")] public bool? IncludePinned { get; set; }
     [DataMember(Name = "createPlanViews")] public bool? CreatePlanViews { get; set; }
     [DataMember(Name = "planViewType")] public string? PlanViewType { get; set; }
+    [DataMember(Name = "kind")] public string? Kind { get; set; }
+    [DataMember(Name = "name")] public string? Name { get; set; }
+    [DataMember(Name = "viewFamilyType")] public string? ViewFamilyType { get; set; }
+    [DataMember(Name = "template")] public string? Template { get; set; }
+    [DataMember(Name = "scale")] public int? Scale { get; set; }
+    [DataMember(Name = "box")] public ViewBoxContract? Box { get; set; }
+    [DataMember(Name = "sheet")] public string? Sheet { get; set; }
+    [DataMember(Name = "number")] public string? Number { get; set; }
+    [DataMember(Name = "titleBlock")] public string? TitleBlock { get; set; }
+    [DataMember(Name = "placements")] public List<SheetViewPlacement>? Placements { get; set; }
     [DataMember(Name = "dryRun")] public bool? DryRun { get; set; }
     [DataMember(Name = "steps")] public List<ControlJobContract>? Steps { get; set; }
     [DataMember(Name = "elementIds")] public List<long>? ElementIds { get; set; }
@@ -851,5 +939,7 @@ public sealed class ActionResultData
     [DataMember(Name = "oldValue", EmitDefaultValue = false)] public string? OldValue { get; set; }
     [DataMember(Name = "newValue", EmitDefaultValue = false)] public string? NewValue { get; set; }
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }
+    [DataMember(Name = "names", EmitDefaultValue = false)] public List<string>? Names { get; set; }
+    [DataMember(Name = "typeMismatches", EmitDefaultValue = false)] public List<string>? TypeMismatches { get; set; }
     [DataMember(Name = "closestFamilies", EmitDefaultValue = false)] public List<string>? ClosestFamilies { get; set; }
 }

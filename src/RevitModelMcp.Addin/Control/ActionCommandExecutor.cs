@@ -357,6 +357,7 @@ internal static class ActionCommandExecutor
             "move" or "select" or "isolate" => ids?.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
+            "apply-view-template" or "place-views-on-sheet" => data.Count ?? 0,
             _ => 0
         };
         return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -369,6 +370,7 @@ internal static class ActionCommandExecutor
             TypeName = action.TypeName,
             Parameter = action.Parameter,
             WallType = action.WallType,
+            ViewName = action.Name ?? action.View ?? action.Sheet,
             BatchStepCount = action.Steps.Count
         });
     }
@@ -466,6 +468,16 @@ internal static class ActionCommandExecutor
                 return ActionMutations.CreateWall(document, action);
             case "set-parameter":
                 return ActionMutations.SetParameter(document, action);
+            case "create-view":
+                return ActionMutations.CreateView(document, action);
+            case "duplicate-view":
+                return ActionMutations.DuplicateView(document, action);
+            case "apply-view-template":
+                return ActionMutations.ApplyViewTemplate(document, action);
+            case "create-sheet":
+                return ActionMutations.CreateSheet(document, action);
+            case "place-views-on-sheet":
+                return ActionMutations.PlaceViewsOnSheet(document, action);
             default:
                 throw new ArgumentException($"Unknown action: {command}.");
         }
