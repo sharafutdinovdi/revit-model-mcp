@@ -21,7 +21,8 @@ public sealed class ActionSummaryBuilderTests
             .IsEqualTo("MCP (client): Execute code");
         await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "execute-code", DocumentTitle = "Model.rvt"
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt"
         })).IsEqualTo("Executed code in Model.rvt.");
     }
 
@@ -32,7 +33,9 @@ public sealed class ActionSummaryBuilderTests
     {
         await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "execute-code", DocumentTitle = "Model.rvt", CodeFailure = failure
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt",
+            CodeFailure = failure
         })).IsEqualTo(expected);
     }
 
