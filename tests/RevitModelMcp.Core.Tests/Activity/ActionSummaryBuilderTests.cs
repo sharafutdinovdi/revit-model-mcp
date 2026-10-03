@@ -5,6 +5,17 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class ActionSummaryBuilderTests
 {
     [Test]
+    public async Task ExecuteCode_UsesNamedUndoEntry()
+    {
+        await Assert.That(ActionSummaryBuilder.BuildGroupName("client", "Execute code"))
+            .IsEqualTo("MCP (client): Execute code");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code", DocumentTitle = "Model.rvt"
+        })).IsEqualTo("Executed code in Model.rvt.");
+    }
+
+    [Test]
     public async Task BuildSummary_Move_ReportsCountAndDocument()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext

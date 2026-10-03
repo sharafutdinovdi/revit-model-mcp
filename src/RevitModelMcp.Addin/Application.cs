@@ -38,7 +38,7 @@ public sealed class Application : ExternalApplication
         "select", "show", "isolate", "move", "place-family", "create-wall",
         "set-parameter", "delete", "batch", "export-nwc", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
-        "sync-document", "set-view-visibility", "remove-links", "undo-last", "views-dump",
+        "sync-document", "set-view-visibility", "remove-links", "execute-code", "undo-last", "views-dump",
         "batch-supervisor-start", "batch-prepass", "batch-open", "batch-close", "model-snapshot"
     ];
     private ControlChannel _controlChannel = null!;

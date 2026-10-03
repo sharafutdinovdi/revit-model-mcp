@@ -7,4 +7,8 @@
     <VendorId>DSHA</VendorId>
     <VendorDescription>Dinar Sharafutdinov, https://github.com/sharafutdinovdi/revit-model-mcp</VendorDescription>
   </AddIn>
+  <ManifestSettings>
+    <UseRevitContext>False</UseRevitContext>
+    <ContextName>RevitModelMcp</ContextName>
+  </ManifestSettings>
 </RevitAddIns>

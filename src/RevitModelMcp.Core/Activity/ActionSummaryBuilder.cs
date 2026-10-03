@@ -56,6 +56,7 @@ public static class ActionSummaryBuilder
             "sync-document" => $"Synchronized '{doc}' with its central model.",
             "set-view-visibility" => $"{(context.DryRun ? "Would change" : "Changed")} {Plural(context.Count, "visibility setting")} on view '{context.ViewName}' in {doc}.",
             "remove-links" => $"{(context.DryRun ? "Would remove" : "Removed")} {Plural(context.Count, "link")} in {doc}.",
+            "execute-code" => $"{(context.DryRun ? "Ran a code preview" : "Executed code")} in {doc}.",
             _ => $"Ran {context.Command} in {doc}."
         };
     }

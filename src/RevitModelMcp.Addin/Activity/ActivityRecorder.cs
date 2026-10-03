@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Activity;
@@ -32,7 +33,9 @@ internal static class ActivityRecorder
             ClientName = job.ClientName,
             Command = job.Command,
             Document = document?.Title ?? data?.Title ?? string.Empty,
-            Summary = data?.Summary ?? response.Message ?? response.Error ?? string.Empty,
+            Summary = job.Command == "execute-code" && job.Action?.Code is string code
+                ? CodeActivitySummary(code, document?.PathName)
+                : data?.Summary ?? response.Message ?? response.Error ?? string.Empty,
             DryRun = dryRun,
             UndoEntryName = data?.UndoName,
             ActionCount = data?.Count,
@@ -41,6 +44,19 @@ internal static class ActivityRecorder
         Record(entry, document, data?.UndoName, data?.RolledBack == true, changes,
             dryRun && document is not null && data is not null
                 ? () => FillDryRun(entry, document, data) : null);
+    }
+
+    private static string CodeActivitySummary(string code, string? documentPath)
+    {
+        var firstLine = CodeSource.FirstLine(code);
+        if (Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1" &&
+            !string.IsNullOrEmpty(documentPath))
+            firstLine = firstLine.Replace(documentPath!, "[redacted model path]")
+                .Replace(documentPath!.Replace("\\", "\\\\"), "[redacted model path]");
+        if (Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1")
+            firstLine = Regex.Replace(firstLine, @"(?:[A-Za-z]:\\|\\\\)[^""']+", "[redacted path]");
+        if (firstLine.Length > 160) firstLine = firstLine.Substring(0, 160);
+        return $"{firstLine} [{CodeSource.CodeHash(code).Substring(0, 12)}]";
     }
 
     public static void RecordFamilyEdit(ControlJobParseResult job, Document? document, FamilyEditData? data,

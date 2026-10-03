@@ -83,6 +83,7 @@ ACTION_COMMANDS = frozenset(
         "sync-document",
         "set-view-visibility",
         "remove-links",
+        "execute-code",
     }
 )
 

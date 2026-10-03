@@ -11,6 +11,26 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task ExecuteCode_SerializesLimitedJsonValuesAndDiagnostics()
+    {
+        var response = CommandResponse<ActionResultData>.Ok("execute-code", new ActionResultData
+        {
+            ReturnValue = CodeResultLimiter.Limit(new Dictionary<string, object?>
+            {
+                ["count"] = 3,
+                ["items"] = new[] { "a", "b" }
+            }, value => value),
+            Log = ["ready"],
+            Diagnostics = [new CodeDiagnostic { Line = 2, Column = 4, Id = "CS1002", Message = "; expected" }],
+            Summary = "Executed code in Model.rvt."
+        }, 5);
+        var json = CommandResponseJsonSerializer.Serialize(response);
+        await Assert.That(json.Contains("\"returnValue\"")).IsTrue();
+        await Assert.That(json.Contains("\"count\":3")).IsTrue();
+        await Assert.That(json.Contains("\"line\":2")).IsTrue();
+    }
+
+    [Test]
     public async Task Serialize_ModelSnapshot_UsesExactSchemaNamesAndNulls()
     {
         var snapshot = new ModelSnapshotData

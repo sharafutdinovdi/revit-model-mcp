@@ -22,6 +22,7 @@ from revit_model_mcp.revit_channel import (
 )
 
 ACTION_TOOLS = {
+    "revit_execute_code",
     "revit_select",
     "revit_show",
     "revit_isolate",
@@ -61,7 +62,13 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
         for name in ACTION_TOOLS:
             tool = tools[name]
             assert ("response_timeout_s" in tool.input_schema["properties"]) is (
-                name in {"revit_export_nwc", "revit_edit_families", "revit_align_link_datums"}
+                name
+                in {
+                    "revit_export_nwc",
+                    "revit_edit_families",
+                    "revit_align_link_datums",
+                    "revit_execute_code",
+                }
             )
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
@@ -98,6 +105,35 @@ def action_server(read_only=False):
     with patch.dict(os.environ, {"REVIT_MCP_READ_ONLY": "1" if read_only else "0"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_execute_code_maps_arguments_and_respects_read_only():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_execute_code", {"code": "return 42;"}))
+    job = execute.await_args.args[0]
+    assert job.command == "execute-code"
+    assert job.payload["code"] == "return 42;"
+    assert job.payload["transaction"] == "auto"
+    assert job.payload["dryRun"] is False
+    assert execute.await_args.args[1] == 600
+
+    with pytest.raises(Exception):
+        asyncio.run(
+            server.call_tool(
+                "revit_execute_code",
+                {
+                    "code": "return 42;",
+                    "transaction": "none",
+                    "dry_run": True,
+                },
+            )
+        )
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
 
 
 def test_document_action_mapping_and_confirmation_shape():
