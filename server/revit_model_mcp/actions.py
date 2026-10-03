@@ -66,6 +66,11 @@ _BATCH_FIELDS = {
         "level": (Name, ...),
         "rotation_deg": (Number, 0),
     },
+    "load_family": {
+        "paths": (Annotated[list[Name], Field(min_length=1, max_length=100)], ...),
+        "overwrite": (bool, False),
+        "overwrite_parameter_values": (bool, False),
+    },
     "create_wall": {
         "start_mm": (Point, ...),
         "end_mm": (Point, ...),
@@ -81,7 +86,7 @@ _BATCH_FIELDS = {
     },
     "delete": {"element_ids": (NonEmptyIds, ...)},
 }
-for _action in ("move", "place_family", "create_wall", "set_parameter", "delete"):
+for _action in ("move", "place_family", "load_family", "create_wall", "set_parameter", "delete"):
     _BATCH_FIELDS[_action]["dry_run"] = (bool, False)
 _BATCH_MODELS = {
     action: create_model(action, __config__=ConfigDict(extra="forbid"), **fields)
@@ -92,7 +97,14 @@ _BATCH_MODELS = {
 class BatchStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal[
-        "move", "place_family", "create_wall", "set_parameter", "delete", "select", "isolate"
+        "move",
+        "place_family",
+        "load_family",
+        "create_wall",
+        "set_parameter",
+        "delete",
+        "select",
+        "isolate",
     ]
     args: dict
 
@@ -118,6 +130,30 @@ class BatchStep(BaseModel):
                 if key != "parameter_id" or value is not None
             },
         }
+
+
+class FamilyPlacement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    family: Name
+    type_name: Name
+    x_mm: Number
+    y_mm: Number
+    z_mm: Number = 0
+    level: Name
+    rotation_deg: Number = 0
+    host_id: ElementId | None = None
+    parameters: dict[Name, ParameterValue] | None = None
+
+
+class RoomPlacement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    family: Name
+    type_name: Name
+    level: Name | None = None
+    rooms: Annotated[list[Name], Field(min_length=1)] | None = None
+    z_mm: Number = 0
+    rotation_deg: Number = 0
+    parameters: dict[Name, ParameterValue] | None = None
 
 
 class SharedParameter(BaseModel):
@@ -294,6 +330,8 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_isolate": "Isolate Elements",
             "revit_move": "Move Elements",
             "revit_place_family": "Place Family",
+            "revit_load_family": "Load Families",
+            "revit_place_families": "Place Families",
             "revit_create_wall": "Create Wall",
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
@@ -609,6 +647,63 @@ def register_actions(mcp, execute, host_provider) -> None:
             rotationDeg=rotation_deg,
             dryRun=dry_run,
             document=document,
+        )
+
+    @action
+    async def revit_load_family(
+        paths: Annotated[list[Name], Field(min_length=1, max_length=100)],
+        overwrite: bool = False,
+        overwrite_parameter_values: bool = False,
+        dry_run: bool = False,
+        document: Document = None,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+    ) -> dict[str, Any]:
+        """Load workstation .rfa files in one undo entry. Existing families are skipped unless overwrite is true."""
+        return await send(
+            "load-family",
+            paths=paths,
+            overwrite=overwrite,
+            overwriteParameterValues=overwrite_parameter_values,
+            dryRun=dry_run,
+            document=document,
+            response_timeout_s=response_timeout_s,
+        )
+
+    @action
+    async def revit_place_families(
+        placements: Annotated[list[FamilyPlacement], Field(min_length=1, max_length=2000)]
+        | None = None,
+        at_rooms: RoomPlacement | None = None,
+        load: Annotated[list[Name], Field(min_length=1, max_length=100)] | None = None,
+        dry_run: bool = False,
+        stop_on_error: bool = True,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Load optional families and place instances in one transaction and undo entry."""
+        if (placements is None) == (at_rooms is None):
+            raise ToolError("Exactly one of placements or at_rooms is required.")
+
+        def camel(item):
+            return {
+                "".join(
+                    part.title() if index else part for index, part in enumerate(key.split("_"))
+                ): value
+                for key, value in item.items()
+                if value is not None
+            }
+
+        return await send(
+            "place-families",
+            placements=[camel(item.model_dump()) for item in placements]
+            if placements is not None
+            else None,
+            atRooms=camel(at_rooms.model_dump()) if at_rooms is not None else None,
+            load=load,
+            dryRun=dry_run,
+            stopOnError=stop_on_error,
+            document=document,
+            response_timeout_s=response_timeout_s,
         )
 
     @action

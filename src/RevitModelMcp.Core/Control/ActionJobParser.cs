@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "place-family" or "load-family" or "place-families" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -35,6 +35,10 @@ public static class ActionJobParser
                 DzMm = job.DzMm ?? 0,
                 Family = job.Family,
                 TypeName = job.TypeName,
+                Paths = job.Paths,
+                Load = job.Load,
+                Placements = job.Placements,
+                AtRooms = job.AtRooms,
                 Level = job.Level,
                 XMm = job.XMm ?? 0,
                 YMm = job.YMm ?? 0,
@@ -125,9 +129,9 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(stepCommand is "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
-                        "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
-                    var parsed = Parse(stepCommand, step!);
+                    Require(stepCommand is "move" or "place-family" or "load-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
+                        "Batch step command is invalid.");
+                    var parsed = Parse(stepCommand, step!, trustedNetworkRoots);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
                     action.Steps.Add(parsed);
                 }
@@ -197,6 +201,32 @@ public static class ActionJobParser
                 Require(job.XMm.HasValue && job.YMm.HasValue, "xMm and yMm are required.");
                 Require(Finite(action.XMm, action.YMm, action.RotationDeg), "Placement coordinates and rotation must be finite.");
                 Require(action.TypeName is null || !string.IsNullOrWhiteSpace(action.TypeName), "typeName must not be blank.");
+            }
+            if (command == "load-family") ValidateFamilyPaths(action.Paths, "paths", trustedNetworkRoots);
+            if (command == "place-families")
+            {
+                Require((action.Placements is null) != (action.AtRooms is null), "Exactly one of placements or atRooms is required.");
+                if (action.Load is not null) ValidateFamilyPaths(action.Load, "load", trustedNetworkRoots);
+                if (action.Placements is not null)
+                {
+                    Require(action.Placements.Count is > 0 and <= 2000, "placements must contain 1 to 2000 items.");
+                    foreach (var placement in action.Placements)
+                    {
+                        if (placement is null) throw new ArgumentException("Placement must not be null.");
+                        Require(!string.IsNullOrWhiteSpace(placement.Family) && !string.IsNullOrWhiteSpace(placement.TypeName) && !string.IsNullOrWhiteSpace(placement.Level), "Placement family, typeName and level are required.");
+                        Require(Finite(placement.XMm, placement.YMm, placement.ZMm, placement.RotationDeg), "Placement coordinates and rotation must be finite.");
+                        Require(placement.HostId is null or > 0, "hostId must be positive.");
+                        ValidatePlacementParameters(placement.Parameters);
+                    }
+                }
+                else
+                {
+                    var rooms = action.AtRooms!;
+                    Require(!string.IsNullOrWhiteSpace(rooms.Family) && !string.IsNullOrWhiteSpace(rooms.TypeName), "atRooms family and typeName are required.");
+                    Require(Finite(rooms.ZMm, rooms.RotationDeg), "Room offset and rotation must be finite.");
+                    Require(rooms.Rooms is null || rooms.Rooms.Count > 0 && rooms.Rooms.All(name => !string.IsNullOrWhiteSpace(name)), "rooms must contain names or numbers.");
+                    ValidatePlacementParameters(rooms.Parameters);
+                }
             }
             if (command is "place-family" or "create-wall")
                 Require(!string.IsNullOrWhiteSpace(action.Level), "level is required.");
@@ -273,6 +303,26 @@ public static class ActionJobParser
     }
 
     private static bool Finite(params double[] values) => values.All(value => !double.IsNaN(value) && !double.IsInfinity(value));
+
+    private static void ValidateFamilyPaths(List<string>? paths, string label, IReadOnlyCollection<string>? trustedNetworkRoots)
+    {
+        Require(paths is { Count: > 0 and <= 100 }, $"{label} must contain 1 to 100 paths.");
+        foreach (var path in paths!)
+        {
+            Require(path is not null && path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase), $"{label} must contain .rfa paths.");
+            DocumentPathValidator.Validate(path, label, trustedNetworkRoots);
+        }
+    }
+
+    private static void ValidatePlacementParameters(Dictionary<string, object>? parameters)
+    {
+        if (parameters is null) return;
+        foreach (var (name, value) in parameters)
+        {
+            Require(!string.IsNullOrWhiteSpace(name) && value is not null, "Parameter name and value are required.");
+            ParameterResolution.ValidateJsonValue(name, value!);
+        }
+    }
 
     public static ViewVisibilityOptions ParseVisibility(ControlJobContract job)
     {
@@ -514,6 +564,10 @@ public sealed class ActionJobContract
     public double DzMm { get; set; }
     public string? Family { get; set; }
     public string? TypeName { get; set; }
+    public List<string>? Paths { get; set; }
+    public List<string>? Load { get; set; }
+    public List<FamilyPlacementContract>? Placements { get; set; }
+    public RoomPlacementContract? AtRooms { get; set; }
     public double XMm { get; set; }
     public double YMm { get; set; }
     public string? Level { get; set; }
@@ -760,6 +814,10 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "dyMm")] public double? DyMm { get; set; }
     [DataMember(Name = "dzMm")] public double? DzMm { get; set; }
     [DataMember(Name = "typeName")] public string? TypeName { get; set; }
+    [DataMember(Name = "paths")] public List<string>? Paths { get; set; }
+    [DataMember(Name = "load")] public List<string>? Load { get; set; }
+    [DataMember(Name = "placements")] public List<FamilyPlacementContract>? Placements { get; set; }
+    [DataMember(Name = "atRooms")] public RoomPlacementContract? AtRooms { get; set; }
     [DataMember(Name = "xMm")] public double? XMm { get; set; }
     [DataMember(Name = "yMm")] public double? YMm { get; set; }
     [DataMember(Name = "rotationDeg")] public double? RotationDeg { get; set; }
@@ -775,6 +833,32 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "operations")] public List<FamilyEditOperationContract>? Operations { get; set; }
     [DataMember(Name = "overwriteParameterValues")] public bool? OverwriteParameterValues { get; set; }
     [DataMember(Name = "stopOnError")] public bool? StopOnError { get; set; }
+}
+
+[DataContract]
+public sealed class FamilyPlacementContract
+{
+    [DataMember(Name = "family")] public string? Family { get; set; }
+    [DataMember(Name = "typeName")] public string? TypeName { get; set; }
+    [DataMember(Name = "xMm")] public double XMm { get; set; }
+    [DataMember(Name = "yMm")] public double YMm { get; set; }
+    [DataMember(Name = "zMm")] public double ZMm { get; set; }
+    [DataMember(Name = "level")] public string? Level { get; set; }
+    [DataMember(Name = "rotationDeg")] public double RotationDeg { get; set; }
+    [DataMember(Name = "hostId")] public long? HostId { get; set; }
+    [DataMember(Name = "parameters")] public Dictionary<string, object>? Parameters { get; set; }
+}
+
+[DataContract]
+public sealed class RoomPlacementContract
+{
+    [DataMember(Name = "family")] public string? Family { get; set; }
+    [DataMember(Name = "typeName")] public string? TypeName { get; set; }
+    [DataMember(Name = "level")] public string? Level { get; set; }
+    [DataMember(Name = "rooms")] public List<string>? Rooms { get; set; }
+    [DataMember(Name = "zMm")] public double ZMm { get; set; }
+    [DataMember(Name = "rotationDeg")] public double RotationDeg { get; set; }
+    [DataMember(Name = "parameters")] public Dictionary<string, object>? Parameters { get; set; }
 }
 
 [DataContract]
@@ -852,4 +936,25 @@ public sealed class ActionResultData
     [DataMember(Name = "newValue", EmitDefaultValue = false)] public string? NewValue { get; set; }
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }
     [DataMember(Name = "closestFamilies", EmitDefaultValue = false)] public List<string>? ClosestFamilies { get; set; }
+    [DataMember(Name = "loaded", EmitDefaultValue = false)] public List<FamilyLoadResult>? Loaded { get; set; }
+    [DataMember(Name = "placed", EmitDefaultValue = false)] public int? Placed { get; set; }
+    [DataMember(Name = "failed", EmitDefaultValue = false)] public List<PlacementFailure>? Failed { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public List<PlacementFailure>? Skipped { get; set; }
+    [DataMember(Name = "createdElementIds", EmitDefaultValue = false)] public List<long>? CreatedElementIds { get; set; }
+    [DataMember(Name = "perTypeCounts", EmitDefaultValue = false)] public Dictionary<string, int>? PerTypeCounts { get; set; }
+}
+
+[DataContract]
+public sealed class FamilyLoadResult
+{
+    [DataMember(Name = "family")] public string Family { get; set; } = string.Empty;
+    [DataMember(Name = "status")] public string Status { get; set; } = string.Empty;
+    [DataMember(Name = "types")] public List<string> Types { get; set; } = [];
+}
+
+[DataContract]
+public sealed class PlacementFailure
+{
+    [DataMember(Name = "index")] public int Index { get; set; }
+    [DataMember(Name = "reason")] public string Reason { get; set; } = string.Empty;
 }

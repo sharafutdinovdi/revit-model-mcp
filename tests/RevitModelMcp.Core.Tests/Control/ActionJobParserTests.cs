@@ -7,6 +7,28 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task BulkFamilyJobs_ValidatePathsAndPlacementLimits()
+    {
+        var load = ControlJobParser.Parse("""{"command":"load-family","paths":["C:\\Families\\Chair.rfa"]}""");
+        await Assert.That(load.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(load.Action!.Paths!.Count).IsEqualTo(1);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"load-family","paths":["C:\\Families\\Chair.rfa"]}]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"load-family","paths":["C:\\Families\\Chair.rvt"]}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ActionJobParser.Parse("load-family", new ControlJobContract { Paths = Enumerable.Repeat(@"C:\Families\Chair.rfa", 101).ToList() }).Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"place-families","placements":[],"atRooms":{"family":"Chair","typeName":"A"}}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Chair","typeName":"A","level":"L1","xMm":0,"yMm":0}]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        var withParameters = ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Chair","typeName":"A","level":"L1","xMm":0,"yMm":0,"parameters":{"Mark":"C1"}}]}""");
+        await Assert.That(withParameters.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(withParameters.Action!.Placements![0].Parameters!["Mark"]).IsEqualTo("C1");
+        await Assert.That(ControlJobParser.Parse("""{"command":"place-families","atRooms":{"family":"Chair","typeName":"A","rooms":["101"]}}""").Kind).IsEqualTo(ControlJobKind.Action);
+        var tooMany = new ControlJobContract
+        {
+            Placements = Enumerable.Range(0, 2001).Select(_ => new FamilyPlacementContract { Family = "Chair", TypeName = "A", Level = "L1" }).ToList()
+        };
+        await Assert.That(ActionJobParser.Parse("place-families", tooMany).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {
         var direct = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Mark","parameterId":"ALL_MODEL_MARK","value":42}""");

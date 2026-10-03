@@ -43,6 +43,8 @@ public static class ActionSummaryBuilder
             "move" => $"{(context.DryRun ? "Would move" : "Moved")} {Plural(context.Count, "element")} in {doc}.",
             "delete" => $"{(context.DryRun ? "Would delete" : "Deleted")} {Plural(context.Count, "element")} in {doc}.",
             "place-family" => $"{(context.DryRun ? "Would place" : "Placed")} {FamilyLabel(context)} in {doc}.",
+            "load-family" => $"{(context.DryRun ? "Would load" : "Loaded")} {Plural(context.Count, "family")} in {doc}.",
+            "place-families" => $"{(context.DryRun ? "Would place" : "Placed")} {Plural(context.Count, "family")} in {doc}.",
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
             "set-parameter" => $"{(context.DryRun ? "Would set" : "Set")} parameter '{context.Parameter}' on 1 element in {doc}.",
             "batch" => $"{(context.DryRun ? "Would run" : "Ran")} a batch of {Plural(context.BatchStepCount, "step")} in {doc}.",

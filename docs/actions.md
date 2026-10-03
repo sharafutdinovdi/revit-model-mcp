@@ -38,6 +38,8 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
 | `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
 | `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
+| `revit_load_family` | `paths` (1-100), `overwrite=false`, `overwrite_parameter_values=false`, `dry_run=false`, `response_timeout_s=600` | Load workstation `.rfa` files in one undo entry. Existing families are skipped unless overwrite is true. |
+| `revit_place_families` | Exactly one of `placements` or `at_rooms`; `load=null`, `dry_run=false`, `stop_on_error=true`, `response_timeout_s=600` | Load optional families and place up to 2000 instances in one undo entry. |
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
@@ -136,6 +138,8 @@ For example, setting Comments on element 123 returns:
   }
 }
 ```
+
+`revit_place_families` accepts placement records with `family`, `type_name`, `x_mm`, `y_mm`, `level`, optional `z_mm`, `rotation_deg`, `host_id` and `parameters`. `z_mm` is an offset above the level. `host_id` addresses a wall, floor or ceiling, including its nearest usable face for a face-based family. Parameter names follow `revit_set_parameter` resolution rules. A failure rolls back every placement by default. With `stop_on_error=false`, failed indices and reasons are returned while successful items commit. `at_rooms` selects placed, enclosed rooms by optional level and room names or numbers; unplaced and unenclosed rooms are reported as `skipped`. The result includes `placed`, `failed`, `createdElementIds`, `perTypeCounts`, `summary` and `verification`. A dry run rolls back all changes. The `load` list uses the same workstation path checks as `revit_load_family`.
 
 `revit_batch` takes action names and their normal snake_case arguments:
 

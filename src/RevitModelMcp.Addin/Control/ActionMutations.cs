@@ -1,7 +1,9 @@
 using System.Globalization;
+using System.IO;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Structure;
 using Nice3point.Revit.Extensions;
+using Nice3point.Revit.Toolkit.Options;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
 
@@ -10,6 +12,13 @@ namespace RevitModelMcp.Control;
 internal static class ActionMutations
 {
     internal static ActionResultData PlaceFamily(Document document, ActionJobContract action)
+    {
+        var instance = PlaceFamilyInstance(document, action);
+        return new ActionResultData { Id = RevitValueReader.GetId(instance.Id), Category = instance.Category?.Name, Level = action.Level };
+    }
+
+    private static FamilyInstance PlaceFamilyInstance(Document document, ActionJobContract action, double zMm = 0, long? hostId = null,
+        Dictionary<string, object>? parameters = null)
     {
         using var symbols = document.CollectElements().OfClass<FamilySymbol>()
             .WhereParameter(BuiltInParameter.ALL_MODEL_FAMILY_NAME).Equals(action.Family!);
@@ -35,11 +44,151 @@ internal static class ActionMutations
             symbol.Activate();
             document.Regenerate();
         }
-        var point = new XYZ(Millimeters(action.XMm), Millimeters(action.YMm), level.ProjectElevation);
-        var instance = document.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural);
+        var point = new XYZ(Millimeters(action.XMm), Millimeters(action.YMm), level.ProjectElevation + Millimeters(zMm));
+        if (hostId is not null && symbol.Family.FamilyPlacementType is not (FamilyPlacementType.OneLevelBasedHosted or FamilyPlacementType.WorkPlaneBased))
+            throw new ArgumentException($"Family '{action.Family}' is not hosted.");
+        var host = hostId is null ? null : CreateId(hostId.Value).ToElement(document)
+            ?? throw new ArgumentException($"Host {hostId} was not found.");
+        if (host is not null && host is not Wall && host is not Floor && host is not Ceiling)
+            throw new ArgumentException($"Host {hostId} must be a wall, floor or ceiling.");
+        FamilyInstance instance;
+        var rotationPoint = point;
+        if (host is null)
+            instance = document.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural);
+        else if (symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased)
+        {
+            var (face, projected) = ClosestHostFace(host, point);
+            var normal = face.ComputeNormal(projected.UVPoint);
+            var direction = normal.CrossProduct(XYZ.BasisZ);
+            if (direction.GetLength() < 0.001) direction = normal.CrossProduct(XYZ.BasisX);
+            instance = document.Create.NewFamilyInstance(face, projected.XYZPoint, direction.Normalize(), symbol);
+            rotationPoint = projected.XYZPoint;
+        }
+        else
+            instance = document.Create.NewFamilyInstance(point, symbol, host, level, StructuralType.NonStructural);
         if (action.RotationDeg != 0)
-            instance.Rotate(Line.CreateBound(point, point + XYZ.BasisZ), action.RotationDeg * Math.PI / 180);
-        return new ActionResultData { Id = RevitValueReader.GetId(instance.Id), Category = instance.Category?.Name, Level = level.Name };
+            instance.Rotate(Line.CreateBound(rotationPoint, rotationPoint + XYZ.BasisZ), action.RotationDeg * Math.PI / 180);
+        if (parameters is not null)
+            foreach (var (name, value) in parameters)
+            {
+                var (_, candidate) = ResolveParameter(instance, name, null);
+                if (candidate.Owner != "instance") throw new ArgumentException($"Parameter '{name}' is not an instance parameter.");
+                SetParameter(document, new ActionJobContract { ElementId = RevitValueReader.GetId(instance.Id), Parameter = name, Value = value });
+            }
+        return instance;
+    }
+
+    private static (Face Face, IntersectionResult Projection) ClosestHostFace(Element host, XYZ point)
+    {
+        var options = new Options { ComputeReferences = true };
+        var geometry = host.get_Geometry(options);
+        var candidates = new List<(Face Face, IntersectionResult Projection)>();
+        void Collect(GeometryElement elements)
+        {
+            foreach (var geometryObject in elements)
+            {
+                if (geometryObject is GeometryInstance instance)
+                {
+                    Collect(instance.GetInstanceGeometry());
+                    continue;
+                }
+                if (geometryObject is not Solid solid) continue;
+                foreach (Face face in solid.Faces)
+                {
+                    var projection = face.Project(point);
+                    if (projection is not null && face.Reference is not null) candidates.Add((face, projection));
+                }
+            }
+        }
+        if (geometry is not null) Collect(geometry);
+        if (candidates.Count == 0)
+            throw new ArgumentException($"No usable face was found on host {RevitValueReader.GetId(host.Id)}.");
+        return candidates.OrderBy(candidate => candidate.Projection.Distance).First();
+    }
+
+    internal static ActionResultData LoadFamilies(Document document, ActionJobContract action)
+    {
+        var result = new ActionResultData { Loaded = [] };
+        foreach (var path in action.Paths!) result.Loaded.Add(LoadFamily(document, path, action.Overwrite, action.OverwriteParameterValues));
+        result.Count = result.Loaded.Count(item => item.Status != "skipped");
+        return result;
+    }
+
+    private static FamilyLoadResult LoadFamily(Document document, string path, bool overwrite, bool overwriteParameterValues)
+    {
+        var familyName = Path.GetFileNameWithoutExtension(path);
+        using var existing = document.CollectElements().OfClass<Family>();
+        var loaded = existing.Cast<Family>().FirstOrDefault(family => string.Equals(family.Name, familyName, StringComparison.OrdinalIgnoreCase));
+        var wasLoaded = loaded is not null;
+        if (loaded is null || overwrite)
+        {
+            if (!document.LoadFamily(path, new FamilyLoadOptions(overwriteParameterValues, FamilySource.Project), out var family))
+                throw new InvalidOperationException($"Could not load family '{familyName}'.");
+            loaded = family;
+        }
+        return new FamilyLoadResult
+        {
+            Family = loaded.Name,
+            Status = !wasLoaded ? "loaded" : overwrite ? "reloaded" : "skipped",
+            Types = loaded.GetFamilySymbolIds().Select(id => document.GetElement(id)?.Name ?? string.Empty).OrderBy(name => name).ToList()
+        };
+    }
+
+    internal static ActionResultData PlaceFamilies(Document document, ActionJobContract action)
+    {
+        var result = new ActionResultData { Loaded = [], Failed = [], Skipped = [], CreatedElementIds = [], PerTypeCounts = [] };
+        foreach (var path in action.Load ?? []) result.Loaded.Add(LoadFamily(document, path, false, false));
+        var placements = action.Placements ?? [];
+        if (action.AtRooms is not null)
+        {
+            var request = action.AtRooms;
+            using var collector = document.CollectElements().OfClass<Autodesk.Revit.DB.Architecture.Room>();
+            foreach (var room in collector.Cast<Autodesk.Revit.DB.Architecture.Room>())
+            {
+                if (request.Level is not null && !string.Equals(room.Level?.Name, request.Level, StringComparison.OrdinalIgnoreCase)) continue;
+                if (request.Rooms is not null && !request.Rooms.Any(name => string.Equals(name, room.Name, StringComparison.OrdinalIgnoreCase) || string.Equals(name, room.Number, StringComparison.OrdinalIgnoreCase))) continue;
+                if (room.Level is null || room.Location is not LocationPoint point || room.Area <= 0)
+                {
+                    result.Skipped.Add(new PlacementFailure { Index = result.Skipped.Count, Reason = $"Room '{room.Number}' is unplaced or unenclosed." });
+                    continue;
+                }
+                placements.Add(new FamilyPlacementContract
+                {
+                    Family = request.Family, TypeName = request.TypeName, Level = room.Level.Name,
+                    XMm = point.Point.X.ToMillimeters(), YMm = point.Point.Y.ToMillimeters(),
+                    ZMm = request.ZMm, RotationDeg = request.RotationDeg, Parameters = request.Parameters
+                });
+            }
+            if (placements.Count > 2000) throw new ArgumentException("atRooms selected more than 2000 rooms.");
+        }
+        for (var index = 0; index < placements.Count; index++)
+        {
+            var placement = placements[index];
+            using var subtransaction = new SubTransaction(document);
+            subtransaction.Start();
+            try
+            {
+                var instance = PlaceFamilyInstance(document, new ActionJobContract
+                {
+                    Family = placement.Family, TypeName = placement.TypeName, Level = placement.Level,
+                    XMm = placement.XMm, YMm = placement.YMm, RotationDeg = placement.RotationDeg
+                }, placement.ZMm, placement.HostId, placement.Parameters);
+                if (subtransaction.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Placement was rolled back.");
+                result.CreatedElementIds.Add(RevitValueReader.GetId(instance.Id));
+                var key = $"{placement.Family}: {placement.TypeName}";
+                result.PerTypeCounts[key] = result.PerTypeCounts.TryGetValue(key, out var count) ? count + 1 : 1;
+            }
+            catch (Exception exception)
+            {
+                if (subtransaction.GetStatus() == TransactionStatus.Started) subtransaction.RollBack();
+                if (action.StopOnError) throw new ArgumentException($"Placement {index}: {exception.Message}", exception);
+                result.Failed.Add(new PlacementFailure { Index = index, Reason = exception.Message });
+            }
+        }
+        result.Placed = result.CreatedElementIds.Count;
+        result.Count = result.Placed;
+        result.Verification = new ActionVerification { Changed = result.CreatedElementIds.ToList() };
+        return result;
     }
 
     internal static ActionResultData CreateWall(Document document, ActionJobContract action)

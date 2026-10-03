@@ -105,7 +105,7 @@ internal static class ActionCommandExecutor
             response.Error = error;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
-            if (job.Command is "export-nwc" or "open-document" or "close-document" or "save-document" or "sync-document")
+            if (job.Command is "export-nwc" or "load-family" or "place-families" or "open-document" or "close-document" or "save-document" or "sync-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }
@@ -291,6 +291,8 @@ internal static class ActionCommandExecutor
                     try
                     {
                         ActionVerifier.CaptureAfter(document, command, action, data);
+                        if (command == "place-families" && data.CreatedElementIds!.Any(id => document.GetElement(CreateId(id)) is null))
+                            throw new InvalidOperationException("Post-commit verification found a missing family instance.");
                     }
                     catch (Exception exception)
                     {
@@ -299,7 +301,8 @@ internal static class ActionCommandExecutor
                     }
                     if (group is not null)
                     {
-                        var groupName = ActionSummaryBuilder.BuildGroupName(clientName, data.Summary);
+                        var undoSummary = command == "place-families" ? $"Place {data.Placed} families" : data.Summary;
+                        var groupName = ActionSummaryBuilder.BuildGroupName(clientName, undoSummary!);
                         group.SetName(groupName);
                         if (group.Assimilate() != TransactionStatus.Committed)
                             throw new InvalidOperationException("Could not assimilate the action transaction group.");
@@ -357,6 +360,7 @@ internal static class ActionCommandExecutor
             "move" or "select" or "isolate" => ids?.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
+            "load-family" or "place-families" => data.Count ?? 0,
             _ => 0
         };
         return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -462,6 +466,10 @@ internal static class ActionCommandExecutor
                 };
             case "place-family":
                 return ActionMutations.PlaceFamily(document, action);
+            case "load-family":
+                return ActionMutations.LoadFamilies(document, action);
+            case "place-families":
+                return ActionMutations.PlaceFamilies(document, action);
             case "create-wall":
                 return ActionMutations.CreateWall(document, action);
             case "set-parameter":

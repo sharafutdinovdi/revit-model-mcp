@@ -63,6 +63,8 @@ ACTION_TOOL_NAMES = {
     "revit_isolate",
     "revit_move",
     "revit_place_family",
+    "revit_load_family",
+    "revit_place_families",
     "revit_create_wall",
     "revit_set_parameter",
     "revit_delete",
