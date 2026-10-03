@@ -59,17 +59,25 @@ internal static class DocumentActions
         {
             ActiveDocument = document is null ? null : new UiDocumentState
             {
-                Title = document.Title, Path = document.PathName, IsFamilyDocument = document.IsFamilyDocument,
-                IsWorkshared = document.IsWorkshared, IsModified = document.IsModified
+                Title = document.Title,
+                Path = document.PathName,
+                IsFamilyDocument = document.IsFamilyDocument,
+                IsWorkshared = document.IsWorkshared,
+                IsModified = document.IsModified
             },
             ActiveView = view is null ? null : new UiViewState
             {
-                Id = RevitValueReader.GetId(view.Id), Name = view.Name, Type = view.ViewType.ToString(), IsActive = true
+                Id = RevitValueReader.GetId(view.Id),
+                Name = view.Name,
+                Type = view.ViewType.ToString(),
+                IsActive = true
             },
             OpenViews = uiDocument?.GetOpenUIViews().Select(item => document!.GetElement(item.ViewId) as View)
                 .Where(item => item is not null).Select(item => new UiViewState
                 {
-                    Id = RevitValueReader.GetId(item!.Id), Name = item.Name, Type = item.ViewType.ToString(),
+                    Id = RevitValueReader.GetId(item!.Id),
+                    Name = item.Name,
+                    Type = item.ViewType.ToString(),
                     IsActive = item.Id == view!.Id
                 }).ToList() ?? [],
             Selection = new UiSelectionState
@@ -78,7 +86,8 @@ internal static class DocumentActions
                 Elements = selected.Take(500).Select(id => document!.GetElement(id)).Where(item => item is not null)
                     .Select(item => new UiSelectedElement
                     {
-                        Id = RevitValueReader.GetId(item!.Id), Category = item.Category?.Name,
+                        Id = RevitValueReader.GetId(item!.Id),
+                        Category = item.Category?.Name,
                         Name = item.Name
                     }).ToList()
             },
@@ -296,9 +305,15 @@ internal static class DocumentActions
         var wasOpen = uiDocument.GetOpenUIViews().Any(item => item.ViewId == view.Id);
         var wasActive = uiDocument.ActiveView.Id == view.Id;
         uiDocument.ActiveView = view;
-        return new ActionResultData { Title = document.Title, Path = document.PathName, Active = true,
+        return new ActionResultData
+        {
+            Title = document.Title,
+            Path = document.PathName,
+            Active = true,
             View = new RevitModelMcp.Core.Models.NwcViewResult { Name = view.Name, Id = RevitValueReader.GetId(view.Id) },
-            ViewOpened = !wasOpen, Changed = !wasActive };
+            ViewOpened = !wasOpen,
+            Changed = !wasActive
+        };
     }
 
     private static ActionResultData CloseViews(UIApplication application, Document document, ActionJobContract action)
