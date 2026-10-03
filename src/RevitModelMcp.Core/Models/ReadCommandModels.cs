@@ -180,6 +180,14 @@ public sealed record ScheduleDataResult
     [DataMember(Name = "rows")] public List<List<string>> Rows { get; init; } = [];
     [DataMember(Name = "totalRows")] public int TotalRows { get; init; }
     [DataMember(Name = "truncated")] public bool Truncated { get; init; }
+
+    public static List<string> JoinHeadings(IReadOnlyList<List<string>> rows, int columnCount)
+    {
+        return Enumerable.Range(0, columnCount)
+            .Select(column => string.Join(" / ", rows.Select(row => row[column])
+                .Where(text => !string.IsNullOrWhiteSpace(text))))
+            .ToList();
+    }
 }
 
 public static class ReadCommandResponseFactory

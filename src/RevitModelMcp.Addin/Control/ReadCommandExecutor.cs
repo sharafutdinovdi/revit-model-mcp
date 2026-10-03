@@ -226,18 +226,25 @@ internal static class ReadCommandExecutor
         var columns = visibleFields.Take(columnNumbers.Count).Select(field => field.ColumnHeading).ToList();
         if (schedule.Definition.ShowHeaders && body.FirstRowNumber <= body.LastRowNumber)
         {
-            dataStart++;
+            var headingRows = new List<List<string>>();
             for (var row = body.FirstRowNumber; row <= body.LastRowNumber; row++)
             {
-                var headings = columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList();
-                if (row == body.FirstRowNumber) columns = headings;
-                if (headings.SequenceEqual(visibleFields.Take(columnNumbers.Count).Select(field => field.ColumnHeading)))
+                var hasMergedCells = false;
+                var headings = new List<string>();
+                foreach (var column in columnNumbers)
                 {
-                    dataStart = row + 1;
-                    columns = headings;
-                    break;
+                    var merged = body.GetMergedCell(row, column);
+                    hasMergedCells |= merged.Top == row &&
+                        (merged.Right > merged.Left || merged.Bottom > merged.Top);
+                    headings.Add(merged.Top == row
+                        ? schedule.GetCellText(SectionType.Body, merged.Top, merged.Left)
+                        : string.Empty);
                 }
+                headingRows.Add(headings);
+                dataStart = row + 1;
+                if (!hasMergedCells) break;
             }
+            columns = ScheduleDataResult.JoinHeadings(headingRows, columnNumbers.Count);
         }
         var totalRows = Math.Max(0, body.LastRowNumber - dataStart + 1);
         var rows = new List<List<string>>();

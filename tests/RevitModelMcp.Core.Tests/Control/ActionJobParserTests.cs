@@ -44,6 +44,21 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task ScheduleData_JoinsGroupedHeadingsByColumn()
+    {
+        List<List<string>> rows =
+        [
+            ["Door", "Door", "Door"],
+            ["Mark", "Size", "Size"],
+            ["", "Width", "Height"]
+        ];
+        var columns = ScheduleDataResult.JoinHeadings(rows, 3);
+        await Assert.That(columns[0]).IsEqualTo("Door / Mark");
+        await Assert.That(columns[1]).IsEqualTo("Door / Size / Width");
+        await Assert.That(columns[2]).IsEqualTo("Door / Size / Height");
+    }
+
+    [Test]
     [Arguments("""{"command":"export","format":"pdf"}""")]
     [Arguments("""{"command":"export","format":"csv","sheets":["A1"]}""")]
     [Arguments("""{"command":"export","format":"ifc","views":["One","Two"]}""")]
