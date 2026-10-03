@@ -254,6 +254,10 @@
       "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
+      "name": "revit_process_models",
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response."
+    },
+    {
       "name": "revit_edit_families",
       "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode."
     },

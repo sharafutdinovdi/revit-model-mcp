@@ -120,6 +120,125 @@ class BatchStep(BaseModel):
         }
 
 
+class ProcessOpen(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["detached", "detached_discard_worksets", "local_copy", "read_only_local"] = (
+        "detached"
+    )
+    worksets: Literal["all", "none"] | dict[str, list[Name]] = "all"
+    audit: bool = False
+
+    @model_validator(mode="after")
+    def validate_worksets(self):
+        if isinstance(self.worksets, dict) and (
+            len(self.worksets) != 1
+            or next(iter(self.worksets)) not in {"open", "close"}
+            or not next(iter(self.worksets.values()))
+            or any(
+                name.lower().startswith("regex:")
+                for names in self.worksets.values()
+                for name in names
+            )
+        ):
+            raise ValueError("worksets must be all, none, {'open': [names]} or {'close': [names]}.")
+        return self
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "mode": self.mode,
+            "worksets": next(iter(self.worksets))
+            if isinstance(self.worksets, dict)
+            else self.worksets,
+            "worksetsOpen": self.worksets.get("open") if isinstance(self.worksets, dict) else None,
+            "worksetsClose": self.worksets.get("close")
+            if isinstance(self.worksets, dict)
+            else None,
+            "audit": self.audit,
+        }
+
+
+class ProcessCode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: Annotated[str, Field(min_length=1, max_length=200000)]
+    transaction: Literal["auto", "none"] = "auto"
+
+
+class ProcessExport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    format: Literal["pdf", "dwg", "ifc", "csv"]
+    views: list[str | ElementId] | None = None
+    sheets: list[str | ElementId] | None = None
+    sheet_set: str | None = None
+    all_sheets: bool = False
+    folder: str | None = None
+    options: dict[str, Any] | None = None
+    overwrite: bool = False
+
+    @model_validator(mode="after")
+    def validate_request(self):
+        if self.folder is not None:
+            _validate_workstation_path(self.folder.replace("{model}", "model"), folder=True)
+        if self.format in {"pdf", "dwg"} and not (
+            self.views or self.sheets or self.sheet_set or self.all_sheets
+        ):
+            raise ValueError("PDF and DWG require a view or sheet target.")
+        if self.format in {"ifc", "csv"} and (
+            self.sheets is not None or self.sheet_set is not None or self.all_sheets
+        ):
+            raise ValueError("Sheets are supported only for PDF and DWG.")
+        if self.format == "ifc" and self.views is not None and len(self.views) > 1:
+            raise ValueError("IFC accepts at most one view.")
+        return self
+
+    def payload(self) -> dict[str, Any]:
+        return {
+            "format": self.format,
+            "views": [str(view) for view in self.views] if self.views is not None else None,
+            "sheets": [str(sheet) for sheet in self.sheets] if self.sheets is not None else None,
+            "sheetSet": self.sheet_set,
+            "allSheets": self.all_sheets,
+            "folder": self.folder,
+            "options": self.options or {},
+            "overwrite": self.overwrite,
+        }
+
+
+class ProcessSave(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["none", "output_dir", "in_place"] = "none"
+    output_dir: str | None = None
+    compact: bool = True
+    overwrite: bool = False
+
+    @model_validator(mode="after")
+    def validate_output(self):
+        if self.mode == "output_dir":
+            _validate_workstation_path(self.output_dir, folder=True)
+        elif self.output_dir is not None:
+            raise ValueError("output_dir requires output_dir mode.")
+        return self
+
+
+def _validate_workstation_path(value: str | None, *, folder: bool = False) -> None:
+    if not value or value.upper().startswith("RSN://") and folder:
+        raise ValueError("A local or UNC absolute path is required.")
+    if value.upper().startswith("RSN://"):
+        parts = value[6:].split("/")
+        if len(parts) < 3 or any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("Invalid RSN model path.")
+    else:
+        path = PureWindowsPath(value)
+        if (
+            not path.is_absolute()
+            or value.startswith(("\\\\?\\", "\\\\.\\"))
+            or ".." in path.parts
+            or "://" in value
+        ):
+            raise ValueError("An absolute local or UNC path without traversal is required.")
+    if not folder and not value.lower().endswith(".rvt"):
+        raise ValueError("Only .rvt models can be processed.")
+
+
 class SharedParameter(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: Name
@@ -202,6 +321,9 @@ _TEXT_FIELDS = {
     "warnings",
     "reason",
     "stackTrace",
+    "dialogsDismissed",
+    "log",
+    "returnValue",
 }
 
 
@@ -214,7 +336,7 @@ def redact_model_paths(value: Any) -> Any:
         if isinstance(item, dict):
             return {
                 key: PureWindowsPath(nested).name
-                if key in {"documentPath", "path", "centralPath", "folder"}
+                if key in {"documentPath", "path", "centralPath", "folder", "saved"}
                 and isinstance(nested, str)
                 else scrub(nested, key in _TEXT_FIELDS)
                 for key, nested in item.items()
@@ -308,6 +430,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
             "revit_batch": "Run Action Batch",
+            "revit_process_models": "Process Many Models",
             "revit_export_nwc": "Export Navisworks NWC",
             "revit_export": "Export Model Files",
             "revit_edit_families": "Edit Families",
@@ -879,6 +1002,95 @@ def register_actions(mcp, execute, host_provider) -> None:
         """
         return await send(
             "batch", steps=[step.payload() for step in steps], dryRun=dry_run, document=document
+        )
+
+    @action
+    async def revit_process_models(
+        paths: Annotated[list[str] | None, Field(min_length=1, max_length=500)] = None,
+        folder: str | None = None,
+        recursive: bool = False,
+        pattern: str = "*.rvt",
+        open: ProcessOpen | None = None,
+        steps: Annotated[list[BatchStep] | None, Field(min_length=1, max_length=50)] = None,
+        code: ProcessCode | None = None,
+        exports: list[ProcessExport] | None = None,
+        save: ProcessSave | None = None,
+        stop_on_error: bool = False,
+        dry_run: bool = False,
+        confirm_token: str | None = None,
+        response_timeout_s: Annotated[int, Field(ge=30, le=14400)] = 14400,
+        process_id: ProcessId = None,
+    ) -> dict[str, Any]:
+        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response."""
+        if (paths is None) == (folder is None):
+            raise ToolError("Provide paths or folder, but not both.")
+        try:
+            for path in paths or []:
+                _validate_workstation_path(path)
+            if paths and len({path.replace("/", "\\").casefold() for path in paths}) != len(paths):
+                raise ValueError("paths must not contain duplicates.")
+            if folder is not None:
+                _validate_workstation_path(folder, folder=True)
+            if (
+                not pattern
+                or any(character in pattern for character in "\\/:")
+                or not pattern.lower().endswith(".rvt")
+            ):
+                raise ValueError("pattern must be a .rvt file name pattern.")
+            if save and save.mode == "output_dir" and paths:
+                targets = {
+                    str(PureWindowsPath(save.output_dir) / PureWindowsPath(path).name).casefold()
+                    for path in paths
+                }
+                if any(str(PureWindowsPath(path)).casefold() in targets for path in paths):
+                    raise ValueError("A save target matches a source model.")
+            if (
+                save
+                and save.mode == "in_place"
+                and open
+                and open.mode
+                in {
+                    "local_copy",
+                    "read_only_local",
+                }
+            ):
+                raise ValueError("in_place requires opening the source model directly.")
+            if (
+                save
+                and save.mode == "in_place"
+                and paths
+                and any(path.upper().startswith("RSN://") for path in paths)
+            ):
+                raise ValueError("in_place requires local or UNC non-workshared files.")
+            if dry_run and code and code.transaction == "none":
+                raise ValueError("dry_run requires code.transaction=auto.")
+        except ValueError as error:
+            raise ToolError(str(error)) from error
+        return await send(
+            "process-models",
+            process={
+                "paths": paths,
+                "folder": folder,
+                "recursive": recursive,
+                "pattern": pattern,
+                "open": open.payload() if open else None,
+                "steps": [step.payload() for step in steps] if steps else None,
+                "code": code.model_dump() if code else None,
+                "exports": [request.payload() for request in exports] if exports else None,
+                "save": {
+                    "mode": save.mode,
+                    "outputDir": save.output_dir,
+                    "compact": save.compact,
+                    "overwrite": save.overwrite,
+                }
+                if save
+                else None,
+                "stopOnError": stop_on_error,
+                "dryRun": dry_run,
+                "confirmToken": confirm_token,
+            },
+            process_id=process_id,
+            response_timeout_s=response_timeout_s,
         )
 
     @action

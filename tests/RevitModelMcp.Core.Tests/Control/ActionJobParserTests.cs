@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.Serialization.Json;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -7,6 +8,60 @@ namespace RevitModelMcp.Core.Tests.Control;
 
 public sealed class ActionJobParserTests
 {
+    [Test]
+    public async Task ProcessModels_ParsesNestedActionsAndRejectsInvalidSources()
+    {
+        var valid = ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\Models\\A.rvt"],"steps":[{"command":"set-parameter","elementId":1,"parameter":"Mark","value":"done"}],"code":{"code":"return 1;","transaction":"auto"},"exports":[{"format":"ifc"}],"save":{"mode":"output_dir","outputDir":"C:\\Out"}}}""");
+        await Assert.That(valid.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(valid.Action!.ProcessModels!.Steps!.Count).IsEqualTo(1);
+        await Assert.That(valid.Action.ProcessModels.Exports!.Count).IsEqualTo(1);
+        using (var stream = new MemoryStream())
+        {
+            new DataContractJsonSerializer(typeof(ProcessModelsJob)).WriteObject(stream, valid.Action.ProcessModels);
+            await Assert.That(stream.Length).IsGreaterThan(0);
+        }
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["relative.rvt"]}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"folder":"C:\\Models"}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"steps":[{"command":"export","format":"ifc"}]}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"code":{"code":"return 1;","transaction":"none"},"dryRun":true}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task ProcessModels_ValidatesSaveModesAndSerializesScriptResults()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"save":{"mode":"output_dir"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"save":{"mode":"output_dir","outputDir":"C:\\"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"save":{"mode":"in_place","outputDir":"C:\\Out"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"open":{"mode":"local_copy"},"save":{"mode":"in_place"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["RSN://host/folder/A.rvt"],"save":{"mode":"in_place"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(() => new ProcessSaveJob { Mode = "in_place" }.EnsureInPlaceAllowed(true))
+            .Throws<InvalidOperationException>();
+        new ProcessSaveJob { Mode = "in_place" }.EnsureInPlaceAllowed(false);
+
+        var data = new ActionResultData
+        {
+            Models = [new ProcessModelResult
+            {
+                Path = "C:\\A.rvt", Status = "done", Code = new ProcessModelCodeResult
+                {
+                    ReturnValue = 42, ReturnValueMarker = "test-marker", Log = ["counted"]
+                }
+            }]
+        };
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("process-models", data, 1));
+        await Assert.That(json.Contains("\"returnValue\":42")).IsTrue();
+        await Assert.That(json.Contains("test-marker")).IsFalse();
+    }
+
     [Test]
     public async Task ExecuteCode_ValidatesModeSizeAndBatchExclusion()
     {

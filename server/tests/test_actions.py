@@ -22,6 +22,7 @@ from revit_model_mcp.revit_channel import (
 )
 
 ACTION_TOOLS = {
+    "revit_process_models",
     "revit_execute_code",
     "revit_select",
     "revit_show",
@@ -74,6 +75,7 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_align_link_datums",
                     "revit_execute_code",
                     "revit_export",
+                    "revit_process_models",
                 }
             )
             assert tool.annotations.read_only_hint is False
@@ -191,6 +193,108 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
     assert "read-only mode" in str(result)
     blocked_execute.assert_not_awaited()
+
+
+def test_process_models_maps_steps_code_exports_and_save():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\Models\A.rvt"],
+                "open": {"mode": "detached", "worksets": {"close": ["*Link*"]}, "audit": True},
+                "steps": [
+                    {
+                        "action": "set_parameter",
+                        "args": {"element_id": 1, "parameter": "Mark", "value": "done"},
+                    }
+                ],
+                "code": {"code": "return 1;"},
+                "exports": [{"format": "ifc", "folder": r"C:\Out\{model}"}],
+                "save": {"mode": "output_dir", "output_dir": r"C:\Saved"},
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.command == "process-models"
+    assert execute.await_args.args[1] == 14400
+    process = job.payload["process"]
+    assert process["open"]["worksetsClose"] == ["*Link*"]
+    assert process["open"]["audit"] is True
+    assert process["steps"][0]["command"] == "set-parameter"
+    assert process["code"] == {"code": "return 1;", "transaction": "auto"}
+    assert process["exports"][0]["format"] == "ifc"
+    assert process["save"] == {
+        "mode": "output_dir",
+        "outputDir": r"C:\Saved",
+        "compact": True,
+        "overwrite": False,
+    }
+
+
+def test_process_models_confirmation_flow_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.side_effect = [
+        {"success": True, "data": {"needsConfirmation": True, "confirmToken": "token"}},
+        {"success": True, "data": {"models": []}},
+    ]
+    arguments = {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "in_place"}}
+    preview = asyncio.run(server.call_tool("revit_process_models", arguments))
+    assert "needsConfirmation" in str(preview)
+    asyncio.run(server.call_tool("revit_process_models", {**arguments, "confirm_token": "token"}))
+    assert execute.await_count == 2
+    assert execute.await_args.args[0].payload["process"]["confirmToken"] == "token"
+
+    for invalid in (
+        {},
+        {"paths": ["relative.rvt"]},
+        {"paths": [r"C:\Models\A.rvt"], "folder": r"C:\Models"},
+        {
+            "paths": [r"C:\Models\A.rvt"],
+            "code": {"code": "return 1;", "transaction": "none"},
+            "dry_run": True,
+        },
+        {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "output_dir", "output_dir": r"C:\Models"}},
+        {
+            "paths": [r"C:\Models\A.rvt"],
+            "open": {"mode": "local_copy"},
+            "save": {"mode": "in_place"},
+        },
+    ):
+        with pytest.raises(Exception):
+            asyncio.run(server.call_tool("revit_process_models", invalid))
+    assert execute.await_count == 2
+
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    response = asyncio.run(blocked.call_tool("revit_process_models", arguments))
+    assert "read-only mode" in str(response)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_models_redacts_nested_paths():
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        result = redact_model_paths(
+            {
+                "data": {
+                    "models": [
+                        {
+                            "path": r"C:\Models\A.rvt",
+                            "saved": r"C:\Out\A.rvt",
+                            "dialogsDismissed": [r"Opened C:\Models\A.rvt"],
+                            "code": {"log": [r"Read C:\Models\A.rvt"]},
+                        }
+                    ]
+                }
+            }
+        )
+    model = result["data"]["models"][0]
+    assert model["path"] == "A.rvt"
+    assert model["saved"] == "A.rvt"
+    assert "C:\\Models" not in str(model)
 
 
 def test_document_action_mapping_and_confirmation_shape():

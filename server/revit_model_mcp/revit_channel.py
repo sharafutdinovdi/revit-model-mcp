@@ -74,6 +74,7 @@ ACTION_COMMANDS = frozenset(
         "set-parameter",
         "delete",
         "batch",
+        "process-models",
         "export-nwc",
         "export",
         "edit-families",

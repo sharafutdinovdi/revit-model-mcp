@@ -14,6 +14,9 @@ public sealed class ActionSummaryContext
     public string? Parameter { get; init; }
     public string? WallType { get; init; }
     public int BatchStepCount { get; init; }
+    public int ProcessTotal { get; init; }
+    public int ProcessFailed { get; init; }
+    public int ProcessSkipped { get; init; }
     public string? OpenedAs { get; init; }
     public bool Saved { get; init; }
     public string? TargetPath { get; init; }
@@ -49,6 +52,8 @@ public static class ActionSummaryBuilder
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
             "set-parameter" => $"{(context.DryRun ? "Would set" : "Set")} parameter '{context.Parameter}' on 1 element in {doc}.",
             "batch" => $"{(context.DryRun ? "Would run" : "Ran")} a batch of {Plural(context.BatchStepCount, "step")} in {doc}.",
+            "process-models" when context.ProcessTotal > 0 => $"{(context.DryRun ? "Previewed" : "Processed")} {context.Count} of {context.ProcessTotal} models; {context.ProcessFailed} failed, {context.ProcessSkipped} skipped.",
+            "process-models" => $"{(context.DryRun ? "Previewed" : "Processed")} {doc}.",
             "export-nwc" => $"Exported an NWC file from {doc}.",
             "edit-families" => $"{(context.DryRun ? "Would edit" : "Edited")} {Plural(context.Count, "family")} in {doc}.",
             "align-link-datums" => $"{(context.DryRun ? "Would align" : "Aligned")} link datums in {doc}.",

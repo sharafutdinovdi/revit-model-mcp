@@ -5,6 +5,16 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class ActionSummaryBuilderTests
 {
     [Test]
+    public async Task ProcessModels_ReportsTotals()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "process-models", Count = 2, ProcessTotal = 3, ProcessFailed = 1
+        });
+        await Assert.That(summary).IsEqualTo("Processed 2 of 3 models; 1 failed, 0 skipped.");
+    }
+
+    [Test]
     public async Task ExecuteCode_UsesNamedUndoEntry()
     {
         await Assert.That(ActionSummaryBuilder.BuildGroupName("client", "Execute code"))

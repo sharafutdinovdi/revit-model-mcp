@@ -34,6 +34,15 @@ public static class CommandResponseJsonSerializer
                     "\"returnValue\":" + CodeResultLimiter.ToJson(action.ReturnValue) +
                     (json[index + dataStart.Length] == '}' ? string.Empty : ","));
         }
+        if (response is CommandResponse<ActionResultData> { Command: "process-models", Data.Models: { } models })
+        {
+            foreach (var model in models)
+            {
+                if (model.Code is not { } code) continue;
+                json = json.Replace("\"returnValue\":\"" + code.ReturnValueMarker + "\"",
+                    "\"returnValue\":" + CodeResultLimiter.ToJson(code.ReturnValue));
+            }
+        }
         return json;
     }
 }

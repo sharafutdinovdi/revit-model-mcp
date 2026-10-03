@@ -60,6 +60,7 @@ EXPECTED_TOOLS = {
     "revit_batch_fetch",
 }
 ACTION_TOOL_NAMES = {
+    "revit_process_models",
     "revit_execute_code",
     "revit_select",
     "revit_show",

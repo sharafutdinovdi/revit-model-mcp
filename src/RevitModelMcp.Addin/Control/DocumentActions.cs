@@ -85,7 +85,8 @@ internal static class DocumentActions
         };
     }
 
-    private static ActionResultData Open(UIApplication application, ActionJobContract action, bool batch = false)
+    private static ActionResultData Open(UIApplication application, ActionJobContract action, bool batch = false,
+        Action<Document>? capture = null)
     {
         var stopwatch = Stopwatch.StartNew();
         var path = action.DocumentPath!;
@@ -141,6 +142,7 @@ internal static class DocumentActions
         var document = action.Activate
             ? application.OpenAndActivateDocument(openPath, options, false).Document
             : application.Application.OpenDocumentFile(openPath, options);
+        capture?.Invoke(document);
         Opened[document] = (action.Mode, path);
         stopwatch.Stop();
         return new ActionResultData
@@ -158,6 +160,43 @@ internal static class DocumentActions
             Audited = action.Audit,
             ElapsedMs = stopwatch.ElapsedMilliseconds
         };
+    }
+
+    internal static (Document Document, ActionResultData Result) OpenForProcessing(UIApplication application, ActionJobContract action)
+    {
+        action.Activate = false;
+        Document? document = null;
+        try
+        {
+            var result = Open(application, action, capture: opened => document = opened);
+            return (document!, result);
+        }
+        catch
+        {
+            if (document is not null && !ReferenceEquals(application.ActiveUIDocument?.Document, document))
+            {
+                Opened.Remove(document);
+                document.Close(false);
+            }
+            throw;
+        }
+    }
+
+    internal static void CloseForProcessing(UIApplication application, Document document)
+    {
+        if (ReferenceEquals(application.ActiveUIDocument?.Document, document))
+            throw new InvalidOperationException("The active document cannot be closed.");
+        Opened.Remove(document);
+        if (!document.Close(false)) throw new InvalidOperationException("Revit did not close the processed model.");
+    }
+
+    internal static void SaveForProcessing(UIApplication application, Document document, string? target,
+        bool compact, bool overwrite)
+    {
+        Save(application, document, new ActionJobContract
+        {
+            SaveAs = target, Compact = compact, Overwrite = overwrite
+        }, requireConfirmation: false);
     }
 
     private static Document? _batchDocument;
@@ -380,7 +419,8 @@ internal static class DocumentActions
         return new ActionResultData { Title = title, Path = path, Saved = action.Save };
     }
 
-    private static ActionResultData Save(UIApplication application, Document document, ActionJobContract action)
+    private static ActionResultData Save(UIApplication application, Document document, ActionJobContract action,
+        bool requireConfirmation = true)
     {
         if (action.SaveAs is not null)
         {
@@ -413,8 +453,11 @@ internal static class DocumentActions
             throw new InvalidOperationException("Saving an open central model is refused.");
         var description = action.SaveAs is null ? $"Save '{document.Title}' to {document.PathName}, compact={action.Compact}." :
             $"Save '{document.Title}' as {action.SaveAs}, overwrite={action.Overwrite}, compact={action.Compact}.";
-        var confirmation = Confirm("save-document", document, action, description);
-        if (confirmation is not null) return confirmation;
+        if (requireConfirmation)
+        {
+            var confirmation = Confirm("save-document", document, action, description);
+            if (confirmation is not null) return confirmation;
+        }
         if (action.SaveAs is null)
         {
             var options = new SaveOptions { Compact = action.Compact };

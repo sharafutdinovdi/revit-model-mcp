@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.Serialization.Json;
 using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
@@ -26,6 +27,11 @@ internal static class ActionCommandExecutor
         if (job.Command == "edit-families")
         {
             ExecuteFamilies(application, job, startedAt);
+            return;
+        }
+        if (job.Command == "process-models")
+        {
+            ExecuteProcessModels(application, job, startedAt);
             return;
         }
         var stopwatch = Stopwatch.StartNew();
@@ -149,6 +155,296 @@ internal static class ActionCommandExecutor
         }
         arguments.SetProcessingResult(FailureProcessingResult.Continue);
         return count;
+    }
+
+    private static void ExecuteProcessModels(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        ActionResultData? data = null;
+        CommandResponse<ActionResultData> response;
+        try
+        {
+            if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
+                throw new InvalidOperationException("read-only mode");
+            if (job.Error is not null) throw new ArgumentException(job.Error);
+            var request = job.Action?.ProcessModels ?? throw new ArgumentException("process is required.");
+            var paths = request.Paths ?? Directory.EnumerateFiles(request.Folder!, request.Pattern ?? "*.rvt",
+                request.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
+            if (paths.Count is < 1 or > 500) throw new ArgumentException("The source must resolve to 1 to 500 models.");
+            foreach (var path in paths) DocumentPathValidator.Validate(path);
+            if (paths.Select(path => path.Replace('/', '\\')).Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Count)
+                throw new ArgumentException("The source contains duplicate models.");
+            if (request.Save?.Mode == "in_place" && !request.DryRun)
+            {
+                var identity = string.Join("\n", paths);
+                var arguments = ProcessConfirmationArguments(request);
+                var state = string.Join("\n", paths.Select(path => File.Exists(path)
+                    ? $"{new FileInfo(path).Length}:{File.GetLastWriteTimeUtc(path).Ticks}" : "missing"));
+                if (request.ConfirmToken is null)
+                {
+                    data = new ActionResultData
+                    {
+                        NeedsConfirmation = true,
+                        ConfirmationText = "Save in place will overwrite these source models: " + string.Join(", ", paths),
+                        ConfirmToken = ConfirmationStore.Tokens.Issue("process-models", identity, arguments, state),
+                        Summary = $"Needs confirmation to save {paths.Count} models in place."
+                    };
+                    response = CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
+                    WriteProcessResponse(application, job, startedAt, response);
+                    return;
+                }
+                var confirmation = ConfirmationStore.Tokens.Consume(request.ConfirmToken, "process-models", identity, arguments, state);
+                if (confirmation != DocumentConfirmationResult.Valid)
+                    throw new InvalidOperationException(confirmation == DocumentConfirmationResult.DocumentChanged
+                        ? "Source models changed after preview; request a new confirmation."
+                        : "Confirmation token is invalid, expired or does not match the arguments.");
+            }
+            else if (request.ConfirmToken is not null)
+                throw new ArgumentException("confirm_token applies only to in_place saves.");
+            data = new ActionResultData { Models = [], DryRun = request.DryRun, Total = paths.Count };
+            foreach (var path in paths)
+            {
+                var model = ProcessOneModel(application, job, request, path, paths);
+                data.Models.Add(model);
+                if (model.Status == "failed" && request.StopOnError) break;
+            }
+            data.Done = data.Models.Count(model => model.Status == "done");
+            data.Failed = data.Models.Count(model => model.Status == "failed");
+            data.SkippedCount = data.Models.Count(model => model.Status == "skipped");
+            data.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "process-models", Count = data.Done.Value, ProcessTotal = paths.Count,
+                ProcessFailed = data.Failed.Value, ProcessSkipped = data.SkippedCount.Value,
+                DryRun = request.DryRun
+            });
+            response = data.Failed > 0
+                ? CommandResponse<ActionResultData>.PartialResult(job.Command, data, data.Summary, stopwatch.ElapsedMilliseconds)
+                : CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
+        }
+        catch (Exception exception)
+        {
+            response = CommandResponse<ActionResultData>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
+            response.Error = exception.Message;
+            PluginLog.Warn("Model processing failed; paths and exception details omitted from log.");
+        }
+        if (data?.NeedsConfirmation != true)
+            ActivityRecorder.RecordAction(job, null, data, response, null);
+        WriteProcessResponse(application, job, startedAt, response);
+    }
+
+    private static string ProcessConfirmationArguments(ProcessModelsJob request)
+    {
+        var token = request.ConfirmToken;
+        try
+        {
+            request.ConfirmToken = null;
+            using var stream = new MemoryStream();
+            new DataContractJsonSerializer(typeof(ProcessModelsJob)).WriteObject(stream, request);
+            return Encoding.UTF8.GetString(stream.ToArray());
+        }
+        finally { request.ConfirmToken = token; }
+    }
+
+    private static void WriteProcessResponse(UIApplication application, ControlJobParseResult job,
+        DateTimeOffset startedAt, CommandResponse<ActionResultData> response)
+    {
+        response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
+        CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+            ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+    }
+
+    private static ProcessModelResult ProcessOneModel(UIApplication application, ControlJobParseResult job,
+        ProcessModelsJob request, string path, IReadOnlyCollection<string> sources)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var result = new ProcessModelResult { Path = path };
+        Document? document = null;
+        ChangeCapture? changes = null;
+        TransactionGroup? group = null;
+        string? undoName = null;
+        var failures = new ActionFailures();
+        void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments) =>
+            SuppressTaskDialog(arguments, result.DialogsDismissed);
+        void SuppressWarnings(object? sender, FailuresProcessingEventArgs arguments) =>
+            DismissOpenWarnings(arguments, result.DialogsDismissed);
+        application.DialogBoxShowing += SuppressDialog;
+        application.Application.FailuresProcessing += SuppressWarnings;
+        try
+        {
+            if (application.Application.Documents.Cast<Document>().Any(item =>
+                DocumentPathValidator.SamePath(item.PathName, path)))
+            {
+                result.Status = "skipped";
+                result.Error = "The model is already open in this Revit session.";
+                return result;
+            }
+            var opening = request.Open ?? new ControlJobContract();
+            var (openedDocument, openedResult) = DocumentActions.OpenForProcessing(application, new ActionJobContract
+            {
+                DocumentPath = path, Mode = opening.Mode ?? "detached", Worksets = opening.Worksets ?? "all",
+                WorksetsOpenNames = opening.WorksetsOpen, WorksetsCloseNames = opening.WorksetsClose,
+                Audit = opening.Audit ?? false
+            });
+            document = openedDocument;
+            result.Opened = new ProcessModelOpenedResult
+            {
+                Mode = openedResult.OpenedAs ?? opening.Mode ?? "detached",
+                Worksets = openedResult.WorksetsOpen ?? [], Audited = openedResult.Audited ?? false,
+                WorksetPatternsUnmatched = openedResult.WorksetPatternsUnmatched ?? [],
+                Warning = openedResult.Warning
+            };
+            var save = request.Save ?? new ProcessSaveJob();
+            save.EnsureInPlaceAllowed(document.IsWorkshared);
+            var sourceFileName = Path.GetFileName(path.Replace('/', '\\'));
+            var saveTarget = save.Mode == "output_dir" ? Path.Combine(save.OutputDir!, sourceFileName) : path;
+            if (save.Mode == "output_dir" && sources.Any(source => DocumentPathValidator.SamePath(source, saveTarget)))
+                throw new InvalidOperationException("The save target matches a source model.");
+            changes = ChangeCapture.Start(application.Application, document);
+            if (request.Steps is not null || request.Code is not null)
+            {
+                group = new TransactionGroup(document, "MCP process model");
+                if (group.Start() != TransactionStatus.Started)
+                    throw new InvalidOperationException("Could not start the model transaction group.");
+            }
+            if (request.Steps is not null)
+            {
+                var batch = ActionJobParser.Parse("batch", new ControlJobContract { Steps = request.Steps }).Action!;
+                result.Steps = BatchActionExecutor.Execute(document, null, batch, failures, job.ClientName);
+                if (result.Steps.FailedStep.HasValue)
+                    throw new InvalidOperationException(result.Steps.Steps?.LastOrDefault()?.Error ?? "Model steps failed.");
+            }
+            if (request.Code is not null)
+            {
+                var codeAction = new ActionJobContract
+                {
+                    Code = request.Code.Code, TransactionMode = request.Code.Transaction ?? "auto"
+                };
+                var code = CodeExecution.Execute(application, document, null, codeAction, failures, job.ClientName, job.JobId);
+                result.Code = new ProcessModelCodeResult
+                {
+                    ReturnValue = code.ReturnValue, ReturnValueMarker = Guid.NewGuid().ToString("N"),
+                    Log = code.Log ?? []
+                };
+                if (code.CodeError is not null) throw new InvalidOperationException(code.CodeError);
+            }
+            var modelName = Path.GetFileNameWithoutExtension(path.Replace('/', '\\'));
+            if (request.Exports is not null)
+            {
+                result.Exports = [];
+                foreach (var export in request.Exports)
+                {
+                    var baseFolder = request.Save?.OutputDir ?? Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "exports");
+                    var folder = export.Folder is null
+                        ? Path.Combine(baseFolder, modelName)
+                        : export.Folder.Replace("{model}", modelName);
+                    var parsed = ActionJobParser.Parse("export", new ControlJobContract
+                    {
+                        Format = export.Format, Views = export.Views, Sheets = export.Sheets,
+                        SheetSet = export.SheetSet, AllSheets = export.AllSheets, Folder = folder,
+                        ExportOptions = export.ExportOptions, Overwrite = export.Overwrite
+                    });
+                    if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
+                    var exportAction = parsed.Action!;
+                    exportAction.DryRun = request.DryRun;
+                    result.Exports.Add(ExecuteStep(document, null, "export", exportAction, failures,
+                        job.ClientName, out _));
+                }
+            }
+            if (group is not null)
+            {
+                if (request.DryRun)
+                {
+                    if (group.RollBack() != TransactionStatus.RolledBack)
+                        throw new InvalidOperationException("Could not roll back the model preview.");
+                    MarkProcessBatchRolledBack(result.Steps, document.Title, true);
+                }
+                else
+                {
+                    undoName = ActionSummaryBuilder.BuildGroupName(job.ClientName, $"Process {modelName}");
+                    group.SetName(undoName);
+                    if (group.Assimilate() != TransactionStatus.Committed)
+                        throw new InvalidOperationException("Could not commit the model changes.");
+                }
+            }
+            if (!request.DryRun && save.Mode is ("output_dir" or "in_place"))
+            {
+                if (save.Mode == "output_dir")
+                    Directory.CreateDirectory(save.OutputDir!);
+                DocumentActions.SaveForProcessing(application, document,
+                    save.Mode == "output_dir" ? saveTarget : null, save.Compact ?? true, save.Overwrite);
+                result.Saved = saveTarget;
+            }
+            result.Status = "done";
+        }
+        catch (Exception exception)
+        {
+            result.Error = exception.Message;
+            if (group?.GetStatus() == TransactionStatus.Started)
+            {
+                try
+                {
+                    group.RollBack();
+                    MarkProcessBatchRolledBack(result.Steps, document?.Title ?? string.Empty, request.DryRun);
+                }
+                catch (Exception rollbackException)
+                {
+                    result.Error += " Rollback failed: " + rollbackException.Message;
+                }
+            }
+            result.Status = "failed";
+        }
+        finally
+        {
+            group?.Dispose();
+            result.DialogsDismissed.AddRange(failures.WarningsDismissed);
+            if (document is not null)
+            {
+                var activity = new ActionResultData
+                {
+                    Title = document.Title, DryRun = request.DryRun, UndoName = undoName,
+                    Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                    {
+                        Command = "process-models", DocumentTitle = document.Title, DryRun = request.DryRun
+                    })
+                };
+                var activityResponse = result.Status == "done"
+                    ? CommandResponse<ActionResultData>.Ok(job.Command, activity, stopwatch.ElapsedMilliseconds)
+                    : CommandResponse<ActionResultData>.Fail(job.Command, result.Error ?? "Model processing failed.", stopwatch.ElapsedMilliseconds);
+                ActivityRecorder.RecordAction(job, document, activity, activityResponse, changes);
+                changes?.Dispose();
+                try { DocumentActions.CloseForProcessing(application, document); }
+                catch (Exception exception)
+                {
+                    result.Status = "failed";
+                    result.Error = result.Error is null ? exception.Message : result.Error + " Close failed: " + exception.Message;
+                }
+            }
+            application.DialogBoxShowing -= SuppressDialog;
+            application.Application.FailuresProcessing -= SuppressWarnings;
+            result.ElapsedMs = stopwatch.ElapsedMilliseconds;
+        }
+        return result;
+    }
+
+    private static void MarkProcessBatchRolledBack(ActionResultData? steps, string documentTitle, bool preview)
+    {
+        if (steps is null) return;
+        steps.Committed = false;
+        steps.RolledBack = true;
+        steps.UndoName = null;
+        steps.DryRun = preview;
+        if (preview) steps.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "batch", DocumentTitle = documentTitle, DryRun = true,
+            BatchStepCount = steps.Steps?.Count ?? 0
+        });
+        foreach (var step in steps.Steps ?? [])
+        {
+            step.RolledBack = true;
+            if (step.Data is not null) step.Data.RolledBack = true;
+        }
     }
 
     private static void ExecuteFamilies(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
