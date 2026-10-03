@@ -14,10 +14,13 @@ from revit_model_mcp.revit_channel import (
     DEFAULT_TIMEOUT_SECONDS,
     ReadJob,
     RevitChannelError,
+    _optional_text,
+    _unique_texts,
     resolve_instance,
     select_instance,
     with_client_identity,
 )
+from revit_model_mcp.universal_jobs import common_payload
 
 ElementId = Annotated[int, Field(strict=True, gt=0, le=9223372036854775807)]
 ElementIds = list[ElementId]
@@ -58,16 +61,14 @@ class UpdateFilters(BaseModel):
 
 
 def query_filter_payload(filters: UpdateFilters) -> dict[str, Any]:
-    return {
-        "type"
-        if key == "type_name"
-        else "areaScheme"
-        if key == "area_scheme"
-        else "parameterFilters"
-        if key == "parameter_filters"
-        else key: value
-        for key, value in filters.model_dump(exclude_none=True).items()
-    }
+    payload = common_payload(
+        "query-elements",
+        **filters.model_dump(),
+        optional_text=_optional_text,
+        unique_texts=_unique_texts,
+    )
+    del payload["command"]
+    return payload
 
 
 Document = Annotated[
@@ -117,6 +118,7 @@ _BATCH_FIELDS = {
         "value": (ParameterValue, ...),
         "parameter_id": (ParameterId | None, None),
         "max_elements": (MaxElements, 5000),
+        "include_type_parameters": (bool, False),
     },
     "place_family": {
         "family": (Name, ...),
@@ -753,6 +755,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         value: ParameterValue,
         parameter_id: ParameterId | None = None,
         max_elements: MaxElements = 5000,
+        include_type_parameters: bool = False,
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
@@ -764,6 +767,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             value=value,
             parameterId=parameter_id,
             maxElements=max_elements,
+            includeTypeParameters=include_type_parameters,
             dryRun=dry_run,
             document=document,
         )

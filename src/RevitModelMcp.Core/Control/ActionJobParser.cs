@@ -40,6 +40,7 @@ public static class ActionJobParser
                 PointMm = job.PointMm,
                 Copy = job.Copy ?? true,
                 MaxElements = job.MaxElements ?? 5000,
+                IncludeTypeParameters = job.IncludeTypeParameters ?? false,
                 Family = job.Family,
                 TypeName = job.TypeName,
                 Level = job.Level,
@@ -554,6 +555,7 @@ public sealed class ActionJobContract
     public List<double>? PointMm { get; set; }
     public bool Copy { get; set; }
     public int MaxElements { get; set; }
+    public bool IncludeTypeParameters { get; set; }
     public ElementFilterSpec? QueryFilters { get; set; }
     public string? Family { get; set; }
     public string? TypeName { get; set; }
@@ -809,6 +811,7 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "pointMm")] public List<double>? PointMm { get; set; }
     [DataMember(Name = "copy")] public bool? Copy { get; set; }
     [DataMember(Name = "maxElements")] public int? MaxElements { get; set; }
+    [DataMember(Name = "includeTypeParameters")] public bool? IncludeTypeParameters { get; set; }
     [DataMember(Name = "queryFilters")] public ControlJobContract? QueryFilters { get; set; }
     [DataMember(Name = "typeName")] public string? TypeName { get; set; }
     [DataMember(Name = "xMm")] public double? XMm { get; set; }
@@ -896,6 +899,8 @@ public sealed class ActionResultData
 
     [DataMember(Name = "count", EmitDefaultValue = false)] public int? Count { get; set; }
     [DataMember(Name = "matchedCount", EmitDefaultValue = false)] public int? MatchedCount { get; set; }
+    [DataMember(Name = "affectedTypeIds", EmitDefaultValue = false)] public List<long>? AffectedTypeIds { get; set; }
+    [DataMember(Name = "outsideFilterCount", EmitDefaultValue = false)] public int? OutsideFilterCount { get; set; }
     [DataMember(Name = "id", EmitDefaultValue = false)] public long? Id { get; set; }
     [DataMember(Name = "category", EmitDefaultValue = false)] public string? Category { get; set; }
     [DataMember(Name = "level", EmitDefaultValue = false)] public string? Level { get; set; }

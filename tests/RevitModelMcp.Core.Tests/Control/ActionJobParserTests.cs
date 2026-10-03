@@ -54,6 +54,15 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task UpdateParameters_TypeParametersRequireExplicitOptInInDirectAndBatchJobs()
+    {
+        var direct = ControlJobParser.Parse("""{"command":"update-parameters","queryFilters":{},"parameter":"Mark","value":"A"}""");
+        var batch = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"update-parameters","queryFilters":{},"parameter":"Mark","value":"A","includeTypeParameters":true}]}""");
+        await Assert.That(direct.Action!.IncludeTypeParameters).IsFalse();
+        await Assert.That(batch.Action!.Steps[0].Action!.IncludeTypeParameters).IsTrue();
+    }
+
+    [Test]
     [Arguments(" ", "\"x\"")]
     [Arguments("-1", "\"x\"")]
     [Arguments("123", "true")]

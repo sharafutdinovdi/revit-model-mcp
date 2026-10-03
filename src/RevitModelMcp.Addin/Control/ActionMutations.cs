@@ -90,16 +90,33 @@ internal static class ActionMutations
             throw new MatchLimitException(ids.Count, action.MaxElements);
         var result = new ActionResultData { MatchedCount = ids.Count, Values = [], Skipped = new Dictionary<string, List<long>>
         {
-            ["missing"] = [], ["readOnly"] = []
+            ["missing"] = [], ["readOnly"] = [], ["typeParameter"] = []
         } };
+        var matchedIds = ids.Select(RevitValueReader.GetId).ToHashSet();
+        var affectedTypeIds = new HashSet<long>();
+        var changedIds = new List<long>();
         foreach (var id in ids)
         {
             var element = document.GetElement(id)!;
             Parameter parameter;
-            try { (parameter, _) = ResolveParameter(element, action.Parameter!, action.ParameterId); }
+            var isTypeParameter = false;
+            try { (parameter, _) = ResolveParameter(element, action.Parameter!, action.ParameterId, false); }
             catch (ArgumentException exception) when (exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
             {
-                result.Skipped["missing"].Add(RevitValueReader.GetId(id));
+                try
+                {
+                    (parameter, _) = ResolveParameter(element, action.Parameter!, action.ParameterId);
+                    isTypeParameter = true;
+                }
+                catch (ArgumentException typeException) when (typeException.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Skipped["missing"].Add(RevitValueReader.GetId(id));
+                    continue;
+                }
+            }
+            if (isTypeParameter && !action.IncludeTypeParameters)
+            {
+                result.Skipped["typeParameter"].Add(RevitValueReader.GetId(id));
                 continue;
             }
             if (parameter.IsReadOnly)
@@ -107,6 +124,8 @@ internal static class ActionMutations
                 result.Skipped["readOnly"].Add(RevitValueReader.GetId(id));
                 continue;
             }
+            var targetId = isTypeParameter ? RevitValueReader.GetId(element.GetTypeId()) : RevitValueReader.GetId(id);
+            if (isTypeParameter && !affectedTypeIds.Add(targetId)) continue;
             var oldValue = ParameterValue(parameter);
             var value = ParameterResolution.ValidateValue(action.Parameter!, parameter.StorageType.ToString(), action.Value!);
             var changed = parameter.StorageType switch
@@ -116,11 +135,19 @@ internal static class ActionMutations
                 StorageType.Double => parameter.Set(ParameterDouble(parameter, (double)value)),
                 _ => throw new ArgumentException("Only String, Integer and Double parameters are supported.")
             };
-            if (!changed) throw new InvalidOperationException($"Revit could not set parameter on element {RevitValueReader.GetId(id)}.");
-            if (result.Values.Count < 50) result.Values.Add(new ParameterChange { Id = RevitValueReader.GetId(id), OldValue = oldValue, NewValue = ParameterValue(parameter) });
+            if (!changed) throw new InvalidOperationException($"Revit could not set parameter on element {targetId}.");
+            changedIds.Add(targetId);
+            if (result.Values.Count < 50) result.Values.Add(new ParameterChange { Id = targetId, OldValue = oldValue, NewValue = ParameterValue(parameter) });
         }
-        result.Verification = new ActionVerification { Changed = ids.Select(RevitValueReader.GetId)
-            .Except(result.Skipped.Values.SelectMany(values => values)).ToList() };
+        if (affectedTypeIds.Count > 0)
+        {
+            result.AffectedTypeIds = affectedTypeIds.OrderBy(id => id).ToList();
+            using var instances = new FilteredElementCollector(document).WhereElementIsNotElementType();
+            result.OutsideFilterCount = instances.Count(element =>
+                affectedTypeIds.Contains(RevitValueReader.GetId(element.GetTypeId())) &&
+                !matchedIds.Contains(RevitValueReader.GetId(element.Id)));
+        }
+        result.Verification = new ActionVerification { Changed = changedIds };
         result.Count = result.Verification.Changed.Count;
         return result;
     }
@@ -203,7 +230,7 @@ internal static class ActionMutations
         };
     }
 
-    internal static (Parameter Parameter, ParameterCandidate Candidate) ResolveParameter(Element element, string name, string? parameterId)
+    internal static (Parameter Parameter, ParameterCandidate Candidate) ResolveParameter(Element element, string name, string? parameterId, bool includeType = true)
     {
         var found = new List<(Parameter Parameter, ParameterCandidate Candidate)>();
         void Collect(Element owner, string scope)
@@ -221,8 +248,11 @@ internal static class ActionMutations
             }
         }
         Collect(element, "instance");
-        var type = element.Document.GetElement(element.GetTypeId());
-        if (type is not null) Collect(type, "type");
+        if (includeType)
+        {
+            var type = element.Document.GetElement(element.GetTypeId());
+            if (type is not null) Collect(type, "type");
+        }
         var selected = ParameterResolution.Resolve(name, parameterId, found.Select(item => item.Candidate));
         return found.First(item => item.Candidate == selected);
     }

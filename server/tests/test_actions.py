@@ -9,8 +9,10 @@ from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
 
 from revit_model_mcp.actions import (
+    UpdateFilters,
     _send_action,
     millimeters_to_feet,
+    query_filter_payload,
     redact_model_paths,
     register_actions,
 )
@@ -486,6 +488,7 @@ def test_action_response_timeout_reaches_channel(response_timeout_s):
                 "value": "A",
                 "parameterId": None,
                 "maxElements": 5000,
+                "includeTypeParameters": False,
             },
         ),
         (
@@ -895,6 +898,38 @@ def test_update_parameters_batch_uses_query_filter_names():
     assert step["parameter"] == "Comments"
     assert step["value"] == "Reviewed"
     assert step["maxElements"] == 5000
+    assert step["includeTypeParameters"] is False
+
+
+def test_update_parameters_normalizes_filters_and_type_opt_in():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_update_parameters",
+            {
+                "filters": {
+                    "categories": [" Walls ", "walls"],
+                    "parameter_filters": [{"parameter": " Mark ", "operator": " NOT_EMPTY "}],
+                },
+                "parameter": "Comments",
+                "value": "Reviewed",
+                "include_type_parameters": True,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["queryFilters"] == {
+        "categories": ["Walls"],
+        "parameterFilters": [{"parameter": "Mark", "operator": "not_empty"}],
+    }
+    assert payload["includeTypeParameters"] is True
+
+
+def test_update_parameters_rejects_invalid_parameter_filters():
+    with pytest.raises(ValueError, match="requires parameter and operator"):
+        query_filter_payload(UpdateFilters(parameter_filters=[{"parameter": "Mark"}]))
 
 
 def test_in_process_action_titles():
