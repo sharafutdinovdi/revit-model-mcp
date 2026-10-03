@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
 
 namespace RevitModelMcp.Control;
@@ -14,10 +15,14 @@ internal static class DocumentActions
     internal static ActionResultData Execute(UIApplication application, string command, ActionJobContract action)
     {
         if (command == "open-document") return Open(application, action);
+        if (command == "new-document") return New(application, action);
         var document = ActionCommandExecutor.ResolveDocument(application, action.Document);
         if (document.IsModifiable) throw new InvalidOperationException("The document has an open transaction.");
         return command switch
         {
+            "activate-document" => Activate(application, document),
+            "activate-view" => ActivateView(application, document, action),
+            "close-views" => CloseViews(application, document, action),
             "close-document" => Close(application, document, action),
             "save-document" => Save(application, document, action),
             "sync-document" => Sync(document, action),
@@ -42,6 +47,43 @@ internal static class DocumentActions
                 CentralPath = CentralPath(document)
             }).ToList();
 
+    internal static UiSessionState UiState(UIApplication application)
+    {
+        var uiDocument = application.ActiveUIDocument;
+        var document = uiDocument?.Document;
+        var view = uiDocument?.ActiveView;
+        var selected = uiDocument?.Selection.GetElementIds().ToList() ?? [];
+        return new UiSessionState
+        {
+            ActiveDocument = document is null ? null : new UiDocumentState
+            {
+                Title = document.Title, Path = document.PathName, IsFamilyDocument = document.IsFamilyDocument,
+                IsWorkshared = document.IsWorkshared, IsModified = document.IsModified
+            },
+            ActiveView = view is null ? null : new UiViewState
+            {
+                Id = RevitValueReader.GetId(view.Id), Name = view.Name, Type = view.ViewType.ToString()
+            },
+            OpenViews = uiDocument?.GetOpenUIViews().Select(item => document!.GetElement(item.ViewId) as View)
+                .Where(item => item is not null).Select(item => new UiViewState
+                {
+                    Id = RevitValueReader.GetId(item!.Id), Name = item.Name, Type = item.ViewType.ToString(),
+                    IsActive = item.Id == view!.Id
+                }).ToList() ?? [],
+            Selection = new UiSelectionState
+            {
+                Count = selected.Count,
+                Elements = selected.Take(500).Select(id => document!.GetElement(id)).Where(item => item is not null)
+                    .Select(item => new UiSelectedElement
+                    {
+                        Id = RevitValueReader.GetId(item!.Id), Category = item.Category?.Name,
+                        Name = item.Name
+                    }).ToList()
+            },
+            Documents = List(application, false)
+        };
+    }
+
     private static ActionResultData Open(UIApplication application, ActionJobContract action, bool batch = false)
     {
         var stopwatch = Stopwatch.StartNew();
@@ -51,7 +93,7 @@ internal static class DocumentActions
         if (server && !ModelPathUtils.IsValidUserVisibleFullServerPath(path))
             throw new ArgumentException("Invalid Revit Server model path.");
         var sourcePath = ModelPathUtils.ConvertUserVisiblePathToModelPath(path);
-        var isCentral = server || BasicFileInfo.Extract(path).IsCentral;
+        var isCentral = server || path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && BasicFileInfo.Extract(path).IsCentral;
         if (isCentral && action.Mode == "read_only_local")
             throw new InvalidOperationException("read_only_local requires a non-central local file.");
         if (action.Mode == "local_copy" && !isCentral)
@@ -73,14 +115,15 @@ internal static class DocumentActions
         }
         var options = new OpenOptions
         {
-            Audit = false,
+            Audit = action.Audit,
             DetachFromCentralOption = batch ? DetachFromCentralOption.DetachAndPreserveWorksets : isCentral && action.Mode.StartsWith("detached", StringComparison.Ordinal)
                 ? action.Mode == "detached_discard_worksets"
                     ? DetachFromCentralOption.DetachAndDiscardWorksets
                     : DetachFromCentralOption.DetachAndPreserveWorksets
                 : DetachFromCentralOption.DoNotDetach
         };
-        options.SetOpenWorksetsConfiguration(WorksetConfiguration(openPath, action.Worksets, action.WorksetsOpenNames));
+        var (configuration, unmatched) = WorksetConfiguration(openPath, action.Worksets, action.WorksetsOpenNames ?? action.WorksetsCloseNames);
+        options.SetOpenWorksetsConfiguration(configuration);
         var document = action.Activate
             ? application.OpenAndActivateDocument(openPath, options, false).Document
             : application.Application.OpenDocumentFile(openPath, options);
@@ -96,6 +139,8 @@ internal static class DocumentActions
             OpenedAs = action.Mode,
             Active = ReferenceEquals(application.ActiveUIDocument?.Document, document),
             WorksetsOpen = WorksetNames(document),
+            WorksetPatternsUnmatched = unmatched,
+            Audited = action.Audit,
             ElapsedMs = stopwatch.ElapsedMilliseconds
         };
     }
@@ -131,17 +176,114 @@ internal static class DocumentActions
         return new ActionResultData { Title = title, Path = path, Saved = false };
     }
 
-    private static WorksetConfiguration WorksetConfiguration(ModelPath path, string selection, List<string>? openNames)
+    private static (WorksetConfiguration Configuration, List<string> Unmatched) WorksetConfiguration(ModelPath path, string selection, List<string>? names)
     {
-        if (selection == "all") return new WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets);
-        if (selection is "none") return new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-        var names = new HashSet<string>(openNames!, StringComparer.OrdinalIgnoreCase);
+        if (selection == "all") return (new WorksetConfiguration(WorksetConfigurationOption.OpenAllWorksets), []);
+        if (selection is "none") return (new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets), []);
         var available = WorksharingUtils.GetUserWorksetInfo(path).ToList();
-        if (names.Except(available.Select(item => item.Name), StringComparer.OrdinalIgnoreCase).Any())
-            throw new ArgumentException("A requested workset was not found.");
+        var (selected, unmatched) = OpenWorksetSelector.Select(available.Select(item => item.Name).ToList(), selection, names!);
         var configuration = new WorksetConfiguration(WorksetConfigurationOption.CloseAllWorksets);
-        configuration.Open(available.Where(item => names.Contains(item.Name)).Select(item => item.Id).ToList());
-        return configuration;
+        configuration.Open(available.Where(item => selected.Contains(item.Name)).Select(item => item.Id).ToList());
+        return (configuration, unmatched);
+    }
+
+    private static ActionResultData Activate(UIApplication application, Document document)
+    {
+        if (document.Equals(application.ActiveUIDocument?.Document))
+            return new ActionResultData { Title = document.Title, Path = document.PathName, Active = true, Changed = false };
+        var path = document.PathName;
+        var title = document.Title;
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidOperationException($"Cannot activate '{title}': it has no saved path. Save it first or open it with activate=true.");
+        if (!application.Application.Documents.Cast<Document>().Any(item => item.Equals(document) && DocumentPathValidator.SamePath(item.PathName, path)))
+            throw new InvalidOperationException("The document path no longer belongs to an open document.");
+        var count = application.Application.Documents.Size;
+        var activated = application.OpenAndActivateDocument(path).Document;
+        if (!activated.Equals(document) || application.Application.Documents.Size != count ||
+            !DocumentPathValidator.SamePath(application.ActiveUIDocument?.Document.PathName, path) ||
+            application.ActiveUIDocument?.Document.Title != title)
+        {
+            if (!activated.Equals(document)) activated.Close(false);
+            throw new InvalidOperationException("Revit opened another copy instead of activating the requested document.");
+        }
+        return new ActionResultData { Title = title, Path = path, Active = true, Changed = true };
+    }
+
+    private static ActionResultData ActivateView(UIApplication application, Document document, ActionJobContract action)
+    {
+        if (!document.Equals(application.ActiveUIDocument?.Document))
+        {
+            if (!action.ActivateDocument) throw new InvalidOperationException("The target document is not active; set activate_document=true.");
+            Activate(application, document);
+        }
+        var uiDocument = application.ActiveUIDocument!;
+        var view = ReadCommandReader.FindView(document, action.View!)
+            ?? throw new InvalidOperationException($"View '{action.View}' was not found.");
+        var wasOpen = uiDocument.GetOpenUIViews().Any(item => item.ViewId == view.Id);
+        var wasActive = uiDocument.ActiveView.Id == view.Id;
+        uiDocument.ActiveView = view;
+        return new ActionResultData { Title = document.Title, Path = document.PathName, Active = true,
+            View = new RevitModelMcp.Core.Models.NwcViewResult { Name = view.Name, Id = RevitValueReader.GetId(view.Id) },
+            ViewOpened = !wasOpen, Changed = !wasActive };
+    }
+
+    private static ActionResultData CloseViews(UIApplication application, Document document, ActionJobContract action)
+    {
+        var uiDocument = application.ActiveUIDocument;
+        if (!document.Equals(uiDocument?.Document)) throw new InvalidOperationException("The target document is not active.");
+        var activeId = uiDocument!.ActiveView.Id;
+        var open = uiDocument.GetOpenUIViews().ToList();
+        var requested = action.Views is null ? open.Where(item => item.ViewId != activeId).ToList() :
+            action.Views.Select(name => open.SingleOrDefault(item =>
+                ReadCommandReader.FindView(document, name)?.Id == item.ViewId)
+                ?? throw new InvalidOperationException($"View '{name}' is not open.")).Distinct().ToList();
+        var closed = new List<string>();
+        var refused = new List<string>();
+        foreach (var item in requested)
+        {
+            var name = (document.GetElement(item.ViewId) as View)?.Name ?? item.ViewId.ToString();
+            if (item.ViewId == activeId && action.KeepActive || open.Count - closed.Count <= 1)
+            {
+                refused.Add(name);
+                continue;
+            }
+            try
+            {
+                item.Close();
+                closed.Add(name);
+            }
+            catch (Autodesk.Revit.Exceptions.InvalidOperationException) when (item.ViewId == activeId)
+            {
+                refused.Add(name);
+            }
+        }
+        return new ActionResultData { Title = document.Title, ClosedViews = closed, RefusedViews = refused, Changed = closed.Count > 0 };
+    }
+
+    private static ActionResultData New(UIApplication application, ActionJobContract action)
+    {
+        if (action.SaveAs is not null && File.Exists(action.SaveAs)) throw new IOException("save_as target exists.");
+        var template = action.Template ?? application.Application.DefaultProjectTemplate;
+        var document = action.Kind == "family" ? application.Application.NewFamilyDocument(template) :
+            application.Application.NewProjectDocument(template);
+        var path = action.SaveAs;
+        if (path is not null || action.Activate)
+        {
+            if (path is null)
+            {
+                var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "new");
+                Directory.CreateDirectory(directory);
+                path = Path.Combine(directory, $"{Guid.NewGuid():N}.{(action.Kind == "family" ? "rfa" : "rvt")}");
+            }
+            document.SaveAs(path);
+        }
+        if (action.Activate)
+        {
+            var active = application.OpenAndActivateDocument(path!).Document;
+            if (!active.Equals(document)) document.Close(false);
+            document = active;
+        }
+        return new ActionResultData { Title = document.Title, Path = document.PathName, Active = action.Activate, Saved = path is not null };
     }
 
     private static List<string> WorksetNames(Document document) => document.IsWorkshared
@@ -325,4 +467,48 @@ internal sealed class DocumentState
     public bool OpenedByMcp { get; set; }
     [DataMember(Name = "centralPath", EmitDefaultValue = false)]
     public string? CentralPath { get; set; }
+}
+
+[DataContract]
+internal sealed class UiSessionState
+{
+    [DataMember(Name = "activeDocument")] public UiDocumentState? ActiveDocument { get; set; }
+    [DataMember(Name = "activeView")] public UiViewState? ActiveView { get; set; }
+    [DataMember(Name = "openViews")] public List<UiViewState> OpenViews { get; set; } = [];
+    [DataMember(Name = "selection")] public UiSelectionState Selection { get; set; } = new();
+    [DataMember(Name = "documents")] public List<DocumentState> Documents { get; set; } = [];
+}
+
+[DataContract]
+internal sealed class UiDocumentState
+{
+    [DataMember(Name = "title")] public string Title { get; set; } = "";
+    [DataMember(Name = "path")] public string Path { get; set; } = "";
+    [DataMember(Name = "isFamilyDocument")] public bool IsFamilyDocument { get; set; }
+    [DataMember(Name = "isWorkshared")] public bool IsWorkshared { get; set; }
+    [DataMember(Name = "isModified")] public bool IsModified { get; set; }
+}
+
+[DataContract]
+internal sealed class UiViewState
+{
+    [DataMember(Name = "id")] public long Id { get; set; }
+    [DataMember(Name = "name")] public string Name { get; set; } = "";
+    [DataMember(Name = "type")] public string Type { get; set; } = "";
+    [DataMember(Name = "isActive")] public bool IsActive { get; set; }
+}
+
+[DataContract]
+internal sealed class UiSelectionState
+{
+    [DataMember(Name = "count")] public int Count { get; set; }
+    [DataMember(Name = "elements")] public List<UiSelectedElement> Elements { get; set; } = [];
+}
+
+[DataContract]
+internal sealed class UiSelectedElement
+{
+    [DataMember(Name = "id")] public long Id { get; set; }
+    [DataMember(Name = "category")] public string? Category { get; set; }
+    [DataMember(Name = "name")] public string Name { get; set; } = "";
 }

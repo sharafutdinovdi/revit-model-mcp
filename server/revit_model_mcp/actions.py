@@ -302,6 +302,10 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_edit_families": "Edit Families",
             "revit_align_link_datums": "Align Link Datums",
             "revit_open_document": "Open Document",
+            "revit_activate_document": "Activate Document",
+            "revit_activate_view": "Activate View",
+            "revit_close_views": "Close Views",
+            "revit_new_document": "New Document",
             "revit_close_document": "Close Document",
             "revit_save_document": "Save Document",
             "revit_sync_document": "Synchronize Document",
@@ -333,19 +337,76 @@ def register_actions(mcp, execute, host_provider) -> None:
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."""
-        if isinstance(worksets, dict) and (set(worksets) != {"open"} or not worksets["open"]):
-            raise ToolError("worksets must be all, none or {'open': [names]}.")
-        if audit:
-            raise ToolError("audit must be false.")
+        if isinstance(worksets, dict) and (
+            len(worksets) != 1
+            or next(iter(worksets)) not in {"open", "close"}
+            or not next(iter(worksets.values()))
+        ):
+            raise ToolError("worksets must be all, none, {'open': [names]} or {'close': [names]}.")
         return await send(
             "open-document",
             path=path,
             mode=mode,
-            worksets="open" if isinstance(worksets, dict) else worksets,
-            worksetsOpen=worksets["open"] if isinstance(worksets, dict) else None,
+            worksets=next(iter(worksets)) if isinstance(worksets, dict) else worksets,
+            worksetsOpen=worksets.get("open") if isinstance(worksets, dict) else None,
+            worksetsClose=worksets.get("close") if isinstance(worksets, dict) else None,
             activate=activate,
             audit=audit,
             process_id=process_id,
+            response_timeout_s=1800 if audit else DEFAULT_TIMEOUT_SECONDS,
+        )
+
+    @action
+    async def revit_activate_document(
+        document: Name, process_id: ProcessId = None
+    ) -> dict[str, Any]:
+        """Activate an already open document by title or path reference."""
+        return await send("activate-document", document=document, process_id=process_id)
+
+    @action
+    async def revit_activate_view(
+        view: Name,
+        document: str | None = None,
+        activate_document: bool = False,
+        process_id: ProcessId = None,
+    ) -> dict[str, Any]:
+        """Activate a non-template view in the selected document."""
+        return await send(
+            "activate-view",
+            view=view,
+            document=document,
+            activateDocument=activate_document,
+            process_id=process_id,
+        )
+
+    @action
+    async def revit_close_views(
+        views: list[Name] | None = None,
+        keep_active: bool = True,
+        process_id: ProcessId = None,
+    ) -> dict[str, Any]:
+        """Close open UI views in the active document."""
+        return await send("close-views", views=views, keepActive=keep_active, process_id=process_id)
+
+    @action
+    async def revit_new_document(
+        template: str | None = None,
+        kind: Literal["project", "family"] = "project",
+        activate: bool = True,
+        save_as: str | None = None,
+        process_id: ProcessId = None,
+    ) -> dict[str, Any]:
+        """Create a project or family from a template on the Revit workstation."""
+        if kind == "family" and not template:
+            raise ToolError("family requires a template.")
+        return await send(
+            "new-document",
+            template=template,
+            kind=kind,
+            activate=activate,
+            saveAs=save_as,
+            process_id=process_id,
+            response_timeout_s=600,
         )
 
     @action

@@ -54,6 +54,10 @@ public static class ActionSummaryBuilder
             "close-document" => context.Saved ? $"Saved and closed '{doc}'." : $"Closed '{doc}'.",
             "save-document" => context.TargetPath is null ? $"Saved '{doc}'." : $"Saved '{doc}' as {context.TargetPath}.",
             "sync-document" => $"Synchronized '{doc}' with its central model.",
+            "activate-document" => $"Activated '{doc}'.",
+            "activate-view" => $"Activated view '{context.ViewName}' in '{doc}'.",
+            "close-views" => $"Closed {Plural(context.Count, "view")} in '{doc}'.",
+            "new-document" => $"Created '{doc}'.",
             "set-view-visibility" => $"{(context.DryRun ? "Would change" : "Changed")} {Plural(context.Count, "visibility setting")} on view '{context.ViewName}' in {doc}.",
             "remove-links" => $"{(context.DryRun ? "Would remove" : "Removed")} {Plural(context.Count, "link")} in {doc}.",
             _ => $"Ran {context.Command} in {doc}."

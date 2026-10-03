@@ -36,6 +36,7 @@ EXPECTED_TOOLS = {
     "revit_ping",
     "revit_document_info",
     "revit_documents",
+    "revit_ui_state",
     "revit_list_views",
     "revit_view_summary",
     "revit_view_info",
@@ -71,6 +72,10 @@ ACTION_TOOL_NAMES = {
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
+    "revit_activate_document",
+    "revit_activate_view",
+    "revit_close_views",
+    "revit_new_document",
     "revit_close_document",
     "revit_save_document",
     "revit_sync_document",
@@ -162,6 +167,7 @@ EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_ui_state": [],
     "revit_list_catalog": ["section", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_aggregate_elements": [
         "group_by",
@@ -313,6 +319,15 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             await revit_server.mcp.call_tool("revit_documents", {"include_linked": True})
         job, _, _ = channel.calls[0]
         self.assertEqual(job.payload, {"command": "documents", "includeLinked": True})
+
+    async def test_ui_state_reads_selected_process(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_ui_state", {"process_id": 84})
+        job, _, _ = channel.calls[0]
+        self.assertEqual(job.command, "ui-state")
+        self.assertEqual(job.payload["command"], "ui-state")
+        self.assertEqual(job.payload["targetProcessId"], 84)
 
     async def test_view_info_maps_view_and_document(self) -> None:
         channel = RecordingChannel()

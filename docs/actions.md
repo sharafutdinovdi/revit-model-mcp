@@ -224,15 +224,25 @@ After a timeout, inspect the model before retrying an action; the previous call 
 
 `revit_documents` is a read tool that lists all documents in one Revit process, including background documents. Each row reports `title`, `path`, `isActive`, `isFamilyDocument`, `isWorkshared`, `isDetached`, `isModified`, `openedByMcp` and `centralPath` when available. It works even when no document is active.
 
+`revit_ui_state` is a read tool with only optional `process_id`. It returns `activeDocument`, `activeView`, `openViews`, `selection` and `documents`. The selection count covers all selected elements; `elements` contains the first 500 with ID, category and name. Paths follow the existing redaction rules.
+
 | Tool | Arguments | Action |
 | --- | --- | --- |
 | `revit_open_document` | `path`, `mode="detached"`, `worksets="all"`, `activate=false`, `audit=false` | Open a local, UNC or RSN model. |
+| `revit_activate_document` | `document` | Switch to an already open document. |
+| `revit_activate_view` | `view`, `document=null`, `activate_document=false` | Switch to a non-template view. |
+| `revit_close_views` | `views=null`, `keep_active=true` | Close UI views in the active document. |
+| `revit_new_document` | `template=null`, `kind="project"`, `activate=true`, `save_as=null` | Create a project or family document. |
 | `revit_close_document` | `document`, `save=false`, `confirm_token=null` | Close a background document. |
 | `revit_save_document` | `document`, `save_as=null`, `overwrite=false`, `compact=false`, `confirm_token=null` | Save an open document. |
 | `revit_sync_document` | `document`, `comment`, `relinquish="all"`, `compact=false`, `save_local_before=true`, `save_local_after=true`, `confirm_token=null` | Synchronize a workshared document. |
 
-`revit_open_document` opens a local or UNC `.rvt`/`.rfa` file, or `RSN://server/folder/model.rvt`. It defaults to `mode="detached"` and opens in the background. `activate=true` opens it in the Revit UI. The other modes are `detached_discard_worksets`, `local_copy` and `read_only_local`. A local copy is created under `%LOCALAPPDATA%\RevitModelMcp\locals`; an existing destination is refused. `read_only_local` accepts only a non-central file with the read-only file attribute. Cloud paths are outside this contract. `worksets` accepts `"all"`, `"none"` or `{"open":["Name"]}`. `audit` must be false.
+`revit_open_document` opens a local or UNC `.rvt`/`.rfa`/`.rte` file, or `RSN://server/folder/model.rvt`. It defaults to `mode="detached"` and opens in the background. `activate=true` opens it in the Revit UI. The other modes are `detached_discard_worksets`, `local_copy` and `read_only_local`. A local copy is created under `%LOCALAPPDATA%\RevitModelMcp\locals`; an existing destination is refused. `read_only_local` accepts only a non-central file with the read-only file attribute. Cloud paths are outside this contract. `worksets` accepts `"all"`, `"none"`, `{"open":["Arch*", "Shared Levels and Grids"]}` or `{"close":["*Link*"]}`. Wildcards `*` and `?` are case insensitive. Unknown exact names fail; unmatched patterns appear in `worksetPatternsUnmatched`. `audit=true` reports `audited:true`; audit may take minutes, uses a 30 minute response timeout, and its dialogs use the existing dismissal handler.
 Its `path` accepts local UNC central files when their share is in `trustedNetworkRoots`; device paths and `..` segments are rejected.
+
+`revit_activate_document` resolves exactly one open document by the existing title or path rules. A document without a saved path cannot be activated. Revit must keep the same document and document count. `revit_activate_view` resolves a name or ID in the target document and rejects templates. Set `activate_document=true` to switch documents first. It reports the active view and whether it was already open. `revit_close_views` defaults to closing all views except the active one. It reports a refused last or active view without failing the call.
+
+`revit_new_document` uses the default project template unless `template` is supplied. Family creation requires a `.rft` template; project templates use `.rte`. Template and `save_as` paths follow the existing path and trusted network root rules. An existing `save_as` target is refused. With `activate=true` and no `save_as`, the document is saved under `%LOCALAPPDATA%\RevitModelMcp\new` so Revit can activate it. Session actions have activity entries and summaries but no model transaction or undo entry. They are not batch steps and are refused in read-only mode.
 
 `revit_close_document` closes a background document. The active document cannot be closed through this tool. `save=false` is the default. Closing a modified document without saving needs confirmation, except an MCP-opened detached document that has not been saved to central. Closing with `save=true` always needs confirmation.
 
