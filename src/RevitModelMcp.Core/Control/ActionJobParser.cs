@@ -950,6 +950,13 @@ public sealed class FamilyLoadResult
     [DataMember(Name = "family")] public string Family { get; set; } = string.Empty;
     [DataMember(Name = "status")] public string Status { get; set; } = string.Empty;
     [DataMember(Name = "types")] public List<string> Types { get; set; } = [];
+
+    public static string StatusFor(string familyName, bool wasLoaded, bool loadSucceeded)
+    {
+        if (!loadSucceeded && !wasLoaded) throw new InvalidOperationException($"Could not load family '{familyName}'.");
+        if (!loadSucceeded) return "unchanged";
+        return wasLoaded ? "reloaded" : "loaded";
+    }
 }
 
 [DataContract]

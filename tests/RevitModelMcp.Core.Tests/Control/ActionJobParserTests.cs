@@ -7,6 +7,21 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    [Arguments(false, true, "loaded")]
+    [Arguments(true, true, "reloaded")]
+    [Arguments(true, false, "unchanged")]
+    public async Task FamilyLoadResult_ReportsLoadStatus(bool wasLoaded, bool loadSucceeded, string expectedStatus)
+    {
+        await Assert.That(FamilyLoadResult.StatusFor("Chair", wasLoaded, loadSucceeded)).IsEqualTo(expectedStatus);
+    }
+
+    [Test]
+    public async Task FamilyLoadResult_RejectsFailedFirstLoad()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Task.FromResult(FamilyLoadResult.StatusFor("Chair", false, false)));
+    }
+
+    [Test]
     public async Task BulkFamilyJobs_ValidatePathsAndPlacementLimits()
     {
         var load = ControlJobParser.Parse("""{"command":"load-family","paths":["C:\\Families\\Chair.rfa"]}""");

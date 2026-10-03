@@ -110,7 +110,7 @@ internal static class ActionMutations
     {
         var result = new ActionResultData { Loaded = [] };
         foreach (var path in action.Paths!) result.Loaded.Add(LoadFamily(document, path, action.Overwrite, action.OverwriteParameterValues));
-        result.Count = result.Loaded.Count(item => item.Status != "skipped");
+        result.Count = result.Loaded.Count(item => item.Status is "loaded" or "reloaded");
         return result;
     }
 
@@ -120,16 +120,17 @@ internal static class ActionMutations
         using var existing = document.CollectElements().OfClass<Family>();
         var loaded = existing.Cast<Family>().FirstOrDefault(family => string.Equals(family.Name, familyName, StringComparison.OrdinalIgnoreCase));
         var wasLoaded = loaded is not null;
+        var status = "skipped";
         if (loaded is null || overwrite)
         {
-            if (!document.LoadFamily(path, new FamilyLoadOptions(overwriteParameterValues, FamilySource.Project), out var family))
-                throw new InvalidOperationException($"Could not load family '{familyName}'.");
-            loaded = family;
+            var loadSucceeded = document.LoadFamily(path, new FamilyLoadOptions(overwriteParameterValues, FamilySource.Project), out var family);
+            status = FamilyLoadResult.StatusFor(familyName, wasLoaded, loadSucceeded);
+            if (loadSucceeded) loaded = family;
         }
         return new FamilyLoadResult
         {
-            Family = loaded.Name,
-            Status = !wasLoaded ? "loaded" : overwrite ? "reloaded" : "skipped",
+            Family = loaded!.Name,
+            Status = status,
             Types = loaded.GetFamilySymbolIds().Select(id => document.GetElement(id)?.Name ?? string.Empty).OrderBy(name => name).ToList()
         };
     }
@@ -142,8 +143,10 @@ internal static class ActionMutations
         if (action.AtRooms is not null)
         {
             var request = action.AtRooms;
-            using var collector = document.CollectElements().OfClass<Autodesk.Revit.DB.Architecture.Room>();
-            foreach (var room in collector.Cast<Autodesk.Revit.DB.Architecture.Room>())
+            foreach (var room in new FilteredElementCollector(document)
+                         .OfCategory(BuiltInCategory.OST_Rooms)
+                         .WhereElementIsNotElementType()
+                         .OfType<Autodesk.Revit.DB.Architecture.Room>())
             {
                 if (request.Level is not null && !string.Equals(room.Level?.Name, request.Level, StringComparison.OrdinalIgnoreCase)) continue;
                 if (request.Rooms is not null && !request.Rooms.Any(name => string.Equals(name, room.Name, StringComparison.OrdinalIgnoreCase) || string.Equals(name, room.Number, StringComparison.OrdinalIgnoreCase))) continue;
