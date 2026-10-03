@@ -368,6 +368,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         view: Name,
         document: str | None = None,
         activate_document: bool = False,
+        view_type: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Activate a non-template view in the selected document."""
@@ -376,6 +377,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             view=view,
             document=document,
             activateDocument=activate_document,
+            viewType=view_type,
             process_id=process_id,
         )
 
@@ -394,6 +396,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         kind: Literal["project", "family"] = "project",
         activate: bool = True,
         save_as: str | None = None,
+        name: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Create a project or family from a template on the Revit workstation."""
@@ -405,6 +408,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             kind=kind,
             activate=activate,
             saveAs=save_as,
+            name=name,
             process_id=process_id,
             response_timeout_s=600,
         )

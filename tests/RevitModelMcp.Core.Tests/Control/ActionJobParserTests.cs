@@ -212,6 +212,22 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task SessionActions_ParseViewTypeAndSafeDocumentName()
+    {
+        var view = ControlJobParser.Parse("""{"command":"activate-view","view":"L2","viewType":"FloorPlan"}""");
+        await Assert.That(view.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(view.Action!.ViewType).IsEqualTo("FloorPlan");
+        var document = ControlJobParser.Parse("""{"command":"new-document","name":"Project review"}""");
+        await Assert.That(document.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(document.Action!.NewDocumentName).IsEqualTo("Project review");
+        foreach (var name in new[] { "", "..", "CON", "CON.txt", "A/B", "A\\B", "A: B", "A. ", " name" })
+        {
+            var invalid = ControlJobParser.Parse($$"""{"command":"new-document","name":{{System.Text.Json.JsonSerializer.Serialize(name)}}}""");
+            await Assert.That(invalid.Kind).IsEqualTo(ControlJobKind.Invalid);
+        }
+    }
+
+    [Test]
     public async Task DocumentPaths_RejectTraversalAndDeviceAliases()
     {
         foreach (var path in new[] { @"C:\x\..\a.rvt", "C:/x/../a.rvt", @"\\?\UNC\srv\share\a.rvt", @"\\.\C:\x\a.rvt" })

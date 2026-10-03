@@ -83,10 +83,12 @@ public static class ActionJobParser
                 Activate = job.Activate ?? false,
                 ActivateDocument = job.ActivateDocument ?? false,
                 View = job.View,
+                ViewType = string.IsNullOrWhiteSpace(job.ViewType) ? null : job.ViewType!.Trim(),
                 Views = job.Views,
                 KeepActive = job.KeepActive ?? true,
                 Kind = job.DocumentKind ?? "project",
                 Template = job.Template,
+                NewDocumentName = job.Name,
                 Audit = job.Audit ?? false,
                 Save = job.Save ?? false,
                 SaveAs = job.SaveAs,
@@ -114,6 +116,8 @@ public static class ActionJobParser
             if (command == "new-document")
             {
                 Require(action.Kind is "project" or "family", "kind must be project or family.");
+                if (action.NewDocumentName is not null)
+                    Require(IsSafeFileName(action.NewDocumentName), "name must be a safe file name without an extension.");
                 Require(action.Kind != "family" || action.Template is not null, "family requires a template.");
                 if (action.Template is not null)
                 {
@@ -377,6 +381,12 @@ public static class ActionJobParser
 
     private static bool ValidNames(List<string>? names) => names is { Count: > 0 } &&
         names.All(name => !string.IsNullOrWhiteSpace(name) && !name.StartsWith("regex:", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSafeFileName(string name) =>
+        !string.IsNullOrWhiteSpace(name) && name == name.Trim() && !name.EndsWith('.') &&
+        name.IndexOfAny(['<', '>', ':', '"', '/', '\\', '|', '?', '*']) < 0 &&
+        !name.Any(char.IsControl) &&
+        !Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)", RegexOptions.IgnoreCase);
 }
 
 public static class DocumentPathValidator
@@ -520,10 +530,12 @@ public sealed class ActionJobContract
     public List<string>? WorksetsCloseNames { get; set; }
     public bool ActivateDocument { get; set; }
     public string? View { get; set; }
+    public string? ViewType { get; set; }
     public List<string>? Views { get; set; }
     public bool KeepActive { get; set; } = true;
     public string Kind { get; set; } = "project";
     public string? Template { get; set; }
+    public string? NewDocumentName { get; set; }
     public bool Activate { get; set; }
     public bool Audit { get; set; }
     public bool Save { get; set; }
@@ -762,6 +774,7 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "keepActive")] public bool? KeepActive { get; set; }
     [DataMember(Name = "kind")] public string? DocumentKind { get; set; }
     [DataMember(Name = "template")] public string? Template { get; set; }
+    [DataMember(Name = "name")] public string? Name { get; set; }
     [DataMember(Name = "activate")] public bool? Activate { get; set; }
     [DataMember(Name = "audit")] public bool? Audit { get; set; }
     [DataMember(Name = "save")] public bool? Save { get; set; }

@@ -120,16 +120,21 @@ def test_session_action_mappings():
     assert execute.await_args.args[0].payload["command"] == "activate-document"
     asyncio.run(
         server.call_tool(
-            "revit_activate_view", {"view": "3D", "document": "Tower", "activate_document": True}
+            "revit_activate_view",
+            {"view": "3D", "document": "Tower", "activate_document": True, "view_type": "ThreeD"},
         )
     )
     assert execute.await_args.args[0].payload["activateDocument"] is True
+    assert execute.await_args.args[0].payload["viewType"] == "ThreeD"
     asyncio.run(server.call_tool("revit_close_views", {"views": ["3D"], "keep_active": False}))
     assert execute.await_args.args[0].payload["keepActive"] is False
     asyncio.run(
-        server.call_tool("revit_new_document", {"template": r"C:\\T.rft", "kind": "family"})
+        server.call_tool(
+            "revit_new_document", {"template": r"C:\\T.rft", "kind": "family", "name": "Door"}
+        )
     )
     assert execute.await_args.args[0].payload["kind"] == "family"
+    assert execute.await_args.args[0].payload["name"] == "Door"
     asyncio.run(
         server.call_tool(
             "revit_open_document",

@@ -62,7 +62,7 @@ internal static class DocumentActions
             },
             ActiveView = view is null ? null : new UiViewState
             {
-                Id = RevitValueReader.GetId(view.Id), Name = view.Name, Type = view.ViewType.ToString()
+                Id = RevitValueReader.GetId(view.Id), Name = view.Name, Type = view.ViewType.ToString(), IsActive = true
             },
             OpenViews = uiDocument?.GetOpenUIViews().Select(item => document!.GetElement(item.ViewId) as View)
                 .Where(item => item is not null).Select(item => new UiViewState
@@ -93,7 +93,10 @@ internal static class DocumentActions
         if (server && !ModelPathUtils.IsValidUserVisibleFullServerPath(path))
             throw new ArgumentException("Invalid Revit Server model path.");
         var sourcePath = ModelPathUtils.ConvertUserVisiblePathToModelPath(path);
-        var isCentral = server || path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && BasicFileInfo.Extract(path).IsCentral;
+        using var fileInfo = !server && path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase)
+            ? BasicFileInfo.Extract(path) : null;
+        var isCentral = server || fileInfo?.IsCentral == true;
+        var isWorkshared = server || fileInfo?.IsWorkshared == true;
         if (isCentral && action.Mode == "read_only_local")
             throw new InvalidOperationException("read_only_local requires a non-central local file.");
         if (action.Mode == "local_copy" && !isCentral)
@@ -122,8 +125,18 @@ internal static class DocumentActions
                     : DetachFromCentralOption.DetachAndPreserveWorksets
                 : DetachFromCentralOption.DoNotDetach
         };
-        var (configuration, unmatched) = WorksetConfiguration(openPath, action.Worksets, action.WorksetsOpenNames ?? action.WorksetsCloseNames);
-        options.SetOpenWorksetsConfiguration(configuration);
+        var requestedWorksets = action.WorksetsOpenNames ?? action.WorksetsCloseNames;
+        var ignoreWorksets = !isWorkshared && action.Worksets != "all";
+        if (ignoreWorksets && requestedWorksets is { Count: > 0 } &&
+            requestedWorksets.All(name => name.IndexOfAny(['*', '?']) < 0))
+            throw new InvalidOperationException("Model is not workshared.");
+        var unmatched = new List<string>();
+        if (!ignoreWorksets)
+        {
+            var (configuration, patternsUnmatched) = WorksetConfiguration(openPath, action.Worksets, requestedWorksets);
+            options.SetOpenWorksetsConfiguration(configuration);
+            unmatched = patternsUnmatched;
+        }
         var document = action.Activate
             ? application.OpenAndActivateDocument(openPath, options, false).Document
             : application.Application.OpenDocumentFile(openPath, options);
@@ -140,6 +153,7 @@ internal static class DocumentActions
             Active = ReferenceEquals(application.ActiveUIDocument?.Document, document),
             WorksetsOpen = WorksetNames(document),
             WorksetPatternsUnmatched = unmatched,
+            Warning = ignoreWorksets ? "Worksets ignored: the model is not workshared." : null,
             Audited = action.Audit,
             ElapsedMs = stopwatch.ElapsedMilliseconds
         };
@@ -197,13 +211,32 @@ internal static class DocumentActions
             throw new InvalidOperationException($"Cannot activate '{title}': it has no saved path. Save it first or open it with activate=true.");
         if (!application.Application.Documents.Cast<Document>().Any(item => item.Equals(document) && DocumentPathValidator.SamePath(item.PathName, path)))
             throw new InvalidOperationException("The document path no longer belongs to an open document.");
+        var previous = application.ActiveUIDocument?.Document;
+        var previousPath = previous?.PathName;
         var count = application.Application.Documents.Size;
         var activated = application.OpenAndActivateDocument(path).Document;
         if (!activated.Equals(document) || application.Application.Documents.Size != count ||
             !DocumentPathValidator.SamePath(application.ActiveUIDocument?.Document.PathName, path) ||
             application.ActiveUIDocument?.Document.Title != title)
         {
-            if (!activated.Equals(document)) activated.Close(false);
+            if (!activated.Equals(document))
+            {
+                var extraTitle = activated.Title;
+                if (string.IsNullOrWhiteSpace(previousPath))
+                    throw new InvalidOperationException($"Revit opened another copy '{extraTitle}' and left it open because the previously active document has no saved path.");
+                try
+                {
+                    application.OpenAndActivateDocument(previousPath);
+                    if (activated.Equals(application.ActiveUIDocument?.Document))
+                        throw new InvalidOperationException("The extra copy is still active.");
+                    if (!activated.Close(false))
+                        throw new InvalidOperationException("Revit did not close the extra copy.");
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException($"Revit opened another copy '{extraTitle}' and left it open: {exception.Message}", exception);
+                }
+            }
             throw new InvalidOperationException("Revit opened another copy instead of activating the requested document.");
         }
         return new ActionResultData { Title = title, Path = path, Active = true, Changed = true };
@@ -211,14 +244,28 @@ internal static class DocumentActions
 
     private static ActionResultData ActivateView(UIApplication application, Document document, ActionJobContract action)
     {
+        var views = new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>()
+            .Where(item => !item.IsTemplate).ToList();
+        View? view = null;
+        if (long.TryParse(action.View, out var id))
+            view = views.FirstOrDefault(item => RevitValueReader.GetId(item.Id) == id);
+        if (view is null)
+        {
+            var matches = views.Where(item => string.Equals(item.Name, action.View, StringComparison.Ordinal) &&
+                (action.ViewType is null || string.Equals(item.ViewType.ToString(), action.ViewType, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            if (matches.Count > 1)
+                throw new InvalidOperationException($"View '{action.View}' is ambiguous: " +
+                    string.Join("; ", matches.Select(item => $"id={RevitValueReader.GetId(item.Id)}, name={item.Name}, type={item.ViewType}")));
+            view = matches.SingleOrDefault();
+        }
+        if (view is null) throw new InvalidOperationException($"View '{action.View}' was not found.");
         if (!document.Equals(application.ActiveUIDocument?.Document))
         {
             if (!action.ActivateDocument) throw new InvalidOperationException("The target document is not active; set activate_document=true.");
             Activate(application, document);
         }
         var uiDocument = application.ActiveUIDocument!;
-        var view = ReadCommandReader.FindView(document, action.View!)
-            ?? throw new InvalidOperationException($"View '{action.View}' was not found.");
         var wasOpen = uiDocument.GetOpenUIViews().Any(item => item.ViewId == view.Id);
         var wasActive = uiDocument.ActiveView.Id == view.Id;
         uiDocument.ActiveView = view;
@@ -273,7 +320,11 @@ internal static class DocumentActions
             {
                 var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "new");
                 Directory.CreateDirectory(directory);
-                path = Path.Combine(directory, $"{Guid.NewGuid():N}.{(action.Kind == "family" ? "rfa" : "rvt")}");
+                var name = action.NewDocumentName ?? $"{(action.Kind == "family" ? "Family" : "Project")} {DateTime.Now:yyyyMMdd-HHmmss}";
+                var extension = action.Kind == "family" ? ".rfa" : ".rvt";
+                path = Path.Combine(directory, name + extension);
+                for (var suffix = 2; File.Exists(path); suffix++)
+                    path = Path.Combine(directory, $"{name} {suffix}{extension}");
             }
             document.SaveAs(path);
         }
