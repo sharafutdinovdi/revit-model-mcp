@@ -12,7 +12,7 @@ in the add-in's "MCP activity" dockable pane (ribbon: RevitModelMcp tab, MCP pan
 `select` and `show` make no document change and get no undo entry, but still appear in the activity pane.
 See [Undo the last action](#undo-the-last-action) for `revit_undo_last`.
 
-The action tools listed below accept `document`. `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_execute_code` also accept `response_timeout_s` from 30 to 3600 seconds.
+The action tools listed below accept `document`. `revit_export_nwc`, `revit_export`, `revit_edit_families`, `revit_align_link_datums` and `revit_execute_code` also accept `response_timeout_s` from 30 to 3600 seconds.
 Revit remains busy for the whole action duration.
 Other listed tools use the default response timeout of 120 seconds. All actions use a pickup timeout of 300 seconds and require exactly one instance returned by the transport.
 HTTP addresses one endpoint; the file transports discover workstation instances.
@@ -43,6 +43,7 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. |
+| `revit_export` | `format`, `views=null`, `sheets=null`, `sheet_set=null`, `all_sheets=false`, `folder=null`, `options=null`, `overwrite=false`, `dry_run=false`, `response_timeout_s=1800` | Export PDF, DWG, IFC or schedule CSV files to a workstation folder. Cannot be used in a batch. |
 | `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `response_timeout_s=1800` | Edit open family or named project families; one load cycle per family. |
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `response_timeout_s=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
@@ -67,6 +68,14 @@ The default `auto` mode owns one Revit transaction inside a group. Scripts in th
 Compiler errors include diagnostic IDs, messages, and positions in the submitted code. Runtime errors include their type, message and script frames. The compiler caches up to 32 compiled scripts. On .NET Framework, loaded script assemblies remain in memory until Revit restarts. The add-in cannot stop a running script; `response_timeout_s` only limits the server wait. Inspect Revit state before retrying after a timeout.
 
 The activity pane shows the first non-empty source line and a SHA-256 prefix. Source is stored in `%LOCALAPPDATA%\RevitModelMcp\code`; the newest 500 files are retained. The audit header records client, document title and transaction mode. When path redaction is on, Windows paths in the activity line and stored source are replaced with redaction markers.
+
+### Model file export
+
+`revit_export` writes to `folder`, or to `%LOCALAPPDATA%\RevitModelMcp\exports\<document title>\<UTC timestamp>` when omitted. The folder must be an absolute drive path or a UNC path under `trustedNetworkRoots`. Device paths and `..` segments are refused. Existing output files require `overwrite=true`. `dry_run=true` returns resolved targets and planned names without writing. The result includes `folder`, `files` with sizes, `targets`, `skipped`, `elapsedMs` and `summary`. File export changes no model elements and creates no undo entry.
+
+PDF and DWG accept any combination of view names or IDs, sheet numbers, names or IDs, a saved `sheet_set`, and `all_sheets=true`. At least one printable target is required; templates and unprintable views are rejected. PDF `options` are `combine=true`, `file_name`, `naming="sheet_number_name"` or `"view_name"`, `color="color"`, `"grayscale"` or `"black_line"`, `zoom_percent=100`, `paper="auto"`, `hide_crop_boundaries=true` and `hide_scope_boxes=true`. DWG options are `setup` (saved export setup), `merged_views=false` and `file_version` (Revit ACADVersion name).
+
+IFC exports the whole model or one view selected through `views`. Its options are `version="IFC2x3CV2"`, `"IFC4RV"` or `"IFC4x3"`, `file_name`, `export_base_quantities=true`, `space_boundaries=0` and `split_walls_by_level=false`. The required IFC transaction is rolled back after export. CSV accepts schedule names or IDs in `views`; omitting `views` exports all non-template schedules except revision and keynote legends. CSV options are `delimiter=","`, `headers=true`, `title=false`, `group_headers=false` and `encoding="utf-8"`. Revit exports the visible schedule fields. The file is then encoded as UTF-8 with a BOM for Excel. With path redaction enabled, the response `folder` contains only the final folder name.
 
 ### NWC export options
 

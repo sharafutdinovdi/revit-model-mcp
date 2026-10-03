@@ -214,7 +214,8 @@ def redact_model_paths(value: Any) -> Any:
         if isinstance(item, dict):
             return {
                 key: PureWindowsPath(nested).name
-                if key in {"documentPath", "path", "centralPath"} and isinstance(nested, str)
+                if key in {"documentPath", "path", "centralPath", "folder"}
+                and isinstance(nested, str)
                 else scrub(nested, key in _TEXT_FIELDS)
                 for key, nested in item.items()
             }
@@ -308,6 +309,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_delete": "Delete Elements",
             "revit_batch": "Run Action Batch",
             "revit_export_nwc": "Export Navisworks NWC",
+            "revit_export": "Export Model Files",
             "revit_edit_families": "Edit Families",
             "revit_align_link_datums": "Align Link Datums",
             "revit_open_document": "Open Document",
@@ -707,6 +709,36 @@ def register_actions(mcp, execute, host_provider) -> None:
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send("delete", elementIds=element_ids, dryRun=dry_run, document=document)
+
+    @action
+    async def revit_export(
+        format: Literal["pdf", "dwg", "ifc", "csv"],
+        views: list[str | ElementId] | None = None,
+        sheets: list[str | ElementId] | None = None,
+        sheet_set: str | None = None,
+        all_sheets: bool = False,
+        folder: str | None = None,
+        options: dict[str, Any] | None = None,
+        overwrite: bool = False,
+        document: Document = None,
+        dry_run: bool = False,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
+    ) -> dict[str, Any]:
+        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names."""
+        return await send(
+            "export",
+            format=format,
+            views=[str(view) for view in views] if views is not None else None,
+            sheets=[str(sheet) for sheet in sheets] if sheets is not None else None,
+            sheetSet=sheet_set,
+            allSheets=all_sheets,
+            folder=folder,
+            options=options or {},
+            overwrite=overwrite,
+            document=document,
+            dryRun=dry_run,
+            response_timeout_s=response_timeout_s,
+        )
 
     @action
     async def revit_export_nwc(

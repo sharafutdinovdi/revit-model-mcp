@@ -33,6 +33,7 @@ ACTION_TOOLS = {
     "revit_delete",
     "revit_batch",
     "revit_export_nwc",
+    "revit_export",
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
@@ -68,6 +69,7 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_edit_families",
                     "revit_align_link_datums",
                     "revit_execute_code",
+                    "revit_export",
                 }
             )
             assert tool.annotations.read_only_hint is False
@@ -303,6 +305,14 @@ def test_response_message_paths_are_unchanged_when_redaction_is_off():
         assert redact_model_paths(response) is response
 
 
+def test_export_folder_is_redacted_when_enabled():
+    response = {"data": {"folder": r"C:\Models\exports\2026", "files": [{"name": "Doors.csv"}]}}
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths(response) == {
+            "data": {"folder": "2026", "files": [{"name": "Doors.csv"}]}
+        }
+
+
 def test_nwc_export_defaults_and_options_reach_channel():
     import asyncio
 
@@ -316,6 +326,41 @@ def test_nwc_export_defaults_and_options_reach_channel():
         "path": "C:\\x\\a.nwc",
         "overwrite": False,
         "dryRun": False,
+    }
+
+
+def test_file_export_maps_targets_options_and_timeout():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_export",
+            {
+                "format": "pdf",
+                "sheets": ["A1"],
+                "all_sheets": True,
+                "folder": r"C:\Exports",
+                "options": {"combine": False},
+                "overwrite": True,
+                "dry_run": True,
+                "response_timeout_s": 600,
+            },
+        )
+    )
+    assert execute.await_args.args[1] == 600
+    assert execute.await_args.args[0].payload == {
+        "command": "export",
+        "targetProcessId": 42,
+        "format": "pdf",
+        "views": None,
+        "sheets": ["A1"],
+        "sheetSet": None,
+        "allSheets": True,
+        "folder": r"C:\Exports",
+        "options": {"combine": False},
+        "overwrite": True,
+        "dryRun": True,
     }
 
 

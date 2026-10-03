@@ -75,6 +75,7 @@ ACTION_COMMANDS = frozenset(
         "delete",
         "batch",
         "export-nwc",
+        "export",
         "edit-families",
         "align-link-datums",
         "open-document",
@@ -160,6 +161,20 @@ class ReadJob:
     @classmethod
     def view_info(cls, view: str) -> ReadJob:
         return cls("view-info", {"command": "view-info", "view": _required_text(view, "view")})
+
+    @classmethod
+    def schedule_data(cls, schedule: str, max_rows: int = 500, offset: int = 0) -> ReadJob:
+        if max_rows < 1 or max_rows > 5000 or offset < 0:
+            raise RevitChannelError("max_rows must be 1 to 5000 and offset must be non-negative.")
+        return cls(
+            "schedule-data",
+            {
+                "command": "schedule-data",
+                "view": _required_text(schedule, "schedule"),
+                "limit": max_rows,
+                "offset": offset,
+            },
+        )
 
     @classmethod
     def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> ReadJob:
@@ -481,6 +496,7 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "element-details",
         "view-warnings",
         "export-view",
+        "schedule-data",
         "query-elements",
         "aggregate-elements",
         "list-catalog",
@@ -499,6 +515,7 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "delete",
         "batch",
         "export-nwc",
+        "export",
         "edit-families",
         "align-link-datums",
         "open-document",

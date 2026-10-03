@@ -24,6 +24,8 @@ public sealed class NwcPathValidatorTests
     [Arguments(@"\\srv\share\a.nwc")]
     [Arguments(@"C:\x\a?.nwc")]
     [Arguments(@"C:\x\.nwc")]
+    [Arguments(@"C:\x\COM9.nwc")]
+    [Arguments(@"C:\x\LPT5.report.nwc")]
     public async Task Validate_RejectsInvalidPaths(string path)
     {
         await Assert.That(() => NwcPathValidator.Validate(path)).Throws<ArgumentException>();

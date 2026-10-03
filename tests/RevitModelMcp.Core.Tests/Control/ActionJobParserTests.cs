@@ -86,6 +86,91 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("pdf", "A-01_Site.pdf")]
+    [Arguments("dwg", "A-01_Site.dwg")]
+    public async Task Export_FileNamingUsesSheetNumber(string format, string expected)
+    {
+        var name = FileExportJob.FileName("A-01_Site", format);
+        await Assert.That(name).IsEqualTo(expected);
+        await Assert.That(FileExportJob.FileName("CON", format)).IsEqualTo($"_CON.{format}");
+        await Assert.That(FileExportJob.FileName("A/01", format)).IsEqualTo($"A_01.{format}");
+    }
+
+    [Test]
+    [Arguments("COM2")]
+    [Arguments("COM9.report")]
+    [Arguments("LPT5")]
+    [Arguments("LPT9.report")]
+    public async Task Export_FileNamingPrefixesReservedDeviceNames(string name)
+    {
+        await Assert.That(FileExportJob.FileName(name, "csv")).IsEqualTo($"_{name}.csv");
+    }
+
+    [Test]
+    public async Task ScheduleData_SerializesNamedResult()
+    {
+        var data = new ScheduleDataResult
+        {
+            Columns = ["Door number"], Rows = [["101"]], TotalRows = 2, Truncated = true
+        };
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ScheduleDataResult>.Ok("schedule-data", data, 1)));
+        var result = json.RootElement.GetProperty("data");
+        await Assert.That(result.GetProperty("columns")[0].GetString()).IsEqualTo("Door number");
+        await Assert.That(result.GetProperty("rows")[0][0].GetString()).IsEqualTo("101");
+        await Assert.That(result.GetProperty("totalRows").GetInt32()).IsEqualTo(2);
+        await Assert.That(result.GetProperty("truncated").GetBoolean()).IsTrue();
+    }
+
+    [Test]
+    public async Task ScheduleData_JoinsGroupedHeadingsByColumn()
+    {
+        List<List<string>> rows =
+        [
+            ["Door", "Door", "Door"],
+            ["Mark", "Size", "Size"],
+            ["", "Width", "Height"]
+        ];
+        var columns = ScheduleDataResult.JoinHeadings(rows, 3);
+        await Assert.That(columns[0]).IsEqualTo("Door / Mark");
+        await Assert.That(columns[1]).IsEqualTo("Door / Size / Width");
+        await Assert.That(columns[2]).IsEqualTo("Door / Size / Height");
+    }
+
+    [Test]
+    [Arguments("""{"command":"export","format":"pdf"}""")]
+    [Arguments("""{"command":"export","format":"csv","sheets":["A1"]}""")]
+    [Arguments("""{"command":"export","format":"ifc","views":["One","Two"]}""")]
+    [Arguments("""{"command":"export","format":"pdf","views":["A"],"options":{"zoom_percent":0}}""")]
+    [Arguments("""{"command":"export","format":"csv","options":{"encoding":"latin-1"}}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"export","format":"ifc"}]}""")]
+    public async Task Export_RejectsInvalidRequests(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Export_ParsesOptionsAndTargets()
+    {
+        var result = ControlJobParser.Parse("""{"command":"export","format":"pdf","sheets":["A1"],"folder":"C:\\out","options":{"combine":false,"color":"grayscale"}}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Export.Sheets).IsEquivalentTo(new[] { "A1" });
+        await Assert.That(result.Action.Export.Options.Combine).IsFalse();
+        await Assert.That(result.Action.Export.Options.Color).IsEqualTo("grayscale");
+    }
+
+    [Test]
+    public async Task ScheduleData_ParsesPagingAndRejectsInvalidLimits()
+    {
+        var result = ControlJobParser.Parse("""{"command":"schedule-data","view":"Doors","limit":25,"offset":10}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ScheduleData);
+        await Assert.That(result.Limit).IsEqualTo(25);
+        await Assert.That(result.Offset).IsEqualTo(10);
+        await Assert.That(ControlJobParser.Parse("""{"command":"schedule-data","view":"Doors","limit":0}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {
         var direct = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Mark","parameterId":"ALL_MODEL_MARK","value":42}""");

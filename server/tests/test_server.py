@@ -40,6 +40,7 @@ EXPECTED_TOOLS = {
     "revit_view_summary",
     "revit_view_info",
     "revit_export_view",
+    "revit_schedule_data",
     "revit_view_elements",
     "revit_element_details",
     "revit_view_warnings",
@@ -69,6 +70,7 @@ ACTION_TOOL_NAMES = {
     "revit_delete",
     "revit_batch",
     "revit_export_nwc",
+    "revit_export",
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
@@ -79,6 +81,11 @@ ACTION_TOOL_NAMES = {
     "revit_remove_links",
     "revit_undo_last",
 }
+
+
+def test_schedule_data_maps_paging_to_read_job():
+    job = ReadJob.schedule_data("Doors", max_rows=25, offset=10)
+    assert job.payload == {"command": "schedule-data", "view": "Doors", "limit": 25, "offset": 10}
 
 
 def encode_discovery_payload(package):
@@ -210,6 +217,7 @@ EXPECTED_PARAMETERS = {
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_view_info": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_export_view": ["view", "pixel_size", "save_to", "document"],
+    "revit_schedule_data": ["schedule", "max_rows", "offset", "document"],
     "revit_view_elements": [
         "view",
         "categories",

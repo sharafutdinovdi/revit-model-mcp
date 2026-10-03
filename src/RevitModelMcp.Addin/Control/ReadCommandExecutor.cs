@@ -62,7 +62,7 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
-            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot
+            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot or ControlJobKind.ScheduleData
                 ? ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)
                 : application.ActiveUIDocument?.Document
                     ?? throw new InvalidOperationException("No active Revit document.");
@@ -141,6 +141,9 @@ internal static class ReadCommandExecutor
                     else
                         WriteSuccess(output, job.Command, ViewInfoReader.Read(document, infoView), stopwatch);
                     break;
+                case ControlJobKind.ScheduleData:
+                    WriteSuccess(output, job.Command, ReadSchedule(document, job.View!, job.Offset, job.Limit), stopwatch);
+                    break;
                 case ControlJobKind.ElementDetails:
                     ExecuteElementDetails(output, document, job, stopwatch);
                     break;
@@ -194,6 +197,61 @@ internal static class ReadCommandExecutor
         {
             SkippedReadDiagnostics.Current = null;
         }
+    }
+
+    internal static ScheduleDataResult ReadSchedule(Document document, string reference, int offset, int maxRows)
+    {
+        var view = ReadCommandReader.FindView(document, reference);
+        if (view is not ViewSchedule schedule || schedule.IsTemplate)
+            throw new ArgumentException($"'{reference}' is not a schedule.");
+        var table = schedule.GetTableData();
+        var body = table.GetSectionData(SectionType.Body);
+        var visibleFields = schedule.Definition.GetFieldOrder()
+            .Select(schedule.Definition.GetField).Where(field => !field.IsHidden).ToList();
+        var columnNumbers = new List<int>();
+        for (var column = body.FirstColumnNumber; column <= body.LastColumnNumber; column++)
+        {
+            try
+            {
+                if (body.FirstRowNumber <= body.LastRowNumber)
+                    schedule.GetCellText(SectionType.Body, body.FirstRowNumber, column);
+                columnNumbers.Add(column);
+            }
+            catch (Autodesk.Revit.Exceptions.ArgumentException) { }
+        }
+        if (columnNumbers.Count > visibleFields.Count)
+            columnNumbers = columnNumbers.Take(visibleFields.Count).ToList();
+
+        var dataStart = body.FirstRowNumber;
+        var columns = visibleFields.Take(columnNumbers.Count).Select(field => field.ColumnHeading).ToList();
+        if (schedule.Definition.ShowHeaders && body.FirstRowNumber <= body.LastRowNumber)
+        {
+            var headingRows = new List<List<string>>();
+            for (var row = body.FirstRowNumber; row <= body.LastRowNumber; row++)
+            {
+                var hasMergedCells = false;
+                var headings = new List<string>();
+                foreach (var column in columnNumbers)
+                {
+                    var merged = body.GetMergedCell(row, column);
+                    hasMergedCells |= merged.Top == row &&
+                        (merged.Right > merged.Left || merged.Bottom > merged.Top);
+                    headings.Add(merged.Top == row
+                        ? schedule.GetCellText(SectionType.Body, merged.Top, merged.Left)
+                        : string.Empty);
+                }
+                headingRows.Add(headings);
+                dataStart = row + 1;
+                if (!hasMergedCells) break;
+            }
+            columns = ScheduleDataResult.JoinHeadings(headingRows, columnNumbers.Count);
+        }
+        var totalRows = Math.Max(0, body.LastRowNumber - dataStart + 1);
+        var rows = new List<List<string>>();
+        for (var row = dataStart + offset; row <= body.LastRowNumber && rows.Count < maxRows; row++)
+            rows.Add(columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList());
+        return new ScheduleDataResult { Columns = columns, Rows = rows, TotalRows = totalRows,
+            Truncated = offset + rows.Count < totalRows };
     }
 
     public static void WriteInvalid(

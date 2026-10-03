@@ -32,11 +32,11 @@ public sealed class Application : ExternalApplication
     [
         "ping", "jobs", "model-health", "links-status", "shared-coordinates",
         "parameter-fill-check", "document-info", "documents", "list-views", "view-summary",
-        "view-info", "view-elements", "element-details", "view-warnings", "export-view",
+        "view-info", "view-elements", "element-details", "view-warnings", "export-view", "schedule-data",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",
         "list-relations", "family-audit", "nwc-settings-check", "compare-link-datums",
         "select", "show", "isolate", "move", "place-family", "create-wall",
-        "set-parameter", "delete", "batch", "export-nwc", "edit-families",
+        "set-parameter", "delete", "batch", "export-nwc", "export", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "set-view-visibility", "remove-links", "execute-code", "undo-last", "views-dump",
         "batch-supervisor-start", "batch-prepass", "batch-open", "batch-close", "model-snapshot"
