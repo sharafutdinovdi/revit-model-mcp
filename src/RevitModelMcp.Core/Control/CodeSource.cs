@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
@@ -105,7 +106,7 @@ public static class CodeResultLimiter
                 foreach (DictionaryEntry entry in dictionary)
                 {
                     if (!firstProperty) builder.Append(',');
-                    WriteJson(builder, entry.Key?.ToString() ?? "null");
+                    WriteJson(builder, FormatKey(entry.Key));
                     builder.Append(':');
                     WriteJson(builder, entry.Value);
                     firstProperty = false;
@@ -150,7 +151,7 @@ public static class CodeResultLimiter
             foreach (DictionaryEntry entry in dictionary)
             {
                 if (itemCount++ >= 5000) break;
-                result[entry.Key?.ToString() ?? "null"] = Visit(entry.Value, convertSpecial, depth + 1, ref itemCount);
+                result[FormatKey(entry.Key)] = Visit(entry.Value, convertSpecial, depth + 1, ref itemCount);
             }
             return result;
         }
@@ -164,6 +165,33 @@ public static class CodeResultLimiter
             }
             return result;
         }
+        var type = value.GetType();
+        if (type.IsClass && type.Assembly.GetName().Name is not ("RevitAPI" or "RevitAPIUI") &&
+            !(type.Namespace?.StartsWith("Autodesk.Revit.", StringComparison.Ordinal) ?? false) &&
+            !(type.Namespace?.StartsWith("System.", StringComparison.Ordinal) ?? false) &&
+            type.Namespace != "System")
+        {
+            var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Where(property => property.GetMethod?.IsPublic == true && property.GetIndexParameters().Length == 0);
+            var result = new Dictionary<string, object?>();
+            foreach (var property in properties)
+            {
+                if (itemCount++ >= 5000) break;
+                try
+                {
+                    result[property.Name] = Visit(property.GetValue(value), convertSpecial, depth + 1, ref itemCount);
+                }
+                catch (TargetInvocationException)
+                {
+                    result.Remove(property.Name);
+                }
+            }
+            if (result.Count > 0) return result;
+        }
         return value.ToString();
     }
+
+    private static string FormatKey(object? key) => key is IFormattable formattable
+        ? formattable.ToString(null, CultureInfo.InvariantCulture) ?? "null"
+        : key?.ToString() ?? "null";
 }

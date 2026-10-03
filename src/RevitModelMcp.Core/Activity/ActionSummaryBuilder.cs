@@ -1,5 +1,7 @@
 namespace RevitModelMcp.Core.Activity;
 
+public enum CodeFailureKind { None, Compilation, Execution }
+
 /// <summary>Pure input for <see cref="ActionSummaryBuilder"/>; carries only primitive facts about one action result.</summary>
 public sealed class ActionSummaryContext
 {
@@ -18,6 +20,7 @@ public sealed class ActionSummaryContext
     public string? ViewName { get; init; }
     public bool NeedsConfirmation { get; init; }
     public string? ConfirmationText { get; init; }
+    public CodeFailureKind CodeFailure { get; init; }
 }
 
 /// <summary>
@@ -56,6 +59,8 @@ public static class ActionSummaryBuilder
             "sync-document" => $"Synchronized '{doc}' with its central model.",
             "set-view-visibility" => $"{(context.DryRun ? "Would change" : "Changed")} {Plural(context.Count, "visibility setting")} on view '{context.ViewName}' in {doc}.",
             "remove-links" => $"{(context.DryRun ? "Would remove" : "Removed")} {Plural(context.Count, "link")} in {doc}.",
+            "execute-code" when context.CodeFailure == CodeFailureKind.Compilation => $"Code failed to compile in {doc}.",
+            "execute-code" when context.CodeFailure == CodeFailureKind.Execution => $"Code failed in {doc}.",
             "execute-code" => $"{(context.DryRun ? "Ran a code preview" : "Executed code")} in {doc}.",
             _ => $"Ran {context.Command} in {doc}."
         };

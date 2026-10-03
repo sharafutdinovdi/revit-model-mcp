@@ -6,6 +6,7 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <DeployAddin>true</DeployAddin>
+    <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
     <IsRepackable Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</IsRepackable>
     <RepackBinariesExcludes>System*.dll;Microsoft.CodeAnalysis*.dll</RepackBinariesExcludes>
@@ -75,6 +76,13 @@
           DestinationFolder="$(TargetDir)"/>
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
           DestinationFolder="$(TargetDir)"/>
+  </Target>
+
+  <Target Name="RemoveNetRuntimeDependencies"
+          AfterTargets="CopyFilesToOutputDirectory"
+          BeforeTargets="PublishAddin"
+          Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(TargetFramework)' == 'net10.0-windows'">
+    <Delete Files="$(TargetDir)System.Collections.Immutable.dll;$(TargetDir)System.Reflection.Metadata.dll;$(TargetDir)System.Memory.dll"/>
   </Target>
 
   <ItemGroup>

@@ -16,6 +16,17 @@ public sealed class ActionSummaryBuilderTests
     }
 
     [Test]
+    [Arguments(CodeFailureKind.Compilation, "Code failed to compile in Model.rvt.")]
+    [Arguments(CodeFailureKind.Execution, "Code failed in Model.rvt.")]
+    public async Task ExecuteCode_FailureSummaryDescribesFailure(CodeFailureKind failure, string expected)
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code", DocumentTitle = "Model.rvt", CodeFailure = failure
+        })).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task BuildSummary_Move_ReportsCountAndDocument()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext

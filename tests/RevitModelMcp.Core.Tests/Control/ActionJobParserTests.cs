@@ -1,3 +1,4 @@
+using System.Globalization;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -50,6 +51,38 @@ public sealed class ActionJobParserTests
         {
             ["escaped"] = "a\"b\n", ["number"] = 1.5, ["finite"] = double.NaN
         })).IsEqualTo("{\"escaped\":\"a\\\"b\\n\",\"number\":1.5,\"finite\":null}");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterSerializesPlainPropertiesWithInvariantNumbers()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ru-RU");
+            var anonymous = CodeResultLimiter.Limit(new { Name = "Parking", mm = -5156.2 }, value => value);
+            var plain = CodeResultLimiter.Limit(new PlainCodeResult { Name = "Parking", Millimeters = -5156.2 }, value => value);
+            await Assert.That(CodeResultLimiter.ToJson(anonymous))
+                .IsEqualTo("{\"Name\":\"Parking\",\"mm\":-5156.2}");
+            await Assert.That(CodeResultLimiter.ToJson(plain))
+                .IsEqualTo("{\"Name\":\"Parking\",\"Millimeters\":-5156.2}");
+            await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
+                new Dictionary<double, object?> { [-5156.2] = 1.5 }, value => value)))
+                .IsEqualTo("{\"-5156.2\":1.5}");
+            await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
+                new Uri("https://example.org/"), value => value)))
+                .IsEqualTo("\"https://example.org/\"");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+    }
+
+    private sealed class PlainCodeResult
+    {
+        public string Name { get; init; } = string.Empty;
+        public double Millimeters { get; init; }
     }
 
     [Test]

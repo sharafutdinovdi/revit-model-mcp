@@ -55,6 +55,9 @@ public sealed class Application : ExternalApplication
 
     public override void OnStartup()
     {
+#if NETFRAMEWORK
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveCodeDependency;
+#endif
         PluginLog.Start();
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         var (fileChannelEnabled, fileChannelWarning) = Output.SnapshotFileWriter.InitializeChannel();
@@ -162,6 +165,9 @@ public sealed class Application : ExternalApplication
 
     public override void OnShutdown()
     {
+#if NETFRAMEWORK
+        AppDomain.CurrentDomain.AssemblyResolve -= ResolveCodeDependency;
+#endif
         Application.ViewActivated -= OnViewActivated;
         Application.ControlledApplication.DocumentClosing -= OnDocumentClosing;
         Application.ControlledApplication.DocumentClosed -= OnDocumentListChanged;
@@ -187,6 +193,21 @@ public sealed class Application : ExternalApplication
         _eventHandler = null;
         PluginLog.Shutdown();
     }
+
+#if NETFRAMEWORK
+    private static Assembly? ResolveCodeDependency(object? sender, ResolveEventArgs args)
+    {
+        var name = new AssemblyName(args.Name).Name;
+        if (name is not ("Microsoft.CodeAnalysis" or "Microsoft.CodeAnalysis.CSharp" or
+            "System.Buffers" or "System.Collections.Immutable" or "System.Memory" or
+            "System.Numerics.Vectors" or "System.Reflection.Metadata" or
+            "System.Runtime.CompilerServices.Unsafe" or "System.Text.Encoding.CodePages" or
+            "System.Threading.Tasks.Extensions")) return null;
+        var folder = Path.GetDirectoryName(typeof(Application).Assembly.Location)!;
+        var path = Path.Combine(folder, name + ".dll");
+        return File.Exists(path) ? Assembly.LoadFrom(path) : null;
+    }
+#endif
 
     private void RegisterActivityPane()
     {

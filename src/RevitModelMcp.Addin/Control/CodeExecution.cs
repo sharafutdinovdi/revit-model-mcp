@@ -56,6 +56,7 @@ internal static class CodeExecution
     {
         var stopwatch = Stopwatch.StartNew();
         var code = action.Code ?? throw new ArgumentException("code is required.");
+        var documentTitle = document?.Title ?? string.Empty;
         var result = new ActionResultData
         {
             Title = document?.Title,
@@ -63,7 +64,7 @@ internal static class CodeExecution
             DryRun = action.DryRun,
             Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "execute-code", DocumentTitle = document?.Title ?? string.Empty, DryRun = action.DryRun
+                Command = "execute-code", DocumentTitle = documentTitle, DryRun = action.DryRun
             })
         };
         if (action.TransactionMode == "none")
@@ -85,6 +86,10 @@ internal static class CodeExecution
             if (!emitted.Success)
             {
                 result.CodeError = "compilation failed";
+                result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                {
+                    Command = "execute-code", DocumentTitle = documentTitle, CodeFailure = CodeFailureKind.Compilation
+                });
                 result.Diagnostics = emitted.Diagnostics.Where(item => item.Severity == DiagnosticSeverity.Error)
                     .Select(item =>
                     {
@@ -178,6 +183,10 @@ internal static class CodeExecution
             if (group?.GetStatus() == TransactionStatus.Started) group.RollBack();
             result.RolledBack = action.TransactionMode == "auto";
             result.CodeError = exception.GetType().Name + ": " + exception.Message;
+            result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+            {
+                Command = "execute-code", DocumentTitle = documentTitle, CodeFailure = CodeFailureKind.Execution
+            });
             result.ExceptionType = exception.GetType().FullName;
             result.StackTrace = (exception.StackTrace ?? string.Empty).Split(['\n'])
                 .Select(line => line.Trim()).Where(line => line.Contains("Script.Execute") || line.Contains("submitted.cs"))
