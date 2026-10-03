@@ -1,18 +1,20 @@
 # Roadmap
 
-Review date: 2026-09-29.
+Review date: 2026-10-04.
 
 ## Direction
 
-Announced on the Autodesk Revit API forum on 2026-09-15. The project does not compete with the Autodesk Revit MCP on generic CRUD; it stays useful on Revit 2022-2026, where the Autodesk server is not available, and moves in five directions:
+The project works with the Revit session as a whole, not only with the open document ([#160](https://github.com/sharafutdinovdi/revit-model-mcp/issues/160)). A client drives Revit the way a coordinator does: it switches between open models and views, opens models with the right settings, processes many models in one run, places families in bulk, exports deliverables, and runs a C# script when no curated tool fits. It stays useful on Revit 2022-2026, where the Autodesk Revit MCP is not available.
 
-- Coordinator-grade checks with evidence: every check names the rule, the elements and the view it was evaluated on, so the result can be handed to a client without rerunning it.
-- Checks across linked models: link status, shared coordinates and clash-adjacent questions that need more than one document open.
-- Execution policy for unattended runs: confirmation tokens for actions and a stated policy for what an unattended client may do.
-- Live validation on every supported Revit year, recorded in the validation table with the contributor's name when offered.
-- Design and Make Marketplace listing in the Local (stdio) model: manifest, tool inventory, declaration form.
+- Session control: tabs, views, selection, open settings and new documents ([#154](https://github.com/sharafutdinovdi/revit-model-mcp/issues/154)).
+- C# scripts as an ordinary action, refused in read-only mode ([#153](https://github.com/sharafutdinovdi/revit-model-mcp/issues/153)).
+- Multi-model processing in the interactive session: open, change, export or save, close ([#159](https://github.com/sharafutdinovdi/revit-model-mcp/issues/159)). The batch collector stays read-only.
+- Deliverables: PDF, DWG, IFC and schedule CSV ([#155](https://github.com/sharafutdinovdi/revit-model-mcp/issues/155)), views and sheets ([#158](https://github.com/sharafutdinovdi/revit-model-mcp/issues/158)).
+- Model edits beyond single elements: bulk family placement ([#156](https://github.com/sharafutdinovdi/revit-model-mcp/issues/156)), rotate, copy, mirror, type change and bulk parameter update ([#157](https://github.com/sharafutdinovdi/revit-model-mcp/issues/157)).
+- Coordinator-grade checks with evidence remain: every check names the rule, the elements and the view it was evaluated on.
+- Live validation on every supported Revit year, recorded in the validation table.
 
-New tools follow from the first direction; a check that a coordinator scripts by hand every week is the next candidate.
+Every action keeps the existing rules: refused in read-only mode, one named undo entry per model change, listed in the activity pane and reported in `summary`.
 
 ## Now: 0.7, security and delivery
 
