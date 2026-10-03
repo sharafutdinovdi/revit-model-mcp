@@ -168,7 +168,10 @@ public sealed class ActionJobParserTests
     {
         var data = new ScheduleDataResult
         {
-            Columns = ["Door number"], Rows = [["101"]], TotalRows = 2, Truncated = true
+            Columns = ["Door number"],
+            Rows = [["101"]],
+            TotalRows = 2,
+            Truncated = true
         };
         using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
             CommandResponse<ScheduleDataResult>.Ok("schedule-data", data, 1)));

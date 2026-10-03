@@ -255,8 +255,13 @@ internal static class ReadCommandExecutor
         var rows = new List<List<string>>();
         for (var row = dataStart + offset; row <= body.LastRowNumber && rows.Count < maxRows; row++)
             rows.Add(columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList());
-        return new ScheduleDataResult { Columns = columns, Rows = rows, TotalRows = totalRows,
-            Truncated = offset + rows.Count < totalRows };
+        return new ScheduleDataResult
+        {
+            Columns = columns,
+            Rows = rows,
+            TotalRows = totalRows,
+            Truncated = offset + rows.Count < totalRows
+        };
     }
 
     public static void WriteInvalid(
