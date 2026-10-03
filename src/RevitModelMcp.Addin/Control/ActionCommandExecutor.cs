@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
@@ -105,7 +106,7 @@ internal static class ActionCommandExecutor
             response.Error = error;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
-            if (job.Command is "export-nwc" or "open-document" or "close-document" or "save-document" or "sync-document")
+            if (job.Command is "export-nwc" or "export" or "open-document" or "close-document" or "save-document" or "sync-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }
@@ -199,6 +200,176 @@ internal static class ActionCommandExecutor
             dialogsSuppressed.Add(dialog.Message);
     }
 
+    private static ActionResultData ExportFiles(Document document, ActionJobContract action)
+    {
+        if (document.IsFamilyDocument) throw new ArgumentException("File export requires a project document.");
+        var request = action.Export;
+        request.Validate();
+        var folder = request.Folder ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "exports",
+            FileExportJob.FileName(document.Title, "tmp")[..^4], DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ"));
+        var options = request.Options;
+        var selected = new List<View>();
+        void Add(View view)
+        {
+            if (view.IsTemplate || request.Format is "pdf" or "dwg" && !view.CanBePrinted)
+                throw new ArgumentException($"View '{view.Name}' cannot be printed.");
+            if (selected.All(existing => existing.Id != view.Id)) selected.Add(view);
+        }
+        foreach (var reference in request.Views ?? [])
+            Add(ReadCommandReader.FindView(document, reference) ?? throw new ArgumentException($"View '{reference}' was not found."));
+        using var sheetCollector = new FilteredElementCollector(document).OfClass(typeof(ViewSheet));
+        var allSheets = sheetCollector.Cast<ViewSheet>().Where(sheet => !sheet.IsTemplate).ToList();
+        foreach (var reference in request.Sheets ?? [])
+        {
+            var sheet = allSheets.FirstOrDefault(item => item.SheetNumber == reference)
+                ?? allSheets.FirstOrDefault(item => item.Name == reference)
+                ?? ReadCommandReader.FindView(document, reference) as ViewSheet;
+            Add(sheet ?? throw new ArgumentException($"Sheet '{reference}' was not found."));
+        }
+        if (request.SheetSet is not null)
+        {
+            using var sets = new FilteredElementCollector(document).OfClass(typeof(ViewSheetSet));
+            var set = sets.Cast<ViewSheetSet>().FirstOrDefault(item => item.Name == request.SheetSet)
+                ?? throw new ArgumentException($"Sheet set '{request.SheetSet}' was not found.");
+            foreach (View view in set.Views) Add(view);
+        }
+        if (request.AllSheets) foreach (var sheet in allSheets) Add(sheet);
+        if (request.Format == "csv")
+        {
+            if (request.Views is null)
+            {
+                using var schedules = new FilteredElementCollector(document).OfClass(typeof(ViewSchedule));
+                foreach (var schedule in schedules.Cast<ViewSchedule>().Where(item => !item.IsTemplate &&
+                    !item.IsTitleblockRevisionSchedule && !item.IsInternalKeynoteSchedule)) Add(schedule);
+            }
+            if (selected.Any(view => view is not ViewSchedule))
+                throw new ArgumentException("CSV targets must be schedules.");
+        }
+        if (request.Format == "ifc" && selected.Count > 1)
+            throw new ArgumentException("IFC accepts at most one view.");
+        if (request.Format is "pdf" or "dwg" && selected.Count == 0)
+            throw new ArgumentException("No printable targets were resolved.");
+        var extension = request.Format;
+        var planned = request.Format switch
+        {
+            "ifc" => new List<string> { FileExportJob.FileName(options.FileName ?? document.Title, extension) },
+            "pdf" when options.Combine ?? true => [FileExportJob.FileName(options.FileName ?? document.Title, extension)],
+            _ => selected.Select(view => FileExportJob.FileName(
+                view is ViewSheet sheet && options.Naming != "view_name" ? $"{sheet.SheetNumber}_{sheet.Name}" : view.Name,
+                extension)).ToList()
+        };
+        if (planned.Count != planned.Distinct(StringComparer.OrdinalIgnoreCase).Count())
+            throw new ArgumentException("Export targets produce duplicate file names.");
+        if (Directory.Exists(folder) && !request.Overwrite && planned.Any(name => File.Exists(Path.Combine(folder, name))))
+            throw new ArgumentException("An export file already exists; set overwrite=true.");
+        var result = new ActionResultData
+        {
+            Folder = folder,
+            Files = planned.Select(name => new ExportedFile { Name = name }).ToList(),
+            Targets = selected.Select(view => view is ViewSheet sheet ? $"{sheet.SheetNumber}: {sheet.Name}" : view.Name).ToList(),
+            Skipped = [],
+            DryRun = action.DryRun,
+            ElapsedMs = 0,
+            Summary = $"{(action.DryRun ? "Would export" : "Exported")} {planned.Count} {request.Format.ToUpperInvariant()} file(s) from {document.Title}."
+        };
+        if (action.DryRun) return result;
+        Directory.CreateDirectory(folder);
+        var stopwatch = Stopwatch.StartNew();
+        if (request.Format == "pdf")
+        {
+            foreach (var group in (options.Combine ?? true) ? new[] { selected } : selected.Select(view => new List<View> { view }))
+            {
+                var name = planned[(options.Combine ?? true) ? 0 : selected.IndexOf(group[0])];
+                using var pdf = new PDFExportOptions
+                {
+                    Combine = true,
+                    FileName = Path.GetFileNameWithoutExtension(name),
+                    ColorDepth = options.Color switch
+                    {
+                        "grayscale" => ColorDepthType.GrayScale,
+                        "black_line" => ColorDepthType.BlackLine,
+                        _ => ColorDepthType.Color
+                    },
+                    ZoomType = ZoomType.Zoom,
+                    ZoomPercentage = options.ZoomPercent ?? 100,
+                    HideCropBoundaries = options.HideCropBoundaries ?? true,
+                    HideScopeBoxes = options.HideScopeBoxes ?? true
+                };
+                if (!document.Export(folder, group.Select(view => view.Id).ToList(), pdf))
+                    throw new InvalidOperationException($"PDF export failed for '{name}'.");
+            }
+        }
+        else if (request.Format == "dwg")
+        {
+            var setup = options.Setup;
+            using var dwg = setup is null ? new DWGExportOptions() : DWGExportOptions.GetPredefinedOptions(document, setup)
+                ?? throw new ArgumentException($"DWG setup '{setup}' was not found.");
+            dwg.MergedViews = options.MergedViews ?? false;
+            if (options.FileVersion is not null)
+            {
+                if (!Enum.TryParse<ACADVersion>(options.FileVersion, true, out var version) || !Enum.IsDefined(typeof(ACADVersion), version))
+                    throw new ArgumentException("file_version is invalid.");
+                dwg.FileVersion = version;
+            }
+            for (var index = 0; index < selected.Count; index++)
+                if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[index]), [selected[index].Id], dwg))
+                    throw new InvalidOperationException($"DWG export failed for '{planned[index]}'.");
+        }
+        else if (request.Format == "ifc")
+        {
+            using var ifc = new IFCExportOptions
+            {
+                FileVersion = Enum.Parse<IFCVersion>(options.Version ?? "IFC2x3CV2"),
+                FilterViewId = selected.Count == 1 ? selected[0].Id : ElementId.InvalidElementId,
+                ExportBaseQuantities = options.ExportBaseQuantities ?? true,
+                SpaceBoundaryLevel = options.SpaceBoundaries ?? 0,
+                WallAndColumnSplitting = options.SplitWallsByLevel ?? false
+            };
+            using var transaction = new Transaction(document, "MCP IFC export");
+            transaction.Start();
+            try
+            {
+                if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[0]), ifc)) throw new InvalidOperationException("IFC export failed.");
+            }
+            finally { transaction.RollBack(); }
+        }
+        else
+        {
+            for (var index = 0; index < selected.Count; index++)
+            {
+                var schedule = (ViewSchedule)selected[index];
+                var table = schedule.GetTableData();
+                var body = table.GetSectionData(SectionType.Body);
+                var header = table.GetSectionData(SectionType.Header);
+                var lines = new List<string>();
+                var delimiter = options.Delimiter ?? ",";
+                string Record(IEnumerable<string> cells) => string.Join(delimiter, cells.Select(cell => $"\"{cell.Replace("\"", "\"\"")}\""));
+                if (options.Title == true) lines.Add(Record([schedule.Name]));
+                if (options.GroupHeaders == true)
+                    for (var row = header.FirstRowNumber; row < header.LastRowNumber; row++)
+                        lines.Add(Record(Enumerable.Range(0, body.NumberOfColumns).Select(column =>
+                            schedule.GetCellText(SectionType.Header, row, body.FirstColumnNumber + column))));
+                if (options.Headers ?? true)
+                    lines.Add(Record(Enumerable.Range(0, body.NumberOfColumns).Select(column =>
+                        header.NumberOfRows > 0 ? schedule.GetCellText(SectionType.Header, header.LastRowNumber, body.FirstColumnNumber + column) : string.Empty)));
+                for (var row = 0; row < body.NumberOfRows; row++)
+                    lines.Add(Record(Enumerable.Range(0, body.NumberOfColumns).Select(column =>
+                        schedule.GetCellText(SectionType.Body, body.FirstRowNumber + row, body.FirstColumnNumber + column))));
+                File.WriteAllText(Path.Combine(folder, planned[index]), string.Join("\r\n", lines) + "\r\n", new UTF8Encoding(true));
+            }
+        }
+        foreach (var file in result.Files!)
+        {
+            var path = Path.Combine(folder, file.Name);
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+                throw new InvalidOperationException($"Export did not produce '{file.Name}'.");
+            file.SizeBytes = new FileInfo(path).Length;
+        }
+        result.ElapsedMs = stopwatch.ElapsedMilliseconds;
+        return result;
+    }
+
     internal static Document ResolveDocument(UIApplication application, string? reference)
     {
         if (reference is null)
@@ -228,6 +399,7 @@ internal static class ActionCommandExecutor
             exportResult.Summary = BuildSummary(command, action, exportResult, document.Title, null);
             return exportResult;
         }
+        if (command == "export") return ExportFiles(document, action);
         if (command == "align-link-datums")
             return AlignLinkDatums.Execute(document, action.DatumOptions!, action.DryRun, failures, clientName);
         if (command == "set-view-visibility")

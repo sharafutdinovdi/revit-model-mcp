@@ -7,6 +7,50 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    [Arguments("pdf", "A-01_Site.pdf")]
+    [Arguments("dwg", "A-01_Site.dwg")]
+    public async Task Export_FileNamingUsesSheetNumber(string format, string expected)
+    {
+        var name = FileExportJob.FileName("A-01_Site", format);
+        await Assert.That(name).IsEqualTo(expected);
+        await Assert.That(FileExportJob.FileName("CON", format)).IsEqualTo($"_CON.{format}");
+        await Assert.That(FileExportJob.FileName("A/01", format)).IsEqualTo($"A_01.{format}");
+    }
+
+    [Test]
+    [Arguments("""{"command":"export","format":"pdf"}""")]
+    [Arguments("""{"command":"export","format":"csv","sheets":["A1"]}""")]
+    [Arguments("""{"command":"export","format":"ifc","views":["One","Two"]}""")]
+    [Arguments("""{"command":"export","format":"pdf","views":["A"],"options":{"zoom_percent":0}}""")]
+    [Arguments("""{"command":"export","format":"csv","options":{"encoding":"latin-1"}}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"export","format":"ifc"}]}""")]
+    public async Task Export_RejectsInvalidRequests(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Export_ParsesOptionsAndTargets()
+    {
+        var result = ControlJobParser.Parse("""{"command":"export","format":"pdf","sheets":["A1"],"folder":"C:\\out","options":{"combine":false,"color":"grayscale"}}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Export.Sheets).IsEquivalentTo(new[] { "A1" });
+        await Assert.That(result.Action.Export.Options.Combine).IsFalse();
+        await Assert.That(result.Action.Export.Options.Color).IsEqualTo("grayscale");
+    }
+
+    [Test]
+    public async Task ScheduleData_ParsesPagingAndRejectsInvalidLimits()
+    {
+        var result = ControlJobParser.Parse("""{"command":"schedule-data","view":"Doors","limit":25,"offset":10}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ScheduleData);
+        await Assert.That(result.Limit).IsEqualTo(25);
+        await Assert.That(result.Offset).IsEqualTo(10);
+        await Assert.That(ControlJobParser.Parse("""{"command":"schedule-data","view":"Doors","limit":0}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {
         var direct = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Mark","parameterId":"ALL_MODEL_MARK","value":42}""");

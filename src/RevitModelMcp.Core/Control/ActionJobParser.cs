@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -68,6 +68,17 @@ public static class ActionJobParser
                     DivideFileIntoLevels = job.DivideFileIntoLevels ?? true,
                     FindMissingMaterials = job.FindMissingMaterials ?? true,
                     FacetingFactor = job.FacetingFactor ?? 1.0,
+                    Overwrite = job.Overwrite ?? false
+                },
+                Export = new FileExportJob
+                {
+                    Format = job.Format ?? string.Empty,
+                    Views = job.Views,
+                    Sheets = job.Sheets,
+                    SheetSet = job.SheetSet,
+                    AllSheets = job.AllSheets ?? false,
+                    Folder = job.Folder,
+                    Options = job.ExportOptions ?? new FileExportOptions(),
                     Overwrite = job.Overwrite ?? false
                 },
                 Families = job.Families,
@@ -231,6 +242,7 @@ public static class ActionJobParser
                 Require(export.SettingsXml is not null || export.Scope != "selection" || action.ElementIds.Count > 0, "elementIds must be non-empty for scope=selection.");
                 Require(export.Scope != "selection" || action.ElementIds.All(id => id > 0), "Element IDs must be positive.");
             }
+            if (command == "export") action.Export.Validate(trustedNetworkRoots);
             var result = ControlJobParseResult.Create(ControlJobKind.Action, command);
             result.Action = action;
             return result;
@@ -503,6 +515,7 @@ public sealed class ActionJobContract
     public ViewVisibilityOptions? Visibility { get; set; }
     public LinkRemovalOptions? LinkRemoval { get; set; }
     public NwcExportJob Nwc { get; set; } = new();
+    public FileExportJob Export { get; set; } = new();
     public LinkDatumJobOptions? DatumOptions { get; set; }
     public bool DryRun { get; set; }
     public List<ControlJobParseResult> Steps { get; set; } = [];
@@ -530,6 +543,81 @@ public sealed class ActionJobContract
     public List<FamilyEditOperationContract> Operations { get; set; } = [];
     public bool OverwriteParameterValues { get; set; }
     public bool StopOnError { get; set; }
+}
+
+public sealed class FileExportJob
+{
+    public string Format { get; set; } = string.Empty;
+    public List<string>? Views { get; set; }
+    public List<string>? Sheets { get; set; }
+    public string? SheetSet { get; set; }
+    public bool AllSheets { get; set; }
+    public string? Folder { get; set; }
+    public FileExportOptions Options { get; set; } = new();
+    public bool Overwrite { get; set; }
+
+    public void Validate(IReadOnlyCollection<string>? trustedNetworkRoots = null)
+    {
+        if (Format is not ("pdf" or "dwg" or "ifc" or "csv")) throw new ArgumentException("format must be pdf, dwg, ifc or csv.");
+        if (Folder is not null)
+            NwcPathValidator.Validate(Folder.TrimEnd('\\', '/') + "\\export.nwc", trustedNetworkRoots);
+        if (Format is "pdf" or "dwg" && Views is null && Sheets is null && SheetSet is null && !AllSheets)
+            throw new ArgumentException("At least one view, sheet, sheet_set or all_sheets target is required.");
+        if (Format is "ifc" or "csv" && (Sheets is not null || SheetSet is not null || AllSheets))
+            throw new ArgumentException("Sheets are supported only for pdf and dwg.");
+        if (Format == "ifc" && Views is { Count: > 1 }) throw new ArgumentException("IFC accepts at most one view.");
+        if (Views?.Any(string.IsNullOrWhiteSpace) == true || Sheets?.Any(string.IsNullOrWhiteSpace) == true)
+            throw new ArgumentException("Targets must not be blank.");
+        Options.Validate(Format);
+    }
+
+    public static string FileName(string name, string extension)
+    {
+        var safe = new string(name.Select(character => character < 32 || "<>:\"/\\|?*".Contains(character) ? '_' : character).ToArray()).Trim().TrimEnd('.', ' ');
+        if (safe.Length == 0) throw new ArgumentException("Export file name is empty.");
+        var stem = safe.Split('.')[0].ToUpperInvariant();
+        if (stem is "CON" or "PRN" or "AUX" or "NUL" or "COM1" or "LPT1") safe = $"_{safe}";
+        return safe.EndsWith($".{extension}", StringComparison.OrdinalIgnoreCase) ? safe : $"{safe}.{extension}";
+    }
+}
+
+[DataContract]
+public sealed class FileExportOptions
+{
+    [DataMember(Name = "combine")] public bool? Combine { get; set; }
+    [DataMember(Name = "file_name")] public string? FileName { get; set; }
+    [DataMember(Name = "naming")] public string? Naming { get; set; }
+    [DataMember(Name = "color")] public string? Color { get; set; }
+    [DataMember(Name = "zoom_percent")] public int? ZoomPercent { get; set; }
+    [DataMember(Name = "paper")] public string? Paper { get; set; }
+    [DataMember(Name = "hide_crop_boundaries")] public bool? HideCropBoundaries { get; set; }
+    [DataMember(Name = "hide_scope_boxes")] public bool? HideScopeBoxes { get; set; }
+    [DataMember(Name = "setup")] public string? Setup { get; set; }
+    [DataMember(Name = "merged_views")] public bool? MergedViews { get; set; }
+    [DataMember(Name = "file_version")] public string? FileVersion { get; set; }
+    [DataMember(Name = "version")] public string? Version { get; set; }
+    [DataMember(Name = "export_base_quantities")] public bool? ExportBaseQuantities { get; set; }
+    [DataMember(Name = "space_boundaries")] public int? SpaceBoundaries { get; set; }
+    [DataMember(Name = "split_walls_by_level")] public bool? SplitWallsByLevel { get; set; }
+    [DataMember(Name = "delimiter")] public string? Delimiter { get; set; }
+    [DataMember(Name = "headers")] public bool? Headers { get; set; }
+    [DataMember(Name = "title")] public bool? Title { get; set; }
+    [DataMember(Name = "group_headers")] public bool? GroupHeaders { get; set; }
+    [DataMember(Name = "encoding")] public string? Encoding { get; set; }
+
+    public void Validate(string format)
+    {
+        if (format == "pdf" && (Naming is not null and not ("sheet_number_name" or "view_name") ||
+            Color is not null and not ("color" or "grayscale" or "black_line") ||
+            ZoomPercent is < 1 or > 1000 || Paper is not null and not "auto"))
+            throw new ArgumentException("Invalid PDF options.");
+        if (format == "ifc" && (Version is not null and not ("IFC2x3CV2" or "IFC4RV" or "IFC4x3") || SpaceBoundaries is < 0 or > 2))
+            throw new ArgumentException("Invalid IFC options.");
+        if (format == "csv" && (Delimiter is not null && Delimiter.Length != 1 || Encoding is not null && Encoding != "utf-8"))
+            throw new ArgumentException("CSV delimiter must be one character and encoding must be utf-8.");
+        if (FileName is not null && (FileName.Length == 0 || FileName.IndexOfAny(['/', '\\']) >= 0 || FileName == "." || FileName == ".."))
+            throw new ArgumentException("file_name must be a file name, not a path.");
+    }
 }
 
 public sealed class NwcExportJob
@@ -818,6 +906,10 @@ public sealed class ActionResultData
     [DataMember(Name = "visibility", EmitDefaultValue = false)] public ViewVisibilityResult? Visibility { get; set; }
     [DataMember(Name = "linkRemoval", EmitDefaultValue = false)] public LinkRemovalResult? LinkRemoval { get; set; }
     [DataMember(Name = "path", EmitDefaultValue = false)] public string? Path { get; set; }
+    [DataMember(Name = "folder", EmitDefaultValue = false)] public string? Folder { get; set; }
+    [DataMember(Name = "files", EmitDefaultValue = false)] public List<ExportedFile>? Files { get; set; }
+    [DataMember(Name = "targets", EmitDefaultValue = false)] public List<string>? Targets { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public List<string>? Skipped { get; set; }
     [DataMember(Name = "bytes", EmitDefaultValue = false)] public long? Bytes { get; set; }
     [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }
     [DataMember(Name = "elapsedMs", EmitDefaultValue = false)] public long? ElapsedMs { get; set; }
@@ -852,4 +944,11 @@ public sealed class ActionResultData
     [DataMember(Name = "newValue", EmitDefaultValue = false)] public string? NewValue { get; set; }
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }
     [DataMember(Name = "closestFamilies", EmitDefaultValue = false)] public List<string>? ClosestFamilies { get; set; }
+}
+
+[DataContract]
+public sealed class ExportedFile
+{
+    [DataMember(Name = "name")] public string Name { get; set; } = string.Empty;
+    [DataMember(Name = "sizeBytes")] public long SizeBytes { get; set; }
 }

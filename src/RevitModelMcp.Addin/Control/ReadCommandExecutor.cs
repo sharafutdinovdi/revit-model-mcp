@@ -62,7 +62,7 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
-            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot
+            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot or ControlJobKind.ScheduleData
                 ? ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)
                 : application.ActiveUIDocument?.Document
                     ?? throw new InvalidOperationException("No active Revit document.");
@@ -141,6 +141,9 @@ internal static class ReadCommandExecutor
                     else
                         WriteSuccess(output, job.Command, ViewInfoReader.Read(document, infoView), stopwatch);
                     break;
+                case ControlJobKind.ScheduleData:
+                    WriteSuccess(output, job.Command, ReadSchedule(document, job.View!, job.Offset, job.Limit), stopwatch);
+                    break;
                 case ControlJobKind.ElementDetails:
                     ExecuteElementDetails(output, document, job, stopwatch);
                     break;
@@ -194,6 +197,26 @@ internal static class ReadCommandExecutor
         {
             SkippedReadDiagnostics.Current = null;
         }
+    }
+
+    internal static object ReadSchedule(Document document, string reference, int offset, int maxRows)
+    {
+        var view = ReadCommandReader.FindView(document, reference);
+        if (view is not ViewSchedule schedule || schedule.IsTemplate)
+            throw new ArgumentException($"'{reference}' is not a schedule.");
+        var table = schedule.GetTableData();
+        var body = table.GetSectionData(SectionType.Body);
+        var header = table.GetSectionData(SectionType.Header);
+        var columnCount = body.NumberOfColumns;
+        var columns = Enumerable.Range(0, columnCount)
+            .Select(column => header.NumberOfRows > 0 ? schedule.GetCellText(SectionType.Header, header.LastRowNumber, body.FirstColumnNumber + column) : string.Empty)
+            .ToList();
+        var totalRows = body.NumberOfRows;
+        var rows = Enumerable.Range(offset, Math.Max(0, Math.Min(maxRows, totalRows - offset)))
+            .Select(row => Enumerable.Range(0, columnCount)
+                .Select(column => schedule.GetCellText(SectionType.Body, body.FirstRowNumber + row, body.FirstColumnNumber + column))
+                .ToList()).ToList();
+        return new { columns, rows, totalRows, truncated = offset + rows.Count < totalRows };
     }
 
     public static void WriteInvalid(

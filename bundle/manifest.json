@@ -118,6 +118,10 @@
       "description": "Read element categories and counts for a selected view.\n\nReturns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].\nPrefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
+      "name": "revit_schedule_data",
+      "description": "Read displayed schedule header and body cell text, with paging.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+    },
+    {
       "name": "revit_export_view",
       "description": "Export a selected view to PNG when numbers do not explain geometry.\n\nReturns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.\nThe export does not change the active view or write to the model; use it to inspect outlines, zones and room boundaries.\nA missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.\nUses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
@@ -212,6 +216,10 @@
     {
       "name": "revit_delete",
       "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+    },
+    {
+      "name": "revit_export",
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names."
     },
     {
       "name": "revit_export_nwc",
