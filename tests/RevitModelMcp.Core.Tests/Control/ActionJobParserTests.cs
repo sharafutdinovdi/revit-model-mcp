@@ -231,24 +231,37 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
-    public async Task DocumentReferenceMatcher_DistinguishesCopiesWithTheSameNameAndPath()
+    public async Task DocumentIdentityMatcher_MatchesWrappersButDistinguishesCopies()
     {
-        var original = new DocumentIdentity("Night test project", "C:/Models/Night test project.rvt");
-        var copy = new DocumentIdentity(original.Title, original.Path);
-        var structural = new DocumentIdentity("Structural", "C:/Models/Structural.rvt");
+        var original = new DocumentIdentity(Guid.NewGuid(), "Night test project", "C:/Models/Night test project.rvt");
+        var wrapper = new DocumentIdentity(original.Id, original.Title, original.Path);
+        var copy = new DocumentIdentity(Guid.NewGuid(), original.Title, original.Path);
+        var structural = new DocumentIdentity(Guid.NewGuid(), "Structural", "C:/Models/Structural.rvt");
         var before = new[] { structural };
-        var opened = new Dictionary<DocumentIdentity, bool>(ReferenceIdentityComparer<DocumentIdentity>.Instance)
+        var comparer = new DocumentIdentityComparer<DocumentIdentity>((first, second) => first.Equals(second));
+        var opened = new Dictionary<DocumentIdentity, bool>(comparer)
         {
             [original] = true
         };
 
-        await Assert.That(DocumentReferenceMatcher.Contains(new[] { original, structural }, copy)).IsFalse();
+        await Assert.That(DocumentIdentityMatcher.Contains(new[] { original, structural }, wrapper, comparer)).IsTrue();
+        await Assert.That(DocumentIdentityMatcher.Contains(new[] { original, structural }, copy, comparer)).IsFalse();
+        await Assert.That(opened.ContainsKey(wrapper)).IsTrue();
         await Assert.That(opened.ContainsKey(copy)).IsFalse();
-        await Assert.That(DocumentReferenceMatcher.AllPresent(before, new[] { original, copy })).IsFalse();
-        await Assert.That(DocumentReferenceMatcher.AllPresent(before, new[] { structural, copy })).IsTrue();
+        await Assert.That(DocumentIdentityMatcher.AllPresent(new[] { original }, new[] { wrapper }, comparer)).IsTrue();
+        await Assert.That(DocumentIdentityMatcher.AllPresent(before, new[] { original, copy }, comparer)).IsFalse();
+        await Assert.That(DocumentIdentityMatcher.AllPresent(before, new[] { structural, copy }, comparer)).IsTrue();
+        await Assert.That(opened.Remove(wrapper)).IsTrue();
     }
 
-    private sealed record DocumentIdentity(string Title, string Path);
+    private sealed class DocumentIdentity(Guid id, string title, string path)
+    {
+        public Guid Id { get; } = id;
+        public string Title { get; } = title;
+        public string Path { get; } = path;
+
+        public bool Equals(DocumentIdentity? other) => other is not null && Id == other.Id;
+    }
 
     [Test]
     public async Task OpenWorksetSelector_MatchesWildcardsAndReportsUnmatchedPatterns()
