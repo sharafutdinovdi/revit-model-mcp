@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -434,22 +433,20 @@ public static class DocumentPathValidator
     }
 }
 
-public static class DocumentReferenceMatcher
+public static class DocumentIdentityMatcher
 {
-    public static bool Contains<T>(IEnumerable<T> documents, T target) where T : class =>
-        documents.Any(document => ReferenceEquals(document, target));
+    public static bool Contains<T>(IEnumerable<T> documents, T target, IEqualityComparer<T> comparer) where T : class =>
+        documents.Any(document => comparer.Equals(document, target));
 
-    public static bool AllPresent<T>(IEnumerable<T> before, IReadOnlyCollection<T> after) where T : class =>
-        before.All(document => Contains(after, document));
+    public static bool AllPresent<T>(IEnumerable<T> before, IReadOnlyCollection<T> after, IEqualityComparer<T> comparer) where T : class =>
+        before.All(document => Contains(after, document, comparer));
 }
 
-public sealed class ReferenceIdentityComparer<T> : IEqualityComparer<T> where T : class
+public sealed class DocumentIdentityComparer<T>(Func<T, T, bool> equals) : IEqualityComparer<T> where T : class
 {
-    public static ReferenceIdentityComparer<T> Instance { get; } = new();
+    public bool Equals(T? first, T? second) => first is null ? second is null : second is not null && equals(first, second);
 
-    public bool Equals(T? first, T? second) => ReferenceEquals(first, second);
-
-    public int GetHashCode(T value) => RuntimeHelpers.GetHashCode(value);
+    public int GetHashCode(T value) => 0;
 }
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
