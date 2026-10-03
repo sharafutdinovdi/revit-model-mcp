@@ -49,7 +49,9 @@ public sealed class ActionJobParserTests
         await Assert.That(CodeResultLimiter.ToJson(limited).Contains("System.Object[]")).IsTrue();
         await Assert.That(CodeResultLimiter.ToJson(new Dictionary<string, object?>
         {
-            ["escaped"] = "a\"b\n", ["number"] = 1.5, ["finite"] = double.NaN
+            ["escaped"] = "a\"b\n",
+            ["number"] = 1.5,
+            ["finite"] = double.NaN
         })).IsEqualTo("{\"escaped\":\"a\\\"b\\n\",\"number\":1.5,\"finite\":null}");
     }
 

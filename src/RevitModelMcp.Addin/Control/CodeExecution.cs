@@ -64,7 +64,9 @@ internal static class CodeExecution
             DryRun = action.DryRun,
             Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "execute-code", DocumentTitle = documentTitle, DryRun = action.DryRun
+                Command = "execute-code",
+                DocumentTitle = documentTitle,
+                DryRun = action.DryRun
             })
         };
         if (action.TransactionMode == "none")
@@ -88,7 +90,9 @@ internal static class CodeExecution
                 result.CodeError = "compilation failed";
                 result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
                 {
-                    Command = "execute-code", DocumentTitle = documentTitle, CodeFailure = CodeFailureKind.Compilation
+                    Command = "execute-code",
+                    DocumentTitle = documentTitle,
+                    CodeFailure = CodeFailureKind.Compilation
                 });
                 result.Diagnostics = emitted.Diagnostics.Where(item => item.Severity == DiagnosticSeverity.Error)
                     .Select(item =>
@@ -96,8 +100,10 @@ internal static class CodeExecution
                         var position = item.Location.GetMappedLineSpan().StartLinePosition;
                         return new CodeDiagnostic
                         {
-                            Line = Math.Max(1, position.Line + 1), Column = Math.Max(1, position.Character + 1),
-                            Id = item.Id, Message = item.GetMessage()
+                            Line = Math.Max(1, position.Line + 1),
+                            Column = Math.Max(1, position.Character + 1),
+                            Id = item.Id,
+                            Message = item.GetMessage()
                         };
                     }).ToList();
                 result.ElapsedMs = stopwatch.ElapsedMilliseconds;
@@ -185,7 +191,9 @@ internal static class CodeExecution
             result.CodeError = exception.GetType().Name + ": " + exception.Message;
             result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "execute-code", DocumentTitle = documentTitle, CodeFailure = CodeFailureKind.Execution
+                Command = "execute-code",
+                DocumentTitle = documentTitle,
+                CodeFailure = CodeFailureKind.Execution
             });
             result.ExceptionType = exception.GetType().FullName;
             result.StackTrace = (exception.StackTrace ?? string.Empty).Split(['\n'])
@@ -229,12 +237,16 @@ internal static class CodeExecution
         ElementId id => GetId(id),
         Element element => new Dictionary<string, object?>
         {
-            ["id"] = GetId(element.Id), ["uniqueId"] = element.UniqueId,
-            ["category"] = element.Category?.Name, ["name"] = element.Name
+            ["id"] = GetId(element.Id),
+            ["uniqueId"] = element.UniqueId,
+            ["category"] = element.Category?.Name,
+            ["name"] = element.Name
         },
         XYZ point => new Dictionary<string, object?>
         {
-            ["x_mm"] = point.X * 304.8, ["y_mm"] = point.Y * 304.8, ["z_mm"] = point.Z * 304.8
+            ["x_mm"] = point.X * 304.8,
+            ["y_mm"] = point.Y * 304.8,
+            ["z_mm"] = point.Z * 304.8
         },
         _ => value
     };
