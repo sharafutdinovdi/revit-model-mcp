@@ -35,7 +35,7 @@ public sealed class Application : ExternalApplication
         "view-info", "view-elements", "element-details", "view-warnings", "export-view",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",
         "list-relations", "family-audit", "nwc-settings-check", "compare-link-datums",
-        "select", "show", "isolate", "move", "place-family", "create-wall",
+        "select", "show", "isolate", "move", "rotate", "copy", "mirror", "change-type", "update-parameters", "place-family", "create-wall",
         "set-parameter", "delete", "batch", "export-nwc", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "set-view-visibility", "remove-links", "undo-last", "views-dump",

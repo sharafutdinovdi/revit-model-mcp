@@ -26,6 +26,11 @@ ACTION_TOOLS = {
     "revit_show",
     "revit_isolate",
     "revit_move",
+    "revit_rotate",
+    "revit_copy",
+    "revit_mirror",
+    "revit_change_type",
+    "revit_update_parameters",
     "revit_place_family",
     "revit_create_wall",
     "revit_set_parameter",
@@ -449,6 +454,41 @@ def test_action_response_timeout_reaches_channel(response_timeout_s):
             {"elementIds": [1], "dxMm": 304.8, "dyMm": -50.0, "dzMm": 0},
         ),
         (
+            "revit_rotate",
+            {"element_ids": [1], "angle_deg": 45},
+            {"elementIds": [1], "angleDeg": 45.0, "centerMm": None},
+        ),
+        (
+            "revit_copy",
+            {"element_ids": [1], "dx_mm": 100, "dy_mm": 0, "count": 2},
+            {"elementIds": [1], "dxMm": 100.0, "dyMm": 0.0, "dzMm": 0, "count": 2},
+        ),
+        (
+            "revit_mirror",
+            {"element_ids": [1], "axis": "x", "point_mm": [0, 0]},
+            {"elementIds": [1], "axis": "x", "pointMm": [0.0, 0.0], "copy": True},
+        ),
+        (
+            "revit_change_type",
+            {"element_ids": [1], "type_name": "Basic"},
+            {"elementIds": [1], "typeName": "Basic", "family": None},
+        ),
+        (
+            "revit_update_parameters",
+            {
+                "filters": {"categories": ["Walls"], "level": "L1"},
+                "parameter": "Mark",
+                "value": "A",
+            },
+            {
+                "queryFilters": {"categories": ["Walls"], "level": "L1"},
+                "parameter": "Mark",
+                "value": "A",
+                "parameterId": None,
+                "maxElements": 5000,
+            },
+        ),
+        (
             "revit_place_family",
             {"family": "Desk", "type_name": None, "x_mm": 100, "y_mm": 200, "level": "Level 1"},
             {
@@ -528,6 +568,14 @@ def test_action_arguments_reach_channel_in_millimeters(
         ("revit_isolate", {"element_ids": []}),
         ("revit_move", {"element_ids": [1], "dx_mm": math.inf, "dy_mm": 0}),
         ("revit_move", {"element_ids": [1], "dx_mm": 0}),
+        ("revit_rotate", {"element_ids": [1], "angle_deg": math.inf}),
+        ("revit_copy", {"element_ids": [1], "dx_mm": 1, "dy_mm": 0, "count": 101}),
+        ("revit_mirror", {"element_ids": [1], "axis": "z", "point_mm": [0, 0]}),
+        ("revit_change_type", {"element_ids": [1], "type_name": ""}),
+        (
+            "revit_update_parameters",
+            {"filters": {}, "parameter": "Mark", "value": "A", "max_elements": 20001},
+        ),
         (
             "revit_create_wall",
             {"start_mm": [0], "end_mm": [1, 2], "level": "Level 1", "wall_type": None},
@@ -804,6 +852,49 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
     assert tool.annotations.read_only_hint is False
     assert tool.annotations.destructive_hint is True
     assert tool.annotations.idempotent_hint is False
+
+
+def test_update_parameters_batch_uses_query_filter_names():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {
+                        "action": "update_parameters",
+                        "args": {
+                            "filters": {
+                                "categories": ["Walls"],
+                                "level": "Level 1",
+                                "type_name": "Basic",
+                                "area_scheme": "Gross",
+                                "parameter_filters": [
+                                    {"parameter": "Mark", "operator": "not_empty"}
+                                ],
+                            },
+                            "parameter": "Comments",
+                            "value": "Reviewed",
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    step = execute.await_args.args[0].payload["steps"][0]
+    assert step["command"] == "update-parameters"
+    assert step["queryFilters"] == {
+        "categories": ["Walls"],
+        "level": "Level 1",
+        "type": "Basic",
+        "areaScheme": "Gross",
+        "parameterFilters": [{"parameter": "Mark", "operator": "not_empty"}],
+    }
+    assert step["parameter"] == "Comments"
+    assert step["value"] == "Reviewed"
+    assert step["maxElements"] == 5000
 
 
 def test_in_process_action_titles():

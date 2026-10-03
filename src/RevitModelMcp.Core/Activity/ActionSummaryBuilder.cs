@@ -41,6 +41,11 @@ public static class ActionSummaryBuilder
                 ? $"Reset temporary isolation in {doc}."
                 : $"Isolated {Plural(context.Count, "element")} in {doc}.",
             "move" => $"{(context.DryRun ? "Would move" : "Moved")} {Plural(context.Count, "element")} in {doc}.",
+            "rotate" => $"{(context.DryRun ? "Would rotate" : "Rotated")} {Plural(context.Count, "element")} in {doc}.",
+            "copy" => $"{(context.DryRun ? "Would copy" : "Copied")} {Plural(context.Count, "element")} in {doc}.",
+            "mirror" => $"{(context.DryRun ? "Would mirror" : "Mirrored")} {Plural(context.Count, "element")} in {doc}.",
+            "change-type" => $"{(context.DryRun ? "Would change" : "Changed")} the type of {Plural(context.Count, "element")} in {doc}.",
+            "update-parameters" => $"{(context.DryRun ? "Would update" : "Updated")} parameter '{context.Parameter}' on {Plural(context.Count, "element")} in {doc}.",
             "delete" => $"{(context.DryRun ? "Would delete" : "Deleted")} {Plural(context.Count, "element")} in {doc}.",
             "place-family" => $"{(context.DryRun ? "Would place" : "Placed")} {FamilyLabel(context)} in {doc}.",
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
