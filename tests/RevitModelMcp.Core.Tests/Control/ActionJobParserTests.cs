@@ -18,6 +18,32 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("COM2")]
+    [Arguments("COM9.report")]
+    [Arguments("LPT5")]
+    [Arguments("LPT9.report")]
+    public async Task Export_FileNamingPrefixesReservedDeviceNames(string name)
+    {
+        await Assert.That(FileExportJob.FileName(name, "csv")).IsEqualTo($"_{name}.csv");
+    }
+
+    [Test]
+    public async Task ScheduleData_SerializesNamedResult()
+    {
+        var data = new ScheduleDataResult
+        {
+            Columns = ["Door number"], Rows = [["101"]], TotalRows = 2, Truncated = true
+        };
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ScheduleDataResult>.Ok("schedule-data", data, 1)));
+        var result = json.RootElement.GetProperty("data");
+        await Assert.That(result.GetProperty("columns")[0].GetString()).IsEqualTo("Door number");
+        await Assert.That(result.GetProperty("rows")[0][0].GetString()).IsEqualTo("101");
+        await Assert.That(result.GetProperty("totalRows").GetInt32()).IsEqualTo(2);
+        await Assert.That(result.GetProperty("truncated").GetBoolean()).IsTrue();
+    }
+
+    [Test]
     [Arguments("""{"command":"export","format":"pdf"}""")]
     [Arguments("""{"command":"export","format":"csv","sheets":["A1"]}""")]
     [Arguments("""{"command":"export","format":"ifc","views":["One","Two"]}""")]

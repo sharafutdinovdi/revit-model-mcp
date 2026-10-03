@@ -199,24 +199,52 @@ internal static class ReadCommandExecutor
         }
     }
 
-    internal static object ReadSchedule(Document document, string reference, int offset, int maxRows)
+    internal static ScheduleDataResult ReadSchedule(Document document, string reference, int offset, int maxRows)
     {
         var view = ReadCommandReader.FindView(document, reference);
         if (view is not ViewSchedule schedule || schedule.IsTemplate)
             throw new ArgumentException($"'{reference}' is not a schedule.");
         var table = schedule.GetTableData();
         var body = table.GetSectionData(SectionType.Body);
-        var header = table.GetSectionData(SectionType.Header);
-        var columnCount = body.NumberOfColumns;
-        var columns = Enumerable.Range(0, columnCount)
-            .Select(column => header.NumberOfRows > 0 ? schedule.GetCellText(SectionType.Header, header.LastRowNumber, body.FirstColumnNumber + column) : string.Empty)
-            .ToList();
-        var totalRows = body.NumberOfRows;
-        var rows = Enumerable.Range(offset, Math.Max(0, Math.Min(maxRows, totalRows - offset)))
-            .Select(row => Enumerable.Range(0, columnCount)
-                .Select(column => schedule.GetCellText(SectionType.Body, body.FirstRowNumber + row, body.FirstColumnNumber + column))
-                .ToList()).ToList();
-        return new { columns, rows, totalRows, truncated = offset + rows.Count < totalRows };
+        var visibleFields = schedule.Definition.GetFieldOrder()
+            .Select(schedule.Definition.GetField).Where(field => !field.IsHidden).ToList();
+        var columnNumbers = new List<int>();
+        for (var column = body.FirstColumnNumber; column <= body.LastColumnNumber; column++)
+        {
+            try
+            {
+                if (body.FirstRowNumber <= body.LastRowNumber)
+                    schedule.GetCellText(SectionType.Body, body.FirstRowNumber, column);
+                columnNumbers.Add(column);
+            }
+            catch (Autodesk.Revit.Exceptions.ArgumentException) { }
+        }
+        if (columnNumbers.Count > visibleFields.Count)
+            columnNumbers = columnNumbers.Take(visibleFields.Count).ToList();
+
+        var dataStart = body.FirstRowNumber;
+        var columns = visibleFields.Take(columnNumbers.Count).Select(field => field.ColumnHeading).ToList();
+        if (schedule.Definition.ShowHeaders && body.FirstRowNumber <= body.LastRowNumber)
+        {
+            dataStart++;
+            for (var row = body.FirstRowNumber; row <= body.LastRowNumber; row++)
+            {
+                var headings = columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList();
+                if (row == body.FirstRowNumber) columns = headings;
+                if (headings.SequenceEqual(visibleFields.Take(columnNumbers.Count).Select(field => field.ColumnHeading)))
+                {
+                    dataStart = row + 1;
+                    columns = headings;
+                    break;
+                }
+            }
+        }
+        var totalRows = Math.Max(0, body.LastRowNumber - dataStart + 1);
+        var rows = new List<List<string>>();
+        for (var row = dataStart + offset; row <= body.LastRowNumber && rows.Count < maxRows; row++)
+            rows.Add(columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList());
+        return new ScheduleDataResult { Columns = columns, Rows = rows, TotalRows = totalRows,
+            Truncated = offset + rows.Count < totalRows };
     }
 
     public static void WriteInvalid(

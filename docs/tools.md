@@ -27,7 +27,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
 | `revit_export_view` | `view`, `pixel_size=1600`, `save_to=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
-| `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read displayed schedule columns and body rows with `totalRows` and `truncated`. Rejects non-schedules. |
+| `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
 | `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID. |
 | `revit_view_warnings` | `view` | Read warnings involving elements in a view. |

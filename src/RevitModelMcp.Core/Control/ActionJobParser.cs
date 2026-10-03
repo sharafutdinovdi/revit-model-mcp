@@ -576,7 +576,7 @@ public sealed class FileExportJob
         var safe = new string(name.Select(character => character < 32 || "<>:\"/\\|?*".Contains(character) ? '_' : character).ToArray()).Trim().TrimEnd('.', ' ');
         if (safe.Length == 0) throw new ArgumentException("Export file name is empty.");
         var stem = safe.Split('.')[0].ToUpperInvariant();
-        if (stem is "CON" or "PRN" or "AUX" or "NUL" or "COM1" or "LPT1") safe = $"_{safe}";
+        if (NwcPathValidator.IsReservedDeviceName(stem)) safe = $"_{safe}";
         return safe.EndsWith($".{extension}", StringComparison.OrdinalIgnoreCase) ? safe : $"{safe}.{extension}";
     }
 }

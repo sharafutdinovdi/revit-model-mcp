@@ -173,6 +173,15 @@ public sealed record JobCancellationInfo
     [DataMember(Name = "message")] public string Message { get; init; } = string.Empty;
 }
 
+[DataContract]
+public sealed record ScheduleDataResult
+{
+    [DataMember(Name = "columns")] public List<string> Columns { get; init; } = [];
+    [DataMember(Name = "rows")] public List<List<string>> Rows { get; init; } = [];
+    [DataMember(Name = "totalRows")] public int TotalRows { get; init; }
+    [DataMember(Name = "truncated")] public bool Truncated { get; init; }
+}
+
 public static class ReadCommandResponseFactory
 {
     public static CommandResponse<string> Ping(long elapsedMs)

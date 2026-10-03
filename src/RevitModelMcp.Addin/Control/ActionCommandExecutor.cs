@@ -339,24 +339,21 @@ internal static class ActionCommandExecutor
             for (var index = 0; index < selected.Count; index++)
             {
                 var schedule = (ViewSchedule)selected[index];
-                var table = schedule.GetTableData();
-                var body = table.GetSectionData(SectionType.Body);
-                var header = table.GetSectionData(SectionType.Header);
-                var lines = new List<string>();
-                var delimiter = options.Delimiter ?? ",";
-                string Record(IEnumerable<string> cells) => string.Join(delimiter, cells.Select(cell => $"\"{cell.Replace("\"", "\"\"")}\""));
-                if (options.Title == true) lines.Add(Record([schedule.Name]));
-                if (options.GroupHeaders == true)
-                    for (var row = header.FirstRowNumber; row < header.LastRowNumber; row++)
-                        lines.Add(Record(Enumerable.Range(0, body.NumberOfColumns).Select(column =>
-                            schedule.GetCellText(SectionType.Header, row, body.FirstColumnNumber + column))));
-                if (options.Headers ?? true)
-                    lines.Add(Record(Enumerable.Range(0, body.NumberOfColumns).Select(column =>
-                        header.NumberOfRows > 0 ? schedule.GetCellText(SectionType.Header, header.LastRowNumber, body.FirstColumnNumber + column) : string.Empty)));
-                for (var row = 0; row < body.NumberOfRows; row++)
-                    lines.Add(Record(Enumerable.Range(0, body.NumberOfColumns).Select(column =>
-                        schedule.GetCellText(SectionType.Body, body.FirstRowNumber + row, body.FirstColumnNumber + column))));
-                File.WriteAllText(Path.Combine(folder, planned[index]), string.Join("\r\n", lines) + "\r\n", new UTF8Encoding(true));
+                using var csvOptions = new ViewScheduleExportOptions
+                {
+                    FieldDelimiter = options.Delimiter ?? ",",
+                    TextQualifier = ExportTextQualifier.DoubleQuote,
+                    HeadersFootersBlanks = options.GroupHeaders ?? false,
+                    Title = options.Title ?? false,
+                    ColumnHeaders = options.Headers == false ? ExportColumnHeaders.None :
+                        options.GroupHeaders == true ? ExportColumnHeaders.MultipleRows : ExportColumnHeaders.OneRow
+                };
+                schedule.Export(folder, planned[index], csvOptions);
+                var path = Path.Combine(folder, planned[index]);
+                using var reader = new StreamReader(path, Encoding.Default, true);
+                var contents = reader.ReadToEnd();
+                reader.Close();
+                File.WriteAllText(path, contents, new UTF8Encoding(true));
             }
         }
         foreach (var file in result.Files!)

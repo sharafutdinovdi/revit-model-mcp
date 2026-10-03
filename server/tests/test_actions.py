@@ -274,6 +274,14 @@ def test_response_message_paths_are_unchanged_when_redaction_is_off():
         assert redact_model_paths(response) is response
 
 
+def test_export_folder_is_redacted_when_enabled():
+    response = {"data": {"folder": r"C:\Models\exports\2026", "files": [{"name": "Doors.csv"}]}}
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths(response) == {
+            "data": {"folder": "2026", "files": [{"name": "Doors.csv"}]}
+        }
+
+
 def test_nwc_export_defaults_and_options_reach_channel():
     import asyncio
 

@@ -205,7 +205,8 @@ def redact_model_paths(value: Any) -> Any:
         if isinstance(item, dict):
             return {
                 key: PureWindowsPath(nested).name
-                if key in {"documentPath", "path", "centralPath"} and isinstance(nested, str)
+                if key in {"documentPath", "path", "centralPath", "folder"}
+                and isinstance(nested, str)
                 else scrub(nested, key in _TEXT_FIELDS)
                 for key, nested in item.items()
             }
