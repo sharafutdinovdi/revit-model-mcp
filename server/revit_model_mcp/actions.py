@@ -193,7 +193,16 @@ _WINDOWS_PATH = re.compile(
     r"(?:[^\\/\s\"'`,;:!?()<>|]+(?: [^\\/\s\"'`,;:!?()<>|]+)*?\.[A-Za-z0-9]{1,10}\b"
     r"|[^\\/\s\"'`,;:!?()<>|]*[^\\/\s\"'`,;:!?()<>|.])"
 )
-_TEXT_FIELDS = {"confirmationText", "summary", "error", "message", "warning", "warnings", "reason"}
+_TEXT_FIELDS = {
+    "confirmationText",
+    "summary",
+    "error",
+    "message",
+    "warning",
+    "warnings",
+    "reason",
+    "stackTrace",
+}
 
 
 def redact_model_paths(value: Any) -> Any:
@@ -308,6 +317,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_set_view_visibility": "Set View Visibility",
             "revit_remove_links": "Remove Links",
             "revit_undo_last": "Undo Last Action",
+            "revit_execute_code": "Execute C# Code",
         }[function.__name__]
         return mcp.tool(
             title=title,
@@ -469,6 +479,31 @@ def register_actions(mcp, execute, host_provider) -> None:
             includeImportedCad=include_imported_cad,
             dryRun=dry_run,
             document=document,
+        )
+
+    @action
+    async def revit_execute_code(
+        code: Annotated[str, Field(min_length=1, max_length=200000)],
+        transaction: Literal["auto", "none"] = "auto",
+        document: Document = None,
+        dry_run: bool = False,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+    ) -> dict[str, Any]:
+        """Compile and run C# against the live Revit API on the Revit thread.
+
+        Use a method body or a public static Script class with Execute(ScriptContext ctx).
+        Auto mode owns one transaction and undo entry. None mode allows document lifecycle
+        calls and user-owned transactions; dry_run is available only in auto mode.
+        """
+        if transaction == "none" and dry_run:
+            raise ToolError("dry_run requires transaction='auto'.")
+        return await send(
+            "execute-code",
+            code=code,
+            transaction=transaction,
+            document=document,
+            dryRun=dry_run,
+            response_timeout_s=response_timeout_s,
         )
 
     @action

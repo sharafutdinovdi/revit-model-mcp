@@ -138,6 +138,10 @@ jobs:
             foreach ($year in '22', '26', '27') {
               $manifest = @($manifests | Where-Object { $_.Directory.Name -eq "20$year" })
               if ($manifest.Count -ne 1) { throw "Missing or duplicate R$year manifest in MSI" }
+              [xml]$manifestXml = Get-Content -LiteralPath $manifest[0].FullName
+              if (($year -in '26', '27') -ne ($null -ne $manifestXml.SelectSingleNode('/RevitAddIns/ManifestSettings'))) {
+                throw "Wrong ManifestSettings in R$year MSI manifest"
+              }
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year assembly in MSI" }
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.Updater.exe")) { throw "Missing R$year updater in MSI" }
               if (!(Test-Path "$($manifest[0].DirectoryName)/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe")) { throw "Missing R$year batch supervisor in MSI" }
@@ -333,8 +337,9 @@ jobs:
           foreach ($year in '22', '26', '27') {
             $stage = "artifacts/addin-R$year"
             New-Item -ItemType Directory -Force "$stage/RevitModelMcp" | Out-Null
-            Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/*" "$stage/RevitModelMcp" -Recurse
-            Copy-Item src/RevitModelMcp.Addin/RevitModelMcp.addin, LICENSE, THIRD-PARTY-NOTICES.md $stage
+            Get-ChildItem "src/RevitModelMcp.Addin/bin/Release.R$year" |
+              Where-Object Name -ne 'publish' | Copy-Item -Destination "$stage/RevitModelMcp" -Recurse
+            Copy-Item "src/RevitModelMcp.Addin/bin/Release.R$year/publish/RevitModelMcp.addin", LICENSE, THIRD-PARTY-NOTICES.md $stage
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.dll")) { throw "Missing R$year add-in" }
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.Updater.exe")) { throw "Missing R$year updater" }
             if (!(Test-Path "$stage/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe")) { throw "Missing R$year batch supervisor" }

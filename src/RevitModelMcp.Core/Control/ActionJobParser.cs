@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -92,6 +92,14 @@ public static class ActionJobParser
                 SaveLocalAfter = job.SaveLocalAfter ?? true,
                 ConfirmToken = job.ConfirmToken
             };
+            if (command == "execute-code")
+            {
+                Require(job.Code is { Length: > 0 and <= 200000 }, "code must contain 1 to 200000 characters.");
+                action.Code = job.Code;
+                action.TransactionMode = job.Transaction ?? "auto";
+                Require(action.TransactionMode is "auto" or "none", "transaction must be auto or none.");
+                Require(action.TransactionMode != "none" || !action.DryRun, "dry_run requires transaction=auto.");
+            }
             if (command == "open-document")
             {
                 DocumentPathValidator.Validate(action.DocumentPath, "path", trustedNetworkRoots);
@@ -483,6 +491,8 @@ public static class DocumentConfirmationBinding
 
 public sealed class ActionJobContract
 {
+    public string? Code { get; set; }
+    public string TransactionMode { get; set; } = "auto";
     public string? Document { get; set; }
     public string? DocumentPath { get; set; }
     public string Mode { get; set; } = "detached";
@@ -695,6 +705,8 @@ public sealed class LinkRemovalResult
 
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "code")] public string? Code { get; set; }
+    [DataMember(Name = "transaction")] public string? Transaction { get; set; }
     [DataMember(Name = "document")] public string? Document { get; set; }
     [DataMember(Name = "mode")] public string? Mode { get; set; }
     [DataMember(Name = "worksets")] public string? Worksets { get; set; }
@@ -803,6 +815,12 @@ public sealed class SharedParameterSpec
 [DataContract]
 public sealed class ActionResultData
 {
+    [IgnoreDataMember] public string? CodeError { get; set; }
+    [IgnoreDataMember] public object? ReturnValue { get; set; }
+    [DataMember(Name = "log", EmitDefaultValue = false)] public List<string>? Log { get; set; }
+    [DataMember(Name = "diagnostics", EmitDefaultValue = false)] public List<CodeDiagnostic>? Diagnostics { get; set; }
+    [DataMember(Name = "exceptionType", EmitDefaultValue = false)] public string? ExceptionType { get; set; }
+    [DataMember(Name = "stackTrace", EmitDefaultValue = false)] public List<string>? StackTrace { get; set; }
     [DataMember(Name = "title", EmitDefaultValue = false)] public string? Title { get; set; }
     [DataMember(Name = "isWorkshared", EmitDefaultValue = false)] public bool? IsWorkshared { get; set; }
     [DataMember(Name = "isDetached", EmitDefaultValue = false)] public bool? IsDetached { get; set; }

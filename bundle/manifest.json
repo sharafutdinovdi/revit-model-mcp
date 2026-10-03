@@ -174,6 +174,10 @@
       "description": "Delete selected link types and their instances; preview with dry_run."
     },
     {
+      "name": "revit_execute_code",
+      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode."
+    },
+    {
       "name": "revit_undo_last",
       "description": "Undo the last MCP action in Revit, through Revit's own undo command.\n\nAllowed only when the target document is active, no command is pending in Revit, and\nRevit's last undo entry is still the one this session recorded. Otherwise the action\nresult carries a clear refusal reason instead of running.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },

@@ -42,9 +42,10 @@ internal sealed class CommandResponseFileWriter
             }
             CommandResponseJsonFile.Write(_path, response);
             var outcome = response.Success ? "success" : response.Partial ? "partial" : "error";
+            var loggedMessage = response.Command == "execute-code" ? "[omitted]" : response.Message ?? string.Empty;
             PluginLog.Info(
                 $"Response written. Command='{response.Command}'. Outcome='{outcome}'. " +
-                $"ElapsedMs={response.ElapsedMs}. Path='{_path}'. Message='{response.Message ?? string.Empty}'.");
+                $"ElapsedMs={response.ElapsedMs}. Path='{_path}'. Message='{loggedMessage}'.");
         }
         catch (Exception exception)
         {

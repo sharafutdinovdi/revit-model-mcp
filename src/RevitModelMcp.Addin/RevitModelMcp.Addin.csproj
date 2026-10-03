@@ -6,9 +6,10 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <DeployAddin>true</DeployAddin>
+    <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
     <IsRepackable Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</IsRepackable>
-    <RepackBinariesExcludes>System*.dll</RepackBinariesExcludes>
+    <RepackBinariesExcludes>System*.dll;Microsoft.CodeAnalysis*.dll</RepackBinariesExcludes>
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <Authors>Dinar Sharafutdinov</Authors>
     <Company>Dinar Sharafutdinov</Company>
@@ -49,6 +50,7 @@
     <PackageReference Include="ILRepack" Version="2.0.46" PrivateAssets="all"/>
     <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" PrivateAssets="all"/>
     <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0"/>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
   </ItemGroup>
 
@@ -74,6 +76,13 @@
           DestinationFolder="$(TargetDir)"/>
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
           DestinationFolder="$(TargetDir)"/>
+  </Target>
+
+  <Target Name="RemoveNetRuntimeDependencies"
+          AfterTargets="CopyFilesToOutputDirectory"
+          BeforeTargets="PublishAddin"
+          Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(TargetFramework)' == 'net10.0-windows'">
+    <Delete Files="$(TargetDir)System.Collections.Immutable.dll;$(TargetDir)System.Reflection.Metadata.dll;$(TargetDir)System.Memory.dll"/>
   </Target>
 
   <ItemGroup>

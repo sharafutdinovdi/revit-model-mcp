@@ -1,3 +1,4 @@
+using System.Globalization;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -6,6 +7,84 @@ namespace RevitModelMcp.Core.Tests.Control;
 
 public sealed class ActionJobParserTests
 {
+    [Test]
+    public async Task ExecuteCode_ValidatesModeSizeAndBatchExclusion()
+    {
+        var parsed = ControlJobParser.Parse("""{"command":"execute-code","code":"return 42;"}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(parsed.Action!.Code).IsEqualTo("return 42;");
+        await Assert.That(parsed.Action.TransactionMode).IsEqualTo("auto");
+        await Assert.That(ControlJobParser.Parse("""{"command":"execute-code","code":"x","transaction":"none","dryRun":true}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"execute-code","code":""}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"execute-code","code":"return 42;"}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task ExecuteCode_SourceAndCacheKeyAreStable()
+    {
+        var body = CodeSource.BuildSource("return ctx.Document?.Title;");
+        var full = CodeSource.BuildSource("public static class Script { public static object Execute(ScriptContext ctx) => 1; }");
+        await Assert.That(CodeSource.IsCompilationUnit("return 1;")).IsFalse();
+        await Assert.That(CodeSource.IsCompilationUnit(full)).IsTrue();
+        await Assert.That(body.Contains("#line 1 \"submitted.cs\"\nreturn ctx.Document?.Title;")).IsTrue();
+        await Assert.That(full.Contains("#line 1 \"submitted.cs\"\npublic static class Script")).IsTrue();
+        await Assert.That(CodeSource.CacheKey("return 1;", "auto"))
+            .IsNotEqualTo(CodeSource.CacheKey("return 1;", "none"));
+        await Assert.That(CodeSource.CacheKey("return 1;", "auto"))
+            .IsEqualTo(CodeSource.CacheKey("return 1;", "auto"));
+        await Assert.That(CodeSource.FirstLine("\n  return 1;\n")).IsEqualTo("return 1;");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterCapsDepthAndItems()
+    {
+        var items = CodeResultLimiter.Limit(Enumerable.Range(0, 6000).ToArray(), value => value) as List<object?>;
+        object nested = 7;
+        for (var depth = 0; depth < 8; depth++) nested = new[] { nested };
+        var limited = CodeResultLimiter.Limit(nested, value => value);
+        await Assert.That(items!.Count).IsEqualTo(5000);
+        await Assert.That(CodeResultLimiter.ToJson(limited).Contains("System.Object[]")).IsTrue();
+        await Assert.That(CodeResultLimiter.ToJson(new Dictionary<string, object?>
+        {
+            ["escaped"] = "a\"b\n", ["number"] = 1.5, ["finite"] = double.NaN
+        })).IsEqualTo("{\"escaped\":\"a\\\"b\\n\",\"number\":1.5,\"finite\":null}");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterSerializesPlainPropertiesWithInvariantNumbers()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ru-RU");
+            var anonymous = CodeResultLimiter.Limit(new { Name = "Parking", mm = -5156.2 }, value => value);
+            var plain = CodeResultLimiter.Limit(new PlainCodeResult { Name = "Parking", Millimeters = -5156.2 }, value => value);
+            await Assert.That(CodeResultLimiter.ToJson(anonymous))
+                .IsEqualTo("{\"Name\":\"Parking\",\"mm\":-5156.2}");
+            await Assert.That(CodeResultLimiter.ToJson(plain))
+                .IsEqualTo("{\"Name\":\"Parking\",\"Millimeters\":-5156.2}");
+            await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
+                new Dictionary<double, object?> { [-5156.2] = 1.5 }, value => value)))
+                .IsEqualTo("{\"-5156.2\":1.5}");
+            await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
+                new Uri("https://example.org/"), value => value)))
+                .IsEqualTo("\"https://example.org/\"");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+    }
+
+    private sealed class PlainCodeResult
+    {
+        public string Name { get; init; } = string.Empty;
+        public double Millimeters { get; init; }
+    }
+
     [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {

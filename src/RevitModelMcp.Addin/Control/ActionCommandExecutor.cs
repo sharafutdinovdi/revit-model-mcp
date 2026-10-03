@@ -69,22 +69,30 @@ internal static class ActionCommandExecutor
                     ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
                 return;
             }
-            document = ResolveDocument(application, job.TargetDocument);
-            changes = ChangeCapture.Start(application.Application, document);
+            document = job.Command == "execute-code" && job.TargetDocument is null
+                ? application.ActiveUIDocument?.Document
+                : ResolveDocument(application, job.TargetDocument);
+            if (document is not null && !(job.Command == "execute-code" && job.Action?.TransactionMode == "none"))
+                changes = ChangeCapture.Start(application.Application, document);
             var activeUiDocument = application.ActiveUIDocument;
-            var uiDocument = activeUiDocument is not null
+            var uiDocument = document is not null && activeUiDocument is not null
                              && activeUiDocument.Document.Title == document.Title
                              && activeUiDocument.Document.PathName == document.PathName
                 ? activeUiDocument : null;
             var action = job.Action ?? throw new ArgumentException("Missing action arguments.");
-            if (job.Command == "batch")
-                data = BatchActionExecutor.Execute(document, uiDocument, action, failures, job.ClientName);
+            if (job.Command == "execute-code")
+                data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
+            else if (job.Command == "batch")
+                data = BatchActionExecutor.Execute(document!, uiDocument, action, failures, job.ClientName);
             else
-                data = ExecuteStep(document, uiDocument, job.Command, action, failures, job.ClientName, out viewOpened);
-            response = data.Committed == false && data.FailedStep.HasValue
+                data = ExecuteStep(document!, uiDocument, job.Command, action, failures, job.ClientName, out viewOpened);
+            response = data.CodeError is not null
+                ? CommandResponse<ActionResultData>.Fail(job.Command, data.CodeError, stopwatch.ElapsedMilliseconds)
+                : data.Committed == false && data.FailedStep.HasValue
                 ? CommandResponse<ActionResultData>.Fail(job.Command, data.Steps!.Last().Error!, stopwatch.ElapsedMilliseconds)
                 : CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
             response.Data = data;
+            if (data.CodeError is not null) response.Error = data.CodeError;
             if (data.FailedStep.HasValue) response.Error = data.Steps!.Last().Error;
             if (!data.FailedStep.HasValue) response.WarningsDismissed = failures.WarningsDismissed;
         }
@@ -107,6 +115,8 @@ internal static class ActionCommandExecutor
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
             if (job.Command is "export-nwc" or "open-document" or "close-document" or "save-document" or "sync-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
+            else if (job.Command == "execute-code")
+                PluginLog.Warn("Code execution failed. Source and exception details omitted from log.");
             else PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }
         finally
@@ -119,7 +129,9 @@ internal static class ActionCommandExecutor
         response.DialogsSuppressed = dialogsSuppressed;
         if (job.Command == "show") response.ViewOpened = viewOpened;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
-        ActivityRecorder.RecordAction(job, document, data, response, changes);
+        ActivityRecorder.RecordAction(job,
+            job.Command == "execute-code" && job.Action?.TransactionMode == "none" ? null : document,
+            data, response, changes);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
