@@ -157,9 +157,14 @@ internal static class ActionMutations
                 }
                 placements.Add(new FamilyPlacementContract
                 {
-                    Family = request.Family, TypeName = request.TypeName, Level = room.Level.Name,
-                    XMm = point.Point.X.ToMillimeters(), YMm = point.Point.Y.ToMillimeters(),
-                    ZMm = request.ZMm, RotationDeg = request.RotationDeg, Parameters = request.Parameters
+                    Family = request.Family,
+                    TypeName = request.TypeName,
+                    Level = room.Level.Name,
+                    XMm = point.Point.X.ToMillimeters(),
+                    YMm = point.Point.Y.ToMillimeters(),
+                    ZMm = request.ZMm,
+                    RotationDeg = request.RotationDeg,
+                    Parameters = request.Parameters
                 });
             }
             if (placements.Count > 2000) throw new ArgumentException("atRooms selected more than 2000 rooms.");
@@ -173,8 +178,12 @@ internal static class ActionMutations
             {
                 var instance = PlaceFamilyInstance(document, new ActionJobContract
                 {
-                    Family = placement.Family, TypeName = placement.TypeName, Level = placement.Level,
-                    XMm = placement.XMm, YMm = placement.YMm, RotationDeg = placement.RotationDeg
+                    Family = placement.Family,
+                    TypeName = placement.TypeName,
+                    Level = placement.Level,
+                    XMm = placement.XMm,
+                    YMm = placement.YMm,
+                    RotationDeg = placement.RotationDeg
                 }, placement.ZMm, placement.HostId, placement.Parameters);
                 if (subtransaction.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Placement was rolled back.");
                 result.CreatedElementIds.Add(RevitValueReader.GetId(instance.Id));
