@@ -108,8 +108,15 @@ internal static class ActionMutations
         SetViewName(document, view, action.Name);
         if (action.Scale is int scale) view.Scale = scale;
         if (action.Template is not null) ApplyTemplate(document, view, action.Template);
-        return new ActionResultData { Id = RevitValueReader.GetId(view.Id), ViewId = RevitValueReader.GetId(view.Id),
-            ViewName = view.Name, Category = "View", Names = [view.Name], Count = 1 };
+        return new ActionResultData
+        {
+            Id = RevitValueReader.GetId(view.Id),
+            ViewId = RevitValueReader.GetId(view.Id),
+            ViewName = view.Name,
+            Category = "View",
+            Names = [view.Name],
+            Count = 1
+        };
     }
 
     internal static ActionResultData DuplicateView(Document document, ActionJobContract action)
@@ -125,8 +132,15 @@ internal static class ActionMutations
         var duplicate = document.GetElement(source.Duplicate(option)) as View
             ?? throw new InvalidOperationException("Duplicated view was not found.");
         SetViewName(document, duplicate, action.Name);
-        return new ActionResultData { Id = RevitValueReader.GetId(duplicate.Id), ViewId = RevitValueReader.GetId(duplicate.Id),
-            ViewName = duplicate.Name, Category = "View", Names = [duplicate.Name], Count = 1 };
+        return new ActionResultData
+        {
+            Id = RevitValueReader.GetId(duplicate.Id),
+            ViewId = RevitValueReader.GetId(duplicate.Id),
+            ViewName = duplicate.Name,
+            Category = "View",
+            Names = [duplicate.Name],
+            Count = 1
+        };
     }
 
     internal static ActionResultData ApplyViewTemplate(Document document, ActionJobContract action)
@@ -146,8 +160,13 @@ internal static class ActionMutations
             names.Add(view.Name);
             changed.Add(RevitValueReader.GetId(view.Id));
         }
-        return new ActionResultData { Count = names.Count, Names = names, TypeMismatches = mismatches,
-            Verification = new ActionVerification { Changed = changed } };
+        return new ActionResultData
+        {
+            Count = names.Count,
+            Names = names,
+            TypeMismatches = mismatches,
+            Verification = new ActionVerification { Changed = changed }
+        };
     }
 
     internal static ActionResultData CreateSheet(Document document, ActionJobContract action)
@@ -163,8 +182,16 @@ internal static class ActionMutations
         var sheet = ViewSheet.Create(document, titleBlock.Id);
         sheet.SheetNumber = action.Number!;
         sheet.Name = action.Name!;
-        return new ActionResultData { Id = RevitValueReader.GetId(sheet.Id), SheetId = RevitValueReader.GetId(sheet.Id),
-            SheetNumber = sheet.SheetNumber, SheetName = sheet.Name, Category = "Sheet", Names = [sheet.SheetNumber], Count = 1 };
+        return new ActionResultData
+        {
+            Id = RevitValueReader.GetId(sheet.Id),
+            SheetId = RevitValueReader.GetId(sheet.Id),
+            SheetNumber = sheet.SheetNumber,
+            SheetName = sheet.Name,
+            Category = "Sheet",
+            Names = [sheet.SheetNumber],
+            Count = 1
+        };
     }
 
     internal static ActionResultData PlaceViewsOnSheet(Document document, ActionJobContract action)
@@ -213,9 +240,15 @@ internal static class ActionMutations
             cursorX += width + gap;
             rowHeight = Math.Max(rowHeight, height);
         }
-        return new ActionResultData { Category = "Sheet", Names = names, Count = names.Count,
-            ViewportIds = viewportIds, ScheduleInstanceIds = scheduleInstanceIds,
-            Verification = new ActionVerification { Changed = [RevitValueReader.GetId(sheet.Id)] } };
+        return new ActionResultData
+        {
+            Category = "Sheet",
+            Names = names,
+            Count = names.Count,
+            ViewportIds = viewportIds,
+            ScheduleInstanceIds = scheduleInstanceIds,
+            Verification = new ActionVerification { Changed = [RevitValueReader.GetId(sheet.Id)] }
+        };
     }
 
     private static BoundingBoxXYZ ResolveBox(Document document, ActionJobContract action)

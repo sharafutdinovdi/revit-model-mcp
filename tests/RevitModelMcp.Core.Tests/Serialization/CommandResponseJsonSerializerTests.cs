@@ -13,8 +13,13 @@ public sealed class CommandResponseJsonSerializerTests
     [Test]
     public async Task Serialize_CreatedViewsSheetsAndPlacements_ExposeTopLevelIds()
     {
-        var view = new ActionResultData { ViewId = 42, ViewName = "Night section", Id = 42,
-            Verification = new ActionVerification { After = new ActionFacts { Id = 42 } } };
+        var view = new ActionResultData
+        {
+            ViewId = 42,
+            ViewName = "Night section",
+            Id = 42,
+            Verification = new ActionVerification { After = new ActionFacts { Id = 42 } }
+        };
         using var viewJson = Parse(CommandResponse<ActionResultData>.Ok("create-view", view, 1));
         var viewData = viewJson.RootElement.GetProperty("data");
         await Assert.That(viewData.GetProperty("viewId").GetInt64()).IsEqualTo(42);
