@@ -95,18 +95,21 @@ internal static class ActionMutations
             transform.BasisX = XYZ.BasisX;
             transform.BasisY = XYZ.BasisZ;
             transform.BasisZ = -XYZ.BasisY;
+            var (sectionMinimum, sectionMaximum) = SectionBoxBounds.FromExtents(
+                maximum.X - minimum.X, maximum.Y - minimum.Y, maximum.Z - minimum.Z);
             var sectionBox = new BoundingBoxXYZ
             {
                 Transform = transform,
-                Min = new XYZ(-(maximum.X - minimum.X) / 2, -(maximum.Z - minimum.Z) / 2, -(maximum.Y - minimum.Y) / 2),
-                Max = new XYZ((maximum.X - minimum.X) / 2, (maximum.Z - minimum.Z) / 2, (maximum.Y - minimum.Y) / 2)
+                Min = new XYZ(sectionMinimum[0], sectionMinimum[1], sectionMinimum[2]),
+                Max = new XYZ(sectionMaximum[0], sectionMaximum[1], sectionMaximum[2])
             };
             view = ViewSection.CreateSection(document, type.Id, sectionBox);
         }
         SetViewName(document, view, action.Name);
         if (action.Scale is int scale) view.Scale = scale;
         if (action.Template is not null) ApplyTemplate(document, view, action.Template);
-        return new ActionResultData { Id = RevitValueReader.GetId(view.Id), Category = "View", Names = [view.Name], Count = 1 };
+        return new ActionResultData { Id = RevitValueReader.GetId(view.Id), ViewId = RevitValueReader.GetId(view.Id),
+            ViewName = view.Name, Category = "View", Names = [view.Name], Count = 1 };
     }
 
     internal static ActionResultData DuplicateView(Document document, ActionJobContract action)
@@ -122,7 +125,8 @@ internal static class ActionMutations
         var duplicate = document.GetElement(source.Duplicate(option)) as View
             ?? throw new InvalidOperationException("Duplicated view was not found.");
         SetViewName(document, duplicate, action.Name);
-        return new ActionResultData { Id = RevitValueReader.GetId(duplicate.Id), Category = "View", Names = [duplicate.Name], Count = 1 };
+        return new ActionResultData { Id = RevitValueReader.GetId(duplicate.Id), ViewId = RevitValueReader.GetId(duplicate.Id),
+            ViewName = duplicate.Name, Category = "View", Names = [duplicate.Name], Count = 1 };
     }
 
     internal static ActionResultData ApplyViewTemplate(Document document, ActionJobContract action)
@@ -159,7 +163,8 @@ internal static class ActionMutations
         var sheet = ViewSheet.Create(document, titleBlock.Id);
         sheet.SheetNumber = action.Number!;
         sheet.Name = action.Name!;
-        return new ActionResultData { Id = RevitValueReader.GetId(sheet.Id), Category = "Sheet", Names = [sheet.SheetNumber], Count = 1 };
+        return new ActionResultData { Id = RevitValueReader.GetId(sheet.Id), SheetId = RevitValueReader.GetId(sheet.Id),
+            SheetNumber = sheet.SheetNumber, SheetName = sheet.Name, Category = "Sheet", Names = [sheet.SheetNumber], Count = 1 };
     }
 
     internal static ActionResultData PlaceViewsOnSheet(Document document, ActionJobContract action)
@@ -175,6 +180,8 @@ internal static class ActionMutations
         var cursorY = outline.Max.V - gap;
         var rowHeight = 0.0;
         var names = new List<string>();
+        var viewportIds = new List<long>();
+        var scheduleInstanceIds = new List<long>();
         foreach (var placement in action.Placements!)
         {
             var view = FindView(document, placement.View);
@@ -199,14 +206,16 @@ internal static class ActionMutations
             var x = placement.XMm.HasValue ? Millimeters(placement.XMm.Value) : cursorX + width / 2;
             var y = placement.YMm.HasValue ? Millimeters(placement.YMm.Value) : cursorY - height / 2;
             if (view is ViewSchedule viewSchedule)
-                ScheduleSheetInstance.Create(document, sheet.Id, viewSchedule.Id, new XYZ(x, y, 0));
+                scheduleInstanceIds.Add(RevitValueReader.GetId(ScheduleSheetInstance.Create(document, sheet.Id, viewSchedule.Id, new XYZ(x, y, 0)).Id));
             else
-                Viewport.Create(document, sheet.Id, view.Id, new XYZ(x, y, 0));
+                viewportIds.Add(RevitValueReader.GetId(Viewport.Create(document, sheet.Id, view.Id, new XYZ(x, y, 0)).Id));
             names.Add(view.Name);
             cursorX += width + gap;
             rowHeight = Math.Max(rowHeight, height);
         }
-        return new ActionResultData { Category = "Sheet", Names = names, Count = names.Count, Verification = new ActionVerification { Changed = [RevitValueReader.GetId(sheet.Id)] } };
+        return new ActionResultData { Category = "Sheet", Names = names, Count = names.Count,
+            ViewportIds = viewportIds, ScheduleInstanceIds = scheduleInstanceIds,
+            Verification = new ActionVerification { Changed = [RevitValueReader.GetId(sheet.Id)] } };
     }
 
     private static BoundingBoxXYZ ResolveBox(Document document, ActionJobContract action)

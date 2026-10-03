@@ -745,4 +745,12 @@ public sealed class ActionJobParserTests
             .IsEqualTo(ControlJobKind.Action);
     }
 
+    [Test]
+    public async Task SectionBoxBounds_CutPlanePassesThroughCenter()
+    {
+        var (minimum, maximum) = SectionBoxBounds.FromExtents(4000, 3000, 2000);
+        await Assert.That(minimum).IsEquivalentTo(new double[] { -2000, -1000, -1500 });
+        await Assert.That(maximum).IsEquivalentTo(new double[] { 2000, 1000, 0 });
+    }
+
 }

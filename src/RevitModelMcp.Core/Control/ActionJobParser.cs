@@ -602,6 +602,12 @@ public sealed class ViewBoxContract
     [DataMember(Name = "maxMm")] public List<double> MaxMm { get; set; } = [];
 }
 
+public static class SectionBoxBounds
+{
+    public static (double[] Min, double[] Max) FromExtents(double width, double depth, double height) =>
+        ([-width / 2, -height / 2, -depth / 2], [width / 2, height / 2, 0]);
+}
+
 [DataContract]
 public sealed class SheetViewPlacement
 {
@@ -910,7 +916,14 @@ public sealed class ActionResultData
     [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }
     [DataMember(Name = "elapsedMs", EmitDefaultValue = false)] public long? ElapsedMs { get; set; }
     [DataMember(Name = "scope", EmitDefaultValue = false)] public string? Scope { get; set; }
-    [DataMember(Name = "view")] public NwcViewResult? View { get; set; }
+    [DataMember(Name = "view", EmitDefaultValue = false)] public NwcViewResult? View { get; set; }
+    [DataMember(Name = "viewId", EmitDefaultValue = false)] public long? ViewId { get; set; }
+    [DataMember(Name = "viewName", EmitDefaultValue = false)] public string? ViewName { get; set; }
+    [DataMember(Name = "sheetId", EmitDefaultValue = false)] public long? SheetId { get; set; }
+    [DataMember(Name = "sheetNumber", EmitDefaultValue = false)] public string? SheetNumber { get; set; }
+    [DataMember(Name = "sheetName", EmitDefaultValue = false)] public string? SheetName { get; set; }
+    [DataMember(Name = "viewportIds", EmitDefaultValue = false)] public List<long>? ViewportIds { get; set; }
+    [DataMember(Name = "scheduleInstanceIds", EmitDefaultValue = false)] public List<long>? ScheduleInstanceIds { get; set; }
     [DataMember(Name = "elementCount", EmitDefaultValue = false)] public int? ElementCount { get; set; }
     [DataMember(Name = "options", EmitDefaultValue = false)] public NwcOptionsResult? Options { get; set; }
     [DataMember(Name = "overwritten", EmitDefaultValue = false)] public bool? Overwritten { get; set; }

@@ -103,6 +103,34 @@ public sealed class ActionSummaryBuilderTests
     }
 
     [Test]
+    [Arguments("floor_plan", "Night L2 plan", "Created floor plan 'Night L2 plan' in Project1.rvt.")]
+    [Arguments("section", "Night section", "Created section 'Night section' in Project1.rvt.")]
+    public async Task BuildSummary_CreateView_UsesKindAndName(string kind, string name, string expected)
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "create-view",
+            DocumentTitle = "Project1.rvt",
+            ViewKind = kind,
+            ViewName = name
+        });
+        await Assert.That(summary).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task BuildSummary_CreateSheet_UsesNumberAndName()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "create-sheet",
+            DocumentTitle = "Project1.rvt",
+            SheetNumber = "NX-101",
+            ViewName = "Night sheet"
+        });
+        await Assert.That(summary).IsEqualTo("Created sheet 'NX-101 - Night sheet' in Project1.rvt.");
+    }
+
+    [Test]
     public async Task BuildSummary_SetParameter_IncludesParameterName()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext

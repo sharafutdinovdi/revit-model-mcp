@@ -370,7 +370,9 @@ internal static class ActionCommandExecutor
             TypeName = action.TypeName,
             Parameter = action.Parameter,
             WallType = action.WallType,
-            ViewName = action.Name ?? action.View ?? action.Sheet,
+            ViewName = data.ViewName ?? data.SheetName ?? action.Name ?? action.View ?? action.Sheet,
+            ViewKind = action.Kind,
+            SheetNumber = data.SheetNumber ?? action.Number,
             BatchStepCount = action.Steps.Count
         });
     }

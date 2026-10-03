@@ -11,6 +11,32 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task Serialize_CreatedViewsSheetsAndPlacements_ExposeTopLevelIds()
+    {
+        var view = new ActionResultData { ViewId = 42, ViewName = "Night section", Id = 42,
+            Verification = new ActionVerification { After = new ActionFacts { Id = 42 } } };
+        using var viewJson = Parse(CommandResponse<ActionResultData>.Ok("create-view", view, 1));
+        var viewData = viewJson.RootElement.GetProperty("data");
+        await Assert.That(viewData.GetProperty("viewId").GetInt64()).IsEqualTo(42);
+        await Assert.That(viewData.GetProperty("viewName").GetString()).IsEqualTo("Night section");
+        await Assert.That(viewData.TryGetProperty("view", out _)).IsFalse();
+        await Assert.That(viewData.GetProperty("verification").GetProperty("after").GetProperty("id").GetInt64()).IsEqualTo(42);
+
+        var sheet = new ActionResultData { SheetId = 51, SheetNumber = "NX-101", SheetName = "Night sheet" };
+        using var sheetJson = Parse(CommandResponse<ActionResultData>.Ok("create-sheet", sheet, 1));
+        var sheetData = sheetJson.RootElement.GetProperty("data");
+        await Assert.That(sheetData.GetProperty("sheetId").GetInt64()).IsEqualTo(51);
+        await Assert.That(sheetData.GetProperty("sheetNumber").GetString()).IsEqualTo("NX-101");
+        await Assert.That(sheetData.GetProperty("sheetName").GetString()).IsEqualTo("Night sheet");
+
+        var placements = new ActionResultData { ViewportIds = [61, 62], ScheduleInstanceIds = [63] };
+        using var placementJson = Parse(CommandResponse<ActionResultData>.Ok("place-views-on-sheet", placements, 1));
+        var placementData = placementJson.RootElement.GetProperty("data");
+        await Assert.That(placementData.GetProperty("viewportIds").EnumerateArray().Select(id => id.GetInt64())).IsEquivalentTo(new long[] { 61, 62 });
+        await Assert.That(placementData.GetProperty("scheduleInstanceIds")[0].GetInt64()).IsEqualTo(63);
+    }
+
+    [Test]
     public async Task Serialize_ModelSnapshot_UsesExactSchemaNamesAndNulls()
     {
         var snapshot = new ModelSnapshotData

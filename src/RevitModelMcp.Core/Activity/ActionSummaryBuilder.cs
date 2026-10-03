@@ -16,6 +16,8 @@ public sealed class ActionSummaryContext
     public bool Saved { get; init; }
     public string? TargetPath { get; init; }
     public string? ViewName { get; init; }
+    public string? ViewKind { get; init; }
+    public string? SheetNumber { get; init; }
     public bool NeedsConfirmation { get; init; }
     public string? ConfirmationText { get; init; }
 }
@@ -44,10 +46,10 @@ public static class ActionSummaryBuilder
             "delete" => $"{(context.DryRun ? "Would delete" : "Deleted")} {Plural(context.Count, "element")} in {doc}.",
             "place-family" => $"{(context.DryRun ? "Would place" : "Placed")} {FamilyLabel(context)} in {doc}.",
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
-            "create-view" => $"{(context.DryRun ? "Would create" : "Created")} a {context.ViewName ?? "new"} view in {doc}.",
+            "create-view" => $"{(context.DryRun ? "Would create" : "Created")} {ViewKindLabel(context.ViewKind)} '{context.ViewName}' in {doc}.",
             "duplicate-view" => $"{(context.DryRun ? "Would duplicate" : "Duplicated")} view '{context.ViewName}' in {doc}.",
             "apply-view-template" => $"{(context.DryRun ? "Would apply" : "Applied")} a view template to {Plural(context.Count, "view")} in {doc}.",
-            "create-sheet" => $"{(context.DryRun ? "Would create" : "Created")} sheet '{context.ViewName}' in {doc}.",
+            "create-sheet" => $"{(context.DryRun ? "Would create" : "Created")} sheet '{context.SheetNumber} - {context.ViewName}' in {doc}.",
             "place-views-on-sheet" => $"{(context.DryRun ? "Would place" : "Placed")} {Plural(context.Count, "view")} on sheet '{context.ViewName}' in {doc}.",
             "set-parameter" => $"{(context.DryRun ? "Would set" : "Set")} parameter '{context.Parameter}' on 1 element in {doc}.",
             "batch" => $"{(context.DryRun ? "Would run" : "Ran")} a batch of {Plural(context.BatchStepCount, "step")} in {doc}.",
@@ -86,6 +88,17 @@ public static class ActionSummaryBuilder
         string.IsNullOrWhiteSpace(context.TypeName) ? context.Family ?? "a family instance" : $"{context.Family}: {context.TypeName}";
 
     private static string WallTypeLabel(string? wallType) => string.IsNullOrWhiteSpace(wallType) ? "" : $" {wallType}";
+
+    private static string ViewKindLabel(string? kind) => kind switch
+    {
+        "floor_plan" => "floor plan",
+        "ceiling_plan" => "ceiling plan",
+        "structural_plan" => "structural plan",
+        "3d" => "3D view",
+        "drafting" => "drafting view",
+        "section" => "section",
+        _ => "view"
+    };
 
     private static string OpenedAsLabel(string? openedAs) => string.IsNullOrWhiteSpace(openedAs) ? "" : $" ({openedAs})";
 
