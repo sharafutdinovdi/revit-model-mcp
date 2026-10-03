@@ -37,6 +37,10 @@ ACTION_TOOLS = {
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
+    "revit_activate_document",
+    "revit_activate_view",
+    "revit_close_views",
+    "revit_new_document",
     "revit_close_document",
     "revit_save_document",
     "revit_sync_document",
@@ -97,6 +101,57 @@ def test_stdio_read_only_blocks_execution_without_hiding_tools():
         assert "read-only mode" in str(result)
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("revit_activate_document", {"document": "Tower"}),
+        ("revit_activate_view", {"view": "Level 1"}),
+        ("revit_close_views", {}),
+        ("revit_new_document", {}),
+    ],
+)
+def test_session_actions_refused_in_read_only_mode(name, arguments):
+    import asyncio
+
+    server, execute, _ = action_server(read_only=True)
+    result = asyncio.run(server.call_tool(name, arguments))
+    assert "read-only mode" in str(result)
+    execute.assert_not_awaited()
+
+
+def test_session_action_mappings():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_activate_document", {"document": "Tower"}))
+    assert execute.await_args.args[0].payload["command"] == "activate-document"
+    asyncio.run(
+        server.call_tool(
+            "revit_activate_view",
+            {"view": "3D", "document": "Tower", "activate_document": True, "view_type": "ThreeD"},
+        )
+    )
+    assert execute.await_args.args[0].payload["activateDocument"] is True
+    assert execute.await_args.args[0].payload["viewType"] == "ThreeD"
+    asyncio.run(server.call_tool("revit_close_views", {"views": ["3D"], "keep_active": False}))
+    assert execute.await_args.args[0].payload["keepActive"] is False
+    asyncio.run(
+        server.call_tool(
+            "revit_new_document", {"template": r"C:\\T.rft", "kind": "family", "name": "Door"}
+        )
+    )
+    assert execute.await_args.args[0].payload["kind"] == "family"
+    assert execute.await_args.args[0].payload["name"] == "Door"
+    asyncio.run(
+        server.call_tool(
+            "revit_open_document",
+            {"path": r"C:\\M.rvt", "audit": True, "worksets": {"close": ["*Link*"]}},
+        )
+    )
+    assert execute.await_args.args[0].payload["worksetsClose"] == ["*Link*"]
+    assert execute.await_args.args[0].payload["audit"] is True
 
 
 def action_server(read_only=False):

@@ -55,6 +55,11 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, DocumentActions.List(application, job.IncludeLinked), stopwatch);
                 return;
             }
+            if (job.Kind == ControlJobKind.UiState)
+            {
+                WriteSuccess(output, job.Command, DocumentActions.UiState(application), stopwatch);
+                return;
+            }
             if (job.Kind == ControlJobKind.NwcSettingsCheck)
             {
                 var settingsPath = NwcPathValidator.EnsureAbsoluteNoTraversal(job.CoordinatorJob.SettingsXml!, "settings_xml");

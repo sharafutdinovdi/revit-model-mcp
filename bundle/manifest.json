@@ -74,6 +74,10 @@
       "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
+      "name": "revit_ui_state",
+      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+    },
+    {
       "name": "revit_model_snapshot",
       "description": "Read a schema version 1 project snapshot for batch audits.\n\nEach parameter rule pairs one category with one parameter. Warning groups include\nat most 200 affected element IDs. Closed worksets can make the result incomplete.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
@@ -156,6 +160,22 @@
     {
       "name": "revit_open_document",
       "description": "Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."
+    },
+    {
+      "name": "revit_activate_document",
+      "description": "Activate an already open document by title or path reference."
+    },
+    {
+      "name": "revit_activate_view",
+      "description": "Activate a non-template view in the selected document."
+    },
+    {
+      "name": "revit_close_views",
+      "description": "Close open UI views in the active document."
+    },
+    {
+      "name": "revit_new_document",
+      "description": "Create a project or family from a template on the Revit workstation."
     },
     {
       "name": "revit_close_document",

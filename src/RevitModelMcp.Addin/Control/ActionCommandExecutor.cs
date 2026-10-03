@@ -53,7 +53,7 @@ internal static class ActionCommandExecutor
         {
             if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1") throw new InvalidOperationException("read-only mode");
             if (job.Error is not null) throw new ArgumentException(job.Error);
-            if (job.Command is "open-document" or "close-document" or "save-document" or "sync-document")
+            if (job.Command is "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
             {
                 var documentAction = job.Action ?? throw new ArgumentException("Missing document arguments.");
                 documentAction.Document ??= job.TargetDocument;
@@ -99,7 +99,7 @@ internal static class ActionCommandExecutor
         }
         catch (Exception exception)
         {
-            var error = job.Command is "open-document" or "close-document" or "save-document" or "sync-document"
+            var error = job.Command is "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document"
                 ? exception.GetType().Name switch
                 {
                     "CentralModelContentionException" => "The central model is locked or busy.",
@@ -114,7 +114,7 @@ internal static class ActionCommandExecutor
             response.Error = error;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
-            if (job.Command is "export-nwc" or "export" or "open-document" or "close-document" or "save-document" or "sync-document")
+            if (job.Command is "export-nwc" or "export" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else if (job.Command == "execute-code")
                 PluginLog.Warn("Code execution failed. Source and exception details omitted from log.");
@@ -562,6 +562,8 @@ internal static class ActionCommandExecutor
             Command = command,
             DocumentTitle = title,
             OpenedAs = data.OpenedAs,
+            ViewName = data.View?.Name,
+            Count = data.ClosedViews?.Count ?? 0,
             Saved = data.Saved == true,
             TargetPath = command == "save-document" ? action.SaveAs : null,
             NeedsConfirmation = data.NeedsConfirmation == true,

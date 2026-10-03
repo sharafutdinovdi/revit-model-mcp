@@ -384,6 +384,7 @@ def addressed_tool(function):
         "revit_jobs": "List Revit Jobs",
         "revit_document_info": "Document Info",
         "revit_documents": "Open Documents",
+        "revit_ui_state": "Revit UI State",
         "revit_list_catalog": "List Catalog",
         "revit_aggregate_elements": "Aggregate Elements",
         "revit_query_elements": "Query Elements",
@@ -562,6 +563,17 @@ async def revit_documents(
         timeout_seconds,
         pickup_timeout_seconds,
         document,
+    )
+
+
+@addressed_tool
+async def revit_ui_state() -> dict[str, Any]:
+    """Read the active document, open views, selection and open documents."""
+    return await _execute(
+        ReadJob("ui-state", {"command": "ui-state"}),
+        DEFAULT_TIMEOUT_SECONDS,
+        DEFAULT_PICKUP_TIMEOUT_SECONDS,
+        None,
     )
 
 

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -18,7 +19,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -90,7 +91,16 @@ public static class ActionJobParser
                 Mode = job.Mode ?? "detached",
                 Worksets = job.Worksets ?? "all",
                 WorksetsOpenNames = job.WorksetsOpen,
+                WorksetsCloseNames = job.WorksetsClose,
                 Activate = job.Activate ?? false,
+                ActivateDocument = job.ActivateDocument ?? false,
+                View = job.View,
+                ViewType = string.IsNullOrWhiteSpace(job.ViewType) ? null : job.ViewType!.Trim(),
+                Views = job.Views,
+                KeepActive = job.KeepActive ?? true,
+                Kind = job.DocumentKind ?? "project",
+                Template = job.Template,
+                NewDocumentName = job.Name,
                 Audit = job.Audit ?? false,
                 Save = job.Save ?? false,
                 SaveAs = job.SaveAs,
@@ -115,10 +125,31 @@ public static class ActionJobParser
             {
                 DocumentPathValidator.Validate(action.DocumentPath, "path", trustedNetworkRoots);
                 Require(action.Mode is "detached" or "detached_discard_worksets" or "local_copy" or "read_only_local", "mode is invalid.");
-                Require(!action.Audit, "audit must be false.");
-                Require(action.Worksets is "all" or "none" or "open" &&
-                    (action.Worksets != "open" || action.WorksetsOpenNames is { Count: > 0 } && action.WorksetsOpenNames.All(name => !string.IsNullOrWhiteSpace(name))),
-                    "worksets must be all, none or {open: [names]}.");
+                Require(action.Worksets is "all" or "none" or "open" or "close" &&
+                    (action.Worksets == "open" ? ValidNames(action.WorksetsOpenNames) :
+                        action.Worksets != "close" || ValidNames(action.WorksetsCloseNames)),
+                    "worksets must be all, none, {open: [names]} or {close: [names]}.");
+            }
+            if (command == "activate-document") Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
+            if (command == "activate-view") Require(!string.IsNullOrWhiteSpace(action.View), "view is required.");
+            if (command == "close-views") Require(action.Views is null || ValidNames(action.Views), "views must contain names or ids.");
+            if (command == "new-document")
+            {
+                Require(action.Kind is "project" or "family", "kind must be project or family.");
+                if (action.NewDocumentName is not null)
+                    Require(IsSafeFileName(action.NewDocumentName), "name must be a safe file name without an extension.");
+                Require(action.Kind != "family" || action.Template is not null, "family requires a template.");
+                if (action.Template is not null)
+                {
+                    NwcPathValidator.EnsureAbsoluteNoTraversal(action.Template, "template", trustedNetworkRoots);
+                    Require(action.Template.EndsWith(action.Kind == "family" ? ".rft" : ".rte", StringComparison.OrdinalIgnoreCase), "template extension does not match kind.");
+                }
+                if (action.SaveAs is not null)
+                {
+                    DocumentPathValidator.Validate(action.SaveAs, "save_as", trustedNetworkRoots);
+                    Require(action.SaveAs.EndsWith(action.Kind == "family" ? ".rfa" : ".rvt", StringComparison.OrdinalIgnoreCase),
+                        "save_as extension does not match kind.");
+                }
             }
             if (command is "close-document" or "save-document" or "sync-document")
                 Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
@@ -368,6 +399,15 @@ public static class ActionJobParser
     {
         if (!condition) throw new ArgumentException(message);
     }
+
+    private static bool ValidNames(List<string>? names) => names is { Count: > 0 } &&
+        names.All(name => !string.IsNullOrWhiteSpace(name) && !name.StartsWith("regex:", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSafeFileName(string name) =>
+        !string.IsNullOrWhiteSpace(name) && name == name.Trim() && !name.EndsWith('.') &&
+        name.IndexOfAny(['<', '>', ':', '"', '/', '\\', '|', '?', '*']) < 0 &&
+        !name.Any(char.IsControl) &&
+        !Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)", RegexOptions.IgnoreCase);
 }
 
 public static class DocumentPathValidator
@@ -383,14 +423,14 @@ public static class DocumentPathValidator
             return;
         }
         if (path.IndexOf("://", StringComparison.Ordinal) >= 0 ||
-            !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa path, or RSN .rvt path.");
+            !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rte", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa/.rte path, or RSN .rvt path.");
         NwcPathValidator.EnsureAbsoluteNoTraversal(path, label, trustedNetworkRoots);
     }
 
     public static bool SamePath(string? first, string? second) =>
         !string.IsNullOrWhiteSpace(first) && !string.IsNullOrWhiteSpace(second) &&
-        string.Equals(Canonical(first), Canonical(second), StringComparison.OrdinalIgnoreCase);
+        string.Equals(Canonical(first!), Canonical(second!), StringComparison.OrdinalIgnoreCase);
 
     public static void EnsureSafeOverwrite(bool isCentral, bool isWorkshared)
     {
@@ -412,6 +452,24 @@ public static class DocumentPathValidator
             return Path.GetFullPath(normalized).TrimEnd('\\');
         return path.TrimEnd('\\', '/');
     }
+}
+
+public static class DocumentReferenceMatcher
+{
+    public static bool Contains<T>(IEnumerable<T> documents, T target) where T : class =>
+        documents.Any(document => ReferenceEquals(document, target));
+
+    public static bool AllPresent<T>(IEnumerable<T> before, IReadOnlyCollection<T> after) where T : class =>
+        before.All(document => Contains(after, document));
+}
+
+public sealed class ReferenceIdentityComparer<T> : IEqualityComparer<T> where T : class
+{
+    public static ReferenceIdentityComparer<T> Instance { get; } = new();
+
+    public bool Equals(T? first, T? second) => ReferenceEquals(first, second);
+
+    public int GetHashCode(T value) => RuntimeHelpers.GetHashCode(value);
 }
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
@@ -510,6 +568,15 @@ public sealed class ActionJobContract
     public string Mode { get; set; } = "detached";
     public string Worksets { get; set; } = "all";
     public List<string>? WorksetsOpenNames { get; set; }
+    public List<string>? WorksetsCloseNames { get; set; }
+    public bool ActivateDocument { get; set; }
+    public string? View { get; set; }
+    public string? ViewType { get; set; }
+    public List<string>? Views { get; set; }
+    public bool KeepActive { get; set; } = true;
+    public string Kind { get; set; } = "project";
+    public string? Template { get; set; }
+    public string? NewDocumentName { get; set; }
     public bool Activate { get; set; }
     public bool Audit { get; set; }
     public bool Save { get; set; }
@@ -746,6 +813,28 @@ public static class WorksetMask
     }
 }
 
+public static class OpenWorksetSelector
+{
+    public static (List<string> Selected, List<string> Unmatched) Select(
+        IReadOnlyCollection<string> available, string mode, IReadOnlyCollection<string> requested)
+    {
+        var unmatched = new List<string>();
+        foreach (var name in requested)
+        {
+            var pattern = name.IndexOfAny(['*', '?']) >= 0;
+            if (!available.Any(item => WorksetMask.Matches(item, name)))
+            {
+                if (!pattern) throw new ArgumentException($"A requested workset was not found: {name}.");
+                unmatched.Add(name);
+            }
+        }
+        var selected = available.Where(name => mode == "close"
+            ? !requested.Any(mask => WorksetMask.Matches(name, mask))
+            : requested.Any(mask => WorksetMask.Matches(name, mask))).ToList();
+        return (selected, unmatched);
+    }
+}
+
 public static class CategoryTypeExpansion
 {
     public static List<string> Expand(IEnumerable<string> requestedTypes, IEnumerable<(string Name, string Type)> categories)
@@ -799,6 +888,12 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "mode")] public string? Mode { get; set; }
     [DataMember(Name = "worksets")] public string? Worksets { get; set; }
     [DataMember(Name = "worksetsOpen")] public List<string>? WorksetsOpen { get; set; }
+    [DataMember(Name = "worksetsClose")] public List<string>? WorksetsClose { get; set; }
+    [DataMember(Name = "activateDocument")] public bool? ActivateDocument { get; set; }
+    [DataMember(Name = "keepActive")] public bool? KeepActive { get; set; }
+    [DataMember(Name = "kind")] public string? DocumentKind { get; set; }
+    [DataMember(Name = "template")] public string? Template { get; set; }
+    [DataMember(Name = "name")] public string? Name { get; set; }
     [DataMember(Name = "activate")] public bool? Activate { get; set; }
     [DataMember(Name = "audit")] public bool? Audit { get; set; }
     [DataMember(Name = "save")] public bool? Save { get; set; }
@@ -916,6 +1011,12 @@ public sealed class ActionResultData
     [DataMember(Name = "openedAs", EmitDefaultValue = false)] public string? OpenedAs { get; set; }
     [DataMember(Name = "active", EmitDefaultValue = false)] public bool? Active { get; set; }
     [DataMember(Name = "worksetsOpen", EmitDefaultValue = false)] public List<string>? WorksetsOpen { get; set; }
+    [DataMember(Name = "worksetPatternsUnmatched", EmitDefaultValue = false)] public List<string>? WorksetPatternsUnmatched { get; set; }
+    [DataMember(Name = "audited", EmitDefaultValue = false)] public bool? Audited { get; set; }
+    [DataMember(Name = "changed", EmitDefaultValue = false)] public bool? Changed { get; set; }
+    [DataMember(Name = "viewOpened", EmitDefaultValue = false)] public bool? ViewOpened { get; set; }
+    [DataMember(Name = "closedViews", EmitDefaultValue = false)] public List<string>? ClosedViews { get; set; }
+    [DataMember(Name = "refusedViews", EmitDefaultValue = false)] public List<string>? RefusedViews { get; set; }
     [DataMember(Name = "saved", EmitDefaultValue = false)] public bool? Saved { get; set; }
     [DataMember(Name = "centralPath", EmitDefaultValue = false)] public string? CentralPath { get; set; }
     [DataMember(Name = "needsConfirmation", EmitDefaultValue = false)] public bool? NeedsConfirmation { get; set; }

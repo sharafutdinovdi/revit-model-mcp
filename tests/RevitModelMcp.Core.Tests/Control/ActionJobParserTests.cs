@@ -171,6 +171,49 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task DocumentReferenceMatcher_DistinguishesCopiesWithTheSameNameAndPath()
+    {
+        var original = new DocumentIdentity("Night test project", "C:/Models/Night test project.rvt");
+        var copy = new DocumentIdentity(original.Title, original.Path);
+        var structural = new DocumentIdentity("Structural", "C:/Models/Structural.rvt");
+        var before = new[] { structural };
+        var opened = new Dictionary<DocumentIdentity, bool>(ReferenceIdentityComparer<DocumentIdentity>.Instance)
+        {
+            [original] = true
+        };
+
+        await Assert.That(DocumentReferenceMatcher.Contains(new[] { original, structural }, copy)).IsFalse();
+        await Assert.That(opened.ContainsKey(copy)).IsFalse();
+        await Assert.That(DocumentReferenceMatcher.AllPresent(before, new[] { original, copy })).IsFalse();
+        await Assert.That(DocumentReferenceMatcher.AllPresent(before, new[] { structural, copy })).IsTrue();
+    }
+
+    private sealed record DocumentIdentity(string Title, string Path);
+
+    [Test]
+    public async Task OpenWorksetSelector_MatchesWildcardsAndReportsUnmatchedPatterns()
+    {
+        var available = new[] { "Architecture", "Shared Levels and Grids", "Furniture", "Model Links" };
+        var open = OpenWorksetSelector.Select(available, "open", ["Arch*", "Shared Levels and Grids", "Missing?"]);
+        await Assert.That(open.Selected).IsEquivalentTo(new[] { "Architecture", "Shared Levels and Grids" });
+        await Assert.That(open.Unmatched).IsEquivalentTo(new[] { "Missing?" });
+        var close = OpenWorksetSelector.Select(available, "close", ["*link*", "*Furniture*"]);
+        await Assert.That(close.Selected).IsEquivalentTo(new[] { "Architecture", "Shared Levels and Grids" });
+        await Assert.That(() => OpenWorksetSelector.Select(available, "open", ["Missing"]))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task SessionActions_ValidateArgumentsAndStayOutOfBatch()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"activate-document"}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"activate-view"}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"new-document","kind":"family"}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"activate-document","document":"A"}]}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"open-document","path":"C:\\a.rte","audit":true,"worksets":"close","worksetsClose":["*Link*"]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"new-document","kind":"family","template":"C:\\a.rft"}""").Kind).IsEqualTo(ControlJobKind.Action);
+    }
+    [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {
         var direct = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Mark","parameterId":"ALL_MODEL_MARK","value":42}""");
@@ -350,6 +393,22 @@ public sealed class ActionJobParserTests
             await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"save-document","document":"A"}]}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task SessionActions_ParseViewTypeAndSafeDocumentName()
+    {
+        var view = ControlJobParser.Parse("""{"command":"activate-view","view":"L2","viewType":"FloorPlan"}""");
+        await Assert.That(view.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(view.Action!.ViewType).IsEqualTo("FloorPlan");
+        var document = ControlJobParser.Parse("""{"command":"new-document","name":"Project review"}""");
+        await Assert.That(document.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(document.Action!.NewDocumentName).IsEqualTo("Project review");
+        foreach (var name in new[] { "", "..", "CON", "CON.txt", "A/B", "A\\B", "A: B", "A. ", " name" })
+        {
+            var invalid = ControlJobParser.Parse($$"""{"command":"new-document","name":{{System.Text.Json.JsonSerializer.Serialize(name)}}}""");
+            await Assert.That(invalid.Kind).IsEqualTo(ControlJobKind.Invalid);
+        }
     }
 
     [Test]
