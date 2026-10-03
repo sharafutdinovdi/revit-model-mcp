@@ -10,7 +10,8 @@ namespace RevitModelMcp.Control;
 
 internal static class DocumentActions
 {
-    private static readonly Dictionary<Document, (string Mode, string OriginalPath)> Opened = [];
+    private static readonly Dictionary<Document, (string Mode, string OriginalPath)> Opened =
+        new(ReferenceIdentityComparer<Document>.Instance);
 
     internal static ActionResultData Execute(UIApplication application, string command, ActionJobContract action)
     {
@@ -203,23 +204,25 @@ internal static class DocumentActions
 
     private static ActionResultData Activate(UIApplication application, Document document)
     {
-        if (document.Equals(application.ActiveUIDocument?.Document))
+        if (ReferenceEquals(document, application.ActiveUIDocument?.Document))
             return new ActionResultData { Title = document.Title, Path = document.PathName, Active = true, Changed = false };
         var path = document.PathName;
         var title = document.Title;
         if (string.IsNullOrWhiteSpace(path))
             throw new InvalidOperationException($"Cannot activate '{title}': it has no saved path. Save it first or open it with activate=true.");
-        if (!application.Application.Documents.Cast<Document>().Any(item => item.Equals(document) && DocumentPathValidator.SamePath(item.PathName, path)))
+        if (!DocumentReferenceMatcher.Contains(application.Application.Documents.Cast<Document>(), document))
             throw new InvalidOperationException("The document path no longer belongs to an open document.");
         var previous = application.ActiveUIDocument?.Document;
         var previousPath = previous?.PathName;
-        var count = application.Application.Documents.Size;
+        var before = application.Application.Documents.Cast<Document>().ToList();
         var activated = application.OpenAndActivateDocument(path).Document;
-        if (!activated.Equals(document) || application.Application.Documents.Size != count ||
+        var after = application.Application.Documents.Cast<Document>().ToList();
+        if (!ReferenceEquals(activated, document) || after.Count != before.Count ||
+            !DocumentReferenceMatcher.AllPresent(before, after) ||
             !DocumentPathValidator.SamePath(application.ActiveUIDocument?.Document.PathName, path) ||
-            application.ActiveUIDocument?.Document.Title != title)
+            !ReferenceEquals(application.ActiveUIDocument?.Document, document))
         {
-            if (!activated.Equals(document))
+            if (!DocumentReferenceMatcher.Contains(before, activated))
             {
                 var extraTitle = activated.Title;
                 if (string.IsNullOrWhiteSpace(previousPath))
@@ -227,7 +230,7 @@ internal static class DocumentActions
                 try
                 {
                     application.OpenAndActivateDocument(previousPath);
-                    if (activated.Equals(application.ActiveUIDocument?.Document))
+                    if (ReferenceEquals(activated, application.ActiveUIDocument?.Document))
                         throw new InvalidOperationException("The extra copy is still active.");
                     if (!activated.Close(false))
                         throw new InvalidOperationException("Revit did not close the extra copy.");
@@ -310,8 +313,9 @@ internal static class DocumentActions
     private static ActionResultData New(UIApplication application, ActionJobContract action)
     {
         if (action.SaveAs is not null && File.Exists(action.SaveAs)) throw new IOException("save_as target exists.");
+        var before = application.Application.Documents.Cast<Document>().ToList();
         var template = action.Template ?? application.Application.DefaultProjectTemplate;
-        var document = action.Kind == "family" ? application.Application.NewFamilyDocument(template) :
+        var created = action.Kind == "family" ? application.Application.NewFamilyDocument(template) :
             application.Application.NewProjectDocument(template);
         var path = action.SaveAs;
         if (path is not null || action.Activate)
@@ -326,16 +330,26 @@ internal static class DocumentActions
                 for (var suffix = 2; File.Exists(path); suffix++)
                     path = Path.Combine(directory, $"{name} {suffix}{extension}");
             }
-            document.SaveAs(path);
+            created.SaveAs(path);
         }
+        var document = created;
         if (action.Activate)
         {
             var active = application.OpenAndActivateDocument(path!).Document;
-            if (!active.Equals(document)) document.Close(false);
+            if (!ReferenceEquals(active, created) && !created.Close(false))
+                throw new InvalidOperationException($"Revit did not close the new document's background copy. Open documents: {OpenDocumentNames(application)}.");
             document = active;
         }
+        var after = application.Application.Documents.Cast<Document>().ToList();
+        if (!DocumentReferenceMatcher.AllPresent(before, after) ||
+            path is not null && after.Count(item => DocumentPathValidator.SamePath(item.PathName, path)) != 1 ||
+            action.Activate && !ReferenceEquals(application.ActiveUIDocument?.Document, document))
+            throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
         return new ActionResultData { Title = document.Title, Path = document.PathName, Active = action.Activate, Saved = path is not null };
     }
+
+    private static string OpenDocumentNames(UIApplication application) =>
+        string.Join("; ", application.Application.Documents.Cast<Document>().Select(item => item.Title));
 
     private static List<string> WorksetNames(Document document) => document.IsWorkshared
         ? new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset)
@@ -344,7 +358,7 @@ internal static class DocumentActions
 
     private static ActionResultData Close(UIApplication application, Document document, ActionJobContract action)
     {
-        if (document.Equals(application.ActiveUIDocument?.Document))
+        if (ReferenceEquals(document, application.ActiveUIDocument?.Document))
             throw new InvalidOperationException("Cannot close the active document; activate another document first.");
         if (action.Save && (IsCentral(document) || document.IsDetached && string.IsNullOrWhiteSpace(document.PathName)))
             throw new InvalidOperationException("Save the detached document under a new path before closing with save=true; an open central model cannot be saved.");

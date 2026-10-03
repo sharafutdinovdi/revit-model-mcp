@@ -7,6 +7,26 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task DocumentReferenceMatcher_DistinguishesCopiesWithTheSameNameAndPath()
+    {
+        var original = new DocumentIdentity("Night test project", "C:/Models/Night test project.rvt");
+        var copy = new DocumentIdentity(original.Title, original.Path);
+        var structural = new DocumentIdentity("Structural", "C:/Models/Structural.rvt");
+        var before = new[] { structural };
+        var opened = new Dictionary<DocumentIdentity, bool>(ReferenceIdentityComparer<DocumentIdentity>.Instance)
+        {
+            [original] = true
+        };
+
+        await Assert.That(DocumentReferenceMatcher.Contains(new[] { original, structural }, copy)).IsFalse();
+        await Assert.That(opened.ContainsKey(copy)).IsFalse();
+        await Assert.That(DocumentReferenceMatcher.AllPresent(before, new[] { original, copy })).IsFalse();
+        await Assert.That(DocumentReferenceMatcher.AllPresent(before, new[] { structural, copy })).IsTrue();
+    }
+
+    private sealed record DocumentIdentity(string Title, string Path);
+
+    [Test]
     public async Task OpenWorksetSelector_MatchesWildcardsAndReportsUnmatchedPatterns()
     {
         var available = new[] { "Architecture", "Shared Levels and Grids", "Furniture", "Model Links" };

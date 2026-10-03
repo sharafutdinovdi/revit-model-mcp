@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
@@ -431,6 +432,24 @@ public static class DocumentPathValidator
             return Path.GetFullPath(normalized).TrimEnd('\\');
         return path.TrimEnd('\\', '/');
     }
+}
+
+public static class DocumentReferenceMatcher
+{
+    public static bool Contains<T>(IEnumerable<T> documents, T target) where T : class =>
+        documents.Any(document => ReferenceEquals(document, target));
+
+    public static bool AllPresent<T>(IEnumerable<T> before, IReadOnlyCollection<T> after) where T : class =>
+        before.All(document => Contains(after, document));
+}
+
+public sealed class ReferenceIdentityComparer<T> : IEqualityComparer<T> where T : class
+{
+    public static ReferenceIdentityComparer<T> Instance { get; } = new();
+
+    public bool Equals(T? first, T? second) => ReferenceEquals(first, second);
+
+    public int GetHashCode(T value) => RuntimeHelpers.GetHashCode(value);
 }
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
