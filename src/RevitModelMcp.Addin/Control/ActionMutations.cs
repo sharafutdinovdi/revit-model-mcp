@@ -38,8 +38,12 @@ internal static class ActionMutations
             copies.Add(ElementTransformUtils.CopyElements(document, ids,
                 new XYZ(Millimeters(action.DxMm * index), Millimeters(action.DyMm * index), Millimeters(action.DzMm * index)))
                 .Select(RevitValueReader.GetId).ToList());
-        return new ActionResultData { Count = copies.Sum(copy => copy.Count), Copies = copies,
-            Verification = new ActionVerification { Changed = copies.SelectMany(copy => copy).ToList() } };
+        return new ActionResultData
+        {
+            Count = copies.Sum(copy => copy.Count),
+            Copies = copies,
+            Verification = new ActionVerification { Changed = copies.SelectMany(copy => copy).ToList() }
+        };
     }
 
     internal static ActionResultData Mirror(Document document, ActionJobContract action, List<ElementId> ids)
@@ -53,9 +57,12 @@ internal static class ActionMutations
         var plane = Plane.CreateByNormalAndOrigin(direction.CrossProduct(XYZ.BasisZ), point);
         var created = ElementTransformUtils.MirrorElements(document, ids, plane, action.Copy)
             .Select(RevitValueReader.GetId).ToList();
-        return new ActionResultData { Count = action.Copy ? created.Count : ids.Count,
+        return new ActionResultData
+        {
+            Count = action.Copy ? created.Count : ids.Count,
             Copies = action.Copy ? [created] : null,
-            Verification = new ActionVerification { Changed = action.Copy ? created : action.ElementIds } };
+            Verification = new ActionVerification { Changed = action.Copy ? created : action.ElementIds }
+        };
     }
 
     internal static ActionResultData ChangeType(Document document, ActionJobContract action, List<ElementId> ids)
@@ -88,10 +95,17 @@ internal static class ActionMutations
         var ids = collector.ToElementIds().ToList();
         if (ids.Count > action.MaxElements)
             throw new MatchLimitException(ids.Count, action.MaxElements);
-        var result = new ActionResultData { MatchedCount = ids.Count, Values = [], Skipped = new Dictionary<string, List<long>>
+        var result = new ActionResultData
         {
-            ["missing"] = [], ["readOnly"] = [], ["typeParameter"] = []
-        } };
+            MatchedCount = ids.Count,
+            Values = [],
+            Skipped = new Dictionary<string, List<long>>
+            {
+                ["missing"] = [],
+                ["readOnly"] = [],
+                ["typeParameter"] = []
+            }
+        };
         var matchedIds = ids.Select(RevitValueReader.GetId).ToHashSet();
         var affectedTypeIds = new HashSet<long>();
         var changedIds = new List<long>();
