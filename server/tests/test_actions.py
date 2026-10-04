@@ -1607,6 +1607,70 @@ def test_create_view_batch_mapping_and_validation():
         asyncio.run(server.call_tool("revit_create_view", {"kind": "section"}))
 
 
+@pytest.mark.parametrize(
+    "bounds", [{}, {"element_ids": [1]}, {"box": {"min_mm": [0, 0, 0], "max_mm": [100, 100, 100]}}]
+)
+def test_create_view_3d_defaults_and_optional_bounds(bounds):
+    import asyncio
+
+    from revit_model_mcp.actions import BatchStep
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_create_view", {"kind": "3d", **bounds}))
+    payload = execute.await_args.args[0].payload
+    assert payload["displayStyle"] == "shaded"
+    assert payload["detailLevel"] == "fine"
+    assert payload["elementIds"] == bounds.get("element_ids")
+    assert (payload["box"] is None) == ("box" not in bounds)
+    step = BatchStep(action="create_view", args={"kind": "3d", **bounds})
+    assert step.payload()["displayStyle"] == "shaded"
+    assert step.payload()["detailLevel"] == "fine"
+
+
+def test_create_view_explicit_styles_and_plan_defaults():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_create_view",
+            {
+                "kind": "3d",
+                "display_style": "consistent_colors",
+                "detail_level": "medium",
+            },
+        )
+    )
+    assert execute.await_args.args[0].payload["displayStyle"] == "consistent_colors"
+    assert execute.await_args.args[0].payload["detailLevel"] == "medium"
+    asyncio.run(server.call_tool("revit_create_view", {"kind": "floor_plan", "level": "L1"}))
+    assert execute.await_args.args[0].payload["displayStyle"] is None
+    assert execute.await_args.args[0].payload["detailLevel"] is None
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"kind": "section"},
+        {"kind": "floor_plan"},
+        {"kind": "3d", "box": {"min_mm": [0, 0, 0], "max_mm": [1, 1, 1]}, "element_ids": [1]},
+        {"kind": "drafting", "element_ids": [1]},
+        {"kind": "3d", "display_style": "wireframe"},
+        {"kind": "3d", "detail_level": "undefined"},
+        {"kind": "3d", "element_ids": []},
+        {"kind": "3d", "box": {"min_mm": [0, 0, 0], "max_mm": [0, 1, 1]}},
+    ],
+)
+def test_create_view_validation_is_clean_tool_error(arguments):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("revit_create_view", arguments))
+    assert "Traceback" not in str(error.value)
+    execute.assert_not_awaited()
+
+
 def test_create_mep_run_maps_points_sizes_and_batch():
     import asyncio
 

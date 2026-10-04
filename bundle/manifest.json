@@ -279,7 +279,7 @@
     },
     {
       "name": "revit_create_view",
-      "description": "Create a plan, section, 3D or drafting view. Box coordinates use model millimetres."
+      "description": "Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model with shaded, fine defaults. Box coordinates use model millimetres."
     },
     {
       "name": "revit_duplicate_view",

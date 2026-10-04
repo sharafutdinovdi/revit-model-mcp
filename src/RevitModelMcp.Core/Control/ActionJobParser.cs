@@ -142,6 +142,8 @@ public static class ActionJobParser
                 Name = job.Name,
                 ViewFamilyType = job.ViewFamilyType,
                 Scale = job.Scale,
+                DisplayStyle = job.DisplayStyle ?? (command == "create-view" && job.DocumentKind == "3d" ? "shaded" : null),
+                DetailLevel = job.DetailLevel ?? (command == "create-view" && job.DocumentKind == "3d" ? "fine" : null),
                 Box = job.Box,
                 Sheet = job.Sheet,
                 Number = job.Number,
@@ -274,7 +276,10 @@ public static class ActionJobParser
             {
                 Require(action.Kind is "floor_plan" or "ceiling_plan" or "structural_plan" or "section" or "3d" or "drafting", "kind is invalid.");
                 Require(action.Kind is not ("floor_plan" or "ceiling_plan" or "structural_plan") || !string.IsNullOrWhiteSpace(action.Level), "level is required for plans.");
-                Require(action.Kind is not ("section" or "3d") || (action.Box is not null) != (job.ElementIds is { Count: > 0 }), "Supply exactly one of box or element_ids.");
+                Require(action.Kind != "section" || (action.Box is not null) != (job.ElementIds is { Count: > 0 }), "Supply exactly one of box or element_ids.");
+                Require(action.Box is null || job.ElementIds is null, "Supply at most one of box or element_ids.");
+                Require(action.DisplayStyle is null or "hidden_line" or "shaded" or "consistent_colors" or "realistic", "displayStyle is invalid.");
+                Require(action.DetailLevel is null or "coarse" or "medium" or "fine", "detailLevel is invalid.");
                 Require(action.Kind is "section" or "3d" || action.Box is null && job.ElementIds is null, "box and element_ids require section or 3d.");
                 Require(action.Box is null || ValidBox(action.Box), "box requires finite min_mm and max_mm coordinates with positive extents.");
                 Require(job.ElementIds is null || action.ElementIds.Count > 0 && action.ElementIds.All(id => id > 0), "element_ids must contain positive IDs.");
@@ -860,6 +865,8 @@ public sealed class ActionJobContract
     public string? Name { get; set; }
     public string? ViewFamilyType { get; set; }
     public int? Scale { get; set; }
+    public string? DisplayStyle { get; set; }
+    public string? DetailLevel { get; set; }
     public ViewBoxContract? Box { get; set; }
     public string? Sheet { get; set; }
     public string? Number { get; set; }
@@ -1429,6 +1436,8 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "planViewType")] public string? PlanViewType { get; set; }
     [DataMember(Name = "viewFamilyType")] public string? ViewFamilyType { get; set; }
     [DataMember(Name = "scale")] public int? Scale { get; set; }
+    [DataMember(Name = "displayStyle")] public string? DisplayStyle { get; set; }
+    [DataMember(Name = "detailLevel")] public string? DetailLevel { get; set; }
     [DataMember(Name = "box")] public ViewBoxContract? Box { get; set; }
     [DataMember(Name = "sheet")] public string? Sheet { get; set; }
     [DataMember(Name = "number")] public string? Number { get; set; }

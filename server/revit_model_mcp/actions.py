@@ -210,6 +210,11 @@ _BATCH_FIELDS = {
         "scale": (Annotated[int, Field(strict=True, gt=0)] | None, None),
         "box": (ViewBox | None, None),
         "element_ids": (NonEmptyIds | None, None),
+        "display_style": (
+            Literal["hidden_line", "shaded", "consistent_colors", "realistic"] | None,
+            None,
+        ),
+        "detail_level": (Literal["coarse", "medium", "fine"] | None, None),
     },
     "duplicate_view": {
         "view": (Name, ...),
@@ -325,10 +330,13 @@ class BatchStep(BaseModel):
                 and not data["level"]
             ):
                 raise ValueError("level is required for plans.")
-            if data["kind"] in {"section", "3d"} and (data["box"] is None) == (
-                data["element_ids"] is None
-            ):
+            if data["kind"] == "section" and (data["box"] is None) == (data["element_ids"] is None):
                 raise ValueError("Supply exactly one of box or element_ids.")
+            if data["box"] is not None and data["element_ids"] is not None:
+                raise ValueError("Supply at most one of box or element_ids.")
+            if data["kind"] == "3d":
+                data["display_style"] = data["display_style"] or "shaded"
+                data["detail_level"] = data["detail_level"] or "fine"
             if data["kind"] not in {"section", "3d"} and (
                 data["box"] is not None or data["element_ids"] is not None
             ):
@@ -1450,23 +1458,31 @@ def register_actions(mcp, execute, host_provider) -> None:
         scale: Annotated[int, Field(strict=True, gt=0)] | None = None,
         box: ViewBox | None = None,
         element_ids: NonEmptyIds | None = None,
+        display_style: Literal["hidden_line", "shaded", "consistent_colors", "realistic"]
+        | None = None,
+        detail_level: Literal["coarse", "medium", "fine"] | None = None,
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Create a plan, section, 3D or drafting view. Box coordinates use model millimetres."""
-        step = BatchStep(
-            action="create_view",
-            args={
-                "kind": kind,
-                "name": name,
-                "level": level,
-                "view_family_type": view_family_type,
-                "template": template,
-                "scale": scale,
-                "box": box,
-                "element_ids": element_ids,
-            },
-        )
+        """Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model with shaded, fine defaults. Box coordinates use model millimetres."""
+        try:
+            step = BatchStep(
+                action="create_view",
+                args={
+                    "kind": kind,
+                    "name": name,
+                    "level": level,
+                    "view_family_type": view_family_type,
+                    "template": template,
+                    "scale": scale,
+                    "box": box,
+                    "element_ids": element_ids,
+                    "display_style": display_style,
+                    "detail_level": detail_level,
+                },
+            )
+        except ValueError as error:
+            raise ToolError(str(error)) from error
         return await send(
             "create-view",
             **{

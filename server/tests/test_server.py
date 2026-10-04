@@ -441,6 +441,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(required.issubset(action_tools[name].input_schema["required"]))
             self.assertIn("dry_run", properties)
             self.assertIn("document", properties)
+        view_properties = action_tools["revit_create_view"].input_schema["properties"]
+        self.assertIn("display_style", view_properties)
+        self.assertIn("detail_level", view_properties)
         self.assertEqual(
             action_tools["revit_walls_from_cad"].input_schema["properties"]["max_gap_mm"][
                 "default"

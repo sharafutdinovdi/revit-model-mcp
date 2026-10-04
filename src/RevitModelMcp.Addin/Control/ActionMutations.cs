@@ -797,8 +797,12 @@ internal static class ActionMutations
         else if (action.Kind == "3d")
         {
             var created = View3D.CreateIsometric(document, type.Id);
-            created.SetSectionBox(ResolveBox(document, action));
-            created.IsSectionBoxActive = true;
+            if (action.Box is not null || action.ElementIds.Count > 0)
+            {
+                created.SetSectionBox(ResolveBox(document, action));
+                created.IsSectionBoxActive = true;
+            }
+            else created.IsSectionBoxActive = false;
             view = created;
         }
         else
@@ -825,6 +829,21 @@ internal static class ActionMutations
         SetViewName(document, view, action.Name);
         if (action.Scale is int scale) view.Scale = scale;
         if (action.Template is not null) ApplyTemplate(document, view, action.Template);
+        if (action.DisplayStyle is not null)
+            view.DisplayStyle = action.DisplayStyle switch
+            {
+                "hidden_line" => DisplayStyle.HLR,
+                "shaded" => DisplayStyle.Shading,
+                "consistent_colors" => DisplayStyle.FlatColors,
+                _ => DisplayStyle.Realistic
+            };
+        if (action.DetailLevel is not null)
+            view.DetailLevel = action.DetailLevel switch
+            {
+                "coarse" => ViewDetailLevel.Coarse,
+                "medium" => ViewDetailLevel.Medium,
+                _ => ViewDetailLevel.Fine
+            };
         return new ActionResultData
         {
             Id = RevitValueReader.GetId(view.Id),

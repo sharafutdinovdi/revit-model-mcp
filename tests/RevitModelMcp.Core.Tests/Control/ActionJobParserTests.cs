@@ -1293,6 +1293,34 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task CreateView_WholeModelDefaultsAndBatchStyles()
+    {
+        var result = ControlJobParser.Parse("""{"command":"create-view","kind":"3d"}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Box).IsNull();
+        await Assert.That(result.Action.ElementIds).IsEmpty();
+        await Assert.That(result.Action.DisplayStyle).IsEqualTo("shaded");
+        await Assert.That(result.Action.DetailLevel).IsEqualTo("fine");
+        var plan = ControlJobParser.Parse("""{"command":"create-view","kind":"floor_plan","level":"L1"}""");
+        await Assert.That(plan.Action!.DisplayStyle).IsNull();
+        await Assert.That(plan.Action.DetailLevel).IsNull();
+        var batch = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"create-view","kind":"3d","displayStyle":"hidden_line","detailLevel":"coarse"}]}""");
+        await Assert.That(batch.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(batch.Action!.Steps[0].Action!.DisplayStyle).IsEqualTo("hidden_line");
+        await Assert.That(batch.Action.Steps[0].Action!.DetailLevel).IsEqualTo("coarse");
+    }
+
+    [Test]
+    [Arguments("""{"command":"create-view","kind":"section"}""")]
+    [Arguments("""{"command":"create-view","kind":"3d","displayStyle":"wireframe"}""")]
+    [Arguments("""{"command":"create-view","kind":"3d","detailLevel":"undefined"}""")]
+    [Arguments("""{"command":"create-view","kind":"3d","elementIds":[]}""")]
+    public async Task CreateView_RejectsInvalidStylesAndBounds(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SectionBoxBounds_CutPlanePassesThroughCenter()
     {
         var (minimum, maximum) = SectionBoxBounds.FromExtents(4000, 3000, 2000);
