@@ -21,6 +21,11 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
 from revit_model_mcp.batch import register_batch
+from revit_model_mcp.health_workbook import (
+    validate_health_path,
+    warning_ids,
+    write_health_workbook,
+)
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.issue_register import (
     snapshot_indices,
@@ -63,6 +68,7 @@ host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
 channel = RevitReadChannel(host)
 
 ISSUE_CAPTURE_BUDGET_SECONDS = 210
+HEALTH_CAPTURE_BUDGET_SECONDS = 60
 
 READ_ONLY_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
 TimeoutSeconds = Annotated[
@@ -628,20 +634,97 @@ async def revit_model_health(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
+    save_to: Annotated[
+        str | None,
+        Field(
+            validation_alias=AliasChoices("save_to", "saveTo"),
+            description="New .xlsx health report path on the MCP server machine; parent must exist and existing files are refused.",
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Read model quality counts before an export or hand-over.
 
     Returns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.
     Absent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.
-    Use revit_list_warnings to inspect affected elements.
+    Use save_to when the user requests a saved or Excel health report.
+    The workbook includes health checks, all warning groups, counts and up to five snapshots
+    within a 60-second capture budget. Failed or skipped snapshots become workbook warnings.
+    Without save_to, use revit_list_warnings to inspect affected elements.
     A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
     """
-    return await _execute(
+    try:
+        target = validate_health_path(save_to) if save_to is not None else None
+    except (OSError, ValueError) as error:
+        raise ToolError(str(error)) from error
+    health = await _execute(
         ReadJob("model-health", {"command": "model-health"}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
     )
+
+    if target is None:
+        return health
+    warning_result = await _execute(
+        ReadJob.list_warnings(None, True),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
+    groups = warning_result["data"]["groups"]
+    selected = sorted(range(len(groups)), key=lambda i: groups[i]["count"], reverse=True)[:5]
+    snapshots, notes, warnings = {}, {}, []
+    deadline = asyncio.get_running_loop().time() + HEALTH_CAPTURE_BUDGET_SECONDS
+    try:
+        with tempfile.TemporaryDirectory(prefix="revit_health_") as directory:
+            for index in selected:
+                ids = warning_ids(groups[index])[:50]
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0 or not ids:
+                    notes[index] = (
+                        "Snapshot skipped: capture time budget exhausted"
+                        if remaining <= 0
+                        else "Snapshot skipped: no affected elements available"
+                    )
+                    warnings.append(f"Warning group {index + 1}: {notes[index]}")
+                    continue
+                try:
+                    async with asyncio.timeout(remaining):
+                        result = await _execute(
+                            ReadJob(
+                                "capture-elements",
+                                {
+                                    "command": "capture-elements",
+                                    "elementIds": ids,
+                                    "pixelSize": 900,
+                                    "paddingMm": 1500,
+                                    "mode": "3d",
+                                },
+                                str(Path(directory) / f"snapshot_{index}.png"),
+                            ),
+                            min(120, max(1, int(remaining))),
+                            min(300, max(1, int(remaining))),
+                            document,
+                        )
+                    snapshots[index] = result["data"]["localPath"]
+                    missing = result["data"].get("missingIds", [])
+                    if missing:
+                        warnings.append(
+                            f"Warning group {index + 1}: snapshot missing element IDs {missing}"
+                        )
+                except (ToolError, OSError, ValueError, KeyError, TypeError, TimeoutError) as error:
+                    notes[index] = (
+                        f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
+                    )
+                    warnings.append(f"Warning group {index + 1}: {notes[index]}")
+            return {
+                **health,
+                "workbook": write_health_workbook(
+                    str(target), health, groups, snapshots, notes, warnings
+                ),
+            }
+    except (OSError, ValueError, TypeError) as error:
+        raise ToolError(str(error)) from error
 
 
 @addressed_tool

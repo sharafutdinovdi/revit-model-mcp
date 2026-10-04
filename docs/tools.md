@@ -39,7 +39,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
 | `revit_list_instances` | `document=null`; no timeout arguments | Return endpoint or heartbeat information in `instances`. |
-| `revit_model_health` | None | Read model quality counts and top warnings before hand-over. |
+| `revit_model_health` | `save_to` (optional) | Read model quality counts and top warnings; save an Excel health report on the MCP server machine. |
 | `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
 | `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
@@ -136,3 +136,31 @@ The remaining issues receive `Snapshot skipped: limit of 25 per register`.
 A 210-second capture budget reserves time within the 240-second client limit for writing the workbook.
 A capture failure receives `Snapshot unavailable: <reason>` and does not fail the register.
 Result fields are `path`, `issueCount`, `snapshotCount`, `bySeverity` and `warnings`.
+
+## Saved health report
+
+`revit_model_health(save_to="C:\\Reports\\health.xlsx")` writes a new workbook on the machine running the MCP server.
+`saveTo` is an alias for `save_to`.
+The path must end in `.xlsx`, its parent directory must exist, and an existing file is refused.
+Without `save_to`, the response is unchanged.
+With `save_to`, the response adds `workbook` with `path`, `snapshotCount` and `warnings`.
+The workbook contains Health, Warnings and Counts sheets.
+All warning groups include affected element IDs; snapshots cover up to five groups with the highest counts, with at most 50 elements per capture.
+The total capture budget is 60 seconds; failed or skipped captures become warnings.
+
+The Health sheet uses the following default review thresholds.
+These are review defaults, not project requirements.
+Unavailable metrics receive Review status.
+
+| Check | Pass threshold |
+| --- | --- |
+| Warnings | 0 |
+| Views not on sheets | At most 20% of all views; 0% when there are no views |
+| Unused family types | At most 300 |
+| In-place families | 0 |
+| CAD imports | 0 |
+| Unplaced rooms | 0 |
+| Rooms not enclosed | 0 |
+| Design options | 0 at the stage under review |
+| Images | At most 20 |
+| Model groups | At most 50 |

@@ -185,6 +185,7 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
+    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "save_to"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
         "parameter_rules",

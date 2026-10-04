@@ -2,27 +2,29 @@
 
 from collections import Counter
 from datetime import date
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.chart import BarChart, Reference
-from openpyxl.drawing.image import Image
-from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, OneCellAnchor
-from openpyxl.drawing.xdr import XDRPositiveSize2D
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.utils.units import pixels_to_EMU
-from PIL import Image as PillowImage
-from PIL import ImageChops, ImageOps
+
+from revit_model_mcp.workbook_style import (
+    ACCENT,
+    BORDER,
+    COLORS,
+    _append,
+    _box_image,
+    _cover_block,
+    _header,
+    _snapshot,
+    _tile,
+)
 
 SEVERITIES = ("critical", "major", "minor", "info")
-COLORS = ("C00000", "FF8C00", "FFD966", "D9E1F2")
 SNAPSHOT_LIMIT = 25
-ACCENT = "1F3864"
-BORDER = Border(*(Side(style="thin", color="BFBFBF") for _ in range(4)))
 HEADERS = [
     "ID",
     "Snapshot",
@@ -148,79 +150,6 @@ def snapshot_indices(issues):
     return ordered[:SNAPSHOT_LIMIT], ordered[SNAPSHOT_LIMIT:]
 
 
-def _append(sheet, values):
-    sheet.append(values)
-    if not values:
-        return
-    for cell in sheet[sheet.max_row]:
-        if isinstance(cell.value, str):
-            cell.data_type = "s"
-        cell.font = Font(name="Calibri", size=10)
-        cell.alignment = Alignment(wrap_text=True, vertical="top")
-        cell.border = BORDER
-        if sheet.max_row % 2 == 0:
-            cell.fill = PatternFill("solid", fgColor="F2F2F2")
-
-
-def _header(sheet, widths=None, row=1, columns=None, filter_rows=False):
-    for cell in sheet[row][: columns or sheet.max_column]:
-        cell.fill = PatternFill("solid", fgColor=ACCENT)
-        cell.font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
-        cell.alignment = Alignment(wrap_text=True, vertical="center")
-        cell.border = BORDER
-    sheet.row_dimensions[row].height = 30
-    for index, width in enumerate(widths or [], 1):
-        sheet.column_dimensions[get_column_letter(index)].width = width
-    if filter_rows:
-        sheet.freeze_panes = "A2"
-        sheet.auto_filter.ref = sheet.dimensions
-
-
-def _cover_block(sheet, row, first, last, value, color=None, size=10, bold=False, end_row=None):
-    sheet.merge_cells(start_row=row, start_column=first, end_row=end_row or row, end_column=last)
-    cell = sheet.cell(row, first, value)
-    if isinstance(value, str):
-        cell.data_type = "s"
-    cell.font = Font(
-        name="Calibri",
-        size=size,
-        bold=bold,
-        color="FFFFFF" if color in (ACCENT, COLORS[0]) else "404040",
-    )
-    cell.alignment = Alignment(
-        wrap_text=True, vertical="center", horizontal="center" if color else "left"
-    )
-    if color:
-        for column in range(first, last + 1):
-            sheet.cell(row, column).fill = PatternFill("solid", fgColor=color)
-
-
-def _snapshot(path):
-    with PillowImage.open(path) as source:
-        image = source.convert("RGBA")
-        white = PillowImage.new("RGBA", image.size, "white")
-        image = PillowImage.alpha_composite(white, image).convert("RGB")
-    difference = ImageChops.difference(image, PillowImage.new("RGB", image.size, "white"))
-    bounds = difference.convert("L").point(lambda value: 255 if value > 10 else 0).getbbox()
-    if bounds:
-        left, top, right, bottom = bounds
-        image = image.crop(
-            (
-                max(0, left - 12),
-                max(0, top - 12),
-                min(image.width, right + 12),
-                min(image.height, bottom + 12),
-            )
-        )
-    image = ImageOps.contain(image, (360, 240), PillowImage.Resampling.LANCZOS)
-    canvas = PillowImage.new("RGB", (360, 240), "white")
-    canvas.paste(image, ((360 - image.width) // 2, (240 - image.height) // 2))
-    buffer = BytesIO()
-    canvas.save(buffer, format="PNG")
-    buffer.seek(0)
-    return Image(buffer)
-
-
 def write_register(
     output_path: str,
     project: dict[str, Any],
@@ -304,12 +233,10 @@ def write_register(
     _cover_block(cover, tile_row - 1, 1, 8, "Issues by severity", size=12, bold=True)
     for index, (severity, color) in enumerate(zip(SEVERITIES, COLORS, strict=True)):
         first = index * 2 + 1
-        _cover_block(cover, tile_row, first, first + 1, totals[severity], color, 20, True)
-        _cover_block(cover, tile_row + 1, first, first + 1, severity.capitalize(), color)
+        _tile(cover, tile_row, first, first + 1, totals[severity], severity.capitalize(), color)
     cover.row_dimensions[tile_row].height = 36
     cover.row_dimensions[tile_row + 1].height = 24
-    _cover_block(cover, tile_row + 3, 1, 2, len(issues), ACCENT, 20, True)
-    _cover_block(cover, tile_row + 4, 1, 2, "Total", ACCENT)
+    _tile(cover, tile_row + 3, 1, 2, len(issues), "Total", ACCENT)
     cover.row_dimensions[tile_row + 3].height = 36
     cover.row_dimensions[tile_row + 4].height = 24
     _cover_block(
@@ -404,14 +331,7 @@ def write_register(
                 warnings.append(f"{issue['id']}: {message}")
                 image = None
             if image is not None:
-                image.anchor = OneCellAnchor(
-                    _from=AnchorMarker(
-                        col=1, row=row - 1, colOff=pixels_to_EMU(4), rowOff=pixels_to_EMU(3)
-                    ),
-                    ext=XDRPositiveSize2D(pixels_to_EMU(360), pixels_to_EMU(240)),
-                )
-                register.add_image(image)
-                register.row_dimensions[row].height = 185
+                _box_image(register, image, row, 2)
                 snapshot_count += 1
         elif ids and issue["snapshot"] != "none" and index not in notes:
             message = "Snapshot unavailable: no image supplied"
