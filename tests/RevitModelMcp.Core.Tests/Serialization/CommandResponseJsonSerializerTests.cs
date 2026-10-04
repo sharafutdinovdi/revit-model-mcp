@@ -871,6 +871,40 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    [Arguments("3d")]
+    [Arguments("plan")]
+    public async Task Serialize_CaptureElements_PreservesFileMissingIdsAndMode(string mode)
+    {
+        var response = CommandResponse<ElementCaptureData>.Ok(
+            "capture-elements",
+            new ElementCaptureData
+            {
+                FileName = "capture_20261004_120000_000.png",
+                Width = 1600,
+                Height = 900,
+                SizeBytes = 123456,
+                ElementCount = 2,
+                MissingIds = new List<long> { 17, 4294967296 },
+                Mode = mode
+            },
+            812);
+
+        using var json = Parse(response);
+        var data = json.RootElement.GetProperty("data");
+
+        await AssertSuccess(json.RootElement, "capture-elements");
+        await Assert.That(data.GetProperty("fileName").GetString()).IsEqualTo("capture_20261004_120000_000.png");
+        await Assert.That(data.GetProperty("width").GetInt32()).IsEqualTo(1600);
+        await Assert.That(data.GetProperty("height").GetInt32()).IsEqualTo(900);
+        await Assert.That(data.GetProperty("sizeBytes").GetInt64()).IsEqualTo(123456);
+        await Assert.That(data.GetProperty("elementCount").GetInt32()).IsEqualTo(2);
+        await Assert.That(data.GetProperty("missingIds").GetArrayLength()).IsEqualTo(2);
+        await Assert.That(data.GetProperty("missingIds")[0].GetInt64()).IsEqualTo(17);
+        await Assert.That(data.GetProperty("missingIds")[1].GetInt64()).IsEqualTo(4294967296);
+        await Assert.That(data.GetProperty("mode").GetString()).IsEqualTo(mode);
+    }
+
+    [Test]
     public async Task Serialize_MissingView_ReturnsReadableFailureWithoutData()
     {
         var response = CommandResponse<ViewSummaryData>.ViewNotFound("view-summary", "Missing View", 2);

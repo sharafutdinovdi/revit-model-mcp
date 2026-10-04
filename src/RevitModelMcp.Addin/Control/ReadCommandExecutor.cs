@@ -467,8 +467,13 @@ internal static class ReadCommandExecutor
             var image = ViewImageExporter.Export(document, view, job.PixelSize, true, localTime);
             return new ElementCaptureData
             {
-                FileName = image.FileName, Width = image.Width, Height = image.Height, SizeBytes = image.SizeBytes,
-                ElementCount = elements.Count, MissingIds = missing, Mode = job.Mode
+                FileName = image.FileName,
+                Width = image.Width,
+                Height = image.Height,
+                SizeBytes = image.SizeBytes,
+                ElementCount = elements.Count,
+                MissingIds = missing,
+                Mode = job.Mode
             };
         }
         finally
