@@ -46,6 +46,11 @@ Jobs without `targetDocument` retain the active-document behavior.
 | `revit_load_family` | `paths` (1-100), `overwrite=false`, `overwrite_parameter_values=false`, `dry_run=false`, `response_timeout_s=600` | Load workstation `.rfa` files in one undo entry. Existing families are `skipped` unless overwrite is true. With overwrite, changed families are `reloaded`; an already loaded family that Revit leaves unchanged is `unchanged`. |
 | `revit_place_families` | Exactly one of `placements` or `at_rooms`; `load=null`, `dry_run=false`, `stop_on_error=true`, `response_timeout_s=600` | Load optional families and place up to 2000 instances in one undo entry. |
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
+| `revit_create_view` | `kind`, `name=null`, `level=null`, `view_family_type=null`, `template=null`, `scale=null`, `box=null`, `element_ids=null` | Create a floor, ceiling or structural plan, section, 3D or drafting view. Plans need a level. Section and 3D need a box or element IDs; element bounds expand by 1000 mm. Sections look along +Y. |
+| `revit_duplicate_view` | `view`, `mode="duplicate"`, `name=null` | Duplicate a view, include detailing or create a dependent view. |
+| `revit_apply_view_template` | `views`, `template` | Apply a matching template to one or more views. Type mismatches are reported in `typeMismatches`. |
+| `revit_create_sheet` | `number`, `name`, `title_block=null` | Create a sheet with a loaded title block. Sheet numbers must be unique. |
+| `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
@@ -149,7 +154,7 @@ With `stop_on_error=true`, the first failed family rolls back the whole project 
 
 `type_name` and `wall_type` are required arguments that accept `null`.
 
-`revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_update_parameters`, `revit_place_family`, `revit_create_wall`, `revit_set_parameter` and `revit_delete` accept `dry_run=false`.
+`revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_update_parameters`, `revit_place_family`, `revit_create_wall`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet`, `revit_set_parameter` and `revit_delete` accept `dry_run=false`.
 A dry run executes the mutation, reads its prospective result, and rolls back its transaction. Dry runs never commit. The activity pane lists elements reported by the action result.
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.

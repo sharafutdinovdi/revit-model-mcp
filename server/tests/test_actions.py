@@ -7,6 +7,7 @@ import pytest
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp.actions import (
     UpdateFilters,
@@ -39,6 +40,11 @@ ACTION_TOOLS = {
     "revit_load_family",
     "revit_place_families",
     "revit_create_wall",
+    "revit_create_view",
+    "revit_duplicate_view",
+    "revit_apply_view_template",
+    "revit_create_sheet",
+    "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
@@ -1402,3 +1408,64 @@ def test_document_lifecycle_explicit_pid_precedes_document_and_rejects_contradic
             server.call_tool("revit_open_document", {"path": r"C:\models\new.rvt", "process_id": 0})
         )
     execute.assert_not_awaited()
+
+
+def test_view_and_sheet_action_mapping():
+    import asyncio
+
+    server, execute, _ = action_server()
+    cases = [
+        (
+            "revit_create_view",
+            {"kind": "section", "box": {"min_mm": [0, 0, 0], "max_mm": [100, 100, 100]}},
+            "create-view",
+            "box",
+        ),
+        (
+            "revit_duplicate_view",
+            {"view": "Level 1", "mode": "dependent"},
+            "duplicate-view",
+            "mode",
+        ),
+        (
+            "revit_apply_view_template",
+            {"views": ["Level 1"], "template": "Plan"},
+            "apply-view-template",
+            "views",
+        ),
+        ("revit_create_sheet", {"number": "A101", "name": "Plan"}, "create-sheet", "titleBlock"),
+        (
+            "revit_place_views_on_sheet",
+            {"sheet": "A101", "views": [{"view": "Level 1", "x_mm": 10, "y_mm": 20}]},
+            "place-views-on-sheet",
+            "placements",
+        ),
+    ]
+    for tool, arguments, command, key in cases:
+        asyncio.run(server.call_tool(tool, arguments))
+        payload = execute.await_args.args[0].payload
+        assert payload["command"] == command
+        assert key in payload
+        if command == "create-view":
+            assert payload["box"] == {"minMm": [0.0, 0.0, 0.0], "maxMm": [100.0, 100.0, 100.0]}
+        if command == "place-views-on-sheet":
+            assert payload["placements"] == [{"view": "Level 1", "xMm": 10.0, "yMm": 20.0}]
+
+
+def test_create_view_batch_mapping_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {"action": "create_view", "args": {"kind": "floor_plan", "level": "Level 1"}}
+                ]
+            },
+        )
+    )
+    assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-view"
+    with pytest.raises((ToolError, ValueError)):
+        asyncio.run(server.call_tool("revit_create_view", {"kind": "section"}))

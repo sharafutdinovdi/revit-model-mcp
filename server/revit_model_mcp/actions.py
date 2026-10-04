@@ -80,6 +80,31 @@ Document = Annotated[
 ]
 
 
+class ViewBox(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    min_mm: Annotated[list[Number], Field(min_length=3, max_length=3)]
+    max_mm: Annotated[list[Number], Field(min_length=3, max_length=3)]
+
+    @model_validator(mode="after")
+    def positive_extents(self):
+        if any(low >= high for low, high in zip(self.min_mm, self.max_mm)):
+            raise ValueError("box must have positive extents.")
+        return self
+
+
+class SheetPlacement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    view: Name
+    x_mm: Number | None = None
+    y_mm: Number | None = None
+
+    @model_validator(mode="after")
+    def paired_coordinates(self):
+        if (self.x_mm is None) != (self.y_mm is None):
+            raise ValueError("x_mm and y_mm must be supplied together.")
+        return self
+
+
 _BATCH_FIELDS = {
     "select": {"element_ids": (ElementIds, ...)},
     "isolate": {"element_ids": (ElementIds, ...), "reset": (bool, False)},
@@ -147,6 +172,33 @@ _BATCH_FIELDS = {
         "value": (ParameterValue, ...),
     },
     "delete": {"element_ids": (NonEmptyIds, ...)},
+    "create_view": {
+        "kind": (
+            Literal["floor_plan", "ceiling_plan", "structural_plan", "section", "3d", "drafting"],
+            ...,
+        ),
+        "name": (Name | None, None),
+        "level": (Name | None, None),
+        "view_family_type": (Name | None, None),
+        "template": (Name | None, None),
+        "scale": (Annotated[int, Field(strict=True, gt=0)] | None, None),
+        "box": (ViewBox | None, None),
+        "element_ids": (NonEmptyIds | None, None),
+    },
+    "duplicate_view": {
+        "view": (Name, ...),
+        "mode": (Literal["duplicate", "with_detailing", "dependent"], "duplicate"),
+        "name": (Name | None, None),
+    },
+    "apply_view_template": {
+        "views": (Annotated[list[Name], Field(min_length=1)], ...),
+        "template": (Name, ...),
+    },
+    "create_sheet": {
+        "number": (Name, ...),
+        "name": (Name, ...),
+        "title_block": (Name | None, None),
+    },
 }
 for _action in (
     "move",
@@ -160,6 +212,10 @@ for _action in (
     "create_wall",
     "set_parameter",
     "delete",
+    "create_view",
+    "duplicate_view",
+    "apply_view_template",
+    "create_sheet",
 ):
     _BATCH_FIELDS[_action]["dry_run"] = (bool, False)
 _BATCH_MODELS = {
@@ -184,6 +240,10 @@ class BatchStep(BaseModel):
         "delete",
         "select",
         "isolate",
+        "create_view",
+        "duplicate_view",
+        "apply_view_template",
+        "create_sheet",
     ]
     args: dict
 
@@ -194,6 +254,21 @@ class BatchStep(BaseModel):
             raise ValueError("element_ids must not be empty unless reset is true.")
         if self.action == "create_wall" and self.args["start_mm"] == self.args["end_mm"]:
             raise ValueError("Wall endpoints must differ.")
+        if self.action == "create_view":
+            data = self.args
+            if (
+                data["kind"] in {"floor_plan", "ceiling_plan", "structural_plan"}
+                and not data["level"]
+            ):
+                raise ValueError("level is required for plans.")
+            if data["kind"] in {"section", "3d"} and (data["box"] is None) == (
+                data["element_ids"] is None
+            ):
+                raise ValueError("Supply exactly one of box or element_ids.")
+            if data["kind"] not in {"section", "3d"} and (
+                data["box"] is not None or data["element_ids"] is not None
+            ):
+                raise ValueError("box and element_ids require section or 3d.")
         return self
 
     def payload(self) -> dict:
@@ -207,6 +282,8 @@ class BatchStep(BaseModel):
                 ("queryFilters" if key == "filters" else camel(key)): (
                     query_filter_payload(UpdateFilters.model_validate(value))
                     if key == "filters"
+                    else {"minMm": value["min_mm"], "maxMm": value["max_mm"]}
+                    if key == "box" and value is not None
                     else value
                 )
                 for key, value in self.args.items()
@@ -553,6 +630,11 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_load_family": "Load Families",
             "revit_place_families": "Place Families",
             "revit_create_wall": "Create Wall",
+            "revit_create_view": "Create View",
+            "revit_duplicate_view": "Duplicate View",
+            "revit_apply_view_template": "Apply View Template",
+            "revit_create_sheet": "Create Sheet",
+            "revit_place_views_on_sheet": "Place Views on Sheet",
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
             "revit_batch": "Run Action Batch",
@@ -1144,6 +1226,104 @@ def register_actions(mcp, execute, host_provider) -> None:
             level=level,
             wallType=wall_type,
             heightMm=height_mm,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_create_view(
+        kind: Literal["floor_plan", "ceiling_plan", "structural_plan", "section", "3d", "drafting"],
+        name: Name | None = None,
+        level: Name | None = None,
+        view_family_type: Name | None = None,
+        template: Name | None = None,
+        scale: Annotated[int, Field(strict=True, gt=0)] | None = None,
+        box: ViewBox | None = None,
+        element_ids: NonEmptyIds | None = None,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Create a plan, section, 3D or drafting view. Box coordinates use model millimetres."""
+        step = BatchStep(
+            action="create_view",
+            args={
+                "kind": kind,
+                "name": name,
+                "level": level,
+                "view_family_type": view_family_type,
+                "template": template,
+                "scale": scale,
+                "box": box,
+                "element_ids": element_ids,
+            },
+        )
+        return await send(
+            "create-view",
+            **{
+                key: value
+                for key, value in step.payload().items()
+                if key not in {"command", "dryRun"}
+            },
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_duplicate_view(
+        view: Name,
+        mode: Literal["duplicate", "with_detailing", "dependent"] = "duplicate",
+        name: Name | None = None,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Duplicate a view, optionally including detailing or creating a dependent view."""
+        return await send(
+            "duplicate-view", view=view, mode=mode, name=name, dryRun=dry_run, document=document
+        )
+
+    @action
+    async def revit_apply_view_template(
+        views: Annotated[list[Name], Field(min_length=1)],
+        template: Name,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Apply a matching view template to one or more views."""
+        return await send(
+            "apply-view-template", views=views, template=template, dryRun=dry_run, document=document
+        )
+
+    @action
+    async def revit_create_sheet(
+        number: Name,
+        name: Name,
+        title_block: Name | None = None,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Create a sheet with the first loaded or a named title block."""
+        return await send(
+            "create-sheet",
+            number=number,
+            name=name,
+            titleBlock=title_block,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_place_views_on_sheet(
+        sheet: Name,
+        views: Annotated[list[SheetPlacement], Field(min_length=1)],
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Place views and schedules on a sheet. Coordinates use sheet millimetres."""
+        placements = [{"view": item.view, "xMm": item.x_mm, "yMm": item.y_mm} for item in views]
+        return await send(
+            "place-views-on-sheet",
+            sheet=sheet,
+            placements=placements,
             dryRun=dry_run,
             document=document,
         )

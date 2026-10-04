@@ -772,6 +772,7 @@ internal static class ActionCommandExecutor
                     before!.Dependents = data.Verification.Changed!.Except(before.Requested!).ToList();
                 document.Regenerate();
                 ActionVerifier.CaptureAfter(document, command, action, data);
+                CaptureViewSheetAfter(document, command, action, data);
                 if (action.DryRun && command is ("move" or "set-parameter"))
                     data.Verification.Changed = command == "move"
                         ? ids.Select(RevitValueReader.GetId).ToList() : [action.ElementId];
@@ -792,6 +793,7 @@ internal static class ActionCommandExecutor
                     try
                     {
                         ActionVerifier.CaptureAfter(document, command, action, data);
+                        CaptureViewSheetAfter(document, command, action, data);
                         if (command == "place-families" && data.CreatedElementIds!.Any(id => document.GetElement(CreateId(id)) is null))
                             throw new InvalidOperationException("Post-commit verification found a missing family instance.");
                     }
@@ -863,6 +865,7 @@ internal static class ActionCommandExecutor
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
             "load-family" or "place-families" => data.Count ?? 0,
+            "apply-view-template" or "place-views-on-sheet" => data.Count ?? 0,
             _ => 0
         };
         return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -875,6 +878,9 @@ internal static class ActionCommandExecutor
             TypeName = action.TypeName,
             Parameter = action.Parameter,
             WallType = action.WallType,
+            ViewName = data.ViewName ?? data.SheetName ?? action.Name ?? action.View ?? action.Sheet,
+            ViewKind = action.Kind,
+            SheetNumber = data.SheetNumber ?? action.Number,
             BatchStepCount = action.Steps.Count
         });
     }
@@ -950,6 +956,35 @@ internal static class ActionCommandExecutor
         return !wasOpen;
     }
 
+    private static void CaptureViewSheetAfter(Document document, string command, ActionJobContract action, ActionResultData result)
+    {
+        var verification = result.Verification!;
+        switch (command)
+        {
+            case "create-view":
+            case "duplicate-view":
+            case "create-sheet":
+                var created = document.GetElement(CreateId(result.Id!.Value))
+                    ?? throw new InvalidOperationException($"Verification could not find element {result.Id.Value}.");
+                verification.After = new ActionFacts { Id = RevitValueReader.GetId(created.Id), Category = created.Category?.Name };
+                verification.WouldCreate = action.DryRun ? true : null;
+                break;
+            case "apply-view-template":
+                var affected = action.Views!.Select(reference => ReadCommandReader.FindView(document, reference)
+                    ?? throw new InvalidOperationException($"View '{reference}' was not found after applying template.")).ToList();
+                verification.After = new ActionFacts { Elements = affected.Select(view => new ActionFacts { Id = RevitValueReader.GetId(view.Id) }).ToList() };
+                break;
+            case "place-views-on-sheet":
+                verification.After = new ActionFacts { Elements = verification.Changed!.Select(id =>
+                {
+                    var element = document.GetElement(CreateId(id))
+                        ?? throw new InvalidOperationException($"Verification could not find element {id}.");
+                    return new ActionFacts { Id = RevitValueReader.GetId(element.Id) };
+                }).ToList() };
+                break;
+        }
+    }
+
     private static ActionResultData Mutate(Document document, string command, ActionJobContract action, List<ElementId> ids)
     {
         switch (command)
@@ -988,6 +1023,16 @@ internal static class ActionCommandExecutor
                 return ActionMutations.CreateWall(document, action);
             case "set-parameter":
                 return ActionMutations.SetParameter(document, action);
+            case "create-view":
+                return ActionMutations.CreateView(document, action);
+            case "duplicate-view":
+                return ActionMutations.DuplicateView(document, action);
+            case "apply-view-template":
+                return ActionMutations.ApplyViewTemplate(document, action);
+            case "create-sheet":
+                return ActionMutations.CreateSheet(document, action);
+            case "place-views-on-sheet":
+                return ActionMutations.PlaceViewsOnSheet(document, action);
             default:
                 throw new ArgumentException($"Unknown action: {command}.");
         }
