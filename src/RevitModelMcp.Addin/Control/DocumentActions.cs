@@ -209,7 +209,9 @@ internal static class DocumentActions
     {
         Save(application, document, new ActionJobContract
         {
-            SaveAs = target, Compact = compact, Overwrite = overwrite
+            SaveAs = target,
+            Compact = compact,
+            Overwrite = overwrite
         }, requireConfirmation: false);
     }
 

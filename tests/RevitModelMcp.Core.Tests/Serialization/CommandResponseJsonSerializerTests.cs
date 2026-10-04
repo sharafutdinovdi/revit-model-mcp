@@ -15,7 +15,10 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var data = new ActionResultData
         {
-            Total = 3, Done = 1, Failed = 1, SkippedCount = 1,
+            Total = 3,
+            Done = 1,
+            Failed = 1,
+            SkippedCount = 1,
             Summary = "Processed 1 of 3 models; 1 failed, 1 skipped.",
             Models =
             [

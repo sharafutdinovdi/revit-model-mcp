@@ -214,8 +214,11 @@ internal static class ActionCommandExecutor
             data.SkippedCount = data.Models.Count(model => model.Status == "skipped");
             data.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
-                Command = "process-models", Count = data.Done.Value, ProcessTotal = paths.Count,
-                ProcessFailed = data.Failed.Value, ProcessSkipped = data.SkippedCount.Value,
+                Command = "process-models",
+                Count = data.Done.Value,
+                ProcessTotal = paths.Count,
+                ProcessFailed = data.Failed.Value,
+                ProcessSkipped = data.SkippedCount.Value,
                 DryRun = request.DryRun
             });
             response = data.Failed > 0
@@ -283,15 +286,19 @@ internal static class ActionCommandExecutor
             var opening = request.Open ?? new ControlJobContract();
             var (openedDocument, openedResult) = DocumentActions.OpenForProcessing(application, new ActionJobContract
             {
-                DocumentPath = path, Mode = opening.Mode ?? "detached", Worksets = opening.Worksets ?? "all",
-                WorksetsOpenNames = opening.WorksetsOpen, WorksetsCloseNames = opening.WorksetsClose,
+                DocumentPath = path,
+                Mode = opening.Mode ?? "detached",
+                Worksets = opening.Worksets ?? "all",
+                WorksetsOpenNames = opening.WorksetsOpen,
+                WorksetsCloseNames = opening.WorksetsClose,
                 Audit = opening.Audit ?? false
             });
             document = openedDocument;
             result.Opened = new ProcessModelOpenedResult
             {
                 Mode = openedResult.OpenedAs ?? opening.Mode ?? "detached",
-                Worksets = openedResult.WorksetsOpen ?? [], Audited = openedResult.Audited ?? false,
+                Worksets = openedResult.WorksetsOpen ?? [],
+                Audited = openedResult.Audited ?? false,
                 WorksetPatternsUnmatched = openedResult.WorksetPatternsUnmatched ?? [],
                 Warning = openedResult.Warning
             };
@@ -319,12 +326,14 @@ internal static class ActionCommandExecutor
             {
                 var codeAction = new ActionJobContract
                 {
-                    Code = request.Code.Code, TransactionMode = request.Code.Transaction ?? "auto"
+                    Code = request.Code.Code,
+                    TransactionMode = request.Code.Transaction ?? "auto"
                 };
                 var code = CodeExecution.Execute(application, document, null, codeAction, failures, job.ClientName, job.JobId);
                 result.Code = new ProcessModelCodeResult
                 {
-                    ReturnValue = code.ReturnValue, ReturnValueMarker = Guid.NewGuid().ToString("N"),
+                    ReturnValue = code.ReturnValue,
+                    ReturnValueMarker = Guid.NewGuid().ToString("N"),
                     Log = code.Log ?? []
                 };
                 if (code.CodeError is not null) throw new InvalidOperationException(code.CodeError);
@@ -342,9 +351,14 @@ internal static class ActionCommandExecutor
                         : export.Folder.Replace("{model}", modelName);
                     var parsed = ActionJobParser.Parse("export", new ControlJobContract
                     {
-                        Format = export.Format, Views = export.Views, Sheets = export.Sheets,
-                        SheetSet = export.SheetSet, AllSheets = export.AllSheets, Folder = folder,
-                        ExportOptions = export.ExportOptions, Overwrite = export.Overwrite
+                        Format = export.Format,
+                        Views = export.Views,
+                        Sheets = export.Sheets,
+                        SheetSet = export.SheetSet,
+                        AllSheets = export.AllSheets,
+                        Folder = folder,
+                        ExportOptions = export.ExportOptions,
+                        Overwrite = export.Overwrite
                     });
                     if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
                     var exportAction = parsed.Action!;
@@ -404,10 +418,14 @@ internal static class ActionCommandExecutor
             {
                 var activity = new ActionResultData
                 {
-                    Title = document.Title, DryRun = request.DryRun, UndoName = undoName,
+                    Title = document.Title,
+                    DryRun = request.DryRun,
+                    UndoName = undoName,
                     Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
                     {
-                        Command = "process-models", DocumentTitle = document.Title, DryRun = request.DryRun
+                        Command = "process-models",
+                        DocumentTitle = document.Title,
+                        DryRun = request.DryRun
                     })
                 };
                 var activityResponse = result.Status == "done"
@@ -439,7 +457,9 @@ internal static class ActionCommandExecutor
         steps.DryRun = preview;
         if (preview) steps.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "batch", DocumentTitle = documentTitle, DryRun = true,
+            Command = "batch",
+            DocumentTitle = documentTitle,
+            DryRun = true,
             BatchStepCount = steps.Steps?.Count ?? 0
         });
         foreach (var step in steps.Steps ?? [])

@@ -9,7 +9,10 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "process-models", Count = 2, ProcessTotal = 3, ProcessFailed = 1
+            Command = "process-models",
+            Count = 2,
+            ProcessTotal = 3,
+            ProcessFailed = 1
         });
         await Assert.That(summary).IsEqualTo("Processed 2 of 3 models; 1 failed, 0 skipped.");
     }

@@ -685,7 +685,9 @@ public sealed class ProcessModelsJob
         {
             var parsed = ActionJobParser.Parse("execute-code", new ControlJobContract
             {
-                Code = Code.Code, Transaction = Code.Transaction, DryRun = DryRun
+                Code = Code.Code,
+                Transaction = Code.Transaction,
+                DryRun = DryRun
             });
             if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
         }
