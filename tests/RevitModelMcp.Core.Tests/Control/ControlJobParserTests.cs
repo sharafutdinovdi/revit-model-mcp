@@ -46,13 +46,16 @@ public sealed class ControlJobParserTests
         }
         var excessive = ControlJobParseResult.FromContract(new ControlJobContract
         {
-            Command = "capture-elements", ElementIds = Enumerable.Range(1, 501).Select(value => (long)value).ToList()
+            Command = "capture-elements",
+            ElementIds = Enumerable.Range(1, 501).Select(value => (long)value).ToList()
         });
         await Assert.That(excessive.Kind).IsEqualTo(ControlJobKind.Invalid);
         var boundary = ControlJobParseResult.FromContract(new ControlJobContract
         {
-            Command = "capture-elements", ElementIds = Enumerable.Range(1, 500).Select(value => (long)value).ToList(),
-            PaddingMm = 20000, PixelSize = 1
+            Command = "capture-elements",
+            ElementIds = Enumerable.Range(1, 500).Select(value => (long)value).ToList(),
+            PaddingMm = 20000,
+            PixelSize = 1
         });
         await Assert.That(boundary.Kind).IsEqualTo(ControlJobKind.CaptureElements);
     }

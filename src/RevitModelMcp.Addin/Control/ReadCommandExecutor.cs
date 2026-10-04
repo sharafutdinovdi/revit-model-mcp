@@ -435,9 +435,9 @@ internal static class ReadCommandExecutor
                     var inverse = crop.Transform.Inverse;
                     var corners = new List<XYZ>();
                     foreach (var coordinateX in new[] { bounds.Min.X, bounds.Max.X })
-                    foreach (var coordinateY in new[] { bounds.Min.Y, bounds.Max.Y })
-                    foreach (var coordinateZ in new[] { bounds.Min.Z, bounds.Max.Z })
-                        corners.Add(inverse.OfPoint(new XYZ(coordinateX, coordinateY, coordinateZ)));
+                        foreach (var coordinateY in new[] { bounds.Min.Y, bounds.Max.Y })
+                            foreach (var coordinateZ in new[] { bounds.Min.Z, bounds.Max.Z })
+                                corners.Add(inverse.OfPoint(new XYZ(coordinateX, coordinateY, coordinateZ)));
                     crop.Min = new XYZ(corners.Min(point => point.X), corners.Min(point => point.Y), crop.Min.Z);
                     crop.Max = new XYZ(corners.Max(point => point.X), corners.Max(point => point.Y), crop.Max.Z);
                     view.CropBox = crop;
