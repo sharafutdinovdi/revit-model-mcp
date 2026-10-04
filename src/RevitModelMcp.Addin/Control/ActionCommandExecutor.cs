@@ -877,7 +877,7 @@ internal static class ActionCommandExecutor
     {
         var count = command switch
         {
-            "move" or "rotate" or "change-type" or "select" or "isolate" => ids?.Count ?? 0,
+            "move" or "rotate" or "change-type" or "select" or "isolate" or "override-graphics" => ids?.Count ?? 0,
             "copy" or "mirror" or "update-parameters" => data.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
@@ -891,6 +891,7 @@ internal static class ActionCommandExecutor
             DocumentTitle = documentTitle,
             Count = count,
             DryRun = action.DryRun,
+            Reset = action.Reset,
             Family = action.Family,
             TypeName = action.TypeName,
             Parameter = action.Parameter,
@@ -1013,6 +1014,8 @@ internal static class ActionCommandExecutor
                 if (action.Reset) document.ActiveView.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
                 else document.ActiveView.IsolateElementsTemporary(ids);
                 return new ActionResultData { Count = ids.Count };
+            case "override-graphics":
+                return ActionMutations.OverrideGraphics(document, action, ids);
             case "move":
                 ElementTransformUtils.MoveElements(document, ids, new XYZ(Millimeters(action.DxMm), Millimeters(action.DyMm), Millimeters(action.DzMm)));
                 return new ActionResultData { Count = ids.Count };

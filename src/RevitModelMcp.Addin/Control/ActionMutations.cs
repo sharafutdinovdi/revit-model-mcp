@@ -12,6 +12,104 @@ namespace RevitModelMcp.Control;
 
 internal static class ActionMutations
 {
+    private static readonly Dictionary<Document, Dictionary<(long View, long Element), OverrideGraphicSettings>> GraphicHistory = new();
+
+    internal static ActionResultData OverrideGraphics(Document document, ActionJobContract action, List<ElementId> ids)
+    {
+        using var viewCollector = new FilteredElementCollector(document).OfClass(typeof(View));
+        var eligible = viewCollector.Cast<View>().Where(view => !view.IsTemplate &&
+            view is ViewPlan or ViewSection or View3D).ToList();
+        var views = action.ViewScope switch
+        {
+            "active" => [document.ActiveView],
+            "all" => eligible,
+            _ => action.Views!.Select(reference => FindView(document, reference)).Distinct().ToList()
+        };
+        if (views.Any(view => !eligible.Any(candidate => candidate.Id == view.Id)))
+            throw new ArgumentException("Graphics overrides require a non-template plan, section, elevation or 3D view.");
+        using var patternCollector = new FilteredElementCollector(document).OfClass(typeof(FillPatternElement));
+        var solid = patternCollector.Cast<FillPatternElement>().FirstOrDefault(pattern => pattern.GetFillPattern().IsSolidFill);
+        if (!action.Reset && action.Fill && solid is null)
+            throw new InvalidOperationException("The document has no solid fill pattern.");
+        var color = new Color(Convert.ToByte(action.Color.Substring(1, 2), 16),
+            Convert.ToByte(action.Color.Substring(3, 2), 16), Convert.ToByte(action.Color.Substring(5, 2), 16));
+        if (!GraphicHistory.TryGetValue(document, out var history))
+            GraphicHistory[document] = history = new Dictionary<(long, long), OverrideGraphicSettings>();
+        var saved = new Dictionary<(long, long), OverrideGraphicSettings>();
+        var cleared = new List<(long, long)>();
+        var perView = new Dictionary<string, int>();
+        var touched = new List<string>();
+        foreach (var view in views)
+        {
+            using var visibleCollector = new FilteredElementCollector(document, view.Id).WhereElementIsNotElementType();
+            var visible = visibleCollector.ToElementIds().ToHashSet();
+            var targets = ids.Where(id => action.Reset || visible.Contains(id)).ToList();
+            if (targets.Count == 0) continue;
+            var viewId = RevitValueReader.GetId(view.Id);
+            foreach (var id in targets)
+            {
+                var key = (viewId, RevitValueReader.GetId(id));
+                if (action.Reset)
+                {
+                    view.SetElementOverrides(id, history.TryGetValue(key, out var original)
+                        ? original : new OverrideGraphicSettings());
+                    cleared.Add(key);
+                    continue;
+                }
+                var current = view.GetElementOverrides(id);
+                if (!history.ContainsKey(key) && !saved.ContainsKey(key))
+                    saved[key] = new OverrideGraphicSettings(current);
+                var settings = new OverrideGraphicSettings(current);
+                settings.SetProjectionLineColor(color);
+                settings.SetCutLineColor(color);
+                if (action.Fill)
+                {
+                    settings.SetSurfaceForegroundPatternId(solid!.Id);
+                    settings.SetSurfaceForegroundPatternColor(color);
+                    settings.SetCutForegroundPatternId(solid.Id);
+                    settings.SetCutForegroundPatternColor(color);
+                }
+                if (action.LineWeight is int weight)
+                {
+                    settings.SetProjectionLineWeight(weight);
+                    settings.SetCutLineWeight(weight);
+                }
+                settings.SetSurfaceTransparency(action.Transparency);
+                view.SetElementOverrides(id, settings);
+            }
+            if (action.Reset)
+            {
+                foreach (var entry in history.Where(entry => entry.Key.View == viewId && entry.Key.Element < 0).ToList())
+                {
+                    var id = ActionCommandExecutor.CreateId(-entry.Key.Element);
+                    if (document.GetElement(id) is not null) view.SetElementOverrides(id, entry.Value);
+                    cleared.Add(entry.Key);
+                }
+            }
+            else if (action.HalftoneOthers)
+            {
+                foreach (var id in visible)
+                {
+                    if (targets.Contains(id) || document.GetElement(id)?.Category?.CategoryType != CategoryType.Model) continue;
+                    var key = (viewId, -RevitValueReader.GetId(id));
+                    var current = view.GetElementOverrides(id);
+                    if (!history.ContainsKey(key) && !saved.ContainsKey(key)) saved[key] = new OverrideGraphicSettings(current);
+                    var settings = new OverrideGraphicSettings(current);
+                    settings.SetHalftone(true);
+                    view.SetElementOverrides(id, settings);
+                }
+            }
+            touched.Add(view.Name);
+            perView[view.Name] = targets.Count;
+        }
+        if (!action.DryRun)
+        {
+            foreach (var entry in saved) history[entry.Key] = entry.Value;
+            foreach (var key in cleared) history.Remove(key);
+        }
+        return new ActionResultData { Count = perView.Values.Sum(), ViewsTouched = touched, ElementsPerView = perView };
+    }
+
     internal static ActionResultData Rotate(Document document, ActionJobContract action, List<ElementId> ids)
     {
         var pinned = ids.Where(id => document.GetElement(id)?.Pinned == true).Select(RevitValueReader.GetId).ToList();

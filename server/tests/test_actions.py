@@ -30,6 +30,7 @@ ACTION_TOOLS = {
     "revit_select",
     "revit_show",
     "revit_isolate",
+    "revit_override_graphics",
     "revit_move",
     "revit_rotate",
     "revit_copy",
@@ -701,6 +702,38 @@ def test_action_response_timeout_reaches_channel(response_timeout_s):
         ("revit_show", {"element_ids": [1]}, {"elementIds": [1], "select": True}),
         ("revit_isolate", {"element_ids": [], "reset": True}, {"elementIds": [], "reset": True}),
         (
+            "revit_override_graphics",
+            {"element_ids": [1]},
+            {
+                "elementIds": [1],
+                "color": "#FF0000",
+                "viewScope": "active",
+                "views": None,
+                "halftoneOthers": False,
+                "lineWeight": None,
+                "fill": True,
+                "transparency": 0,
+                "reset": False,
+                "dryRun": False,
+            },
+        ),
+        (
+            "revit_override_graphics",
+            {"element_ids": [1], "views": [23, "Section A"], "reset": True},
+            {
+                "elementIds": [1],
+                "color": "#FF0000",
+                "viewScope": "list",
+                "views": ["23", "Section A"],
+                "halftoneOthers": False,
+                "lineWeight": None,
+                "fill": True,
+                "transparency": 0,
+                "reset": True,
+                "dryRun": False,
+            },
+        ),
+        (
             "revit_move",
             {"element_ids": [1], "dx_mm": 304.8, "dy_mm": -50},
             {"elementIds": [1], "dxMm": 304.8, "dyMm": -50.0, "dzMm": 0},
@@ -919,6 +952,26 @@ def test_batch_accepts_load_family_step():
     assert step["overwriteParameterValues"] is False
 
 
+def test_batch_accepts_override_graphics_step():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {"action": "override_graphics", "args": {"element_ids": [42], "views": [17]}}
+                ]
+            },
+        )
+    )
+    step = execute.await_args.args[0].payload["steps"][0]
+    assert step["command"] == "override-graphics"
+    assert step["viewScope"] == "list"
+    assert step["views"] == ["17"]
+
+
 @pytest.mark.parametrize(
     "name,arguments",
     [
@@ -964,6 +1017,10 @@ def test_bulk_family_limits(name, arguments):
         ("revit_show", {"element_ids": []}),
         ("revit_delete", {"element_ids": []}),
         ("revit_isolate", {"element_ids": []}),
+        ("revit_override_graphics", {"element_ids": [], "views": "all"}),
+        ("revit_override_graphics", {"element_ids": [1], "color": "red"}),
+        ("revit_override_graphics", {"element_ids": [1], "line_weight": 17}),
+        ("revit_override_graphics", {"element_ids": [1], "transparency": 101}),
         ("revit_move", {"element_ids": [1], "dx_mm": math.inf, "dy_mm": 0}),
         ("revit_move", {"element_ids": [1], "dx_mm": 0}),
         ("revit_rotate", {"element_ids": [1], "angle_deg": math.inf}),

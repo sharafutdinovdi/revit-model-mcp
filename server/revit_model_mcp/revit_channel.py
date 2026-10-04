@@ -68,6 +68,7 @@ ACTION_COMMANDS = frozenset(
         "select",
         "show",
         "isolate",
+        "override-graphics",
         "move",
         "rotate",
         "copy",

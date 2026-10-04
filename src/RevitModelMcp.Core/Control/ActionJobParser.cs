@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
+        "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -30,6 +30,12 @@ public static class ActionJobParser
                 ElementIds = (job.ElementIds ?? []).Distinct().ToList(),
                 Select = job.Select ?? true,
                 Reset = job.Reset ?? false,
+                Color = job.Color ?? "#FF0000",
+                ViewScope = job.ViewScope ?? "active",
+                HalftoneOthers = job.HalftoneOthers ?? false,
+                LineWeight = job.LineWeight,
+                Fill = job.Fill ?? true,
+                Transparency = job.Transparency ?? 0,
                 DxMm = job.DxMm ?? 0,
                 DyMm = job.DyMm ?? 0,
                 DzMm = job.DzMm ?? 0,
@@ -205,7 +211,7 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet",
+                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate" or "override-graphics" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet",
                         "Unknown batch step.");
                     var parsed = Parse(stepCommand, step!, trustedNetworkRoots);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
@@ -281,12 +287,20 @@ public static class ActionJobParser
                     item.XMm.HasValue == item.YMm.HasValue && (!item.XMm.HasValue || Finite(item.XMm.Value, item.YMm!.Value))),
                     "views require names and paired finite coordinates.");
             }
-            if (command is "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "delete")
+            if (command is "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "delete")
             {
                 Require(job.ElementIds is not null, "elementIds is required.");
                 Require(action.ElementIds.All(elementId => elementId > 0), "Element IDs must be positive.");
                 Require(action.ElementIds.Count > 0 || command == "select" || command == "isolate" && action.Reset,
                     "elementIds must not be empty.");
+            }
+            if (command == "override-graphics")
+            {
+                Require(action.ViewScope is "active" or "all" or "list", "views must be active, all or a list.");
+                Require(action.ViewScope != "list" || action.Views is { Count: > 0 } && ValidNames(action.Views), "views must contain names or IDs.");
+                Require(System.Text.RegularExpressions.Regex.IsMatch(action.Color, "^#[0-9A-Fa-f]{6}$"), "color must be #RRGGBB.");
+                Require(action.LineWeight is null or >= 1 and <= 16, "line_weight must be 1 to 16.");
+                Require(action.Transparency is >= 0 and <= 100, "transparency must be 0 to 100.");
             }
             if (command == "move")
             {
@@ -735,6 +749,12 @@ public sealed class ActionJobContract
     public List<long> ElementIds { get; set; } = [];
     public bool Select { get; set; }
     public bool Reset { get; set; }
+    public string Color { get; set; } = "#FF0000";
+    public string ViewScope { get; set; } = "active";
+    public bool HalftoneOthers { get; set; }
+    public int? LineWeight { get; set; }
+    public bool Fill { get; set; } = true;
+    public int Transparency { get; set; }
     public double DxMm { get; set; }
     public double DyMm { get; set; }
     public double DzMm { get; set; }
@@ -1343,6 +1363,12 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "elementIds")] public List<long>? ElementIds { get; set; }
     [DataMember(Name = "select")] public bool? Select { get; set; }
     [DataMember(Name = "reset")] public bool? Reset { get; set; }
+    [DataMember(Name = "color")] public string? Color { get; set; }
+    [DataMember(Name = "viewScope")] public string? ViewScope { get; set; }
+    [DataMember(Name = "halftoneOthers")] public bool? HalftoneOthers { get; set; }
+    [DataMember(Name = "lineWeight")] public int? LineWeight { get; set; }
+    [DataMember(Name = "fill")] public bool? Fill { get; set; }
+    [DataMember(Name = "transparency")] public int? Transparency { get; set; }
     [DataMember(Name = "dxMm")] public double? DxMm { get; set; }
     [DataMember(Name = "dyMm")] public double? DyMm { get; set; }
     [DataMember(Name = "dzMm")] public double? DzMm { get; set; }
@@ -1471,6 +1497,8 @@ public sealed class ActionResultData
     [DataMember(Name = "elapsedMs", EmitDefaultValue = false)] public long? ElapsedMs { get; set; }
     [DataMember(Name = "scope", EmitDefaultValue = false)] public string? Scope { get; set; }
     [DataMember(Name = "view", EmitDefaultValue = false)] public NwcViewResult? View { get; set; }
+    [DataMember(Name = "viewsTouched", EmitDefaultValue = false)] public List<string>? ViewsTouched { get; set; }
+    [DataMember(Name = "elementsPerView", EmitDefaultValue = false)] public Dictionary<string, int>? ElementsPerView { get; set; }
     [DataMember(Name = "viewId", EmitDefaultValue = false)] public long? ViewId { get; set; }
     [DataMember(Name = "viewName", EmitDefaultValue = false)] public string? ViewName { get; set; }
     [DataMember(Name = "sheetId", EmitDefaultValue = false)] public long? SheetId { get; set; }
