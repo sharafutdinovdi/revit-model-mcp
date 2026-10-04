@@ -337,6 +337,7 @@ internal static class DocumentActions
         var wasOpen = uiDocument.GetOpenUIViews().Any(item => item.ViewId == view.Id);
         var wasActive = uiDocument.ActiveView.Id == view.Id;
         uiDocument.ActiveView = view;
+        ZoomActiveView(uiDocument, action.Zoom, action.ZoomElementIds);
         return new ActionResultData
         {
             Title = document.Title,
@@ -346,6 +347,37 @@ internal static class DocumentActions
             ViewOpened = !wasOpen,
             Changed = !wasActive
         };
+    }
+
+    internal static void ZoomActiveView(UIDocument uiDocument, string zoom = "fit", List<long>? elementIds = null)
+    {
+        if (zoom == "none") return;
+        var view = uiDocument.ActiveView;
+        var uiView = uiDocument.GetOpenUIViews().SingleOrDefault(item => item.ViewId == view.Id)
+            ?? throw new InvalidOperationException("The active view has no open UI view.");
+        if (zoom == "fit")
+        {
+            uiView.ZoomToFit();
+            return;
+        }
+        var corners = new List<double[]>();
+        foreach (var id in elementIds!)
+        {
+            var element = uiDocument.Document.GetElement(ActionCommandExecutor.CreateId(id))
+                ?? throw new ArgumentException($"Element {id} was not found.");
+            var bounds = element.get_BoundingBox(view)
+                ?? throw new ArgumentException($"Element {id} has no bounding box in view '{view.Name}'.");
+            foreach (var horizontal in new[] { bounds.Min.X, bounds.Max.X })
+                foreach (var vertical in new[] { bounds.Min.Y, bounds.Max.Y })
+                    foreach (var depth in new[] { bounds.Min.Z, bounds.Max.Z })
+                    {
+                        var point = bounds.Transform.OfPoint(new XYZ(horizontal, vertical, depth));
+                        corners.Add([point.DotProduct(view.RightDirection), point.DotProduct(view.UpDirection), point.DotProduct(view.ViewDirection)]);
+                    }
+        }
+        var (minimum, maximum) = ViewZoomBounds.Combine(corners);
+        XYZ ModelPoint(double[] point) => view.RightDirection * point[0] + view.UpDirection * point[1] + view.ViewDirection * point[2];
+        uiView.ZoomAndCenterRectangle(ModelPoint(minimum), ModelPoint(maximum));
     }
 
     private static ActionResultData CloseViews(UIApplication application, Document document, ActionJobContract action)

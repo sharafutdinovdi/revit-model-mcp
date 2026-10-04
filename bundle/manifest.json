@@ -167,7 +167,7 @@
     },
     {
       "name": "revit_activate_view",
-      "description": "Activate a non-template view in the selected document."
+      "description": "Activate a non-template view. Zoom to fit, preserve zoom, or frame element IDs."
     },
     {
       "name": "revit_close_views",

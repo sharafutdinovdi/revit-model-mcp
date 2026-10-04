@@ -9,6 +9,47 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task ActivateView_ParsesZoomModesAndDeduplicatesIds()
+    {
+        var defaults = ControlJobParser.Parse("""{"command":"activate-view","view":"L1"}""");
+        var none = ControlJobParser.Parse("""{"command":"activate-view","view":"L1","zoom":"none"}""");
+        var elements = ControlJobParser.Parse("""{"command":"activate-view","view":"L1","zoom":"elements","zoomElementIds":[42,43,42]}""");
+        await Assert.That(defaults.Action!.Zoom).IsEqualTo("fit");
+        await Assert.That(none.Action!.Zoom).IsEqualTo("none");
+        await Assert.That(elements.Action!.ZoomElementIds).IsEquivalentTo([42L, 43L]);
+    }
+
+    [Test]
+    [Arguments("\"invalid\"")]
+    [Arguments("\"elements\"")]
+    [Arguments("\"elements\",\"zoomElementIds\":[]")]
+    [Arguments("\"elements\",\"zoomElementIds\":[0]")]
+    [Arguments("\"elements\",\"zoomElementIds\":[-1]")]
+    [Arguments("\"fit\",\"zoomElementIds\":[42]")]
+    public async Task ActivateView_RejectsInvalidZoom(string zoom)
+    {
+        var parsed = ControlJobParser.Parse($$"""{"command":"activate-view","view":"L1","zoom":{{zoom}}}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task ViewZoomBounds_CombinesCornersAndPadsEachSide()
+    {
+        var (minimum, maximum) = ViewZoomBounds.Combine([[-10, -20, -5], [10, 20, 5], [30, 60, 15]]);
+        await Assert.That(minimum).IsEquivalentTo([-16.0, -32.0, 5.0]);
+        await Assert.That(maximum).IsEquivalentTo([36.0, 72.0, 5.0]);
+    }
+
+    [Test]
+    public async Task ViewZoomBounds_PadsDegenerateRectangleAndRejectsEmptyBounds()
+    {
+        var (minimum, maximum) = ViewZoomBounds.Combine([[0, 0, 0]]);
+        await Assert.That(minimum).IsEquivalentTo([-0.01, -0.01, 0.0]);
+        await Assert.That(maximum).IsEquivalentTo([0.01, 0.01, 0.0]);
+        await Assert.That(() => ViewZoomBounds.Combine([])).Throws<ArgumentException>();
+    }
+
+    [Test]
     [Arguments(2700, true)]
     [Arguments(2700.005, true)]
     [Arguments(2794, false)]

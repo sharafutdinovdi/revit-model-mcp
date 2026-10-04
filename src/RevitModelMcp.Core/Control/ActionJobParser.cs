@@ -122,6 +122,8 @@ public static class ActionJobParser
                 Activate = job.Activate ?? false,
                 ActivateDocument = job.ActivateDocument ?? false,
                 View = job.View,
+                Zoom = job.Zoom ?? "fit",
+                ZoomElementIds = job.ZoomElementIds?.Distinct().ToList(),
                 ViewType = string.IsNullOrWhiteSpace(job.ViewType) ? null : job.ViewType!.Trim(),
                 Views = job.Views,
                 KeepActive = job.KeepActive ?? true,
@@ -186,7 +188,14 @@ public static class ActionJobParser
                     "worksets must be all, none, {open: [names]} or {close: [names]}.");
             }
             if (command == "activate-document") Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
-            if (command == "activate-view") Require(!string.IsNullOrWhiteSpace(action.View), "view is required.");
+            if (command == "activate-view")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.View), "view is required.");
+                Require(action.Zoom is "fit" or "none" or "elements", "zoom must be fit, none or elements.");
+                Require(action.Zoom == "elements"
+                    ? action.ZoomElementIds is { Count: > 0 } && action.ZoomElementIds.All(id => id > 0)
+                    : action.ZoomElementIds is null, "zoomElementIds requires zoom=elements and nonempty positive IDs.");
+            }
             if (command == "close-views") Require(action.Views is null || ValidNames(action.Views), "views must contain names or ids.");
             if (command == "new-document")
             {
@@ -782,6 +791,8 @@ public sealed class ActionJobContract
     public string Worksets { get; set; } = "all";
     public List<string>? WorksetsOpenNames { get; set; }
     public List<string>? WorksetsCloseNames { get; set; }
+    public string Zoom { get; set; } = "fit";
+    public List<long>? ZoomElementIds { get; set; }
     public bool ActivateDocument { get; set; }
     public string? View { get; set; }
     public string? ViewType { get; set; }
@@ -885,6 +896,25 @@ public sealed class ViewBoxContract
 {
     [DataMember(Name = "minMm")] public List<double> MinMm { get; set; } = [];
     [DataMember(Name = "maxMm")] public List<double> MaxMm { get; set; } = [];
+}
+
+public static class ViewZoomBounds
+{
+    public static (double[] Min, double[] Max) Combine(IEnumerable<double[]> corners)
+    {
+        var points = corners.ToList();
+        if (points.Count == 0) throw new ArgumentException("No bounding box is available for zoom.", nameof(corners));
+        var minimum = Enumerable.Range(0, 3).Select(axis => points.Min(point => point[axis])).ToArray();
+        var maximum = Enumerable.Range(0, 3).Select(axis => points.Max(point => point[axis])).ToArray();
+        for (var axis = 0; axis < 2; axis++)
+        {
+            var padding = Math.Max((maximum[axis] - minimum[axis]) * 0.15, 0.01);
+            minimum[axis] -= padding;
+            maximum[axis] += padding;
+        }
+        minimum[2] = maximum[2] = (minimum[2] + maximum[2]) / 2;
+        return (minimum, maximum);
+    }
 }
 
 public static class SectionBoxBounds
@@ -1377,6 +1407,8 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "worksets")] public string? Worksets { get; set; }
     [DataMember(Name = "worksetsOpen")] public List<string>? WorksetsOpen { get; set; }
     [DataMember(Name = "worksetsClose")] public List<string>? WorksetsClose { get; set; }
+    [DataMember(Name = "zoom")] public string? Zoom { get; set; }
+    [DataMember(Name = "zoomElementIds")] public List<long>? ZoomElementIds { get; set; }
     [DataMember(Name = "activateDocument")] public bool? ActivateDocument { get; set; }
     [DataMember(Name = "keepActive")] public bool? KeepActive { get; set; }
     [DataMember(Name = "kind")] public string? DocumentKind { get; set; }

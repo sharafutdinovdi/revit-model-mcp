@@ -34,7 +34,7 @@ Jobs without `targetDocument` retain the active-document behavior.
 | Tool | Arguments | Action and units |
 | --- | --- | --- |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
-| `revit_show` | `element_ids`, `select=true` | Show nonempty IDs; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
+| `revit_show` | `element_ids`, `select=true` | Show nonempty IDs and zoom to fit when opening a new view; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
 | `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
@@ -188,7 +188,11 @@ For example, setting Comments on element 123 returns:
 }
 ```
 
-`revit_place_families` accepts placement records with `family`, `type_name`, `x_mm`, `y_mm`, `level`, optional `z_mm`, `rotation_deg`, `host_id` and `parameters`. `z_mm` is an offset above the level. `host_id` addresses a wall, floor or ceiling, including its nearest usable face for a face-based family. Parameter names follow `revit_set_parameter` resolution rules. A failure rolls back every placement by default. With `stop_on_error=false`, failed indices and reasons are returned while successful items commit. `at_rooms` selects placed, enclosed rooms by optional level and room names or numbers; unplaced and unenclosed rooms are reported as `skipped`. The result includes `placed`, `failed`, `createdElementIds`, `perTypeCounts`, `instanceOffsetsMm`, `summary` and `verification`. `instanceOffsetsMm` maps created IDs to the actual elevation offset read from `INSTANCE_ELEVATION_PARAM` or `INSTANCE_FREE_HOST_OFFSET_PARAM`, in mm. A missing offset is reported as null. Level-based placements set and verify the offset against `z_mm`; face-based placements use the host face. A dry run rolls back all changes. The `load` list uses the same workstation path checks as `revit_load_family`.
+`revit_place_families` accepts placement records with `family`, `type_name`, `x_mm`, `y_mm`, `level`, optional `z_mm`, `rotation_deg`, `host_id` and `parameters`. `z_mm` is an offset above the level. `host_id` addresses a wall, floor or ceiling, including its nearest usable face for a face-based family. Parameter names follow `revit_set_parameter` resolution rules. A failure rolls back every placement by default. With `stop_on_error=false`, failed indices and reasons are returned while successful items commit. `at_rooms` selects placed, enclosed rooms by optional level and room names or numbers; unplaced and unenclosed rooms are reported as `skipped`. The result includes `placed`, `failed`, `createdElementIds`, `perTypeCounts`, `instanceOffsetsMm`, `summary` and `verification`.
+`instanceOffsetsMm` maps created IDs to the actual elevation offset read from `INSTANCE_ELEVATION_PARAM` or `INSTANCE_FREE_HOST_OFFSET_PARAM`, in mm.
+A missing offset is reported as null.
+Level-based placements set and verify the offset against `z_mm`; face-based placements use the host face.
+A dry run rolls back all changes. The `load` list uses the same workstation path checks as `revit_load_family`.
 
 `revit_batch` takes action names and their normal snake_case arguments:
 
@@ -218,6 +222,7 @@ Floor plans take priority, followed by names starting with the level name.
 Without a matching plan it uses the first non-template 3D view.
 The handler sets `UIDocument.ActiveView` synchronously inside its ExternalEvent without a transaction; `ShowElements` needs the view active immediately.
 `RequestViewChange` defers the change until control returns to Revit.
+After `ShowElements`, a newly opened view uses `UIView.ZoomToFit()`.
 The response includes `activeView` and `viewOpened`, which reports whether the handler opened a previously closed view.
 
 During action execution, the handler attempts to dismiss TaskDialog prompts with OK and then Yes.
@@ -283,7 +288,7 @@ After a timeout, inspect the model before retrying an action; the previous call 
 | --- | --- | --- |
 | `revit_open_document` | `path`, `mode="detached"`, `worksets="all"`, `activate=false`, `audit=false` | Open a local, UNC or RSN model. |
 | `revit_activate_document` | `document` | Switch to an already open document. |
-| `revit_activate_view` | `view`, `document=null`, `activate_document=false`, `view_type=null` | Switch to a non-template view. |
+| `revit_activate_view` | `view`, `document=null`, `activate_document=false`, `view_type=null`, `zoom="fit"` | Switch to a non-template view and zoom to fit. Use `"none"` to preserve zoom or element IDs to frame their bounds. |
 | `revit_close_views` | `views=null`, `keep_active=true` | Close UI views in the active document. |
 | `revit_new_document` | `template=null`, `kind="project"`, `activate=true`, `save_as=null`, `name=null` | Create a project or family document. |
 | `revit_close_document` | `document`, `save=false`, `confirm_token=null` | Close a background document. |
@@ -295,7 +300,14 @@ If the file is already loaded as a Revit link in an open model, the action refus
 On a non-workshared model, `none` and workset patterns are ignored with `warning: "Worksets ignored: the model is not workshared."`. A list containing only exact workset names still fails.
 Its `path` accepts local UNC central files when their share is in `trustedNetworkRoots`; device paths and `..` segments are rejected.
 
-`revit_activate_document` resolves exactly one open document by the existing title or path rules. A document without a saved path cannot be activated. Revit must keep the same document and document count, using Revit document identity across managed wrappers. If Revit opens an extra copy, the action restores the previously active saved document before closing the copy. If that is impossible, the error names the copy left open. `revit_activate_view` resolves a name or ID in the target document and rejects templates. IDs take priority. Ambiguous names are refused with candidate IDs, names and types. Use `view_type`, with the same case-insensitive Revit type names as `revit_list_views`, to select one type. Set `activate_document=true` to switch documents first. It reports the active view and whether it was already open. `revit_close_views` defaults to closing all views except the active one. It reports a refused last or active view without failing the call.
+`revit_activate_document` resolves exactly one open document by the existing title or path rules. A document without a saved path cannot be activated. Revit must keep the same document and document count, using Revit document identity across managed wrappers. If Revit opens an extra copy, the action restores the previously active saved document before closing the copy. If that is impossible, the error names the copy left open. `revit_activate_view` resolves a name or ID in the target document and rejects templates. IDs take priority. Ambiguous names are refused with candidate IDs, names and types. Use `view_type`, with the same case-insensitive Revit type names as `revit_list_views`, to select one type. Set `activate_document=true` to switch documents first. It reports the active view and whether it was already open.
+`zoom="fit"` calls `ZoomToFit()` on the now-active UI view.
+`zoom="none"` preserves its zoom.
+A nonempty list of positive element IDs uses their combined bounding box in that view, projected onto its right and up axes, with 15 percent padding on each side.
+Missing elements or bounding boxes fail the action.
+Degenerate bounds receive a minimum margin of 0.01 feet.
+The view may already be active if zoom fails.
+`revit_close_views` defaults to closing all views except the active one. It reports a refused last or active view without failing the call.
 
 `revit_new_document` uses the default project template unless `template` is supplied. Family creation requires a `.rft` template; project templates use `.rte`. Template and `save_as` paths follow the existing path and trusted network root rules. An existing `save_as` target is refused. With `activate=true` and no `save_as`, the document is saved under `%LOCALAPPDATA%\RevitModelMcp\new` so Revit can activate it. Activation keeps the created document when Revit returns another wrapper for it. If Revit opens a separate copy, the action closes only the background original. The action checks that documents open before creation remain open. `name` sets the temporary file name without an extension and must be a safe file name. The default is `Project yyyyMMdd-HHmmss` or `Family yyyyMMdd-HHmmss`; an existing file adds a numeric suffix. `revit_ui_state.activeView.isActive` is true, and `openViews` marks the active view. Session actions have activity entries and summaries but no model transaction or undo entry. They are not batch steps and are refused in read-only mode.
 

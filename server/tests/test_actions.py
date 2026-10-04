@@ -162,6 +162,7 @@ def test_session_action_mappings():
     )
     assert execute.await_args.args[0].payload["activateDocument"] is True
     assert execute.await_args.args[0].payload["viewType"] == "ThreeD"
+    assert execute.await_args.args[0].payload["zoom"] == "fit"
     asyncio.run(server.call_tool("revit_close_views", {"views": ["3D"], "keep_active": False}))
     assert execute.await_args.args[0].payload["keepActive"] is False
     asyncio.run(
@@ -1777,3 +1778,37 @@ def test_batch_allowlists_and_process_models_schema_match():
     for name in ("revit_batch", "revit_process_models"):
         schema = next(tool.input_schema for tool in tools if tool.name == name)
         assert set(schema["$defs"]["BatchStep"]["properties"]["action"]["enum"]) == actions
+
+
+@pytest.mark.parametrize(
+    "zoom,mode,ids",
+    [("fit", "fit", None), ("none", "none", None), ([42, 43, 42], "elements", [42, 43])],
+)
+def test_activate_view_zoom_mapping(zoom, mode, ids):
+    import asyncio
+
+    server, execute, _ = action_server()
+    result = asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": zoom}))
+    assert not result.is_error
+    payload = execute.await_args.args[0].payload
+    assert payload["zoom"] == mode
+    assert payload.get("zoomElementIds") == ids
+
+
+@pytest.mark.parametrize("zoom", ["invalid", [], [0], [-1], [True], [1.5], ["42"]])
+def test_activate_view_rejects_invalid_zoom(zoom):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(ToolError):
+        asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": zoom}))
+    execute.assert_not_awaited()
+
+
+def test_activate_view_element_zoom_refused_in_read_only_mode():
+    import asyncio
+
+    server, execute, _ = action_server(read_only=True)
+    result = asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": [42]}))
+    assert "read-only mode" in str(result)
+    execute.assert_not_awaited()

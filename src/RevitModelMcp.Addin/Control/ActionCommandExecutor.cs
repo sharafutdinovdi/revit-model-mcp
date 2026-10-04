@@ -761,6 +761,7 @@ internal static class ActionCommandExecutor
             {
                 viewOpened = OpenViewForElements(uiDocument!, ids);
                 uiDocument!.ShowElements(ids);
+                if (viewOpened) DocumentActions.ZoomActiveView(uiDocument);
             }
             if (command == "select" || action.Select) uiDocument!.Selection.SetElementIds(ids);
             var viewData = new ActionResultData { Count = uiDocument!.Selection.GetElementIds().Count };

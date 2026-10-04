@@ -791,18 +791,23 @@ def register_actions(mcp, execute, host_provider) -> None:
     @action
     async def revit_activate_view(
         view: Name,
-        document: str | None = None,
+        document: Annotated[
+            str | None, Field(description="Target document title or path reference.")
+        ] = None,
         activate_document: bool = False,
         view_type: str | None = None,
+        zoom: Literal["fit", "none"] | NonEmptyIds = "fit",
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Activate a non-template view in the selected document."""
+        """Activate a non-template view. Zoom to fit, preserve zoom, or frame element IDs."""
         return await send(
             "activate-view",
             view=view,
             document=document,
             activateDocument=activate_document,
             viewType=view_type,
+            zoom="elements" if isinstance(zoom, list) else zoom,
+            zoomElementIds=list(dict.fromkeys(zoom)) if isinstance(zoom, list) else None,
             process_id=process_id,
         )
 
