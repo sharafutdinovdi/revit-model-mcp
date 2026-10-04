@@ -702,6 +702,8 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_place_families": "Place Families",
             "revit_create_wall": "Create Wall",
             "revit_create_mep_run": "Create MEP Run",
+            "revit_link_cad": "Link CAD Drawing",
+            "revit_walls_from_cad": "Build Walls from CAD",
             "revit_create_view": "Create View",
             "revit_duplicate_view": "Duplicate View",
             "revit_apply_view_template": "Apply View Template",
@@ -1372,6 +1374,68 @@ def register_actions(mcp, execute, host_provider) -> None:
             connectTo=connect_to,
             document=document,
             dryRun=dry_run,
+        )
+
+    @action
+    async def revit_link_cad(
+        path: Name,
+        view: str | ElementId | None = None,
+        level: Name | None = None,
+        link: bool = True,
+        origin: Literal["internal", "shared", "center"] = "internal",
+        units: Literal["auto", "mm", "cm", "m", "in", "ft"] = "auto",
+        layers: Annotated[list[Name], Field(min_length=1)] | None = None,
+        document: Document = None,
+        dry_run: bool = False,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+    ) -> dict[str, Any]:
+        """Link or import a DWG into a plan view on the Revit workstation. Return CAD layers and extents in mm."""
+        return await send(
+            "link-cad",
+            path=path,
+            view=str(view) if view is not None else None,
+            level=level,
+            cadLink=link,
+            origin=origin,
+            units=units,
+            layers=layers,
+            document=document,
+            dryRun=dry_run,
+            response_timeout_s=response_timeout_s,
+        )
+
+    @action
+    async def revit_walls_from_cad(
+        cad_id: ElementId,
+        layers: Annotated[list[Name], Field(min_length=1)],
+        level: Name,
+        wall_type: Name | None = None,
+        height_mm: PositiveLength = 3000,
+        min_thickness_mm: PositiveLength = 80,
+        max_thickness_mm: PositiveLength = 700,
+        min_length_mm: PositiveLength = 300,
+        join: bool = True,
+        document: Document = None,
+        dry_run: bool = False,
+        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+    ) -> dict[str, Any]:
+        """Pair parallel CAD lines on selected layers and build basic walls in one undo entry. Dimensions are mm."""
+        if max_thickness_mm < min_thickness_mm:
+            raise ToolError("max_thickness_mm must be at least min_thickness_mm.")
+        return await send(
+            "walls-from-cad",
+            cadId=cad_id,
+            layers=layers,
+            level=level,
+            wallType=wall_type,
+            heightMm=height_mm,
+            minThicknessMm=min_thickness_mm,
+            maxThicknessMm=max_thickness_mm,
+            minLengthMm=min_length_mm,
+            join=join,
+            document=document,
+            dryRun=dry_run,
+            response_timeout_s=response_timeout_s,
         )
 
     @action

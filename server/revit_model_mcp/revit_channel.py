@@ -80,6 +80,8 @@ ACTION_COMMANDS = frozenset(
         "place-families",
         "create-wall",
         "create-mep-run",
+        "link-cad",
+        "walls-from-cad",
         "create-view",
         "duplicate-view",
         "apply-view-template",

@@ -1,6 +1,6 @@
 # Read tool reference
 
-MEP routing, view and sheet creation and graphic override actions are listed in [Action tools](actions.md).
+MEP routing, graphic overrides, view and sheet creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 
 Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` runs on the MCP client machine from snapshot files and needs no Revit transport or running instance.
 `revit_export_view` downloads PNG through `/views/{name}/image` in HTTP mode.

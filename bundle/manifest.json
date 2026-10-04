@@ -270,6 +270,14 @@
       "description": "Create connected duct, pipe, cable tray or conduit segments from model millimetre points. Missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs."
     },
     {
+      "name": "revit_link_cad",
+      "description": "Link or import a DWG into a plan view on the Revit workstation. Return CAD layers and extents in mm."
+    },
+    {
+      "name": "revit_walls_from_cad",
+      "description": "Pair parallel CAD lines on selected layers and build basic walls in one undo entry. Dimensions are mm."
+    },
+    {
       "name": "revit_create_view",
       "description": "Create a plan, section, 3D or drafting view. Box coordinates use model millimetres."
     },

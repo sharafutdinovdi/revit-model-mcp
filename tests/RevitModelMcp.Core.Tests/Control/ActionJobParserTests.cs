@@ -61,6 +61,30 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task CadActions_ValidateArgumentsAndTrustedPaths()
+    {
+        var link = ControlJobParser.Parse("""{"command":"link-cad","path":"C:\\Plans\\Floor.dwg","origin":"center","units":"mm","layers":["Walls"]}""");
+        await Assert.That(link.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(link.Action!.CadLink).IsTrue();
+        await Assert.That(link.Action.Units).IsEqualTo("mm");
+        await Assert.That(ControlJobParser.Parse("""{"command":"link-cad","path":"..\\Floor.dwg"}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"link-cad","path":"C:\\Plans\\Floor.rvt"}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"link-cad","path":"\\\\server\\share\\Floor.dwg"}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+
+        var walls = ControlJobParser.Parse("""{"command":"walls-from-cad","cadId":5,"layers":["Walls"],"level":"Level 1","minThicknessMm":100,"maxThicknessMm":400,"dryRun":true}""");
+        await Assert.That(walls.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(walls.Action!.DryRun).IsTrue();
+        await Assert.That(walls.Action.HeightMm).IsEqualTo(3000);
+        await Assert.That(ControlJobParser.Parse("""{"command":"walls-from-cad","cadId":5,"layers":["Walls"],"level":"L1","minThicknessMm":500,"maxThicknessMm":100}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"walls-from-cad","cadId":5,"layers":["Walls"],"level":"L1"}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SelectWritableInPlacePaths_SeparatesReadOnlySources()
     {
         var (writable, refused) = ProcessModelsJob.SelectWritableInPlacePaths(

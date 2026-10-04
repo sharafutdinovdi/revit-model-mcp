@@ -122,7 +122,7 @@ internal static class ActionCommandExecutor
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
             if (exception is ActionMutations.MatchLimitException limit)
                 response.Data = new ActionResultData { MatchedCount = limit.Count, Count = limit.Count };
-            if (job.Command is "export-nwc" or "load-family" or "place-families" or "export" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
+            if (job.Command is "export-nwc" or "load-family" or "place-families" or "export" or "link-cad" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else if (job.Command == "execute-code")
                 PluginLog.Warn("Code execution failed. Source and exception details omitted from log.");
@@ -882,6 +882,7 @@ internal static class ActionCommandExecutor
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
             "load-family" or "place-families" or "create-mep-run" => data.Count ?? 0,
+            "walls-from-cad" => data.Count ?? 0,
             "apply-view-template" or "place-views-on-sheet" => data.Count ?? 0,
             _ => 0
         };
@@ -896,6 +897,7 @@ internal static class ActionCommandExecutor
             TypeName = action.TypeName,
             Parameter = action.Parameter,
             WallType = action.WallType,
+            CadLink = action.CadLink,
             ViewName = data.ViewName ?? data.SheetName ?? action.Name ?? action.View ?? action.Sheet,
             ViewKind = action.Kind,
             SheetNumber = data.SheetNumber ?? action.Number,
@@ -1046,6 +1048,10 @@ internal static class ActionCommandExecutor
                 return ActionMutations.CreateWall(document, action);
             case "create-mep-run":
                 return ActionMutations.CreateMepRun(document, action);
+            case "link-cad":
+                return ActionMutations.LinkCad(document, action);
+            case "walls-from-cad":
+                return ActionMutations.WallsFromCad(document, action);
             case "set-parameter":
                 return ActionMutations.SetParameter(document, action);
             case "create-view":
