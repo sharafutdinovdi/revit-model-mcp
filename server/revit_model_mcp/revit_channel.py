@@ -115,7 +115,7 @@ LONG_ACTION_COMMANDS = frozenset({"process-models", "export", "export-nwc", "edi
 
 def tool_budget_seconds() -> float:
     try:
-        value = float(os.environ.get("REVIT_MCP_TOOL_BUDGET_S", "50"))
+        value = float(os.environ.get("REVIT_MCP_TOOL_BUDGET_S", "40"))
     except ValueError as error:
         raise RevitChannelError("REVIT_MCP_TOOL_BUDGET_S must be between 10 and 200.") from error
     if not 10 <= value <= 200:
@@ -683,7 +683,7 @@ class RevitReadChannel:
             or (job.command == "open-document" and job.payload.get("audit") is True)
             or job.command == "execute-code"
         )
-        budget = tool_budget_seconds() if candidate else 50
+        budget = tool_budget_seconds() if candidate else 40
         instance = getattr(self.remote, "instance_info", {})
         if not isinstance(instance, dict):
             instance = {}

@@ -34,7 +34,7 @@ Jobs without `targetDocument` retain the active-document behavior.
 ## Long action jobs
 
 `revit_process_models`, `revit_export`, `revit_export_nwc`, `revit_edit_families`, audited `revit_open_document`, and `revit_execute_code` with a long response timeout can outlive the tool wait.
-`REVIT_MCP_TOOL_BUDGET_S` defaults to 50 seconds and accepts 10 through 200.
+`REVIT_MCP_TOOL_BUDGET_S` defaults to 40 seconds, so that the first response arrives within a 60-second client limit even over SSH, and accepts 10 through 200.
 Short actions return their existing response shape.
 An unfinished long action returns `status:"running"`, `jobId`, `progress`, `partial`, and a warning that the action may already have changed the model.
 Call `revit_jobs(job_id=jobId, wait_s=40)` until the original action response is returned.
