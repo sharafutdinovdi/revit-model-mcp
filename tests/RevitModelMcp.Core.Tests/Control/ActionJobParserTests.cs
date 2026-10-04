@@ -42,7 +42,10 @@ public sealed class ActionJobParserTests
         await Assert.That(batch.Action!.Steps[0].Command).IsEqualTo("create-mep-run");
         var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("create-mep-run", new ActionResultData
         {
-            SegmentIds = [11, 12], FittingIds = [13], UnjoinedPairs = [[11, 12]], LengthMm = 2000
+            SegmentIds = [11, 12],
+            FittingIds = [13],
+            UnjoinedPairs = [[11, 12]],
+            LengthMm = 2000
         }, 1));
         await Assert.That(json).Contains("\"segmentIds\":[11,12]");
         await Assert.That(json).Contains("\"fittingIds\":[13]");
@@ -118,9 +121,9 @@ public sealed class ActionJobParserTests
         await Assert.That(result.MergedSegments).IsEqualTo(2);
         await Assert.That(result.UnpairedLines).IsEqualTo(0);
         foreach (var wall in result.Walls)
-        foreach (var endpoint in new[] { wall.Start, wall.End })
-            await Assert.That(result.Walls.Where(other => other != wall).Any(other =>
-                (other.Start - endpoint).Length < 1e-6 || (other.End - endpoint).Length < 1e-6)).IsTrue();
+            foreach (var endpoint in new[] { wall.Start, wall.End })
+                await Assert.That(result.Walls.Where(other => other != wall).Any(other =>
+                    (other.Start - endpoint).Length < 1e-6 || (other.End - endpoint).Length < 1e-6)).IsTrue();
     }
 
     [Test]

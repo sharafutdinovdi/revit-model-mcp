@@ -1774,28 +1774,28 @@ public static class CadWallPlanner
         {
             (int First, int Second, double Start, double End, double Thickness)? best = null;
             for (var first = 0; first < segments.Count; first++)
-            for (var second = first + 1; second < segments.Count; second++)
-            {
-                var left = segments[first];
-                var right = segments[second];
-                var direction = left.Direction;
-                var alignment = direction.Dot(right.Direction);
-                if (Math.Abs(alignment) < angleTolerance) continue;
-                var offset = right.Start - left.Start;
-                var thickness = Math.Abs(direction.Cross(offset));
-                if (thickness < minThicknessMm || thickness > maxThicknessMm) continue;
-                var origin = direction.Dot(offset);
-                foreach (var leftInterval in remaining[first])
-                foreach (var rightInterval in remaining[second])
+                for (var second = first + 1; second < segments.Count; second++)
                 {
-                    var rightStart = origin + alignment * rightInterval.Start;
-                    var rightEnd = origin + alignment * rightInterval.End;
-                    var start = Math.Max(leftInterval.Start, Math.Min(rightStart, rightEnd));
-                    var end = Math.Min(leftInterval.End, Math.Max(rightStart, rightEnd));
-                    if (end - start < minLengthMm || best is not null && end - start <= best.Value.End - best.Value.Start) continue;
-                    best = (first, second, start, end, thickness);
+                    var left = segments[first];
+                    var right = segments[second];
+                    var direction = left.Direction;
+                    var alignment = direction.Dot(right.Direction);
+                    if (Math.Abs(alignment) < angleTolerance) continue;
+                    var offset = right.Start - left.Start;
+                    var thickness = Math.Abs(direction.Cross(offset));
+                    if (thickness < minThicknessMm || thickness > maxThicknessMm) continue;
+                    var origin = direction.Dot(offset);
+                    foreach (var leftInterval in remaining[first])
+                        foreach (var rightInterval in remaining[second])
+                        {
+                            var rightStart = origin + alignment * rightInterval.Start;
+                            var rightEnd = origin + alignment * rightInterval.End;
+                            var start = Math.Max(leftInterval.Start, Math.Min(rightStart, rightEnd));
+                            var end = Math.Min(leftInterval.End, Math.Max(rightStart, rightEnd));
+                            if (end - start < minLengthMm || best is not null && end - start <= best.Value.End - best.Value.Start) continue;
+                            best = (first, second, start, end, thickness);
+                        }
                 }
-            }
             if (best is null) break;
             var pair = best.Value;
             var firstSegment = segments[pair.First];
@@ -1834,23 +1834,23 @@ public static class CadWallPlanner
     private static void SnapJunctions(List<CadWallPlan> walls, double tolerance)
     {
         for (var first = 0; first < walls.Count; first++)
-        for (var second = first + 1; second < walls.Count; second++)
-        {
-            var left = walls[first];
-            var right = walls[second];
-            var leftVector = left.End - left.Start;
-            var rightVector = right.End - right.Start;
-            var denominator = leftVector.Cross(rightVector);
-            if (Math.Abs(denominator) < 1e-6) continue;
-            var offset = right.Start - left.Start;
-            var leftDistance = offset.Cross(rightVector) / denominator;
-            var rightDistance = offset.Cross(leftVector) / denominator;
-            if (leftDistance < -tolerance / leftVector.Length || leftDistance > 1 + tolerance / leftVector.Length ||
-                rightDistance < -tolerance / rightVector.Length || rightDistance > 1 + tolerance / rightVector.Length) continue;
-            var intersection = left.Start + leftVector * leftDistance;
-            walls[first] = Snap(left, intersection);
-            walls[second] = Snap(right, intersection);
-        }
+            for (var second = first + 1; second < walls.Count; second++)
+            {
+                var left = walls[first];
+                var right = walls[second];
+                var leftVector = left.End - left.Start;
+                var rightVector = right.End - right.Start;
+                var denominator = leftVector.Cross(rightVector);
+                if (Math.Abs(denominator) < 1e-6) continue;
+                var offset = right.Start - left.Start;
+                var leftDistance = offset.Cross(rightVector) / denominator;
+                var rightDistance = offset.Cross(leftVector) / denominator;
+                if (leftDistance < -tolerance / leftVector.Length || leftDistance > 1 + tolerance / leftVector.Length ||
+                    rightDistance < -tolerance / rightVector.Length || rightDistance > 1 + tolerance / rightVector.Length) continue;
+                var intersection = left.Start + leftVector * leftDistance;
+                walls[first] = Snap(left, intersection);
+                walls[second] = Snap(right, intersection);
+            }
 
         CadWallPlan Snap(CadWallPlan wall, CadPlanPoint intersection)
         {

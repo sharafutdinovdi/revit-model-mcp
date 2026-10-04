@@ -752,13 +752,13 @@ internal static class ActionMutations
         {
             var tolerance = Millimeters(10);
             for (var index = 0; index < planned.Count; index++)
-            for (var end = 0; end < 2; end++)
-            {
-                var point = end == 0 ? planned[index].Start : planned[index].End;
-                if (planned.Where((_, other) => other != index).Any(other =>
-                    Line.CreateBound(other.Start, other.End).Distance(point) <= tolerance))
-                    WallUtils.AllowWallJoinAtEnd(created[index], end);
-            }
+                for (var end = 0; end < 2; end++)
+                {
+                    var point = end == 0 ? planned[index].Start : planned[index].End;
+                    if (planned.Where((_, other) => other != index).Any(other =>
+                        Line.CreateBound(other.Start, other.End).Distance(point) <= tolerance))
+                        WallUtils.AllowWallJoinAtEnd(created[index], end);
+                }
         }
         return new ActionResultData
         {

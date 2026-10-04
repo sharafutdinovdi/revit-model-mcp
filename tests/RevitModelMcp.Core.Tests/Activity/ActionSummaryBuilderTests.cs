@@ -9,7 +9,10 @@ public sealed class ActionSummaryBuilderTests
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "create-mep-run", DocumentTitle = "Model.rvt", ViewKind = "cable_tray", Count = 4
+            Command = "create-mep-run",
+            DocumentTitle = "Model.rvt",
+            ViewKind = "cable_tray",
+            Count = 4
         });
         await Assert.That(summary).IsEqualTo("Created 4 segments of cable tray in Model.rvt.");
         await Assert.That(ActionSummaryBuilder.BuildGroupName("client", summary)).StartsWith("MCP (client): Created");
@@ -20,15 +23,23 @@ public sealed class ActionSummaryBuilderTests
     {
         await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "link-cad", DocumentTitle = "Project.rvt", CadLink = true
+            Command = "link-cad",
+            DocumentTitle = "Project.rvt",
+            CadLink = true
         })).IsEqualTo("Linked CAD in Project.rvt.");
         await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "link-cad", DocumentTitle = "Project.rvt", CadLink = false, DryRun = true
+            Command = "link-cad",
+            DocumentTitle = "Project.rvt",
+            CadLink = false,
+            DryRun = true
         })).IsEqualTo("Would import CAD in Project.rvt.");
         await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
         {
-            Command = "walls-from-cad", DocumentTitle = "Project.rvt", Count = 3, DryRun = true
+            Command = "walls-from-cad",
+            DocumentTitle = "Project.rvt",
+            Count = 3,
+            DryRun = true
         })).IsEqualTo("Would create 3 walls from CAD in Project.rvt.");
     }
 
