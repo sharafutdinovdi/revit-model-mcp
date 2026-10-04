@@ -123,12 +123,23 @@ The picture below is the PNG saved by `revit_export_view` during an earlier sess
 
 | Read tools | Names |
 | --- | --- |
-| Document and catalog | `revit_ping`, `revit_document_info`, `revit_list_catalog`, `revit_list_instances` |
+| Session and documents | `revit_ping`, `revit_jobs`, `revit_ui_state`, `revit_documents`, `revit_document_info`, `revit_list_catalog`, `revit_list_instances` |
 | Elements and parameters | `revit_query_elements`, `revit_aggregate_elements`, `revit_element_details`, `revit_list_relations`, `revit_list_warnings` |
-| Views and export | `revit_list_views`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_export_view` |
-| Coordinator checks | `revit_model_health`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check` |
+| Views, schedules and export | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_export_view`, `revit_schedule_data` |
+| Coordinator checks | `revit_model_health`, `revit_model_snapshot`, `revit_links_status`, `revit_shared_coordinates`, `revit_compare_link_datums`, `revit_parameter_fill_check`, `revit_family_audit`, `revit_nwc_settings_check` |
+| Read-only collection of many models | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report` |
 
 See the [full tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/tools/) for arguments, units and limits.
+
+| Actions | Names |
+| --- | --- |
+| Revit session | `revit_open_document`, `revit_new_document`, `revit_activate_document`, `revit_activate_view`, `revit_close_views`, `revit_save_document`, `revit_sync_document`, `revit_close_document` |
+| Many models | `revit_process_models` |
+| Scripts | `revit_execute_code` |
+| Elements | `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_set_parameter`, `revit_update_parameters`, `revit_delete`, `revit_create_wall`, `revit_batch`, `revit_undo_last` |
+| Families | `revit_load_family`, `revit_place_family`, `revit_place_families`, `revit_edit_families` |
+| Views and sheets | `revit_select`, `revit_show`, `revit_isolate`, `revit_set_view_visibility`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| Export and links | `revit_export`, `revit_export_nwc`, `revit_align_link_datums`, `revit_remove_links` |
 
 <a id="actions-opt-in"></a>
 
