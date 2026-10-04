@@ -7,6 +7,57 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_CaptureElements_DefaultsAndTarget()
+    {
+        var parsed = ControlJobParser.Parse("""
+            {"command":"capture-elements","elementIds":[10,20,10],"targetDocument":" Model ","targetProcessId":123}
+            """);
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.CaptureElements);
+        await Assert.That(parsed.ElementIds.ToArray()).IsEquivalentTo(new long[] { 10, 20 });
+        await Assert.That(parsed.PixelSize).IsEqualTo(1600);
+        await Assert.That(parsed.PaddingMm).IsEqualTo(1500);
+        await Assert.That(parsed.Mode).IsEqualTo("3d");
+        await Assert.That(parsed.TargetDocument).IsEqualTo("Model");
+        await Assert.That(parsed.TargetProcessId).IsEqualTo(123);
+        var plan = ControlJobParser.Parse("""
+            {"command":"capture-elements","elementIds":[10],"pixelSize":4000,"paddingMm":0,"mode":"plan"}
+            """);
+        await Assert.That(plan.Kind).IsEqualTo(ControlJobKind.CaptureElements);
+        await Assert.That(plan.Mode).IsEqualTo("plan");
+        await Assert.That(plan.PaddingMm).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Parse_CaptureElements_RejectsInvalidFields()
+    {
+        foreach (var fields in new[]
+        {
+            "", "\"elementIds\":[]", "\"elementIds\":[0]", "\"elementIds\":[-1]",
+            "\"elementIds\":[1],\"pixelSize\":0", "\"elementIds\":[1],\"pixelSize\":4001",
+            "\"elementIds\":[1],\"paddingMm\":-1", "\"elementIds\":[1],\"paddingMm\":20001",
+            "\"elementIds\":[1],\"mode\":\"section\"",
+            "\"elementIds\":[1],\"mode\":\"\""
+        })
+        {
+            var content = fields.Length == 0 ? "\"command\":\"capture-elements\"" : "\"command\":\"capture-elements\"," + fields;
+            var parsed = ControlJobParser.Parse("{" + content + "}");
+            await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Invalid);
+            await Assert.That(parsed.Error).IsNotNull();
+        }
+        var excessive = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "capture-elements", ElementIds = Enumerable.Range(1, 501).Select(value => (long)value).ToList()
+        });
+        await Assert.That(excessive.Kind).IsEqualTo(ControlJobKind.Invalid);
+        var boundary = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "capture-elements", ElementIds = Enumerable.Range(1, 500).Select(value => (long)value).ToList(),
+            PaddingMm = 20000, PixelSize = 1
+        });
+        await Assert.That(boundary.Kind).IsEqualTo(ControlJobKind.CaptureElements);
+    }
+
+    [Test]
     public async Task Parse_ModelSnapshot_PreservesOrderedRulesAndDocument()
     {
         var absent = ControlJobParser.Parse("""{"command":"model-snapshot"}""");

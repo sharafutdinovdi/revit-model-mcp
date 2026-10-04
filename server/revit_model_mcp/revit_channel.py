@@ -637,6 +637,11 @@ class RevitReadChannel:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         pickup_timeout_seconds: int = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
+        if job.command == "capture-elements":
+            from revit_model_mcp.http_host import HttpHost
+
+            if isinstance(self.remote, HttpHost):
+                raise RevitChannelError("element snapshots need the local or SSH transport")
         if timeout_seconds <= 0:
             raise RevitChannelError("timeout_seconds must be greater than zero.")
         if pickup_timeout_seconds <= 0:
@@ -828,7 +833,7 @@ class RevitReadChannel:
                     )
                 )
 
-            if job.command == "export-view" and result.get("success") is True:
+            if job.command in ("export-view", "capture-elements") and result.get("success") is True:
                 finish_attempted = True
                 content, local_path = await self.remote.finish_job(
                     response_name,
@@ -850,7 +855,10 @@ class RevitReadChannel:
         if response_name and not finish_attempted:
             cleanup_names.append(response_name)
         try:
-            await self.remote.delete_files(cleanup_names)
+            if job.command == "capture-elements":
+                await asyncio.wait_for(self.remote.delete_files(cleanup_names), 10)
+            else:
+                await self.remote.delete_files(cleanup_names)
         except (Exception, asyncio.CancelledError) as cleanup_error:
             # Cleanup failure must not replace the original command failure.
             if failure is not None:

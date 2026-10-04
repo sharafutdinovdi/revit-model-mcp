@@ -93,6 +93,9 @@ The [prompts and coordinator guide](docs/prompts.md) describe read-only model re
 For Claude Code, copy `skills/revit-model-coordinator` into `~/.claude/skills/`.
 For Claude Desktop, zip that skill folder and upload it as a skill.
 
+The hand-written [ISO 19650 issue register skill](skills/iso19650-issue-register/SKILL.md) reviews a model against EIR/BEP requirements and writes an Excel register with element snapshots.
+Copy `skills/iso19650-issue-register` into `~/.claude/skills/` for Claude Code, or zip that folder and upload it as a skill in Claude Desktop.
+
 ## In action
 
 Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation.
@@ -125,8 +128,8 @@ The picture below is the PNG saved by `revit_export_view` during an earlier sess
 | --- | --- |
 | Session and documents | `revit_ping`, `revit_jobs`, `revit_ui_state`, `revit_documents`, `revit_document_info`, `revit_list_catalog`, `revit_list_instances` |
 | Elements and parameters | `revit_query_elements`, `revit_aggregate_elements`, `revit_element_details`, `revit_list_relations`, `revit_list_warnings` |
-| Views, schedules and export | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_export_view`, `revit_schedule_data` |
-| Coordinator checks | `revit_model_health`, `revit_model_snapshot`, `revit_links_status`, `revit_shared_coordinates`, `revit_compare_link_datums`, `revit_parameter_fill_check`, `revit_family_audit`, `revit_nwc_settings_check` |
+| Views, schedules and export | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_export_view`, `revit_capture_elements`, `revit_schedule_data` |
+| Coordinator checks | `revit_model_health`, `revit_model_snapshot`, `revit_links_status`, `revit_shared_coordinates`, `revit_compare_link_datums`, `revit_parameter_fill_check`, `revit_family_audit`, `revit_nwc_settings_check`, `revit_issue_register` |
 | Read-only collection of many models | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report` |
 
 See the [full tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/tools/) for arguments, units and limits.

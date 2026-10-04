@@ -97,9 +97,7 @@ internal static class ActionMutations
                     var key = (viewId, -RevitValueReader.GetId(id));
                     var current = view.GetElementOverrides(id);
                     if (!history.ContainsKey(key) && !saved.ContainsKey(key)) saved[key] = new OverrideGraphicSettings(current);
-                    var settings = new OverrideGraphicSettings(current);
-                    settings.SetHalftone(true);
-                    view.SetElementOverrides(id, settings);
+                    SetHalftone(view, id, current);
                 }
             }
             touched.Add(view.Name);
@@ -111,6 +109,13 @@ internal static class ActionMutations
             foreach (var key in cleared) history.Remove(key);
         }
         return new ActionResultData { Count = perView.Values.Sum(), ViewsTouched = touched, ElementsPerView = perView };
+    }
+
+    internal static void SetHalftone(View view, ElementId id, OverrideGraphicSettings current)
+    {
+        using var settings = new OverrideGraphicSettings(current);
+        settings.SetHalftone(true);
+        view.SetElementOverrides(id, settings);
     }
 
     internal static ActionResultData Rotate(Document document, ActionJobContract action, List<ElementId> ids)
@@ -1048,7 +1053,7 @@ internal static class ActionMutations
         };
     }
 
-    private static BoundingBoxXYZ ResolveBox(Document document, ActionJobContract action)
+    internal static BoundingBoxXYZ ResolveBox(Document document, ActionJobContract action, double paddingMm = 1000)
     {
         if (action.Box is not null)
             return new BoundingBoxXYZ
@@ -1060,7 +1065,7 @@ internal static class ActionMutations
             ?? throw new ArgumentException($"Element {id} was not found."))
             .Select(element => element.get_BoundingBox(null)
                 ?? throw new ArgumentException($"Element {RevitValueReader.GetId(element.Id)} has no bounding box.")).ToList();
-        var padding = Millimeters(1000);
+        var padding = Millimeters(paddingMm);
         return new BoundingBoxXYZ
         {
             Min = new XYZ(boxes.Min(box => box.Min.X) - padding, boxes.Min(box => box.Min.Y) - padding, boxes.Min(box => box.Min.Z) - padding),

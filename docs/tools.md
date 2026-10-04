@@ -3,12 +3,13 @@
 MEP routing, graphic overrides, view and sheet creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 
 Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` runs on the MCP client machine from snapshot files and needs no Revit transport or running instance.
+`revit_capture_elements` downloads a highlighted element PNG over local or SSH transport; HTTP is unavailable.
 `revit_export_view` downloads PNG through `/views/{name}/image` in HTTP mode.
 `revit_list_instances` reports the connected Revit process in HTTP mode.
 
 Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. `revit_ui_state` accepts only `process_id`. Family audit accepts `response_timeout_s=600` and `document=null`.
+Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. `revit_ui_state` accepts only `process_id`. Family audit accepts `response_timeout_s=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
@@ -29,6 +30,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
+| `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `save_to=null`, `document=null`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Local/SSH only. |
 | `revit_export_view` | `view`, `pixel_size=1600`, `save_to=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
@@ -48,8 +50,8 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
 | `revit_batch_fetch` | `run_id`, `dest_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
+| `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. |
 | `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
-
 ### Snapshot report
 
 `snapshots_dir` contains regular `*.json` files directly in that directory. Files are read in filename order. `output_path` is a client-machine `.xlsx` path; missing parent directories are created and an existing file is never overwritten. `previous_dir`, when supplied, follows the same input rules and matches models by `passport.title`. Duplicate titles are rejected. `findings` is an optional list with `model`, `severity`, `rule`, `element_ids` (or `elementIds`) and `recommendation`; IDs are integers.
@@ -117,3 +119,20 @@ Call `revit_jobs(job_id=jobId, wait_s=40)` until the original final action respo
 The action may already have changed the model; do not resubmit it while it runs.
 Results remain available for 24 hours across MCP server restarts.
 See [long action jobs](actions.md#long-action-jobs) for cancellation and retention.
+
+### Issue register
+
+`output_path` requires a new `.xlsx` path on the MCP server machine.
+Parent directories are created; existing files are refused before contacting Revit.
+`project` accepts optional string fields `name`, `model`, `reviewer`, `client`, `stage`, `date` and a `documents` list of `{title, reference, revision}` objects.
+`issues` requires 1-60 objects with `title`, `category`, `finding` and `severity` (`critical`, `major`, `minor`, `info`).
+Optional fields are `id` (default `ISS-001` onwards), `requirement_source`, `requirement`, `recommendation`, `status` (default `Open`), `responsible`, `due`, `element_ids` (up to 500 positive integers) and `snapshot` (`3d`, `plan`, `none`).
+Categories are free text; typical values are Information standard, Naming, Level of information need, Model health, Coordinates and levels, Classification, Spatial and Geometry.
+Snapshots default to `3d` with element IDs and `none` otherwise.
+The workbook contains `Cover`, `Summary`, `Register` and `Elements`.
+The finding cell contains the issue title and finding; snapshots occupy the final column.
+Captures run sequentially for the first 25 eligible issues in severity order, with stable input order for ties.
+The remaining issues receive `Snapshot skipped: limit of 25 per register`.
+A 210-second capture budget reserves time within the 240-second client limit for writing the workbook.
+A capture failure receives `Snapshot unavailable: <reason>` and does not fail the register.
+Result fields are `path`, `issueCount`, `snapshotCount`, `bySeverity` and `warnings`.

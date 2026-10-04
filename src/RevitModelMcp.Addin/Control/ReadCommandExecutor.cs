@@ -67,7 +67,7 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
-            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot or ControlJobKind.ScheduleData
+            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot or ControlJobKind.ScheduleData or ControlJobKind.CaptureElements
                 ? ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)
                 : application.ActiveUIDocument?.Document
                     ?? throw new InvalidOperationException("No active Revit document.");
@@ -160,6 +160,9 @@ internal static class ReadCommandExecutor
                         stopwatch,
                         ReadCommandReader.ReadViewWarnings,
                         "Matching uses the elements involved in warnings.");
+                    break;
+                case ControlJobKind.CaptureElements:
+                    WriteSuccess(output, job.Command, CaptureElements(document, job, startedAt.LocalDateTime), stopwatch);
                     break;
                 case ControlJobKind.ExportView:
                     ExecuteExportView(output, document, job, stopwatch, startedAt.LocalDateTime);
@@ -371,6 +374,107 @@ internal static class ReadCommandExecutor
         var warningIds = ReadCommandReader.ReadWarningElementIds(document);
         var reader = new ViewElementReader(document, warningIds);
         WriteSuccess(output, job.Command, reader.ReadDetails(element), stopwatch);
+    }
+
+    private static ElementCaptureData CaptureElements(Document document, ControlJobParseResult job, DateTime localTime)
+    {
+        var elements = new List<Element>();
+        var missing = new List<long>();
+        foreach (var value in job.ElementIds)
+        {
+            var id = CreateElementId(value);
+            var element = id is null ? null : document.GetElement(id);
+            if (element is null || element is ElementType || element.Category?.CategoryType != CategoryType.Model ||
+                element.get_BoundingBox(null) is null)
+                missing.Add(value);
+            else elements.Add(element);
+        }
+        if (elements.Count == 0)
+            throw new ArgumentException("No model elements with bounding boxes remain in elementIds.");
+        var ids = elements.Select(element => element.Id).ToHashSet();
+        var bounds = ActionMutations.ResolveBox(document, new ActionJobContract
+        {
+            ElementIds = elements.Select(element => RevitValueReader.GetId(element.Id)).ToList()
+        }, job.PaddingMm);
+        using var group = new TransactionGroup(document, "Capture elements");
+        group.Start();
+        try
+        {
+            View view;
+            using (var transaction = new Transaction(document, "Prepare element snapshot"))
+            {
+                transaction.Start();
+                if (job.Mode == "3d")
+                {
+                    using var types = new FilteredElementCollector(document).OfClass(typeof(ViewFamilyType));
+                    var type = types.Cast<ViewFamilyType>().FirstOrDefault(candidate => candidate.ViewFamily == ViewFamily.ThreeDimensional)
+                        ?? throw new InvalidOperationException("No 3D view family type is available.");
+                    var created = View3D.CreateIsometric(document, type.Id);
+                    created.SetSectionBox(bounds);
+                    created.IsSectionBoxActive = true;
+                    view = created;
+                }
+                else
+                {
+                    using var plans = new FilteredElementCollector(document).OfClass(typeof(ViewPlan));
+                    var eligible = plans.Cast<ViewPlan>().Where(plan => !plan.IsTemplate && plan.ViewType == ViewType.FloorPlan).ToList();
+                    var level = elements.Select(element => element.LevelId).FirstOrDefault(id => id != ElementId.InvalidElementId);
+                    var source = eligible.FirstOrDefault(plan => plan.GenLevel?.Id == level) ?? eligible.FirstOrDefault()
+                        ?? throw new InvalidOperationException("No floor plan is available for an element snapshot.");
+                    view = (View)document.GetElement(source.Duplicate(ViewDuplicateOption.Duplicate));
+                    view.ViewTemplateId = ElementId.InvalidElementId;
+                    var crop = view.CropBox;
+                    var inverse = crop.Transform.Inverse;
+                    var corners = new List<XYZ>();
+                    foreach (var coordinateX in new[] { bounds.Min.X, bounds.Max.X })
+                    foreach (var coordinateY in new[] { bounds.Min.Y, bounds.Max.Y })
+                    foreach (var coordinateZ in new[] { bounds.Min.Z, bounds.Max.Z })
+                        corners.Add(inverse.OfPoint(new XYZ(coordinateX, coordinateY, coordinateZ)));
+                    crop.Min = new XYZ(corners.Min(point => point.X), corners.Min(point => point.Y), crop.Min.Z);
+                    crop.Max = new XYZ(corners.Max(point => point.X), corners.Max(point => point.Y), crop.Max.Z);
+                    view.CropBox = crop;
+                    view.CropBoxActive = true;
+                    view.CropBoxVisible = false;
+                }
+                view.DetailLevel = ViewDetailLevel.Fine;
+                view.DisplayStyle = DisplayStyle.ShadingWithEdges;
+                document.Regenerate();
+                using var patterns = new FilteredElementCollector(document).OfClass(typeof(FillPatternElement));
+                var solid = patterns.Cast<FillPatternElement>().FirstOrDefault(pattern => pattern.GetFillPattern().IsSolidFill)
+                    ?? throw new InvalidOperationException("The document has no solid fill pattern.");
+                var red = new Color(255, 0, 0);
+                using var settings = new OverrideGraphicSettings();
+                settings.SetSurfaceForegroundPatternId(solid.Id);
+                settings.SetSurfaceForegroundPatternColor(red);
+                settings.SetCutForegroundPatternId(solid.Id);
+                settings.SetCutForegroundPatternColor(red);
+                settings.SetProjectionLineColor(red);
+                settings.SetCutLineColor(red);
+                settings.SetProjectionLineWeight(6);
+                settings.SetCutLineWeight(6);
+                foreach (var id in ids) view.SetElementOverrides(id, settings);
+                using var visible = new FilteredElementCollector(document, view.Id).WhereElementIsNotElementType();
+                foreach (var id in visible.ToElementIds())
+                {
+                    if (ids.Contains(id) || document.GetElement(id)?.Category?.CategoryType != CategoryType.Model) continue;
+                    using var other = view.GetElementOverrides(id);
+                    ActionMutations.SetHalftone(view, id, other);
+                }
+                document.Regenerate();
+                if (transaction.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException("The temporary snapshot view could not be prepared.");
+            }
+            var image = ViewImageExporter.Export(document, view, job.PixelSize, true, localTime);
+            return new ElementCaptureData
+            {
+                FileName = image.FileName, Width = image.Width, Height = image.Height, SizeBytes = image.SizeBytes,
+                ElementCount = elements.Count, MissingIds = missing, Mode = job.Mode
+            };
+        }
+        finally
+        {
+            group.RollBack();
+        }
     }
 
     private static void ExecuteExportView(

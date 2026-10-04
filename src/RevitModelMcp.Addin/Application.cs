@@ -32,7 +32,7 @@ public sealed class Application : ExternalApplication
     [
         "ping", "jobs", "jobs/persisted", "model-health", "links-status", "shared-coordinates",
         "parameter-fill-check", "document-info", "documents", "ui-state", "list-views", "view-summary",
-        "view-info", "view-elements", "element-details", "view-warnings", "export-view", "schedule-data",
+        "view-info", "view-elements", "element-details", "view-warnings", "export-view", "capture-elements", "schedule-data",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",
         "list-relations", "family-audit", "nwc-settings-check", "compare-link-datums",
         "select", "show", "isolate", "override-graphics", "move", "rotate", "copy", "mirror", "change-type", "update-parameters", "place-family", "load-family", "place-families", "create-wall", "link-cad", "walls-from-cad", "create-mep-run", "create-view", "duplicate-view", "apply-view-template", "create-sheet", "place-views-on-sheet",

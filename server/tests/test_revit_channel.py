@@ -2240,3 +2240,73 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
         assert host.deleted_names == []
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("command", ["export-view", "capture-elements"])
+def test_image_read_downloads_artifact(command):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
+    response = json.dumps({"command": command, "success": True, "data": {"fileName": "view.png"}})
+    remote.response_content = response
+    remote.finish_job = AsyncMock(side_effect=[(response, None), (response, "/tmp/view.png")])
+    result = asyncio.run(
+        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, "/tmp/view.png"))
+    )
+    assert result["data"]["localPath"] == "/tmp/view.png"
+    assert remote.finish_job.await_args.args[2:] == (True, "/tmp/view.png")
+
+
+def test_capture_http_rejected_before_submission():
+    from revit_model_mcp.http_host import HttpHost
+
+    host = HttpHost("http://127.0.0.1:53110", "token")
+    host.select_job = AsyncMock()
+    with pytest.raises(
+        RevitChannelError, match="element snapshots need the local or SSH transport"
+    ):
+        asyncio.run(
+            RevitReadChannel(host).execute(
+                ReadJob("capture-elements", {"command": "capture-elements", "elementIds": [1]})
+            )
+        )
+    host.select_job.assert_not_awaited()
+
+
+@pytest.mark.parametrize("command", ["export-view", "capture-elements"])
+def test_image_read_commands_download_artifact(command, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
+    downloads = []
+    target = str(tmp_path / "image.png")
+
+    async def finish(name, cleanup_names, download_artifact, save_to):
+        downloads.append(download_artifact)
+        response = {
+            "command": command,
+            "success": True,
+            "data": {"fileName": "view.png"},
+            "correlationId": json.loads(remote.written_content)["correlationId"],
+        }
+        return json.dumps(response), target if download_artifact else None
+
+    remote.finish_job = AsyncMock(side_effect=finish)
+    result = asyncio.run(
+        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
+    )
+    assert downloads == [False, True]
+    assert result["data"]["localPath"] == target
+    assert remote.finish_job.await_args.args[3] == target
+
+
+def test_http_element_snapshots_fail_before_transport_call():
+    from revit_model_mcp.http_host import HttpHost
+
+    host = object.__new__(HttpHost)
+    with pytest.raises(
+        RevitChannelError, match="element snapshots need the local or SSH transport"
+    ):
+        asyncio.run(
+            RevitReadChannel(host).execute(
+                ReadJob("capture-elements", {"command": "capture-elements", "elementIds": [1]})
+            )
+        )

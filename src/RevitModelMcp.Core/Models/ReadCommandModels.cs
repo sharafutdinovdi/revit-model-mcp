@@ -563,3 +563,15 @@ public static class ActionFailurePolicy
         return ActionFailureDisposition.RollBack;
     }
 }
+
+[DataContract]
+public sealed record ElementCaptureData
+{
+    [DataMember(Name = "fileName")] public string FileName { get; set; } = string.Empty;
+    [DataMember(Name = "width")] public int Width { get; set; }
+    [DataMember(Name = "height")] public int Height { get; set; }
+    [DataMember(Name = "sizeBytes")] public long SizeBytes { get; set; }
+    [DataMember(Name = "elementCount")] public int ElementCount { get; set; }
+    [DataMember(Name = "missingIds")] public IReadOnlyList<long> MissingIds { get; set; } = [];
+    [DataMember(Name = "mode")] public string Mode { get; set; } = "3d";
+}
