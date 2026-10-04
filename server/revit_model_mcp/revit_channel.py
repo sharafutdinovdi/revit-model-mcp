@@ -74,15 +74,22 @@ ACTION_COMMANDS = frozenset(
         "set-parameter",
         "delete",
         "batch",
+        "process-models",
         "export-nwc",
+        "export",
         "edit-families",
         "align-link-datums",
         "open-document",
+        "activate-document",
+        "activate-view",
+        "close-views",
+        "new-document",
         "close-document",
         "save-document",
         "sync-document",
         "set-view-visibility",
         "remove-links",
+        "execute-code",
     }
 )
 
@@ -159,6 +166,20 @@ class ReadJob:
     @classmethod
     def view_info(cls, view: str) -> ReadJob:
         return cls("view-info", {"command": "view-info", "view": _required_text(view, "view")})
+
+    @classmethod
+    def schedule_data(cls, schedule: str, max_rows: int = 500, offset: int = 0) -> ReadJob:
+        if max_rows < 1 or max_rows > 5000 or offset < 0:
+            raise RevitChannelError("max_rows must be 1 to 5000 and offset must be non-negative.")
+        return cls(
+            "schedule-data",
+            {
+                "command": "schedule-data",
+                "view": _required_text(schedule, "schedule"),
+                "limit": max_rows,
+                "offset": offset,
+            },
+        )
 
     @classmethod
     def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> ReadJob:
@@ -473,6 +494,7 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "parameter-fill-check",
         "document-info",
         "documents",
+        "ui-state",
         "list-views",
         "view-summary",
         "view-info",
@@ -480,6 +502,7 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "element-details",
         "view-warnings",
         "export-view",
+        "schedule-data",
         "query-elements",
         "aggregate-elements",
         "list-catalog",
@@ -498,9 +521,14 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "delete",
         "batch",
         "export-nwc",
+        "export",
         "edit-families",
         "align-link-datums",
         "open-document",
+        "activate-document",
+        "activate-view",
+        "close-views",
+        "new-document",
         "close-document",
         "save-document",
         "sync-document",
@@ -713,6 +741,8 @@ class RevitReadChannel:
 
 def _is_intermediate_response(response: dict[str, Any]) -> bool:
     if response.get("partial") is not True:
+        return False
+    if response.get("command") == "process-models":
         return False
     message = response.get("message")
     if isinstance(message, str) and message.startswith("Processed "):

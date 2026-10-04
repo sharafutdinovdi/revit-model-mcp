@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Serialization.Json;
 using System.Text;
+using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Serialization;
@@ -23,7 +24,26 @@ public static class CommandResponseJsonSerializer
             });
         using var stream = new MemoryStream();
         serializer.WriteObject(stream, response);
-        return Encoding.UTF8.GetString(stream.ToArray());
+        var json = Encoding.UTF8.GetString(stream.ToArray());
+        if (response is CommandResponse<ActionResultData> { Command: "execute-code", Data: { } action })
+        {
+            const string dataStart = "\"data\":{";
+            var index = json.IndexOf(dataStart, StringComparison.Ordinal);
+            if (index >= 0)
+                json = json.Insert(index + dataStart.Length,
+                    "\"returnValue\":" + CodeResultLimiter.ToJson(action.ReturnValue) +
+                    (json[index + dataStart.Length] == '}' ? string.Empty : ","));
+        }
+        if (response is CommandResponse<ActionResultData> { Command: "process-models", Data.Models: { } models })
+        {
+            foreach (var model in models)
+            {
+                if (model.Code is not { } code) continue;
+                json = json.Replace("\"returnValue\":\"" + code.ReturnValueMarker + "\"",
+                    "\"returnValue\":" + CodeResultLimiter.ToJson(code.ReturnValue));
+            }
+        }
+        return json;
     }
 }
 

@@ -384,6 +384,7 @@ def addressed_tool(function):
         "revit_jobs": "List Revit Jobs",
         "revit_document_info": "Document Info",
         "revit_documents": "Open Documents",
+        "revit_ui_state": "Revit UI State",
         "revit_list_catalog": "List Catalog",
         "revit_aggregate_elements": "Aggregate Elements",
         "revit_query_elements": "Query Elements",
@@ -391,6 +392,7 @@ def addressed_tool(function):
         "revit_view_summary": "View Summary",
         "revit_view_info": "View Info",
         "revit_export_view": "Export View to PNG",
+        "revit_schedule_data": "Read Schedule Data",
         "revit_view_elements": "View Elements",
         "revit_element_details": "Element Details",
         "revit_view_warnings": "View Warnings",
@@ -561,6 +563,17 @@ async def revit_documents(
         timeout_seconds,
         pickup_timeout_seconds,
         document,
+    )
+
+
+@addressed_tool
+async def revit_ui_state() -> dict[str, Any]:
+    """Read the active document, open views, selection and open documents."""
+    return await _execute(
+        ReadJob("ui-state", {"command": "ui-state"}),
+        DEFAULT_TIMEOUT_SECONDS,
+        DEFAULT_PICKUP_TIMEOUT_SECONDS,
+        None,
     )
 
 
@@ -887,6 +900,22 @@ async def revit_view_summary(
     """
     return await _execute(
         ReadJob.view_summary(view), timeout_seconds, pickup_timeout_seconds, document
+    )
+
+
+@addressed_tool
+async def revit_schedule_data(
+    schedule: Annotated[str, Field(description="Exact schedule name or decimal Revit view ID.")],
+    max_rows: Annotated[int, Field(ge=1, le=5000)] = 500,
+    offset: Annotated[int, Field(ge=0)] = 0,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Read displayed schedule header and body cell text, with paging."""
+    return await _execute(
+        ReadJob.schedule_data(schedule, max_rows, offset),
+        DEFAULT_TIMEOUT_SECONDS,
+        DEFAULT_PICKUP_TIMEOUT_SECONDS,
+        document,
     )
 
 

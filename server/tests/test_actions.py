@@ -22,6 +22,8 @@ from revit_model_mcp.revit_channel import (
 )
 
 ACTION_TOOLS = {
+    "revit_process_models",
+    "revit_execute_code",
     "revit_select",
     "revit_show",
     "revit_isolate",
@@ -32,9 +34,14 @@ ACTION_TOOLS = {
     "revit_delete",
     "revit_batch",
     "revit_export_nwc",
+    "revit_export",
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
+    "revit_activate_document",
+    "revit_activate_view",
+    "revit_close_views",
+    "revit_new_document",
     "revit_close_document",
     "revit_save_document",
     "revit_sync_document",
@@ -61,7 +68,15 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
         for name in ACTION_TOOLS:
             tool = tools[name]
             assert ("response_timeout_s" in tool.input_schema["properties"]) is (
-                name in {"revit_export_nwc", "revit_edit_families", "revit_align_link_datums"}
+                name
+                in {
+                    "revit_export_nwc",
+                    "revit_edit_families",
+                    "revit_align_link_datums",
+                    "revit_execute_code",
+                    "revit_export",
+                    "revit_process_models",
+                }
             )
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
@@ -90,6 +105,57 @@ def test_stdio_read_only_blocks_execution_without_hiding_tools():
     asyncio.run(check())
 
 
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("revit_activate_document", {"document": "Tower"}),
+        ("revit_activate_view", {"view": "Level 1"}),
+        ("revit_close_views", {}),
+        ("revit_new_document", {}),
+    ],
+)
+def test_session_actions_refused_in_read_only_mode(name, arguments):
+    import asyncio
+
+    server, execute, _ = action_server(read_only=True)
+    result = asyncio.run(server.call_tool(name, arguments))
+    assert "read-only mode" in str(result)
+    execute.assert_not_awaited()
+
+
+def test_session_action_mappings():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_activate_document", {"document": "Tower"}))
+    assert execute.await_args.args[0].payload["command"] == "activate-document"
+    asyncio.run(
+        server.call_tool(
+            "revit_activate_view",
+            {"view": "3D", "document": "Tower", "activate_document": True, "view_type": "ThreeD"},
+        )
+    )
+    assert execute.await_args.args[0].payload["activateDocument"] is True
+    assert execute.await_args.args[0].payload["viewType"] == "ThreeD"
+    asyncio.run(server.call_tool("revit_close_views", {"views": ["3D"], "keep_active": False}))
+    assert execute.await_args.args[0].payload["keepActive"] is False
+    asyncio.run(
+        server.call_tool(
+            "revit_new_document", {"template": r"C:\\T.rft", "kind": "family", "name": "Door"}
+        )
+    )
+    assert execute.await_args.args[0].payload["kind"] == "family"
+    assert execute.await_args.args[0].payload["name"] == "Door"
+    asyncio.run(
+        server.call_tool(
+            "revit_open_document",
+            {"path": r"C:\\M.rvt", "audit": True, "worksets": {"close": ["*Link*"]}},
+        )
+    )
+    assert execute.await_args.args[0].payload["worksetsClose"] == ["*Link*"]
+    assert execute.await_args.args[0].payload["audit"] is True
+
+
 def action_server(read_only=False):
     server = MCPServer("actions-test")
     execute = AsyncMock(return_value={"success": True, "data": {}, "activeView": "Level 1"})
@@ -98,6 +164,137 @@ def action_server(read_only=False):
     with patch.dict(os.environ, {"REVIT_MCP_READ_ONLY": "1" if read_only else "0"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_execute_code_maps_arguments_and_respects_read_only():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_execute_code", {"code": "return 42;"}))
+    job = execute.await_args.args[0]
+    assert job.command == "execute-code"
+    assert job.payload["code"] == "return 42;"
+    assert job.payload["transaction"] == "auto"
+    assert job.payload["dryRun"] is False
+    assert execute.await_args.args[1] == 600
+
+    with pytest.raises(Exception):
+        asyncio.run(
+            server.call_tool(
+                "revit_execute_code",
+                {
+                    "code": "return 42;",
+                    "transaction": "none",
+                    "dry_run": True,
+                },
+            )
+        )
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_models_maps_steps_code_exports_and_save():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\Models\A.rvt"],
+                "open": {"mode": "detached", "worksets": {"close": ["*Link*"]}, "audit": True},
+                "steps": [
+                    {
+                        "action": "set_parameter",
+                        "args": {"element_id": 1, "parameter": "Mark", "value": "done"},
+                    }
+                ],
+                "code": {"code": "return 1;"},
+                "exports": [{"format": "ifc", "folder": r"C:\Out\{model}"}],
+                "save": {"mode": "output_dir", "output_dir": r"C:\Saved"},
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.command == "process-models"
+    assert execute.await_args.args[1] == 14400
+    process = job.payload["process"]
+    assert process["open"]["worksetsClose"] == ["*Link*"]
+    assert process["open"]["audit"] is True
+    assert process["steps"][0]["command"] == "set-parameter"
+    assert process["code"] == {"code": "return 1;", "transaction": "auto"}
+    assert process["exports"][0]["format"] == "ifc"
+    assert process["save"] == {
+        "mode": "output_dir",
+        "outputDir": r"C:\Saved",
+        "compact": True,
+        "overwrite": False,
+    }
+
+
+def test_process_models_confirmation_flow_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.side_effect = [
+        {"success": True, "data": {"needsConfirmation": True, "confirmToken": "token"}},
+        {"success": True, "data": {"models": []}},
+    ]
+    arguments = {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "in_place"}}
+    preview = asyncio.run(server.call_tool("revit_process_models", arguments))
+    assert "needsConfirmation" in str(preview)
+    asyncio.run(server.call_tool("revit_process_models", {**arguments, "confirm_token": "token"}))
+    assert execute.await_count == 2
+    assert execute.await_args.args[0].payload["process"]["confirmToken"] == "token"
+
+    for invalid in (
+        {},
+        {"paths": ["relative.rvt"]},
+        {"paths": [r"C:\Models\A.rvt"], "folder": r"C:\Models"},
+        {
+            "paths": [r"C:\Models\A.rvt"],
+            "code": {"code": "return 1;", "transaction": "none"},
+            "dry_run": True,
+        },
+        {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "output_dir", "output_dir": r"C:\Models"}},
+        {
+            "paths": [r"C:\Models\A.rvt"],
+            "open": {"mode": "local_copy"},
+            "save": {"mode": "in_place"},
+        },
+    ):
+        with pytest.raises(Exception):
+            asyncio.run(server.call_tool("revit_process_models", invalid))
+    assert execute.await_count == 2
+
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    response = asyncio.run(blocked.call_tool("revit_process_models", arguments))
+    assert "read-only mode" in str(response)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_models_redacts_nested_paths():
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        result = redact_model_paths(
+            {
+                "data": {
+                    "models": [
+                        {
+                            "path": r"C:\Models\A.rvt",
+                            "saved": r"C:\Out\A.rvt",
+                            "dialogsDismissed": [r"Opened C:\Models\A.rvt"],
+                            "code": {"log": [r"Read C:\Models\A.rvt"]},
+                        }
+                    ]
+                }
+            }
+        )
+    model = result["data"]["models"][0]
+    assert model["path"] == "A.rvt"
+    assert model["saved"] == "A.rvt"
+    assert "C:\\Models" not in str(model)
 
 
 def test_document_action_mapping_and_confirmation_shape():
@@ -267,6 +464,14 @@ def test_response_message_paths_are_unchanged_when_redaction_is_off():
         assert redact_model_paths(response) is response
 
 
+def test_export_folder_is_redacted_when_enabled():
+    response = {"data": {"folder": r"C:\Models\exports\2026", "files": [{"name": "Doors.csv"}]}}
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths(response) == {
+            "data": {"folder": "2026", "files": [{"name": "Doors.csv"}]}
+        }
+
+
 def test_nwc_export_defaults_and_options_reach_channel():
     import asyncio
 
@@ -280,6 +485,41 @@ def test_nwc_export_defaults_and_options_reach_channel():
         "path": "C:\\x\\a.nwc",
         "overwrite": False,
         "dryRun": False,
+    }
+
+
+def test_file_export_maps_targets_options_and_timeout():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_export",
+            {
+                "format": "pdf",
+                "sheets": ["A1"],
+                "all_sheets": True,
+                "folder": r"C:\Exports",
+                "options": {"combine": False},
+                "overwrite": True,
+                "dry_run": True,
+                "response_timeout_s": 600,
+            },
+        )
+    )
+    assert execute.await_args.args[1] == 600
+    assert execute.await_args.args[0].payload == {
+        "command": "export",
+        "targetProcessId": 42,
+        "format": "pdf",
+        "views": None,
+        "sheets": ["A1"],
+        "sheetSet": None,
+        "allSheets": True,
+        "folder": r"C:\Exports",
+        "options": {"combine": False},
+        "overwrite": True,
+        "dryRun": True,
     }
 
 

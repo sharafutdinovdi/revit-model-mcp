@@ -527,6 +527,39 @@ finally { Remove-Item $root -Recurse -Force }
     )
 
 
+def test_script_install_manifest_settings_follow_revit_year():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+$env:APPDATA = $root
+$SignThumbprint = $null
+try {
+    foreach ($year in '2024', '2026') {
+        $payload = Join-Path $root "payload-$year"
+        $folder = Join-Path $payload 'RevitModelMcp'
+        New-Item $folder -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $folder 'RevitModelMcp.dll') 'test'
+        Copy-Item 'src/RevitModelMcp.Addin/RevitModelMcp.addin' $payload
+        Install-Year $year $payload
+        $path = Join-Path $root "Autodesk/Revit/Addins/$year/RevitModelMcp.addin"
+        [xml]$manifest = Get-Content $path
+        $settings = $manifest.SelectSingleNode('/RevitAddIns/ManifestSettings')
+        if (($year -eq '2026') -ne ($null -ne $settings)) {
+            throw "Wrong ManifestSettings for Revit $year"
+        }
+    }
+}
+finally { Remove-Item $root -Recurse -Force }
+"""
+    )
+
+
 def test_script_release_payload_checksums():
     run_powershell(
         r"""

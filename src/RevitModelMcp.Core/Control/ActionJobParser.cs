@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "export-nwc" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "set-view-visibility" or "remove-links" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -70,6 +70,17 @@ public static class ActionJobParser
                     FacetingFactor = job.FacetingFactor ?? 1.0,
                     Overwrite = job.Overwrite ?? false
                 },
+                Export = new FileExportJob
+                {
+                    Format = job.Format ?? string.Empty,
+                    Views = job.Views,
+                    Sheets = job.Sheets,
+                    SheetSet = job.SheetSet,
+                    AllSheets = job.AllSheets ?? false,
+                    Folder = job.Folder,
+                    Options = job.ExportOptions ?? new FileExportOptions(),
+                    Overwrite = job.Overwrite ?? false
+                },
                 Families = job.Families,
                 Operations = job.Operations ?? [],
                 OverwriteParameterValues = job.OverwriteParameterValues ?? false,
@@ -79,7 +90,16 @@ public static class ActionJobParser
                 Mode = job.Mode ?? "detached",
                 Worksets = job.Worksets ?? "all",
                 WorksetsOpenNames = job.WorksetsOpen,
+                WorksetsCloseNames = job.WorksetsClose,
                 Activate = job.Activate ?? false,
+                ActivateDocument = job.ActivateDocument ?? false,
+                View = job.View,
+                ViewType = string.IsNullOrWhiteSpace(job.ViewType) ? null : job.ViewType!.Trim(),
+                Views = job.Views,
+                KeepActive = job.KeepActive ?? true,
+                Kind = job.DocumentKind ?? "project",
+                Template = job.Template,
+                NewDocumentName = job.Name,
                 Audit = job.Audit ?? false,
                 Save = job.Save ?? false,
                 SaveAs = job.SaveAs,
@@ -92,14 +112,48 @@ public static class ActionJobParser
                 SaveLocalAfter = job.SaveLocalAfter ?? true,
                 ConfirmToken = job.ConfirmToken
             };
+            if (command == "process-models")
+            {
+                action.ProcessModels = job.ProcessModels ?? throw new ArgumentException("process is required.");
+                action.ProcessModels.Validate(trustedNetworkRoots);
+            }
+            if (command == "execute-code")
+            {
+                Require(job.Code is { Length: > 0 and <= 200000 }, "code must contain 1 to 200000 characters.");
+                action.Code = job.Code;
+                action.TransactionMode = job.Transaction ?? "auto";
+                Require(action.TransactionMode is "auto" or "none", "transaction must be auto or none.");
+                Require(action.TransactionMode != "none" || !action.DryRun, "dry_run requires transaction=auto.");
+            }
             if (command == "open-document")
             {
                 DocumentPathValidator.Validate(action.DocumentPath, "path", trustedNetworkRoots);
                 Require(action.Mode is "detached" or "detached_discard_worksets" or "local_copy" or "read_only_local", "mode is invalid.");
-                Require(!action.Audit, "audit must be false.");
-                Require(action.Worksets is "all" or "none" or "open" &&
-                    (action.Worksets != "open" || action.WorksetsOpenNames is { Count: > 0 } && action.WorksetsOpenNames.All(name => !string.IsNullOrWhiteSpace(name))),
-                    "worksets must be all, none or {open: [names]}.");
+                Require(action.Worksets is "all" or "none" or "open" or "close" &&
+                    (action.Worksets == "open" ? ValidNames(action.WorksetsOpenNames) :
+                        action.Worksets != "close" || ValidNames(action.WorksetsCloseNames)),
+                    "worksets must be all, none, {open: [names]} or {close: [names]}.");
+            }
+            if (command == "activate-document") Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
+            if (command == "activate-view") Require(!string.IsNullOrWhiteSpace(action.View), "view is required.");
+            if (command == "close-views") Require(action.Views is null || ValidNames(action.Views), "views must contain names or ids.");
+            if (command == "new-document")
+            {
+                Require(action.Kind is "project" or "family", "kind must be project or family.");
+                if (action.NewDocumentName is not null)
+                    Require(IsSafeFileName(action.NewDocumentName), "name must be a safe file name without an extension.");
+                Require(action.Kind != "family" || action.Template is not null, "family requires a template.");
+                if (action.Template is not null)
+                {
+                    NwcPathValidator.EnsureAbsoluteNoTraversal(action.Template, "template", trustedNetworkRoots);
+                    Require(action.Template.EndsWith(action.Kind == "family" ? ".rft" : ".rte", StringComparison.OrdinalIgnoreCase), "template extension does not match kind.");
+                }
+                if (action.SaveAs is not null)
+                {
+                    DocumentPathValidator.Validate(action.SaveAs, "save_as", trustedNetworkRoots);
+                    Require(action.SaveAs.EndsWith(action.Kind == "family" ? ".rfa" : ".rvt", StringComparison.OrdinalIgnoreCase),
+                        "save_as extension does not match kind.");
+                }
             }
             if (command is "close-document" or "save-document" or "sync-document")
                 Require(!string.IsNullOrWhiteSpace(action.Document), "document is required.");
@@ -231,6 +285,7 @@ public static class ActionJobParser
                 Require(export.SettingsXml is not null || export.Scope != "selection" || action.ElementIds.Count > 0, "elementIds must be non-empty for scope=selection.");
                 Require(export.Scope != "selection" || action.ElementIds.All(id => id > 0), "Element IDs must be positive.");
             }
+            if (command == "export") action.Export.Validate(trustedNetworkRoots);
             var result = ControlJobParseResult.Create(ControlJobKind.Action, command);
             result.Action = action;
             return result;
@@ -348,6 +403,15 @@ public static class ActionJobParser
     {
         if (!condition) throw new ArgumentException(message);
     }
+
+    private static bool ValidNames(List<string>? names) => names is { Count: > 0 } &&
+        names.All(name => !string.IsNullOrWhiteSpace(name) && !name.StartsWith("regex:", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsSafeFileName(string name) =>
+        !string.IsNullOrWhiteSpace(name) && name == name.Trim() && !name.EndsWith('.') &&
+        name.IndexOfAny(['<', '>', ':', '"', '/', '\\', '|', '?', '*']) < 0 &&
+        !name.Any(char.IsControl) &&
+        !Regex.IsMatch(name, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)", RegexOptions.IgnoreCase);
 }
 
 public static class DocumentPathValidator
@@ -363,14 +427,14 @@ public static class DocumentPathValidator
             return;
         }
         if (path.IndexOf("://", StringComparison.Ordinal) >= 0 ||
-            !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase))
-            throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa path, or RSN .rvt path.");
+            !path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase) && !path.EndsWith(".rte", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Cloud paths are unsupported; use a local or UNC .rvt/.rfa/.rte path, or RSN .rvt path.");
         NwcPathValidator.EnsureAbsoluteNoTraversal(path, label, trustedNetworkRoots);
     }
 
     public static bool SamePath(string? first, string? second) =>
         !string.IsNullOrWhiteSpace(first) && !string.IsNullOrWhiteSpace(second) &&
-        string.Equals(Canonical(first), Canonical(second), StringComparison.OrdinalIgnoreCase);
+        string.Equals(Canonical(first!), Canonical(second!), StringComparison.OrdinalIgnoreCase);
 
     public static void EnsureSafeOverwrite(bool isCentral, bool isWorkshared)
     {
@@ -392,6 +456,22 @@ public static class DocumentPathValidator
             return Path.GetFullPath(normalized).TrimEnd('\\');
         return path.TrimEnd('\\', '/');
     }
+}
+
+public static class DocumentIdentityMatcher
+{
+    public static bool Contains<T>(IEnumerable<T> documents, T target, IEqualityComparer<T> comparer) where T : class =>
+        documents.Any(document => comparer.Equals(document, target));
+
+    public static bool AllPresent<T>(IEnumerable<T> before, IReadOnlyCollection<T> after, IEqualityComparer<T> comparer) where T : class =>
+        before.All(document => Contains(after, document, comparer));
+}
+
+public sealed class DocumentIdentityComparer<T>(Func<T, T, bool> equals) : IEqualityComparer<T> where T : class
+{
+    public bool Equals(T? first, T? second) => first is null ? second is null : second is not null && equals(first, second);
+
+    public int GetHashCode(T value) => 0;
 }
 
 public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = null)
@@ -483,11 +563,23 @@ public static class DocumentConfirmationBinding
 
 public sealed class ActionJobContract
 {
+    public ProcessModelsJob? ProcessModels { get; set; }
+    public string? Code { get; set; }
+    public string TransactionMode { get; set; } = "auto";
     public string? Document { get; set; }
     public string? DocumentPath { get; set; }
     public string Mode { get; set; } = "detached";
     public string Worksets { get; set; } = "all";
     public List<string>? WorksetsOpenNames { get; set; }
+    public List<string>? WorksetsCloseNames { get; set; }
+    public bool ActivateDocument { get; set; }
+    public string? View { get; set; }
+    public string? ViewType { get; set; }
+    public List<string>? Views { get; set; }
+    public bool KeepActive { get; set; } = true;
+    public string Kind { get; set; } = "project";
+    public string? Template { get; set; }
+    public string? NewDocumentName { get; set; }
     public bool Activate { get; set; }
     public bool Audit { get; set; }
     public bool Save { get; set; }
@@ -503,6 +595,7 @@ public sealed class ActionJobContract
     public ViewVisibilityOptions? Visibility { get; set; }
     public LinkRemovalOptions? LinkRemoval { get; set; }
     public NwcExportJob Nwc { get; set; } = new();
+    public FileExportJob Export { get; set; } = new();
     public LinkDatumJobOptions? DatumOptions { get; set; }
     public bool DryRun { get; set; }
     public List<ControlJobParseResult> Steps { get; set; } = [];
@@ -530,6 +623,276 @@ public sealed class ActionJobContract
     public List<FamilyEditOperationContract> Operations { get; set; } = [];
     public bool OverwriteParameterValues { get; set; }
     public bool StopOnError { get; set; }
+}
+
+[DataContract]
+public sealed class ProcessModelsJob
+{
+    [DataMember(Name = "paths")] public List<string>? Paths { get; set; }
+    [DataMember(Name = "folder")] public string? Folder { get; set; }
+    [DataMember(Name = "recursive")] public bool Recursive { get; set; }
+    [DataMember(Name = "pattern")] public string? Pattern { get; set; }
+    [DataMember(Name = "open")] public ControlJobContract? Open { get; set; }
+    [DataMember(Name = "steps")] public List<ControlJobContract>? Steps { get; set; }
+    [DataMember(Name = "code")] public ControlJobContract? Code { get; set; }
+    [DataMember(Name = "exports")] public List<ControlJobContract>? Exports { get; set; }
+    [DataMember(Name = "save")] public ProcessSaveJob? Save { get; set; }
+    [DataMember(Name = "stopOnError")] public bool StopOnError { get; set; }
+    [DataMember(Name = "dryRun")] public bool DryRun { get; set; }
+    [DataMember(Name = "confirmToken")] public string? ConfirmToken { get; set; }
+
+    public void Validate(IReadOnlyCollection<string>? trustedNetworkRoots = null)
+    {
+        if ((Paths is null) == (Folder is null))
+            throw new ArgumentException("Provide paths or folder, but not both.");
+        if (Paths is not null)
+        {
+            if (Paths.Count is < 1 or > 500) throw new ArgumentException("paths must contain 1 to 500 models.");
+            foreach (var path in Paths)
+            {
+                DocumentPathValidator.Validate(path, "paths", trustedNetworkRoots);
+                if (!path.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+                    throw new ArgumentException("Only .rvt models can be processed.");
+            }
+            if (Paths.Where((path, index) => Paths.Take(index).Any(previous =>
+                DocumentPathValidator.SamePath(previous, path))).Any())
+                throw new ArgumentException("paths must not contain duplicates.");
+        }
+        if (Folder is not null)
+        {
+            if (Folder.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Folder discovery requires a local or UNC folder.");
+            NwcPathValidator.EnsureAbsoluteNoTraversal(Folder.TrimEnd('\\', '/') + "\\model.rvt", "folder", trustedNetworkRoots);
+            var pattern = Pattern ?? "*.rvt";
+            if (string.IsNullOrWhiteSpace(pattern) || pattern.IndexOfAny(['\\', '/', ':']) >= 0 || !pattern.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("pattern must be a .rvt file name pattern.");
+        }
+        var opening = Open ?? new ControlJobContract();
+        if (opening.Mode is not null and not ("detached" or "detached_discard_worksets" or "local_copy" or "read_only_local"))
+            throw new ArgumentException("open.mode is invalid.");
+        var worksets = opening.Worksets ?? "all";
+        if (worksets is not ("all" or "none" or "open" or "close") ||
+            worksets == "open" && !ValidWorksets(opening.WorksetsOpen) ||
+            worksets == "close" && !ValidWorksets(opening.WorksetsClose))
+            throw new ArgumentException("open.worksets is invalid.");
+        if (opening.Activate == true) throw new ArgumentException("Processed models must open in the background.");
+        if (Steps is not null)
+        {
+            var parsed = ActionJobParser.Parse("batch", new ControlJobContract { Steps = Steps });
+            if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
+        }
+        if (Code is not null)
+        {
+            var parsed = ActionJobParser.Parse("execute-code", new ControlJobContract
+            {
+                Code = Code.Code,
+                Transaction = Code.Transaction,
+                DryRun = DryRun
+            });
+            if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
+        }
+        if (Exports is not null)
+        {
+            foreach (var export in Exports)
+            {
+                if (export is null || export.Document is not null || export.TargetDocument is not null)
+                    throw new ArgumentException("exports must not address a document.");
+                var folder = export.Folder;
+                try
+                {
+                    export.Folder = folder?.Replace("{model}", "model");
+                    var parsed = ActionJobParser.Parse("export", export, trustedNetworkRoots);
+                    if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
+                }
+                finally { export.Folder = folder; }
+            }
+        }
+        var save = Save ?? new ProcessSaveJob();
+        save.Validate(trustedNetworkRoots);
+        if (save.Mode == "in_place" && opening.Mode is ("local_copy" or "read_only_local"))
+            throw new ArgumentException("in_place requires opening the source model directly.");
+        if (save.Mode == "in_place" && Paths?.Any(path => path.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase)) == true)
+            throw new ArgumentException("in_place requires local or UNC non-workshared files.");
+        if (save.Mode == "output_dir" && Paths is not null && Paths.Any(path =>
+            Paths.Any(source => DocumentPathValidator.SamePath(source,
+                save.OutputDir!.TrimEnd('\\', '/') + "\\" + path.Split(['\\', '/']).Last()))))
+            throw new ArgumentException("A save target matches a source model.");
+    }
+
+    private static bool ValidWorksets(List<string>? names) => names is { Count: > 0 } &&
+        names.All(name => !string.IsNullOrWhiteSpace(name) && !name.StartsWith("regex:", StringComparison.OrdinalIgnoreCase));
+}
+
+[DataContract]
+public sealed class ProcessSaveJob
+{
+    [DataMember(Name = "mode")] public string? Mode { get; set; }
+    [DataMember(Name = "outputDir")] public string? OutputDir { get; set; }
+    [DataMember(Name = "compact")] public bool? Compact { get; set; }
+    [DataMember(Name = "overwrite")] public bool Overwrite { get; set; }
+
+    public void Validate(IReadOnlyCollection<string>? trustedNetworkRoots = null)
+    {
+        if (Mode is not (null or "none" or "output_dir" or "in_place"))
+            throw new ArgumentException("save.mode must be none, output_dir or in_place.");
+        if (Mode == "output_dir")
+        {
+            if (string.IsNullOrWhiteSpace(OutputDir)) throw new ArgumentException("save.output_dir is required.");
+            NwcPathValidator.EnsureAbsoluteNoTraversal(OutputDir!.TrimEnd('\\', '/') + "\\model.rvt", "save.output_dir", trustedNetworkRoots);
+        }
+        else if (OutputDir is not null) throw new ArgumentException("save.output_dir requires output_dir mode.");
+    }
+
+    public void EnsureInPlaceAllowed(bool isWorkshared)
+    {
+        if (Mode == "in_place" && isWorkshared)
+            throw new InvalidOperationException("in_place is available only for non-workshared models.");
+    }
+}
+
+[DataContract]
+public sealed class ProcessModelResult
+{
+    [DataMember(Name = "path")] public string Path { get; set; } = string.Empty;
+    [DataMember(Name = "status")] public string Status { get; set; } = "failed";
+    [DataMember(Name = "elapsedMs")] public long ElapsedMs { get; set; }
+    [DataMember(Name = "opened", EmitDefaultValue = false)] public ProcessModelOpenedResult? Opened { get; set; }
+    [DataMember(Name = "steps", EmitDefaultValue = false)] public ActionResultData? Steps { get; set; }
+    [DataMember(Name = "code", EmitDefaultValue = false)] public ProcessModelCodeResult? Code { get; set; }
+    [DataMember(Name = "exports", EmitDefaultValue = false)] public List<ActionResultData>? Exports { get; set; }
+    [DataMember(Name = "saved", EmitDefaultValue = false)] public string? Saved { get; set; }
+    [DataMember(Name = "dialogsDismissed")] public ProcessDialogSummary DialogsDismissed { get; set; } = new();
+    [DataMember(Name = "error", EmitDefaultValue = false)] public string? Error { get; set; }
+}
+
+[DataContract]
+public sealed class ProcessDialogSummary
+{
+    [DataMember(Name = "messages")] public List<ProcessDialogCount> Messages { get; set; } = [];
+    [DataMember(Name = "truncated")] public bool Truncated { get; set; }
+
+    public static ProcessDialogSummary FromMessages(IEnumerable<string> messages)
+    {
+        var summary = new ProcessDialogSummary();
+        var counts = new Dictionary<string, ProcessDialogCount>(StringComparer.Ordinal);
+        foreach (var message in messages)
+        {
+            if (counts.TryGetValue(message, out var item))
+            {
+                item.Count++;
+                continue;
+            }
+            if (counts.Count == 50)
+            {
+                summary.Truncated = true;
+                continue;
+            }
+            item = new ProcessDialogCount { Message = message, Count = 1 };
+            counts.Add(message, item);
+            summary.Messages.Add(item);
+        }
+        return summary;
+    }
+}
+
+[DataContract]
+public sealed class ProcessDialogCount
+{
+    [DataMember(Name = "message")] public string Message { get; set; } = string.Empty;
+    [DataMember(Name = "count")] public int Count { get; set; }
+}
+
+[DataContract]
+public sealed class ProcessModelOpenedResult
+{
+    [DataMember(Name = "mode")] public string Mode { get; set; } = string.Empty;
+    [DataMember(Name = "worksets")] public List<string> Worksets { get; set; } = [];
+    [DataMember(Name = "audited")] public bool Audited { get; set; }
+    [DataMember(Name = "worksetPatternsUnmatched")] public List<string> WorksetPatternsUnmatched { get; set; } = [];
+    [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
+}
+
+[DataContract]
+public sealed class ProcessModelCodeResult
+{
+    [IgnoreDataMember] public object? ReturnValue { get; set; }
+    [DataMember(Name = "returnValue")] public string ReturnValueMarker { get; set; } = string.Empty;
+    [DataMember(Name = "log")] public List<string> Log { get; set; } = [];
+}
+
+public sealed class FileExportJob
+{
+    public string Format { get; set; } = string.Empty;
+    public List<string>? Views { get; set; }
+    public List<string>? Sheets { get; set; }
+    public string? SheetSet { get; set; }
+    public bool AllSheets { get; set; }
+    public string? Folder { get; set; }
+    public FileExportOptions Options { get; set; } = new();
+    public bool Overwrite { get; set; }
+
+    public void Validate(IReadOnlyCollection<string>? trustedNetworkRoots = null)
+    {
+        if (Format is not ("pdf" or "dwg" or "ifc" or "csv")) throw new ArgumentException("format must be pdf, dwg, ifc or csv.");
+        if (Folder is not null)
+            NwcPathValidator.Validate(Folder.TrimEnd('\\', '/') + "\\export.nwc", trustedNetworkRoots);
+        if (Format is "pdf" or "dwg" && Views is null && Sheets is null && SheetSet is null && !AllSheets)
+            throw new ArgumentException("At least one view, sheet, sheet_set or all_sheets target is required.");
+        if (Format is "ifc" or "csv" && (Sheets is not null || SheetSet is not null || AllSheets))
+            throw new ArgumentException("Sheets are supported only for pdf and dwg.");
+        if (Format == "ifc" && Views is { Count: > 1 }) throw new ArgumentException("IFC accepts at most one view.");
+        if (Views?.Any(string.IsNullOrWhiteSpace) == true || Sheets?.Any(string.IsNullOrWhiteSpace) == true)
+            throw new ArgumentException("Targets must not be blank.");
+        Options.Validate(Format);
+    }
+
+    public static string FileName(string name, string extension)
+    {
+        var safe = new string(name.Select(character => character < 32 || "<>:\"/\\|?*".Contains(character) ? '_' : character).ToArray()).Trim().TrimEnd('.', ' ');
+        if (safe.Length == 0) throw new ArgumentException("Export file name is empty.");
+        var stem = safe.Split('.')[0].ToUpperInvariant();
+        if (NwcPathValidator.IsReservedDeviceName(stem)) safe = $"_{safe}";
+        return safe.EndsWith($".{extension}", StringComparison.OrdinalIgnoreCase) ? safe : $"{safe}.{extension}";
+    }
+}
+
+[DataContract]
+public sealed class FileExportOptions
+{
+    [DataMember(Name = "combine")] public bool? Combine { get; set; }
+    [DataMember(Name = "file_name")] public string? FileName { get; set; }
+    [DataMember(Name = "naming")] public string? Naming { get; set; }
+    [DataMember(Name = "color")] public string? Color { get; set; }
+    [DataMember(Name = "zoom_percent")] public int? ZoomPercent { get; set; }
+    [DataMember(Name = "paper")] public string? Paper { get; set; }
+    [DataMember(Name = "hide_crop_boundaries")] public bool? HideCropBoundaries { get; set; }
+    [DataMember(Name = "hide_scope_boxes")] public bool? HideScopeBoxes { get; set; }
+    [DataMember(Name = "setup")] public string? Setup { get; set; }
+    [DataMember(Name = "merged_views")] public bool? MergedViews { get; set; }
+    [DataMember(Name = "file_version")] public string? FileVersion { get; set; }
+    [DataMember(Name = "version")] public string? Version { get; set; }
+    [DataMember(Name = "export_base_quantities")] public bool? ExportBaseQuantities { get; set; }
+    [DataMember(Name = "space_boundaries")] public int? SpaceBoundaries { get; set; }
+    [DataMember(Name = "split_walls_by_level")] public bool? SplitWallsByLevel { get; set; }
+    [DataMember(Name = "delimiter")] public string? Delimiter { get; set; }
+    [DataMember(Name = "headers")] public bool? Headers { get; set; }
+    [DataMember(Name = "title")] public bool? Title { get; set; }
+    [DataMember(Name = "group_headers")] public bool? GroupHeaders { get; set; }
+    [DataMember(Name = "encoding")] public string? Encoding { get; set; }
+
+    public void Validate(string format)
+    {
+        if (format == "pdf" && (Naming is not null and not ("sheet_number_name" or "view_name") ||
+            Color is not null and not ("color" or "grayscale" or "black_line") ||
+            ZoomPercent is < 1 or > 1000 || Paper is not null and not "auto"))
+            throw new ArgumentException("Invalid PDF options.");
+        if (format == "ifc" && (Version is not null and not ("IFC2x3CV2" or "IFC4RV" or "IFC4x3") || SpaceBoundaries is < 0 or > 2))
+            throw new ArgumentException("Invalid IFC options.");
+        if (format == "csv" && (Delimiter is not null && Delimiter.Length != 1 || Encoding is not null && Encoding != "utf-8"))
+            throw new ArgumentException("CSV delimiter must be one character and encoding must be utf-8.");
+        if (FileName is not null && (FileName.Length == 0 || FileName.IndexOfAny(['/', '\\']) >= 0 || FileName == "." || FileName == ".."))
+            throw new ArgumentException("file_name must be a file name, not a path.");
+    }
 }
 
 public sealed class NwcExportJob
@@ -648,6 +1011,28 @@ public static class WorksetMask
     }
 }
 
+public static class OpenWorksetSelector
+{
+    public static (List<string> Selected, List<string> Unmatched) Select(
+        IReadOnlyCollection<string> available, string mode, IReadOnlyCollection<string> requested)
+    {
+        var unmatched = new List<string>();
+        foreach (var name in requested)
+        {
+            var pattern = name.IndexOfAny(['*', '?']) >= 0;
+            if (!available.Any(item => WorksetMask.Matches(item, name)))
+            {
+                if (!pattern) throw new ArgumentException($"A requested workset was not found: {name}.");
+                unmatched.Add(name);
+            }
+        }
+        var selected = available.Where(name => mode == "close"
+            ? !requested.Any(mask => WorksetMask.Matches(name, mask))
+            : requested.Any(mask => WorksetMask.Matches(name, mask))).ToList();
+        return (selected, unmatched);
+    }
+}
+
 public static class CategoryTypeExpansion
 {
     public static List<string> Expand(IEnumerable<string> requestedTypes, IEnumerable<(string Name, string Type)> categories)
@@ -695,10 +1080,19 @@ public sealed class LinkRemovalResult
 
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "process")] public ProcessModelsJob? ProcessModels { get; set; }
+    [DataMember(Name = "code")] public string? Code { get; set; }
+    [DataMember(Name = "transaction")] public string? Transaction { get; set; }
     [DataMember(Name = "document")] public string? Document { get; set; }
     [DataMember(Name = "mode")] public string? Mode { get; set; }
     [DataMember(Name = "worksets")] public string? Worksets { get; set; }
     [DataMember(Name = "worksetsOpen")] public List<string>? WorksetsOpen { get; set; }
+    [DataMember(Name = "worksetsClose")] public List<string>? WorksetsClose { get; set; }
+    [DataMember(Name = "activateDocument")] public bool? ActivateDocument { get; set; }
+    [DataMember(Name = "keepActive")] public bool? KeepActive { get; set; }
+    [DataMember(Name = "kind")] public string? DocumentKind { get; set; }
+    [DataMember(Name = "template")] public string? Template { get; set; }
+    [DataMember(Name = "name")] public string? Name { get; set; }
     [DataMember(Name = "activate")] public bool? Activate { get; set; }
     [DataMember(Name = "audit")] public bool? Audit { get; set; }
     [DataMember(Name = "save")] public bool? Save { get; set; }
@@ -803,6 +1197,17 @@ public sealed class SharedParameterSpec
 [DataContract]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "models", EmitDefaultValue = false)] public List<ProcessModelResult>? Models { get; set; }
+    [DataMember(Name = "total", EmitDefaultValue = false)] public int? Total { get; set; }
+    [DataMember(Name = "done", EmitDefaultValue = false)] public int? Done { get; set; }
+    [DataMember(Name = "failed", EmitDefaultValue = false)] public int? Failed { get; set; }
+    [DataMember(Name = "skippedCount", EmitDefaultValue = false)] public int? SkippedCount { get; set; }
+    [IgnoreDataMember] public string? CodeError { get; set; }
+    [IgnoreDataMember] public object? ReturnValue { get; set; }
+    [DataMember(Name = "log", EmitDefaultValue = false)] public List<string>? Log { get; set; }
+    [DataMember(Name = "diagnostics", EmitDefaultValue = false)] public List<CodeDiagnostic>? Diagnostics { get; set; }
+    [DataMember(Name = "exceptionType", EmitDefaultValue = false)] public string? ExceptionType { get; set; }
+    [DataMember(Name = "stackTrace", EmitDefaultValue = false)] public List<string>? StackTrace { get; set; }
     [DataMember(Name = "title", EmitDefaultValue = false)] public string? Title { get; set; }
     [DataMember(Name = "isWorkshared", EmitDefaultValue = false)] public bool? IsWorkshared { get; set; }
     [DataMember(Name = "isDetached", EmitDefaultValue = false)] public bool? IsDetached { get; set; }
@@ -810,6 +1215,12 @@ public sealed class ActionResultData
     [DataMember(Name = "openedAs", EmitDefaultValue = false)] public string? OpenedAs { get; set; }
     [DataMember(Name = "active", EmitDefaultValue = false)] public bool? Active { get; set; }
     [DataMember(Name = "worksetsOpen", EmitDefaultValue = false)] public List<string>? WorksetsOpen { get; set; }
+    [DataMember(Name = "worksetPatternsUnmatched", EmitDefaultValue = false)] public List<string>? WorksetPatternsUnmatched { get; set; }
+    [DataMember(Name = "audited", EmitDefaultValue = false)] public bool? Audited { get; set; }
+    [DataMember(Name = "changed", EmitDefaultValue = false)] public bool? Changed { get; set; }
+    [DataMember(Name = "viewOpened", EmitDefaultValue = false)] public bool? ViewOpened { get; set; }
+    [DataMember(Name = "closedViews", EmitDefaultValue = false)] public List<string>? ClosedViews { get; set; }
+    [DataMember(Name = "refusedViews", EmitDefaultValue = false)] public List<string>? RefusedViews { get; set; }
     [DataMember(Name = "saved", EmitDefaultValue = false)] public bool? Saved { get; set; }
     [DataMember(Name = "centralPath", EmitDefaultValue = false)] public string? CentralPath { get; set; }
     [DataMember(Name = "needsConfirmation", EmitDefaultValue = false)] public bool? NeedsConfirmation { get; set; }
@@ -818,6 +1229,10 @@ public sealed class ActionResultData
     [DataMember(Name = "visibility", EmitDefaultValue = false)] public ViewVisibilityResult? Visibility { get; set; }
     [DataMember(Name = "linkRemoval", EmitDefaultValue = false)] public LinkRemovalResult? LinkRemoval { get; set; }
     [DataMember(Name = "path", EmitDefaultValue = false)] public string? Path { get; set; }
+    [DataMember(Name = "folder", EmitDefaultValue = false)] public string? Folder { get; set; }
+    [DataMember(Name = "files", EmitDefaultValue = false)] public List<ExportedFile>? Files { get; set; }
+    [DataMember(Name = "targets", EmitDefaultValue = false)] public List<string>? Targets { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public List<string>? Skipped { get; set; }
     [DataMember(Name = "bytes", EmitDefaultValue = false)] public long? Bytes { get; set; }
     [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }
     [DataMember(Name = "elapsedMs", EmitDefaultValue = false)] public long? ElapsedMs { get; set; }
@@ -852,4 +1267,11 @@ public sealed class ActionResultData
     [DataMember(Name = "newValue", EmitDefaultValue = false)] public string? NewValue { get; set; }
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }
     [DataMember(Name = "closestFamilies", EmitDefaultValue = false)] public List<string>? ClosestFamilies { get; set; }
+}
+
+[DataContract]
+public sealed class ExportedFile
+{
+    [DataMember(Name = "name")] public string Name { get; set; } = string.Empty;
+    [DataMember(Name = "sizeBytes")] public long SizeBytes { get; set; }
 }

@@ -5,6 +5,8 @@ It starts a separate Revit worker, opens one model at a time in the background, 
 The existing snapshot reader supplies schema version 1 JSON.
 Batch collection does not save, synchronize, start transactions, or expose action commands to the worker.
 
+For changes, scripts, exports, or saved copies across many models, use [`revit_process_models`](actions.md#process-many-models). It runs in the user's interactive Revit session, processes one model at a time, and closes each background document. The collector in this guide remains read-only and uses a separate worker.
+
 ## Before the first batch run
 
 For each installed Revit year, start Revit once and verify that any unsigned add-in trust dialog names Revit Model MCP and `RevitModelMcp.dll`.

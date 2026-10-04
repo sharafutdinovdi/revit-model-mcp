@@ -36,10 +36,12 @@ EXPECTED_TOOLS = {
     "revit_ping",
     "revit_document_info",
     "revit_documents",
+    "revit_ui_state",
     "revit_list_views",
     "revit_view_summary",
     "revit_view_info",
     "revit_export_view",
+    "revit_schedule_data",
     "revit_view_elements",
     "revit_element_details",
     "revit_view_warnings",
@@ -58,6 +60,8 @@ EXPECTED_TOOLS = {
     "revit_batch_fetch",
 }
 ACTION_TOOL_NAMES = {
+    "revit_process_models",
+    "revit_execute_code",
     "revit_select",
     "revit_show",
     "revit_isolate",
@@ -68,9 +72,14 @@ ACTION_TOOL_NAMES = {
     "revit_delete",
     "revit_batch",
     "revit_export_nwc",
+    "revit_export",
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
+    "revit_activate_document",
+    "revit_activate_view",
+    "revit_close_views",
+    "revit_new_document",
     "revit_close_document",
     "revit_save_document",
     "revit_sync_document",
@@ -78,6 +87,11 @@ ACTION_TOOL_NAMES = {
     "revit_remove_links",
     "revit_undo_last",
 }
+
+
+def test_schedule_data_maps_paging_to_read_job():
+    job = ReadJob.schedule_data("Doors", max_rows=25, offset=10)
+    assert job.payload == {"command": "schedule-data", "view": "Doors", "limit": 25, "offset": 10}
 
 
 def encode_discovery_payload(package):
@@ -162,6 +176,7 @@ EXPECTED_PARAMETERS = {
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_ui_state": [],
     "revit_list_catalog": ["section", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_aggregate_elements": [
         "group_by",
@@ -209,6 +224,7 @@ EXPECTED_PARAMETERS = {
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_view_info": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_export_view": ["view", "pixel_size", "save_to", "document"],
+    "revit_schedule_data": ["schedule", "max_rows", "offset", "document"],
     "revit_view_elements": [
         "view",
         "categories",
@@ -313,6 +329,15 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             await revit_server.mcp.call_tool("revit_documents", {"include_linked": True})
         job, _, _ = channel.calls[0]
         self.assertEqual(job.payload, {"command": "documents", "includeLinked": True})
+
+    async def test_ui_state_reads_selected_process(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_ui_state", {"process_id": 84})
+        job, _, _ = channel.calls[0]
+        self.assertEqual(job.command, "ui-state")
+        self.assertEqual(job.payload["command"], "ui-state")
+        self.assertEqual(job.payload["targetProcessId"], 84)
 
     async def test_view_info_maps_view_and_document(self) -> None:
         channel = RecordingChannel()

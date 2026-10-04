@@ -5,6 +5,44 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class ActionSummaryBuilderTests
 {
     [Test]
+    public async Task ProcessModels_ReportsTotals()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "process-models",
+            Count = 2,
+            ProcessTotal = 3,
+            ProcessFailed = 1
+        });
+        await Assert.That(summary).IsEqualTo("Processed 2 of 3 models; 1 failed, 0 skipped.");
+    }
+
+    [Test]
+    public async Task ExecuteCode_UsesNamedUndoEntry()
+    {
+        await Assert.That(ActionSummaryBuilder.BuildGroupName("client", "Execute code"))
+            .IsEqualTo("MCP (client): Execute code");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt"
+        })).IsEqualTo("Executed code in Model.rvt.");
+    }
+
+    [Test]
+    [Arguments(CodeFailureKind.Compilation, "Code failed to compile in Model.rvt.")]
+    [Arguments(CodeFailureKind.Execution, "Code failed in Model.rvt.")]
+    public async Task ExecuteCode_FailureSummaryDescribesFailure(CodeFailureKind failure, string expected)
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt",
+            CodeFailure = failure
+        })).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task BuildSummary_Move_ReportsCountAndDocument()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext

@@ -1,5 +1,7 @@
 namespace RevitModelMcp.Core.Activity;
 
+public enum CodeFailureKind { None, Compilation, Execution }
+
 /// <summary>Pure input for <see cref="ActionSummaryBuilder"/>; carries only primitive facts about one action result.</summary>
 public sealed class ActionSummaryContext
 {
@@ -12,12 +14,16 @@ public sealed class ActionSummaryContext
     public string? Parameter { get; init; }
     public string? WallType { get; init; }
     public int BatchStepCount { get; init; }
+    public int ProcessTotal { get; init; }
+    public int ProcessFailed { get; init; }
+    public int ProcessSkipped { get; init; }
     public string? OpenedAs { get; init; }
     public bool Saved { get; init; }
     public string? TargetPath { get; init; }
     public string? ViewName { get; init; }
     public bool NeedsConfirmation { get; init; }
     public string? ConfirmationText { get; init; }
+    public CodeFailureKind CodeFailure { get; init; }
 }
 
 /// <summary>
@@ -46,6 +52,8 @@ public static class ActionSummaryBuilder
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
             "set-parameter" => $"{(context.DryRun ? "Would set" : "Set")} parameter '{context.Parameter}' on 1 element in {doc}.",
             "batch" => $"{(context.DryRun ? "Would run" : "Ran")} a batch of {Plural(context.BatchStepCount, "step")} in {doc}.",
+            "process-models" when context.ProcessTotal > 0 => $"{(context.DryRun ? "Previewed" : "Processed")} {context.Count} of {context.ProcessTotal} models; {context.ProcessFailed} failed, {context.ProcessSkipped} skipped.",
+            "process-models" => $"{(context.DryRun ? "Previewed" : "Processed")} {doc}.",
             "export-nwc" => $"Exported an NWC file from {doc}.",
             "edit-families" => $"{(context.DryRun ? "Would edit" : "Edited")} {Plural(context.Count, "family")} in {doc}.",
             "align-link-datums" => $"{(context.DryRun ? "Would align" : "Aligned")} link datums in {doc}.",
@@ -54,8 +62,15 @@ public static class ActionSummaryBuilder
             "close-document" => context.Saved ? $"Saved and closed '{doc}'." : $"Closed '{doc}'.",
             "save-document" => context.TargetPath is null ? $"Saved '{doc}'." : $"Saved '{doc}' as {context.TargetPath}.",
             "sync-document" => $"Synchronized '{doc}' with its central model.",
+            "activate-document" => $"Activated '{doc}'.",
+            "activate-view" => $"Activated view '{context.ViewName}' in '{doc}'.",
+            "close-views" => $"Closed {Plural(context.Count, "view")} in '{doc}'.",
+            "new-document" => $"Created '{doc}'.",
             "set-view-visibility" => $"{(context.DryRun ? "Would change" : "Changed")} {Plural(context.Count, "visibility setting")} on view '{context.ViewName}' in {doc}.",
             "remove-links" => $"{(context.DryRun ? "Would remove" : "Removed")} {Plural(context.Count, "link")} in {doc}.",
+            "execute-code" when context.CodeFailure == CodeFailureKind.Compilation => $"Code failed to compile in {doc}.",
+            "execute-code" when context.CodeFailure == CodeFailureKind.Execution => $"Code failed in {doc}.",
+            "execute-code" => $"{(context.DryRun ? "Ran a code preview" : "Executed code")} in {doc}.",
             _ => $"Ran {context.Command} in {doc}."
         };
     }

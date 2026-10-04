@@ -29,7 +29,7 @@ public static class NwcPathValidator
         var name = normalized.Substring(normalized.LastIndexOf('\\') + 1);
         if (name.Length <= 4) throw new ArgumentException("path must have a non-empty file name.");
         var stem = name.Substring(0, name.Length - 4).Split('.')[0].ToUpperInvariant();
-        if (stem is "CON" or "PRN" or "AUX" or "NUL" or "COM1" or "COM2" or "COM3" or "COM4" or "COM5" or "COM6" or "COM7" or "COM8" or "COM9" or "LPT1" or "LPT2" or "LPT3" or "LPT4" or "LPT5" or "LPT6" or "LPT7" or "LPT8" or "LPT9")
+        if (IsReservedDeviceName(stem))
             throw new ArgumentException("path contains an invalid file name.");
         if (normalized.Any(character => character < 32 || "<>\"|?*".Contains(character)))
             throw new ArgumentException("path contains invalid characters.");
@@ -37,6 +37,11 @@ public static class NwcPathValidator
             throw new ArgumentException("path contains invalid characters.");
         if (name.TrimEnd('.', ' ') != name) throw new ArgumentException("path contains an invalid file name.");
     }
+
+    public static bool IsReservedDeviceName(string stem) =>
+        stem is "CON" or "PRN" or "AUX" or "NUL" ||
+        stem.Length == 4 && (stem.StartsWith("COM", StringComparison.Ordinal) || stem.StartsWith("LPT", StringComparison.Ordinal)) &&
+        stem[3] is >= '1' and <= '9';
 
     public static void EnsureSettingsXmlSize(long length)
     {

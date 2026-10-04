@@ -54,8 +54,9 @@ function Get-Payload([string] $SelectedYear) {
         finally { Pop-Location }
         $folder = Join-Path $stage 'RevitModelMcp'
         New-Item -ItemType Directory -Path $folder | Out-Null
-        Copy-Item (Join-Path $repo "src\RevitModelMcp.Addin\bin\Release.R$yy\*") $folder -Recurse -Force
-        Copy-Item (Join-Path $repo 'src\RevitModelMcp.Addin\RevitModelMcp.addin') $stage
+        Get-ChildItem (Join-Path $repo "src\RevitModelMcp.Addin\bin\Release.R$yy") |
+            Where-Object Name -ne 'publish' | Copy-Item -Destination $folder -Recurse -Force
+        Copy-Item (Join-Path $repo "src\RevitModelMcp.Addin\bin\Release.R$yy\publish\RevitModelMcp.addin") $stage
     }
     else {
         $asset = "revit-model-mcp-addin-$releaseVersion-R$yy.zip"
@@ -124,6 +125,10 @@ function Install-Year([string] $SelectedYear, [string] $Payload) {
     $addins = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$SelectedYear"
     $install = Join-Path $addins 'RevitModelMcp'
     [xml]$manifest = Get-Content -LiteralPath (Join-Path $Payload 'RevitModelMcp.addin')
+    if ([int]$SelectedYear -lt 2026) {
+        $settings = $manifest.SelectSingleNode('/RevitAddIns/ManifestSettings')
+        if ($settings) { [void]$settings.ParentNode.RemoveChild($settings) }
+    }
     $dll = [IO.Path]::GetFullPath((Join-Path $install 'RevitModelMcp.dll'))
     $manifest.SelectSingleNode('/RevitAddIns/AddIn/Assembly').InnerText = $dll
     # Replace the owned folder to remove stale dependencies from earlier versions.

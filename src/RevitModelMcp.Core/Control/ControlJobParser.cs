@@ -14,6 +14,7 @@ public enum ControlJobKind
     Ping,
     DocumentInfo,
     Documents,
+    UiState,
     ModelHealth,
     ModelSnapshot,
     LinksStatus,
@@ -25,6 +26,7 @@ public enum ControlJobKind
     ViewElements,
     ElementDetails,
     ViewWarnings,
+    ScheduleData,
     ExportView,
     QueryElements,
     AggregateElements,
@@ -199,6 +201,7 @@ public sealed class ControlJobParseResult
             "parameter-fill-check" => ParseParameterFill(job),
             "document-info" => Create(ControlJobKind.DocumentInfo, command),
             "documents" => Documents(job.IncludeLinked ?? false),
+            "ui-state" => Create(ControlJobKind.UiState, command),
             "list-views" => ListViews(job.ViewType, job.NameContains),
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
             "view-info" => RequireView(ControlJobKind.ViewInfo, command, view),
@@ -206,6 +209,7 @@ public sealed class ControlJobParseResult
             "element-details" => ParseElementDetails(command, job.Id),
             "view-warnings" => RequireView(ControlJobKind.ViewWarnings, command, view),
             "export-view" => ParseExportView(command, view, job.PixelSize, job.ZoomToFit),
+            "schedule-data" => view is null ? Invalid(command, "schedule is required.") : ParseScheduleData(job, view),
             "query-elements" => UniversalJobParser.ParseQuery(job),
             "aggregate-elements" => UniversalJobParser.ParseAggregate(job),
             "list-catalog" => UniversalJobParser.ParseCatalog(job),
@@ -369,6 +373,16 @@ public sealed class ControlJobParseResult
             : ExportView(view, resolvedPixelSize, zoomToFit ?? true);
     }
 
+    private static ControlJobParseResult ParseScheduleData(ControlJobContract job, string schedule)
+    {
+        if (job.Offset is < 0 || job.Limit is < 1 or > 5000)
+            return Invalid("schedule-data", "offset must be non-negative and max_rows must be 1 to 5000.");
+        var result = ViewCommand(ControlJobKind.ScheduleData, "schedule-data", schedule);
+        result.Offset = job.Offset ?? 0;
+        result.Limit = job.Limit ?? 500;
+        return result;
+    }
+
     private static IReadOnlyList<string> NormalizeMany(IEnumerable<string>? values)
     {
         return (values ?? Array.Empty<string>())
@@ -473,6 +487,12 @@ public sealed partial class ControlJobContract
     public List<string>? Views { get; set; }
     [DataMember(Name = "view")]
     public string? View { get; set; }
+    [DataMember(Name = "format")] public string? Format { get; set; }
+    [DataMember(Name = "sheets")] public List<string>? Sheets { get; set; }
+    [DataMember(Name = "sheetSet")] public string? SheetSet { get; set; }
+    [DataMember(Name = "allSheets")] public bool? AllSheets { get; set; }
+    [DataMember(Name = "folder")] public string? Folder { get; set; }
+    [DataMember(Name = "options")] public FileExportOptions? ExportOptions { get; set; }
     [DataMember(Name = "viewType")]
     public string? ViewType { get; set; }
     [DataMember(Name = "nameContains")]

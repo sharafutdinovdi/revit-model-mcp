@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Runtime.Serialization.Json;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -6,6 +8,284 @@ namespace RevitModelMcp.Core.Tests.Control;
 
 public sealed class ActionJobParserTests
 {
+    [Test]
+    public async Task ProcessModels_ParsesNestedActionsAndRejectsInvalidSources()
+    {
+        var valid = ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\Models\\A.rvt"],"steps":[{"command":"set-parameter","elementId":1,"parameter":"Mark","value":"done"}],"code":{"code":"return 1;","transaction":"auto"},"exports":[{"format":"ifc"}],"save":{"mode":"output_dir","outputDir":"C:\\Out"}}}""");
+        await Assert.That(valid.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(valid.Action!.ProcessModels!.Steps!.Count).IsEqualTo(1);
+        await Assert.That(valid.Action.ProcessModels.Exports!.Count).IsEqualTo(1);
+        using (var stream = new MemoryStream())
+        {
+            new DataContractJsonSerializer(typeof(ProcessModelsJob)).WriteObject(stream, valid.Action.ProcessModels);
+            await Assert.That(stream.Length).IsGreaterThan(0);
+        }
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["relative.rvt"]}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"folder":"C:\\Models"}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"steps":[{"command":"export","format":"ifc"}]}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"code":{"code":"return 1;","transaction":"none"},"dryRun":true}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task ProcessModels_ValidatesSaveModesAndSerializesScriptResults()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"save":{"mode":"output_dir"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"save":{"mode":"output_dir","outputDir":"C:\\"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"save":{"mode":"in_place","outputDir":"C:\\Out"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"open":{"mode":"local_copy"},"save":{"mode":"in_place"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["RSN://host/folder/A.rvt"],"save":{"mode":"in_place"}}}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(() => new ProcessSaveJob { Mode = "in_place" }.EnsureInPlaceAllowed(true))
+            .Throws<InvalidOperationException>();
+        new ProcessSaveJob { Mode = "in_place" }.EnsureInPlaceAllowed(false);
+
+        var data = new ActionResultData
+        {
+            Models = [new ProcessModelResult
+            {
+                Path = "C:\\A.rvt", Status = "done", Code = new ProcessModelCodeResult
+                {
+                    ReturnValue = 42, ReturnValueMarker = "test-marker", Log = ["counted"]
+                }
+            }]
+        };
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("process-models", data, 1));
+        await Assert.That(json.Contains("\"returnValue\":42")).IsTrue();
+        await Assert.That(json.Contains("test-marker")).IsFalse();
+    }
+
+    [Test]
+    public async Task ExecuteCode_ValidatesModeSizeAndBatchExclusion()
+    {
+        var parsed = ControlJobParser.Parse("""{"command":"execute-code","code":"return 42;"}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(parsed.Action!.Code).IsEqualTo("return 42;");
+        await Assert.That(parsed.Action.TransactionMode).IsEqualTo("auto");
+        await Assert.That(ControlJobParser.Parse("""{"command":"execute-code","code":"x","transaction":"none","dryRun":true}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"execute-code","code":""}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"execute-code","code":"return 42;"}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task ExecuteCode_SourceAndCacheKeyAreStable()
+    {
+        var body = CodeSource.BuildSource("return ctx.Document?.Title;");
+        var full = CodeSource.BuildSource("public static class Script { public static object Execute(ScriptContext ctx) => 1; }");
+        await Assert.That(CodeSource.IsCompilationUnit("return 1;")).IsFalse();
+        await Assert.That(CodeSource.IsCompilationUnit(full)).IsTrue();
+        await Assert.That(body.Contains("#line 1 \"submitted.cs\"\nreturn ctx.Document?.Title;")).IsTrue();
+        await Assert.That(full.Contains("#line 1 \"submitted.cs\"\npublic static class Script")).IsTrue();
+        await Assert.That(CodeSource.CacheKey("return 1;", "auto"))
+            .IsNotEqualTo(CodeSource.CacheKey("return 1;", "none"));
+        await Assert.That(CodeSource.CacheKey("return 1;", "auto"))
+            .IsEqualTo(CodeSource.CacheKey("return 1;", "auto"));
+        await Assert.That(CodeSource.FirstLine("\n  return 1;\n")).IsEqualTo("return 1;");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterCapsDepthAndItems()
+    {
+        var items = CodeResultLimiter.Limit(Enumerable.Range(0, 6000).ToArray(), value => value) as List<object?>;
+        object nested = 7;
+        for (var depth = 0; depth < 8; depth++) nested = new[] { nested };
+        var limited = CodeResultLimiter.Limit(nested, value => value);
+        await Assert.That(items!.Count).IsEqualTo(5000);
+        await Assert.That(CodeResultLimiter.ToJson(limited).Contains("System.Object[]")).IsTrue();
+        await Assert.That(CodeResultLimiter.ToJson(new Dictionary<string, object?>
+        {
+            ["escaped"] = "a\"b\n",
+            ["number"] = 1.5,
+            ["finite"] = double.NaN
+        })).IsEqualTo("{\"escaped\":\"a\\\"b\\n\",\"number\":1.5,\"finite\":null}");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterSerializesPlainPropertiesWithInvariantNumbers()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ru-RU");
+            var anonymous = CodeResultLimiter.Limit(new { Name = "Parking", mm = -5156.2 }, value => value);
+            var plain = CodeResultLimiter.Limit(new PlainCodeResult { Name = "Parking", Millimeters = -5156.2 }, value => value);
+            await Assert.That(CodeResultLimiter.ToJson(anonymous))
+                .IsEqualTo("{\"Name\":\"Parking\",\"mm\":-5156.2}");
+            await Assert.That(CodeResultLimiter.ToJson(plain))
+                .IsEqualTo("{\"Name\":\"Parking\",\"Millimeters\":-5156.2}");
+            await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
+                new Dictionary<double, object?> { [-5156.2] = 1.5 }, value => value)))
+                .IsEqualTo("{\"-5156.2\":1.5}");
+            await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
+                new Uri("https://example.org/"), value => value)))
+                .IsEqualTo("\"https://example.org/\"");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+    }
+
+    private sealed class PlainCodeResult
+    {
+        public string Name { get; init; } = string.Empty;
+        public double Millimeters { get; init; }
+    }
+
+    [Test]
+    [Arguments("pdf", "A-01_Site.pdf")]
+    [Arguments("dwg", "A-01_Site.dwg")]
+    public async Task Export_FileNamingUsesSheetNumber(string format, string expected)
+    {
+        var name = FileExportJob.FileName("A-01_Site", format);
+        await Assert.That(name).IsEqualTo(expected);
+        await Assert.That(FileExportJob.FileName("CON", format)).IsEqualTo($"_CON.{format}");
+        await Assert.That(FileExportJob.FileName("A/01", format)).IsEqualTo($"A_01.{format}");
+    }
+
+    [Test]
+    [Arguments("COM2")]
+    [Arguments("COM9.report")]
+    [Arguments("LPT5")]
+    [Arguments("LPT9.report")]
+    public async Task Export_FileNamingPrefixesReservedDeviceNames(string name)
+    {
+        await Assert.That(FileExportJob.FileName(name, "csv")).IsEqualTo($"_{name}.csv");
+    }
+
+    [Test]
+    public async Task ScheduleData_SerializesNamedResult()
+    {
+        var data = new ScheduleDataResult
+        {
+            Columns = ["Door number"],
+            Rows = [["101"]],
+            TotalRows = 2,
+            Truncated = true
+        };
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ScheduleDataResult>.Ok("schedule-data", data, 1)));
+        var result = json.RootElement.GetProperty("data");
+        await Assert.That(result.GetProperty("columns")[0].GetString()).IsEqualTo("Door number");
+        await Assert.That(result.GetProperty("rows")[0][0].GetString()).IsEqualTo("101");
+        await Assert.That(result.GetProperty("totalRows").GetInt32()).IsEqualTo(2);
+        await Assert.That(result.GetProperty("truncated").GetBoolean()).IsTrue();
+    }
+
+    [Test]
+    public async Task ScheduleData_JoinsGroupedHeadingsByColumn()
+    {
+        List<List<string>> rows =
+        [
+            ["Door", "Door", "Door"],
+            ["Mark", "Size", "Size"],
+            ["", "Width", "Height"]
+        ];
+        var columns = ScheduleDataResult.JoinHeadings(rows, 3);
+        await Assert.That(columns[0]).IsEqualTo("Door / Mark");
+        await Assert.That(columns[1]).IsEqualTo("Door / Size / Width");
+        await Assert.That(columns[2]).IsEqualTo("Door / Size / Height");
+    }
+
+    [Test]
+    [Arguments("""{"command":"export","format":"pdf"}""")]
+    [Arguments("""{"command":"export","format":"csv","sheets":["A1"]}""")]
+    [Arguments("""{"command":"export","format":"ifc","views":["One","Two"]}""")]
+    [Arguments("""{"command":"export","format":"pdf","views":["A"],"options":{"zoom_percent":0}}""")]
+    [Arguments("""{"command":"export","format":"csv","options":{"encoding":"latin-1"}}""")]
+    [Arguments("""{"command":"batch","steps":[{"command":"export","format":"ifc"}]}""")]
+    public async Task Export_RejectsInvalidRequests(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task Export_ParsesOptionsAndTargets()
+    {
+        var result = ControlJobParser.Parse("""{"command":"export","format":"pdf","sheets":["A1"],"folder":"C:\\out","options":{"combine":false,"color":"grayscale"}}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Export.Sheets).IsEquivalentTo(new[] { "A1" });
+        await Assert.That(result.Action.Export.Options.Combine).IsFalse();
+        await Assert.That(result.Action.Export.Options.Color).IsEqualTo("grayscale");
+    }
+
+    [Test]
+    public async Task ScheduleData_ParsesPagingAndRejectsInvalidLimits()
+    {
+        var result = ControlJobParser.Parse("""{"command":"schedule-data","view":"Doors","limit":25,"offset":10}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ScheduleData);
+        await Assert.That(result.Limit).IsEqualTo(25);
+        await Assert.That(result.Offset).IsEqualTo(10);
+        await Assert.That(ControlJobParser.Parse("""{"command":"schedule-data","view":"Doors","limit":0}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task DocumentIdentityMatcher_MatchesWrappersButDistinguishesCopies()
+    {
+        var original = new DocumentIdentity(Guid.NewGuid(), "Night test project", "C:/Models/Night test project.rvt");
+        var wrapper = new DocumentIdentity(original.Id, original.Title, original.Path);
+        var copy = new DocumentIdentity(Guid.NewGuid(), original.Title, original.Path);
+        var structural = new DocumentIdentity(Guid.NewGuid(), "Structural", "C:/Models/Structural.rvt");
+        var before = new[] { structural };
+        var comparer = new DocumentIdentityComparer<DocumentIdentity>((first, second) => first.Equals(second));
+        var opened = new Dictionary<DocumentIdentity, bool>(comparer)
+        {
+            [original] = true
+        };
+
+        await Assert.That(DocumentIdentityMatcher.Contains(new[] { original, structural }, wrapper, comparer)).IsTrue();
+        await Assert.That(DocumentIdentityMatcher.Contains(new[] { original, structural }, copy, comparer)).IsFalse();
+        await Assert.That(opened.ContainsKey(wrapper)).IsTrue();
+        await Assert.That(opened.ContainsKey(copy)).IsFalse();
+        await Assert.That(DocumentIdentityMatcher.AllPresent(new[] { original }, new[] { wrapper }, comparer)).IsTrue();
+        await Assert.That(DocumentIdentityMatcher.AllPresent(before, new[] { original, copy }, comparer)).IsFalse();
+        await Assert.That(DocumentIdentityMatcher.AllPresent(before, new[] { structural, copy }, comparer)).IsTrue();
+        await Assert.That(opened.Remove(wrapper)).IsTrue();
+    }
+
+    private sealed class DocumentIdentity(Guid id, string title, string path)
+    {
+        public Guid Id { get; } = id;
+        public string Title { get; } = title;
+        public string Path { get; } = path;
+
+        public bool Equals(DocumentIdentity? other) => other is not null && Id == other.Id;
+    }
+
+    [Test]
+    public async Task OpenWorksetSelector_MatchesWildcardsAndReportsUnmatchedPatterns()
+    {
+        var available = new[] { "Architecture", "Shared Levels and Grids", "Furniture", "Model Links" };
+        var open = OpenWorksetSelector.Select(available, "open", ["Arch*", "Shared Levels and Grids", "Missing?"]);
+        await Assert.That(open.Selected).IsEquivalentTo(new[] { "Architecture", "Shared Levels and Grids" });
+        await Assert.That(open.Unmatched).IsEquivalentTo(new[] { "Missing?" });
+        var close = OpenWorksetSelector.Select(available, "close", ["*link*", "*Furniture*"]);
+        await Assert.That(close.Selected).IsEquivalentTo(new[] { "Architecture", "Shared Levels and Grids" });
+        await Assert.That(() => OpenWorksetSelector.Select(available, "open", ["Missing"]))
+            .Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task SessionActions_ValidateArgumentsAndStayOutOfBatch()
+    {
+        await Assert.That(ControlJobParser.Parse("""{"command":"activate-document"}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"activate-view"}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"new-document","kind":"family"}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"activate-document","document":"A"}]}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"open-document","path":"C:\\a.rte","audit":true,"worksets":"close","worksetsClose":["*Link*"]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"new-document","kind":"family","template":"C:\\a.rft"}""").Kind).IsEqualTo(ControlJobKind.Action);
+    }
     [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {
@@ -186,6 +466,22 @@ public sealed class ActionJobParserTests
             await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"save-document","document":"A"}]}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    public async Task SessionActions_ParseViewTypeAndSafeDocumentName()
+    {
+        var view = ControlJobParser.Parse("""{"command":"activate-view","view":"L2","viewType":"FloorPlan"}""");
+        await Assert.That(view.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(view.Action!.ViewType).IsEqualTo("FloorPlan");
+        var document = ControlJobParser.Parse("""{"command":"new-document","name":"Project review"}""");
+        await Assert.That(document.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(document.Action!.NewDocumentName).IsEqualTo("Project review");
+        foreach (var name in new[] { "", "..", "CON", "CON.txt", "A/B", "A\\B", "A: B", "A. ", " name" })
+        {
+            var invalid = ControlJobParser.Parse($$"""{"command":"new-document","name":{{System.Text.Json.JsonSerializer.Serialize(name)}}}""");
+            await Assert.That(invalid.Kind).IsEqualTo(ControlJobKind.Invalid);
+        }
     }
 
     [Test]

@@ -74,6 +74,10 @@
       "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
+      "name": "revit_ui_state",
+      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+    },
+    {
       "name": "revit_model_snapshot",
       "description": "Read a schema version 1 project snapshot for batch audits.\n\nEach parameter rule pairs one category with one parameter. Warning groups include\nat most 200 affected element IDs. Closed worksets can make the result incomplete.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
@@ -118,6 +122,10 @@
       "description": "Read element categories and counts for a selected view.\n\nReturns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].\nPrefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
+      "name": "revit_schedule_data",
+      "description": "Read displayed schedule header and body cell text, with paging.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+    },
+    {
       "name": "revit_export_view",
       "description": "Export a selected view to PNG when numbers do not explain geometry.\n\nReturns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.\nThe export does not change the active view or write to the model; use it to inspect outlines, zones and room boundaries.\nA missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.\nUses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
@@ -154,6 +162,22 @@
       "description": "Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."
     },
     {
+      "name": "revit_activate_document",
+      "description": "Activate an already open document by title or path reference."
+    },
+    {
+      "name": "revit_activate_view",
+      "description": "Activate a non-template view in the selected document."
+    },
+    {
+      "name": "revit_close_views",
+      "description": "Close open UI views in the active document."
+    },
+    {
+      "name": "revit_new_document",
+      "description": "Create a project or family from a template on the Revit workstation."
+    },
+    {
       "name": "revit_close_document",
       "description": "Close a background document. Show confirmationText and retry with the token only after explicit chat approval."
     },
@@ -172,6 +196,10 @@
     {
       "name": "revit_remove_links",
       "description": "Delete selected link types and their instances; preview with dry_run."
+    },
+    {
+      "name": "revit_execute_code",
+      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode."
     },
     {
       "name": "revit_undo_last",
@@ -214,12 +242,20 @@
       "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
+      "name": "revit_export",
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names."
+    },
+    {
       "name": "revit_export_nwc",
       "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence."
     },
     {
       "name": "revit_batch",
       "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+    },
+    {
+      "name": "revit_process_models",
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response."
     },
     {
       "name": "revit_edit_families",

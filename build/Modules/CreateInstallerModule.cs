@@ -69,7 +69,8 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
             }
 
             assemblyFolder.GetFile("RevitModelMcp.dll").Exists.ShouldBeTrue($"Missing add-in: {buildDirectory.Path}");
-            wixTarget.Folder.GetFile("RevitModelMcp.addin").CopyTo(yearFolder.GetFile("RevitModelMcp.addin").Path);
+            buildDirectory.GetFolder("publish").GetFile("RevitModelMcp.addin")
+                .CopyTo(yearFolder.GetFile("RevitModelMcp.addin").Path);
             foreach (var name in new[] { "LICENSE", "THIRD-PARTY-NOTICES.md" })
             {
                 SolutionRoot.Directory.GetFile(name).CopyTo(yearFolder.GetFile(name).Path);
