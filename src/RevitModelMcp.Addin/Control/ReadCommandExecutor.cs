@@ -410,6 +410,14 @@ internal static class ReadCommandExecutor
                     var type = types.Cast<ViewFamilyType>().FirstOrDefault(candidate => candidate.ViewFamily == ViewFamily.ThreeDimensional)
                         ?? throw new InvalidOperationException("No 3D view family type is available.");
                     var created = View3D.CreateIsometric(document, type.Id);
+                    var height = bounds.Max.Z - bounds.Min.Z;
+                    var width = Math.Max(bounds.Max.X - bounds.Min.X, bounds.Max.Y - bounds.Min.Y);
+                    if (width < height)
+                    {
+                        var horizontalPadding = (height - width) / 2;
+                        bounds.Min = new XYZ(bounds.Min.X - horizontalPadding, bounds.Min.Y - horizontalPadding, bounds.Min.Z);
+                        bounds.Max = new XYZ(bounds.Max.X + horizontalPadding, bounds.Max.Y + horizontalPadding, bounds.Max.Z);
+                    }
                     created.SetSectionBox(bounds);
                     created.IsSectionBoxActive = true;
                     view = created;
@@ -450,6 +458,7 @@ internal static class ReadCommandExecutor
                 settings.SetCutForegroundPatternColor(red);
                 settings.SetProjectionLineColor(red);
                 settings.SetCutLineColor(red);
+                settings.SetSurfaceTransparency(0);
                 settings.SetProjectionLineWeight(6);
                 settings.SetCutLineWeight(6);
                 foreach (var id in ids) view.SetElementOverrides(id, settings);
@@ -458,6 +467,7 @@ internal static class ReadCommandExecutor
                 {
                     if (ids.Contains(id) || document.GetElement(id)?.Category?.CategoryType != CategoryType.Model) continue;
                     using var other = view.GetElementOverrides(id);
+                    other.SetSurfaceTransparency(60);
                     ActionMutations.SetHalftone(view, id, other);
                 }
                 document.Regenerate();

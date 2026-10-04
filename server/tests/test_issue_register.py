@@ -1,10 +1,12 @@
 import asyncio
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from zipfile import ZipFile
 
 import pytest
 from openpyxl import load_workbook
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from revit_model_mcp import server
 from revit_model_mcp.issue_register import (
@@ -49,20 +51,21 @@ def test_workbook_sheets_rows_images_and_totals(tmp_path):
     assert workbook.sheetnames == ["Cover", "Summary", "Register", "Elements"]
     assert workbook.properties.title == "Demo issue register"
     assert workbook.properties.creator == "Reviewer"
-    assert workbook["Cover"]["A10"].value == "EIR"
+    assert workbook["Cover"]["A15"].value == "EIR"
     register = workbook["Register"]
     assert register.max_row == 5
-    assert register.freeze_panes == "A2"
-    assert register.auto_filter.ref == "A1:M5"
+    assert register.freeze_panes == "C2"
+    assert register.auto_filter.ref == "A1:N5"
     assert all(cell.font.bold and cell.font.color.rgb == "00FFFFFF" for cell in register[1])
     for index, color in enumerate(COLORS, 2):
-        assert register.cell(index, 7).fill.fgColor.rgb == f"00{color}"
-    assert register["G2"].font.color.rgb == "00FFFFFF"
+        assert register.cell(index, 4).fill.fgColor.rgb == f"00{color}"
+    assert register["D2"].font.color.rgb == "00FFFFFF"
     assert len(register._images) == 1
-    assert register._images[0].anchor._from.col == 12
+    assert register._images[0].anchor._from.col == 1
     assert register._images[0].anchor._from.row == 1
-    assert register.row_dimensions[2].height >= 128
-    assert register["M3"].value == "Snapshot unavailable: capture failed"
+    assert register.row_dimensions[2].height == 185
+    assert register.row_dimensions[3].height == 60
+    assert register["B3"].value == "Snapshot unavailable: capture failed"
     assert workbook["Elements"].max_row == 5
     assert workbook["Summary"]["F3"].value == 4
     assert len(workbook["Summary"]._charts) == 1
@@ -107,7 +110,7 @@ def test_snapshot_cap_prioritizes_severity_and_keeps_order(tmp_path):
     assert skipped == [23, 24]
     result = write_register(str(tmp_path / "out.xlsx"), {}, issues)
     register = load_workbook(result["path"])["Register"]
-    assert register["M25"].value == "Snapshot skipped: limit of 25 per register"
+    assert register["B25"].value == "Snapshot skipped: limit of 25 per register"
     assert sum("limit of 25" in warning for warning in result["warnings"]) == 2
 
 
@@ -175,7 +178,7 @@ def test_tool_captures_sequentially_with_addressing_and_continues_on_error(tmp_p
         }
     register = load_workbook(tmp_path / "out.xlsx")["Register"]
     assert len(register._images) == 1
-    assert register["M3"].value == "Snapshot unavailable: capture failed"
+    assert register["B3"].value == "Snapshot unavailable: capture failed"
     assert not Path(calls[0].save_to).exists()
 
 
@@ -258,8 +261,8 @@ def test_capture_budget_preserves_register_and_skips_remaining(tmp_path):
     assert result["snapshotCount"] == 0
     assert len(result["warnings"]) == 2
     register = load_workbook(result["path"])["Register"]
-    assert register["M2"].value == "Snapshot unavailable: capture time budget exhausted"
-    assert register["M3"].value == "Snapshot skipped: capture time budget exhausted"
+    assert register["B2"].value == "Snapshot unavailable: capture time budget exhausted"
+    assert register["B3"].value == "Snapshot skipped: capture time budget exhausted"
 
 
 def test_output_validation_before_revit(tmp_path):
@@ -276,6 +279,142 @@ def test_workbook_text_is_literal(tmp_path):
     output = tmp_path / "literal.xlsx"
     write_register(str(output), {"name": "=project"}, [issue(requirement="=1+1")])
     workbook = load_workbook(output)
-    assert workbook["Cover"]["B2"].data_type == "s"
-    assert workbook["Register"]["D2"].value == "=1+1"
-    assert workbook["Register"]["D2"].data_type == "s"
+    assert workbook["Cover"]["C6"].value == "=project"
+    assert workbook["Cover"]["C6"].data_type == "s"
+    assert workbook["Register"]["G2"].value == "=1+1"
+    assert workbook["Register"]["G2"].data_type == "s"
+
+
+def test_register_column_layout_and_full_element_inventory(tmp_path):
+    output = tmp_path / "register.xlsx"
+    write_register(str(output), {}, [issue(element_ids=list(range(1, 36)), status="Closed")])
+    workbook = load_workbook(output)
+    register = workbook["Register"]
+    assert [cell.value for cell in register[1]] == [
+        "ID",
+        "Snapshot",
+        "Title",
+        "Severity",
+        "Category",
+        "Requirement source",
+        "Requirement",
+        "Finding",
+        "Recommendation",
+        "Status",
+        "Responsible",
+        "Due",
+        "Elements",
+        "Element IDs",
+    ]
+    assert [register.column_dimensions[cell.column_letter].width for cell in register[1]] == [
+        9,
+        52,
+        32,
+        11,
+        20,
+        16,
+        40,
+        46,
+        36,
+        10,
+        16,
+        11,
+        9,
+        24,
+    ]
+    assert register["C2"].value == "Missing code"
+    assert register["H2"].value == "2 types have no code"
+    assert register["J2"].value == "Closed"
+    assert register["J2"].fill.fgColor.rgb == "00F2F2F2"
+    assert register["M2"].value == 35
+    assert register["N2"].value == ", ".join(map(str, range(1, 31))) + " +5 more"
+    assert workbook["Elements"].max_row == 36
+    assert workbook["Elements"]["B36"].value == 35
+
+
+def test_tall_snapshot_is_trimmed_boxed_and_anchored_inside_cell(tmp_path):
+    png = tmp_path / "tall.png"
+    source = Image.new("RGB", (600, 1200), (250, 250, 250))
+    ImageDraw.Draw(source).rectangle((270, 200, 329, 999), fill="red")
+    source.save(png)
+    output = tmp_path / "register.xlsx"
+    write_register(str(output), {}, [issue(element_ids=[1])], {0: png})
+    with ZipFile(output) as archive:
+        with Image.open(BytesIO(archive.read("xl/media/image1.png"))) as boxed:
+            assert boxed.size == (360, 240)
+            assert boxed.getpixel((0, 0)) == (255, 255, 255)
+            assert boxed.getpixel((180, 120)) == (255, 0, 0)
+            # Cropping removes the large source margins before fitting.
+            assert boxed.getpixel((180, 10)) == (255, 0, 0)
+            assert boxed.getpixel((160, 120)) == (255, 255, 255)
+    register = load_workbook(output)["Register"]
+    image = register._images[0]
+    assert (image.width, image.height) == (360, 240)
+    assert image.anchor._from.col == 1
+    assert image.anchor._from.colOff == 4 * 9525
+    assert image.anchor._from.rowOff == 3 * 9525
+    assert image.anchor.ext.cx == 360 * 9525
+    assert image.anchor.ext.cy == 240 * 9525
+    assert register.row_dimensions[2].height == 185
+
+
+def test_workbook_presentation_print_settings_and_chart_placement(tmp_path):
+    output = tmp_path / "register.xlsx"
+    write_register(
+        str(output),
+        {"name": "Demo", "model": "Model"},
+        [issue(), issue(category="Geometry", severity="critical")],
+    )
+    workbook = load_workbook(output)
+    cover = workbook["Cover"]
+    assert cover["A1"].value == "Model review: issue register"
+    assert cover["A1"].font.sz == 22
+    assert cover["A1"].fill.fgColor.rgb == "001F3864"
+    assert cover["A3"].value == "Demo | Model"
+    assert cover["A3"].font.sz == 12
+    assert "A1:H2" in cover.merged_cells
+    assert cover["A17"].value == 1
+    assert cover["C17"].value == 1
+    assert cover["E17"].value == 0
+    assert cover["G17"].value == 0
+    assert cover["A20"].value == 2
+    assert (
+        cover["A23"].value
+        == "Snapshots show affected elements in red; other elements are greyed out."
+    )
+    for sheet in workbook:
+        assert sheet.page_setup.orientation == "landscape"
+        assert sheet.page_setup.fitToWidth == 1
+        assert sheet.page_setup.fitToHeight == (1 if sheet.title == "Cover" else 0)
+        assert sheet.sheet_properties.pageSetUpPr.fitToPage
+        assert sheet.oddFooter.left.text == "Demo"
+        assert sheet.oddFooter.right.text == "Page &P of &N"
+    for name in ("Cover", "Summary"):
+        assert not workbook[name].sheet_view.showGridLines
+        assert workbook[name].auto_filter.ref is None
+    register = workbook["Register"]
+    assert register.print_title_rows == "$1:$1"
+    assert register["J2"].value == "Open"
+    assert register["J2"].fill.fgColor.rgb == "00FCE4E4"
+    assert register["C2"].font.name == "Calibri"
+    assert register["C2"].font.sz == 10
+    assert register["C2"].alignment.wrap_text
+    assert register["C2"].alignment.vertical == "top"
+    assert register["C2"].border.left.color.rgb == "00BFBFBF"
+    assert register["C2"].fill.fgColor.rgb == "00F2F2F2"
+    assert register["C3"].fill.patternType is None
+    elements = workbook["Elements"]
+    assert elements.freeze_panes == "A2"
+    assert elements.auto_filter.ref == "A1:B1"
+    summary = workbook["Summary"]
+    assert summary["A4"].font.bold
+    assert summary["A4"].border.top.style == "thin"
+    assert summary["A6"].font.color.rgb == "00FFFFFF"
+    chart = summary._charts[0]
+    assert chart.anchor._from.col == 8
+    assert chart.anchor._from.col >= summary.max_column
+    assert chart.legend.position == "b"
+    assert chart.gapWidth == 60
+    assert chart.anchor.ext.cx == pytest.approx(16 * 360000)
+    assert chart.anchor.ext.cy == pytest.approx(9 * 360000)
+    assert [series.graphicalProperties.solidFill.srgbClr for series in chart.series] == list(COLORS)
