@@ -194,3 +194,15 @@ Keep each committed action in one named Revit undo entry, as the server requires
 After the action, report changed element IDs and verification results.
 A timed-out or failed verification response can follow a committed change.
 Do not infer that the model was unchanged from such a response alone.
+
+## Long action jobs
+
+Long actions may return `status:"running"` and `jobId` after the server wait budget expires.
+The action may already have changed the model.
+Call `revit_jobs(job_id=jobId, wait_s=40)` repeatedly until the original action response is returned.
+Do not resubmit the action while it runs.
+Process-models progress includes `currentIndex`, `total`, redacted `currentPath`, and per-model results in `partial`.
+Use the final model results to build the completion table and preserve verification warnings.
+Results remain on the workstation for 24 hours and survive MCP server restarts.
+Use `revit_cancel_job(job_id=jobId)` to stop process-models before the next model, then poll for its cancelled result.
+Completed model changes remain committed.

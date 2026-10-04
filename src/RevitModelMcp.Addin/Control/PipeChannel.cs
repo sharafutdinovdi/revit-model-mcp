@@ -322,7 +322,7 @@ internal sealed class PipeChannel : IDisposable
     private PipeMessage Status(Connection connection, PipeMessage request)
     {
         var status = request.JobId is null ? null : _channel.Scheduler.Status(request.JobId);
-        if (status is null || status.ClientId != connection.ClientId)
+        if (status is null || (status.ClientId != connection.ClientId && !ActionJobParser.IsAction(status.Command)))
         {
             var error = Error(request.Id, "not_found", "Job not found or expired.");
             error.JobId = request.JobId;
@@ -339,7 +339,7 @@ internal sealed class PipeChannel : IDisposable
             JobId = status.JobId,
             State = ControlChannel.StateName(status.State),
             Position = status.Position,
-            Result = IsFinished(status.State) ? status.Result : null
+            Result = status.Result
         };
     }
 
@@ -409,7 +409,8 @@ internal sealed class PipeChannel : IDisposable
         foreach (var jobId in connection.Jobs.Keys)
         {
             // A running job, and above all a running action, always finishes.
-            if (_channel.Scheduler.Status(jobId)?.State is not (JobState.Queued or JobState.WaitingRevit)) continue;
+            var job = _channel.Scheduler.Status(jobId);
+            if (job is null || ActionJobParser.IsAction(job.Command) || job.State is not (JobState.Queued or JobState.WaitingRevit)) continue;
             try
             {
                 _channel.CancelJob(jobId, connection.ClientId);

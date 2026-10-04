@@ -675,3 +675,26 @@ def test_http_action_keeps_inactive_document_address(endpoint):
     asyncio.run(RevitReadChannel(host).execute(job))
     assert state["payload"]["targetDocument"] == "Inactive"
     assert state["payload"]["targetProcessId"] == 42
+
+
+def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
+    from unittest.mock import AsyncMock
+
+    async def check():
+        host = HttpHost("http://127.0.0.1:53110", token="test-token")
+        final = {"command": "export", "success": True, "data": {"files": ["a.ifc"]}}
+        host._request = AsyncMock(
+            side_effect=[
+                (200, json.dumps({"result": final}).encode(), {}),
+                (200, b'{"cancelled":true}', {}),
+            ]
+        )
+        assert await host.fetch_job("a" * 32) == final
+        assert (await host.cancel_job("a" * 32))["cancelled"] is True
+        assert host._request.await_args_list[0].args[:2] == ("GET", "/jobs/" + "a" * 32)
+        assert host._request.await_args_list[1].args[:2] == (
+            "POST",
+            "/jobs/" + "a" * 32 + "/cancel",
+        )
+
+    asyncio.run(check())

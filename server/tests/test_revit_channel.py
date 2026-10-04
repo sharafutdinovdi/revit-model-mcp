@@ -2000,3 +2000,177 @@ asyncio.run(RevitReadChannel(SimulatedHost()).execute(ReadJob.ping()))
             if process.poll() is None:
                 process.kill()
                 process.wait()
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_long_action_budget_boundary_preserves_result_and_job(completed):
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["process-models"]}
+        host.response_name = None
+
+        async def expire_response_wait(command, known_names, timeout_seconds, correlation_id):
+            await asyncio.sleep(timeout_seconds)
+            return None
+
+        host.wait_for_new_response = expire_response_wait
+        response = {
+            "command": "process-models",
+            "success": True,
+            "partial": not completed,
+            "message": "Done" if completed else "Command accepted and running.",
+            "data": {"currentIndex": 2, "total": 4, "models": [{"status": "done"}]},
+            "verification": {"warning": "Check exported files."},
+        }
+        host.fetch_job = AsyncMock(return_value=response)
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01):
+            result = await RevitReadChannel(host).execute(
+                ReadJob("process-models", {"command": "process-models"})
+            )
+        job_id = json.loads(host.written_content)["jobId"]
+        host.fetch_job.assert_awaited_once_with(job_id)
+        assert host.deleted_names == []
+        if completed:
+            assert result == response
+        else:
+            assert result["status"] == "running"
+            assert result["jobId"] == job_id
+            assert result["progress"]["currentIndex"] == 2
+            assert result["partial"] == [{"status": "done"}]
+            assert "may already have changed" in result["message"]
+
+    asyncio.run(check())
+
+
+def test_long_action_completed_before_budget_keeps_response_shape():
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["export"]}
+        response = {"command": "export", "success": True, "data": {"files": ["a.ifc"]}}
+        host.response_content = json.dumps(response)
+        host.fetch_job = AsyncMock()
+        result = await RevitReadChannel(host).execute(ReadJob("export", {"command": "export"}))
+        assert result == response
+        host.fetch_job.assert_not_awaited()
+        assert host.deleted_names
+        assert host.response_timeout <= 50
+
+    asyncio.run(check())
+
+
+def test_jobs_poll_waits_and_fetches_final_result_after_server_restart():
+    async def check():
+        host = FakeRemoteHost()
+        progress = {
+            "command": "process-models",
+            "success": True,
+            "partial": True,
+            "message": "Command accepted and running.",
+            "data": {"total": 4},
+        }
+        final = {
+            "command": "process-models",
+            "success": False,
+            "partial": True,
+            "message": "Cancelled before the next model.",
+            "data": {"cancelled": True, "models": [{"status": "done"}]},
+        }
+        host.fetch_job = AsyncMock(side_effect=[progress, final])
+        # A new channel has no in-memory submission record.
+        result = await RevitReadChannel(host).execute(
+            ReadJob(
+                "jobs",
+                {
+                    "command": "jobs",
+                    "fetchJobId": "a" * 32,
+                    "waitSeconds": 1,
+                },
+            )
+        )
+        assert result == final
+        assert host.fetch_job.await_count == 2
+        assert host.written_content is None
+
+    asyncio.run(check())
+
+
+def test_jobs_zero_wait_returns_progress_and_cancel_uses_direct_host():
+    async def check():
+        host = FakeRemoteHost()
+        host.fetch_job = AsyncMock(
+            return_value={
+                "command": "process-models",
+                "success": True,
+                "partial": True,
+                "message": "Command accepted and running.",
+                "data": {"total": 4},
+            }
+        )
+        host.cancel_job = AsyncMock(return_value={"cancelled": True})
+        payload = {"command": "jobs", "fetchJobId": "a" * 32, "waitSeconds": 0}
+        channel = RevitReadChannel(host)
+        assert (await channel.execute(ReadJob("jobs", payload)))["status"] == "running"
+        assert await channel.execute(ReadJob("jobs", {**payload, "requestCancellation": True})) == {
+            "cancelled": True
+        }
+        host.cancel_job.assert_awaited_once_with("a" * 32)
+        assert host.written_content is None
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("value", ["9", "201", "nan", "invalid"])
+def test_invalid_tool_budget_is_rejected(value):
+    from revit_model_mcp.revit_channel import tool_budget_seconds
+
+    with patch.dict(os.environ, {"REVIT_MCP_TOOL_BUDGET_S": value}):
+        with pytest.raises(RevitChannelError, match="10 and 200"):
+            tool_budget_seconds()
+
+
+def test_file_action_fetch_and_cancel_use_retained_instance_job_files():
+    async def check():
+        host = SshPowerShellHost("local", local=True)
+        host._directory = "selected-instance-directory"
+        progress = {
+            "command": "process-models",
+            "success": False,
+            "partial": True,
+            "message": "Command accepted and running.",
+            "data": {"currentIndex": 1},
+        }
+        encoded = base64.b64encode(json.dumps(progress).encode()).decode()
+        host._run = AsyncMock(side_effect=[encoded, encoded, ""])
+        assert await host.fetch_job("a" * 32) == progress
+        assert (await host.cancel_job("a" * 32))["cancelled"] is True
+        scripts = [call.args[0] for call in host._run.await_args_list]
+        assert all("selected-instance-directory" in script for script in scripts)
+        assert "jobs/" + "a" * 32 + ".json" in scripts[0]
+        assert "AddHours(-24)" in scripts[0]
+        assert "'jobs'" in scripts[2]
+        assert "a" * 32 + ".cancel" in scripts[2]
+        assert "read-only" in scripts[2]
+        assert "trigger.txt" not in "".join(scripts)
+
+    asyncio.run(check())
+
+
+def test_budget_expires_before_pickup_without_removing_submitted_action():
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["process-models"]}
+
+        async def pickup(_):
+            await asyncio.sleep(1)
+            return JobPickupStatus(True, 0, False, 1)
+
+        host.wait_until_trigger_is_gone = pickup
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01):
+            result = await RevitReadChannel(host).execute(
+                ReadJob("process-models", {"command": "process-models"})
+            )
+        assert result["status"] == "running"
+        assert result["jobId"] == json.loads(host.written_content)["jobId"]
+        assert host.deleted_names == []
+
+    asyncio.run(check())

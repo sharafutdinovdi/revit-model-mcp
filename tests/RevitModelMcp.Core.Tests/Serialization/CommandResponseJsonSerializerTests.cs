@@ -11,6 +11,28 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task ProcessModels_SerializesProgressAndCancelledResult()
+    {
+        var data = new ActionResultData
+        {
+            CurrentIndex = 2, Total = 4, CurrentPath = @"C:\Private\Second.rvt",
+            Models = [new ProcessModelResult { Path = @"C:\Private\First.rvt", Status = "done" }],
+            Cancelled = true
+        };
+        var response = CommandResponse<ActionResultData>.PartialResult("process-models", data,
+            "Cancelled before the next model; completed changes remain committed.", 5);
+        var stored = CommandResponseJsonSerializer.RedactPaths(CommandResponseJsonSerializer.Serialize(response));
+        using var json = JsonDocument.Parse(stored);
+        var progress = json.RootElement.GetProperty("data");
+        await Assert.That(progress.GetProperty("currentIndex").GetInt32()).IsEqualTo(2);
+        await Assert.That(progress.GetProperty("total").GetInt32()).IsEqualTo(4);
+        await Assert.That(progress.GetProperty("currentPath").GetString()).IsEqualTo("Second.rvt");
+        await Assert.That(progress.GetProperty("models")[0].GetProperty("path").GetString()).IsEqualTo("First.rvt");
+        await Assert.That(progress.GetProperty("cancelled").GetBoolean()).IsTrue();
+        await Assert.That(stored).DoesNotContain("Private");
+    }
+
+    [Test]
     public async Task ProcessModels_SerializesDoneFailedAndSkippedModels()
     {
         var data = new ActionResultData

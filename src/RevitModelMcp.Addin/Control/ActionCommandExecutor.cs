@@ -224,10 +224,24 @@ internal static class ActionCommandExecutor
             data = new ActionResultData { Models = refused, DryRun = request.DryRun, Total = paths.Count + refused.Count };
             foreach (var path in paths)
             {
+                if (ResponseDelivery.CancellationRequested?.Invoke() == true)
+                {
+                    data.Cancelled = true;
+                    break;
+                }
+                data.CurrentIndex = data.Models.Count + 1;
+                data.CurrentPath = path;
+                WriteProcessResponse(application, job, startedAt,
+                    CommandResponse<ActionResultData>.PartialResult(job.Command, data,
+                        "Command accepted and running.", stopwatch.ElapsedMilliseconds));
                 var model = ProcessOneModel(application, job, request, path, paths);
                 data.Models.Add(model);
+                WriteProcessResponse(application, job, startedAt,
+                    CommandResponse<ActionResultData>.PartialResult(job.Command, data,
+                        "Command accepted and running.", stopwatch.ElapsedMilliseconds));
                 if (model.Status == "failed" && request.StopOnError) break;
             }
+            if (ResponseDelivery.CancellationRequested?.Invoke() == true) data.Cancelled = true;
             data.Done = data.Models.Count(model => model.Status == "done");
             data.Failed = data.Models.Count(model => model.Status == "failed");
             data.SkippedCount = data.Models.Count(model => model.Status == "skipped");
@@ -240,7 +254,8 @@ internal static class ActionCommandExecutor
                 ProcessSkipped = data.SkippedCount.Value,
                 DryRun = request.DryRun
             });
-            response = (int)data.Failed! > 0
+            if (data.Cancelled == true) data.Summary += " Cancelled before the next model; completed changes remain committed.";
+            response = (int)data.Failed! > 0 || data.Cancelled == true
                 ? CommandResponse<ActionResultData>.PartialResult(job.Command, data, data.Summary, stopwatch.ElapsedMilliseconds)
                 : CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
         }

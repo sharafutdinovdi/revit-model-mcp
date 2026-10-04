@@ -110,6 +110,30 @@ ACTION_COMMANDS = frozenset(
 )
 
 
+LONG_ACTION_COMMANDS = frozenset({"process-models", "export", "export-nwc", "edit-families"})
+
+
+def tool_budget_seconds() -> float:
+    try:
+        value = float(os.environ.get("REVIT_MCP_TOOL_BUDGET_S", "50"))
+    except ValueError as error:
+        raise RevitChannelError("REVIT_MCP_TOOL_BUDGET_S must be between 10 and 200.") from error
+    if not 10 <= value <= 200:
+        raise RevitChannelError("REVIT_MCP_TOOL_BUDGET_S must be between 10 and 200.")
+    return value
+
+
+def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str, Any]:
+    data = (response or {}).get("data")
+    return {
+        "status": "running",
+        "jobId": job_id,
+        "progress": data,
+        "partial": data.get("models", []) if isinstance(data, dict) else [],
+        "message": "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
+    }
+
+
 class RevitChannelError(RuntimeError):
     """User-facing Revit read channel error."""
 
@@ -475,6 +499,10 @@ def select_instance(instances: list[dict[str, Any]], job: ReadJob) -> dict[str, 
 
 
 class RemoteHost(Protocol):
+    async def fetch_job(self, job_id: str) -> dict[str, Any]: ...
+
+    async def cancel_job(self, job_id: str) -> dict[str, Any]: ...
+
     async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]: ...
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]: ...
@@ -602,6 +630,26 @@ class RevitReadChannel:
         if pickup_timeout_seconds <= 0:
             raise RevitChannelError("pickup_timeout_seconds must be greater than zero.")
 
+        if job.command == "jobs" and job.payload.get("fetchJobId"):
+            job_id = job.payload["fetchJobId"]
+            if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
+                raise RevitChannelError("job_id must be a job id returned by an action.")
+            wait_s = job.payload.get("waitSeconds", 40)
+            if not isinstance(wait_s, (int, float)) or not 0 <= wait_s <= 50:
+                raise RevitChannelError("wait_s must be between 0 and 50.")
+            remote, job = await self.remote.select_job(job)
+            if job.payload.get("requestCancellation"):
+                return await remote.cancel_job(job_id)
+            deadline = asyncio.get_running_loop().time() + wait_s
+            while True:
+                response = await remote.fetch_job(job_id)
+                if not _is_intermediate_response(response):
+                    return parse_response(json.dumps(response), response.get("command", ""))
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    return running_job(job_id, response)
+                await asyncio.sleep(min(0.25, remaining))
+
         async with self._lock:
             remote, job = await self.remote.select_job(job)
             instance = getattr(remote, "instance_info", {})
@@ -618,6 +666,19 @@ class RevitReadChannel:
     async def _execute_serial(
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
+        candidate = (
+            job.command in LONG_ACTION_COMMANDS
+            or (job.command == "open-document" and job.payload.get("audit") is True)
+            or job.command == "execute-code"
+        )
+        budget = tool_budget_seconds() if candidate else 50
+        background = (
+            job.command in LONG_ACTION_COMMANDS
+            or (job.command == "open-document" and job.payload.get("audit") is True)
+            or (job.command == "execute-code" and timeout_seconds > budget)
+        )
+        loop = asyncio.get_running_loop()
+        tool_deadline = loop.time() + budget if background else None
         correlation_id = uuid.uuid4().hex
         job_id = uuid.uuid4().hex
         job = replace(
@@ -644,7 +705,14 @@ class RevitReadChannel:
             )
             job_prepared = True
 
-            pickup = await self.remote.wait_until_trigger_is_gone(pickup_timeout_seconds)
+            try:
+                pickup = await asyncio.wait_for(
+                    self.remote.wait_until_trigger_is_gone(pickup_timeout_seconds),
+                    max(0, tool_deadline - loop.time()) if background else None,
+                )
+            except TimeoutError:
+                return running_job(job_id)
+
             trigger_taken = pickup.taken
             if not trigger_taken:
                 trigger_state = "is still present" if pickup.trigger_present else "is absent"
@@ -655,10 +723,25 @@ class RevitReadChannel:
                 )
 
             loop = asyncio.get_running_loop()
-            deadline = loop.time() + timeout_seconds
-            response_name = await self.remote.wait_for_new_response(
-                job.command, known_responses, timeout_seconds, correlation_id
+            deadline = (
+                min(loop.time() + timeout_seconds, tool_deadline)
+                if background
+                else loop.time() + timeout_seconds
             )
+            try:
+                response_name = await asyncio.wait_for(
+                    self.remote.wait_for_new_response(
+                        job.command,
+                        known_responses,
+                        max(0, deadline - loop.time()) if background else timeout_seconds,
+                        correlation_id,
+                    ),
+                    max(0, deadline - loop.time()) if background else None,
+                )
+            except (ResponseTimeoutError, TimeoutError):
+                if not background:
+                    raise
+                response_name = None
             while response_name is not None:
                 # Progress writes reuse this file; cleanup must wait for a real result.
                 try:
@@ -699,9 +782,24 @@ class RevitReadChannel:
                 await asyncio.sleep(min(1, remaining))
                 if loop.time() >= deadline:
                     break
-                response_name = await self.remote.wait_for_new_response(
-                    job.command, known_responses, deadline - loop.time(), correlation_id
-                )
+                try:
+                    response_name = await self.remote.wait_for_new_response(
+                        job.command, known_responses, deadline - loop.time(), correlation_id
+                    )
+                except ResponseTimeoutError:
+                    if not background:
+                        raise
+                    response_name = None
+
+            if result is None and background:
+                # Recheck at the boundary: a completed result wins over the budget.
+                try:
+                    response = await asyncio.wait_for(self.remote.fetch_job(job_id), 1)
+                except TimeoutError:
+                    return running_job(job_id)
+                if _is_intermediate_response(response):
+                    return running_job(job_id, response)
+                return parse_response(json.dumps(response), job.command)
 
             if result is None:
                 raise ResponseTimeoutError(
@@ -727,6 +825,9 @@ class RevitReadChannel:
         except (Exception, asyncio.CancelledError) as error:
             # Preserve the original failure until temporary-file cleanup finishes.
             failure = error
+
+        if background and isinstance(failure, asyncio.CancelledError):
+            raise failure
 
         cleanup_names = [temporary_name] if job_prepared and not finish_attempted else []
         if response_name and not finish_attempted:
@@ -761,7 +862,7 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
     if response.get("partial") is not True:
         return False
     if response.get("command") == "process-models":
-        return False
+        return response.get("message") == "Command accepted and running."
     message = response.get("message")
     if isinstance(message, str) and message.startswith("Processed "):
         return True

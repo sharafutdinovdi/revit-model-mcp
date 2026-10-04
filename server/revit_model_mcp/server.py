@@ -442,18 +442,23 @@ def addressed_tool(function):
 @addressed_tool
 async def revit_jobs(
     cancel_job_id: str | None = None,
+    job_id: str | None = None,
+    wait_s: Annotated[int, Field(ge=0, le=50)] = 40,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """List queued and running jobs in the selected Revit process.
+    """List recent jobs, or poll an action jobId for up to wait_s seconds.
 
-    Supply cancel_job_id to cancel one of this server process's own jobs.
-    A running action finishes without interruption.
+    A running job returns progress and partial per-model results.
+    A finished job returns the original action response, including verification warnings.
+    Results remain on the workstation for 24 hours, across MCP server restarts.
+    Supply cancel_job_id for legacy cancellation of this server's own queued jobs.
     """
-    return await _execute(
-        ReadJob.jobs(cancel_job_id), timeout_seconds, pickup_timeout_seconds, document
-    )
+    job = ReadJob.jobs(cancel_job_id)
+    if job_id is not None:
+        job = ReadJob("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_s})
+    return await _execute(job, timeout_seconds, pickup_timeout_seconds, document)
 
 
 @addressed_tool

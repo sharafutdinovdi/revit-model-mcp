@@ -130,7 +130,11 @@ internal sealed class HttpChannel : IDisposable
                 RemoveExpiredResults();
                 if (!_jobs.TryGetValue(path.Substring(6), out var existing))
                 {
-                    await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
+                    var stored = _channel.Scheduler.Status(path.Substring(6));
+                    if (stored is not null && ActionJobParser.IsAction(stored.Command))
+                        await SendStatusAsync(context, stored.JobId, null).ConfigureAwait(false);
+                    else
+                        await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
                     return;
                 }
                 await SendStatusAsync(context, existing, 0).ConfigureAwait(false);
@@ -320,9 +324,14 @@ internal sealed class HttpChannel : IDisposable
 
     private async Task SendStatusAsync(HttpListenerContext context, HttpJob job, int seconds)
     {
-        context.Response.Headers["X-Revit-Job-Id"] = job.Id;
         await WaitAsync(job, seconds).ConfigureAwait(false);
-        var status = _channel.Scheduler.Status(job.Id);
+        await SendStatusAsync(context, job.Id, job.Command.CorrelationId).ConfigureAwait(false);
+    }
+
+    private async Task SendStatusAsync(HttpListenerContext context, string jobId, string? correlationId)
+    {
+        context.Response.Headers["X-Revit-Job-Id"] = jobId;
+        var status = _channel.Scheduler.Status(jobId);
         if (status is null)
         {
             await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
@@ -333,18 +342,18 @@ internal sealed class HttpChannel : IDisposable
             ["jobId"] = status.JobId,
             ["state"] = ControlChannel.StateName(status.State),
             ["position"] = status.Position,
-            ["correlationId"] = job.Command.CorrelationId ?? string.Empty
+            ["correlationId"] = correlationId ?? string.Empty
         };
         var json = HttpSettings.Serialize(result);
         if (status.Result is not null)
             json = json.Substring(0, json.Length - 1) + ",\"result\":" + status.Result + "}";
-        await BytesAsync(context, status.Result is null ? 202 : 200,
+        await BytesAsync(context, status.State is JobState.Done or JobState.Failed or JobState.Cancelled ? 200 : 202,
             Encoding.UTF8.GetBytes(json), "application/json").ConfigureAwait(false);
     }
 
     private void RemoveExpiredResults()
     {
-        var cutoff = DateTime.UtcNow.AddMinutes(-10).Ticks;
+        var cutoff = DateTime.UtcNow.AddHours(-24).Ticks;
         foreach (var entry in _jobs)
         {
             var completed = Interlocked.Read(ref entry.Value.CompletedTicks);

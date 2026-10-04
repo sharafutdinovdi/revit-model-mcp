@@ -115,6 +115,30 @@ class HttpHost:
             job, payload={**job.payload, "targetProcessId": instance["processId"]}
         )
 
+    async def fetch_job(self, job_id: str) -> dict[str, Any]:
+        _, body, _ = await self._request("GET", "/jobs/" + urllib.parse.quote(job_id, safe=""))
+        envelope = self._json(body)
+        result = envelope.get("result")
+        if isinstance(result, str):
+            result = json.loads(result)
+        if isinstance(result, dict):
+            return result
+        return {
+            "command": "jobs",
+            "success": True,
+            "partial": True,
+            "message": "Command accepted and running.",
+            "data": {"state": envelope.get("state")},
+        }
+
+    async def cancel_job(self, job_id: str) -> dict[str, Any]:
+        _, body, _ = await self._request(
+            "POST",
+            "/jobs/" + urllib.parse.quote(job_id, safe="") + "/cancel",
+            json.dumps({"command": "jobs"}).encode("utf-8"),
+        )
+        return self._json(body)
+
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
         self._verified_token = None
         if self._identity is not None:
@@ -222,7 +246,7 @@ class HttpHost:
         return self._response, local_path
 
     async def delete_files(self, names: list[str]) -> None:
-        # Server results remain available for ten minutes, including after client timeouts.
+        # Server results remain available for 24 hours, including after client timeouts.
         return
 
     @staticmethod

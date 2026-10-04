@@ -1591,6 +1591,9 @@ public sealed class SharedParameterSpec
 [KnownType(typeof(Dictionary<string, List<long>>))]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "currentIndex", EmitDefaultValue = false)] public int? CurrentIndex { get; set; }
+    [DataMember(Name = "currentPath", EmitDefaultValue = false)] public string? CurrentPath { get; set; }
+    [DataMember(Name = "cancelled", EmitDefaultValue = false)] public bool? Cancelled { get; set; }
     [DataMember(Name = "models", EmitDefaultValue = false)] public List<ProcessModelResult>? Models { get; set; }
     [DataMember(Name = "total", EmitDefaultValue = false)] public int? Total { get; set; }
     [DataMember(Name = "done", EmitDefaultValue = false)] public int? Done { get; set; }

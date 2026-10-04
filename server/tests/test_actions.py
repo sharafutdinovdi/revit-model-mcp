@@ -27,6 +27,7 @@ from revit_model_mcp.revit_channel import (
 )
 
 ACTION_TOOLS = {
+    "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
     "revit_select",
@@ -1812,3 +1813,26 @@ def test_activate_view_element_zoom_refused_in_read_only_mode():
     result = asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": [42]}))
     assert "read-only mode" in str(result)
     execute.assert_not_awaited()
+
+
+def test_cancel_action_job_maps_polling_request_and_read_only_gate():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_cancel_job", {"job_id": "a" * 32, "process_id": 42}))
+    job = execute.await_args.args[0]
+    assert job.command == "jobs"
+    assert job.payload["fetchJobId"] == "a" * 32
+    assert job.payload["requestCancellation"] is True
+    assert job.payload["targetProcessId"] == 42
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(blocked.call_tool("revit_cancel_job", {"job_id": "a" * 32}))
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_progress_current_path_is_redacted():
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths({"progress": {"currentPath": r"C:\Private\Model.rvt"}}) == {
+            "progress": {"currentPath": "Model.rvt"}
+        }

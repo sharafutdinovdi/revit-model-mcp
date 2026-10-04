@@ -51,7 +51,7 @@
   "tools": [
     {
       "name": "revit_jobs",
-      "description": "List queued and running jobs in the selected Revit process.\n\nSupply cancel_job_id to cancel one of this server process's own jobs.\nA running action finishes without interruption.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "List recent jobs, or poll an action jobId for up to wait_s seconds.\n\nA running job returns progress and partial per-model results.\nA finished job returns the original action response, including verification warnings.\nResults remain on the workstation for 24 hours, across MCP server restarts.\nSupply cancel_job_id for legacy cancellation of this server's own queued jobs.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_compare_link_datums",
@@ -159,7 +159,7 @@
     },
     {
       "name": "revit_open_document",
-      "description": "Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."
+      "description": "Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_activate_document",
@@ -199,7 +199,7 @@
     },
     {
       "name": "revit_execute_code",
-      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode."
+      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode.\n\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_undo_last",
@@ -208,6 +208,10 @@
     {
       "name": "revit_align_link_datums",
       "description": "Align host grids and levels to a loaded link, with optional creation and rollback preview.\n\nGeometric alignment does not create a monitor relationship or later Coordination Review warnings."
+    },
+    {
+      "name": "revit_cancel_job",
+      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model and returns a cancelled result.\nA single running Revit operation finishes without interruption.\nPoll revit_jobs for the final result; completed changes remain committed."
     },
     {
       "name": "revit_select",
@@ -307,11 +311,11 @@
     },
     {
       "name": "revit_export",
-      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names."
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_export_nwc",
-      "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence."
+      "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_batch",
@@ -319,11 +323,11 @@
     },
     {
       "name": "revit_process_models",
-      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response."
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_edit_families",
-      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode."
+      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode.\n\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_batch_start",

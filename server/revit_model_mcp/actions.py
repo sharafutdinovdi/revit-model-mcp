@@ -610,7 +610,7 @@ def redact_model_paths(value: Any) -> Any:
         if isinstance(item, dict):
             return {
                 key: PureWindowsPath(nested).name
-                if key in {"documentPath", "path", "centralPath", "folder", "saved"}
+                if key in {"documentPath", "path", "currentPath", "centralPath", "folder", "saved"}
                 and isinstance(nested, str)
                 else scrub(nested, key in _TEXT_FIELDS)
                 for key, nested in item.items()
@@ -694,7 +694,20 @@ def register_actions(mcp, execute, host_provider) -> None:
         )
 
     def action(function):
+        if function.__name__ in {
+            "revit_process_models",
+            "revit_export",
+            "revit_export_nwc",
+            "revit_edit_families",
+            "revit_open_document",
+            "revit_execute_code",
+        }:
+            function.__doc__ = (
+                (function.__doc__ or "")
+                + "\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+            )
         title = {
+            "revit_cancel_job": "Cancel Action Job",
             "revit_select": "Select Elements",
             "revit_show": "Show Elements",
             "revit_isolate": "Isolate Elements",
@@ -1046,6 +1059,35 @@ def register_actions(mcp, execute, host_provider) -> None:
             response_timeout_s=response_timeout_s,
             document=document,
         )
+
+    @action
+    async def revit_cancel_job(
+        job_id: str,
+        document: Document = None,
+        process_id: ProcessId = None,
+    ) -> dict[str, Any]:
+        """Request cancellation of an action jobId.
+
+        Process-models stops before the next model and returns a cancelled result.
+        A single running Revit operation finishes without interruption.
+        Poll revit_jobs for the final result; completed changes remain committed.
+        """
+        if read_only:
+            return {"success": False, "command": "jobs", "error": "read-only mode"}
+        job = (
+            ReadJob(
+                "jobs",
+                {
+                    "command": "jobs",
+                    "fetchJobId": job_id,
+                    "requestCancellation": True,
+                    "waitSeconds": 0,
+                },
+            )
+            .for_document(document)
+            .for_process(process_id)
+        )
+        return redact_model_paths(await execute(job, 50, DEFAULT_PICKUP_TIMEOUT_SECONDS, None))
 
     @action
     async def revit_select(element_ids: ElementIds, document: Document = None) -> dict[str, Any]:

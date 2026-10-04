@@ -447,6 +447,29 @@ class PipeJobHost:
     async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]:
         return await self._parent.select_job(job)
 
+    async def fetch_job(self, job_id: str) -> dict[str, Any]:
+        connection = await self._parent.connection(self._instance)
+        reply = await connection.request({"type": "status", "jobId": job_id})
+        if reply.get("type") == "error":
+            raise RevitChannelError(_error_text(reply))
+        result = reply.get("result")
+        if isinstance(result, dict):
+            return result
+        return {
+            "command": "jobs",
+            "success": True,
+            "partial": True,
+            "message": "Command accepted and running.",
+            "data": {"state": reply.get("state")},
+        }
+
+    async def cancel_job(self, job_id: str) -> dict[str, Any]:
+        connection = await self._parent.connection(self._instance)
+        reply = await connection.request({"type": "cancel", "jobId": job_id})
+        if reply.get("type") == "error":
+            raise RevitChannelError(_error_text(reply))
+        return reply
+
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
         payload = json.loads(content)
         job_id = payload.get("jobId")

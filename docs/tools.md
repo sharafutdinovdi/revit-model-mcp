@@ -18,7 +18,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
 | `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
-| `revit_jobs` | `cancel_job_id=null` | List queued and running jobs with client, state, position and age; cancel one of this server's own jobs. |
+| `revit_jobs` | `job_id=null`, `wait_s=40`, `cancel_job_id=null` | List jobs, or wait up to 50 seconds for an action job. Returns progress or the original final action response. |
 | `revit_nwc_settings_check` | `settings_xml` | Parse exporter XML on the Revit workstation without exporting; return values, mapping, notApplied and ignored. |
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
@@ -109,3 +109,11 @@ All coordinates use model axes in millimetres rounded to one decimal place.
 | `roomCenterMm` | `[x,y,z]` from a placed room's location. Use `roomCenterMm` when placing something inside a room. A bounding box centre may lie outside a nonrectangular room. |
 
 Unavailable geometry is omitted.
+
+### Action job polling
+
+Long actions may return `status:"running"`, `jobId`, progress, and partial per-model results.
+Call `revit_jobs(job_id=jobId, wait_s=40)` until the original final action response is returned.
+The action may already have changed the model; do not resubmit it while it runs.
+Results remain available for 24 hours across MCP server restarts.
+See [long action jobs](actions.md#long-action-jobs) for cancellation and retention.

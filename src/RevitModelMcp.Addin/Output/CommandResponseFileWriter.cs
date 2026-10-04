@@ -81,4 +81,5 @@ internal sealed class CommandResponseFileWriter
 internal static class ResponseDelivery
 {
     [ThreadStatic] public static Action<string>? Current;
+    [ThreadStatic] public static Func<bool>? CancellationRequested;
 }

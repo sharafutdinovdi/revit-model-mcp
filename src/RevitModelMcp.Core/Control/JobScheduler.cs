@@ -1,3 +1,6 @@
+using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Serialization;
+
 namespace RevitModelMcp.Core.Control;
 
 public enum JobState
@@ -33,12 +36,14 @@ public sealed class JobScheduler
     private readonly Queue<string> _rotation = new();
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _retention;
+    private readonly string? _resultDirectory;
     private Entry? _running;
 
-    public JobScheduler(Func<DateTimeOffset>? clock = null, TimeSpan? retention = null)
+    public JobScheduler(Func<DateTimeOffset>? clock = null, TimeSpan? retention = null, string? resultDirectory = null)
     {
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _retention = retention ?? TimeSpan.FromMinutes(10);
+        _resultDirectory = resultDirectory;
     }
 
     public bool HasPending
@@ -67,6 +72,12 @@ public sealed class JobScheduler
             if (queue.Count == 0) _rotation.Enqueue(clientId);
             queue.Enqueue(entry);
             _jobs.Add(jobId, entry);
+            if (ActionJobParser.IsAction(command))
+            {
+                var accepted = CommandResponse<string>.PartialResult(command, "accepted", "Command accepted and running.", 0);
+                accepted.JobId = jobId;
+                StoreResult(entry, CommandResponseJsonSerializer.Serialize(accepted));
+            }
             return new(Snapshot(entry), null, 0);
         }
     }
@@ -112,7 +123,7 @@ public sealed class JobScheduler
         {
             if (_running?.JobId != jobId) throw new InvalidOperationException("The job is not running.");
             _running.State = _running.CancelRequested ? JobState.Cancelled : success ? JobState.Done : JobState.Failed;
-            _running.Result = result;
+            StoreResult(_running, result);
             _running.CompletedUtc = _clock();
             _running = null;
         }
@@ -123,10 +134,11 @@ public sealed class JobScheduler
         lock (_sync)
         {
             EvictExpired();
-            if (!_jobs.TryGetValue(jobId, out var entry) || entry.ClientId != clientId)
+            if (!_jobs.TryGetValue(jobId, out var entry) || (entry.ClientId != clientId && !ActionJobParser.IsAction(entry.Command)))
                 return new(false, null, "Job not found for this client.");
             if (entry.State is JobState.Queued or JobState.WaitingRevit)
             {
+                clientId = entry.ClientId;
                 var queue = _clients[clientId];
                 var remaining = queue.Where(item => item != entry).ToArray();
                 _clients.Remove(clientId);
@@ -141,10 +153,10 @@ public sealed class JobScheduler
                 entry.CompletedUtc = _clock();
                 return new(true, entry.State, "Queued job cancelled.");
             }
-            if (entry.State == JobState.Running && entry.CanCancel && !isAction)
+            if (entry.State == JobState.Running && entry.CanCancel && (!isAction || entry.Command == "process-models"))
             {
                 entry.CancelRequested = true;
-                return new(true, entry.State, "Read cancellation requested; it takes effect between slices.");
+                return new(true, entry.State, "Cancellation requested; it takes effect between slices or before the next model.");
             }
             return new(false, entry.State, entry.State == JobState.Running
                 ? "A running command cannot be interrupted; it will finish."
@@ -162,7 +174,7 @@ public sealed class JobScheduler
         lock (_sync)
         {
             if (_jobs.TryGetValue(jobId, out var entry) && entry.State == JobState.Cancelled)
-                entry.Result = result;
+                StoreResult(entry, result);
         }
     }
 
@@ -207,8 +219,34 @@ public sealed class JobScheduler
     private void EvictExpired()
     {
         var cutoff = _clock() - _retention;
-        foreach (var entry in _jobs.Values.Where(entry => entry.CompletedUtc < cutoff).ToArray())
+        foreach (var entry in _jobs.Values.Where(entry => entry.CompletedUtc < (ActionJobParser.IsAction(entry.Command) ? _clock() - TimeSpan.FromHours(24) : cutoff)).ToArray())
+        {
             _jobs.Remove(entry.JobId);
+            if (_resultDirectory is not null && ActionJobParser.IsAction(entry.Command))
+            {
+                File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.json"));
+                File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.cancel"));
+            }
+        }
+    }
+
+    public void PublishProgress(string jobId, string response)
+    {
+        lock (_sync)
+        {
+            if (_running?.JobId == jobId) StoreResult(_running, response);
+        }
+    }
+
+    private void StoreResult(Entry entry, string result)
+    {
+        if (Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1")
+            result = CommandResponseJsonSerializer.RedactPaths(result);
+        entry.Result = result;
+        if (_resultDirectory is null || !ActionJobParser.IsAction(entry.Command)) return;
+        if (!Guid.TryParseExact(entry.JobId, "N", out _))
+            throw new ArgumentException("A persisted job id must be a GUID.");
+        CommandResponseJsonFile.WriteContent(Path.Combine(_resultDirectory, $"{entry.JobId}.json"), result);
     }
 
     private sealed class Entry(string jobId, string clientId, string clientName, string command,

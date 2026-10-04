@@ -60,6 +60,7 @@ EXPECTED_TOOLS = {
     "revit_batch_fetch",
 }
 ACTION_TOOL_NAMES = {
+    "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
     "revit_select",
@@ -191,6 +192,14 @@ EXPECTED_PARAMETERS = {
     ],
     "revit_build_report": ["snapshots_dir", "output_path", "previous_dir", "findings"],
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_jobs": [
+        "cancel_job_id",
+        "job_id",
+        "wait_s",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_ui_state": [],

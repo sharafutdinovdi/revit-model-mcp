@@ -31,8 +31,29 @@ Otherwise, they return `Cannot run '<command>' on '<title>' because it is not th
 Jobs without `targetDocument` retain the active-document behavior.
 `activeView` always reports the actual active view, even when a mutation targets another document.
 
+## Long action jobs
+
+`revit_process_models`, `revit_export`, `revit_export_nwc`, `revit_edit_families`, audited `revit_open_document`, and `revit_execute_code` with a long response timeout can outlive the tool wait.
+`REVIT_MCP_TOOL_BUDGET_S` defaults to 50 seconds and accepts 10 through 200.
+Short actions return their existing response shape.
+An unfinished long action returns `status:"running"`, `jobId`, `progress`, `partial`, and a warning that the action may already have changed the model.
+Call `revit_jobs(job_id=jobId, wait_s=40)` until the original action response is returned.
+`wait_s` accepts 0 through 50 seconds.
+A running poll returns progress and completed per-model results in `partial`.
+A final poll preserves the original response, summary, timeout warnings, and verification warnings.
+Do not resubmit a running action.
+
+The add-in retains action results for 24 hours in the selected instance's `jobs/<jobId>.json` directory.
+Local pipe, SSH file, and authenticated HTTP clients can fetch the result after an MCP server restart.
+Path redaction applies to stored responses when `REVIT_MCP_REDACT_PATHS=1` on the workstation, and to returned responses when enabled on the server.
+`revit_cancel_job(job_id)` requests cancellation.
+`revit_process_models` stops before the next model and returns `data.cancelled:true` with completed results.
+Cancellation does not undo completed models or interrupt an export, document open, family edit, or script already running in Revit.
+Cancellation is refused in server or workstation read-only mode.
+
 | Tool | Arguments | Action and units |
 | --- | --- | --- |
+| `revit_cancel_job` | `job_id`, `document=null`, `process_id=null` | Request cancellation. Process-models stops before the next model. Poll `revit_jobs` for the final result. Completed changes remain committed. |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
 | `revit_show` | `element_ids`, `select=true` | Show nonempty IDs and zoom to fit when opening a new view; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
@@ -102,7 +123,7 @@ IFC exports the whole model or one view selected through `views`. Its options ar
 
 `revit_process_models` accepts either 1-500 absolute `.rvt` paths or a local or UNC `folder` with `recursive` and a `.rvt` file pattern. RSN model paths are accepted in `paths`; cloud paths are refused. `trustedNetworkRoots` applies to UNC paths. Already open models are skipped. Each model opens in the background with the `revit_open_document` `mode`, `worksets`, and `audit` options. The active document is left in place. The action uses the interactive Revit session, not the read-only batch collector worker.
 
-`steps` uses the same 1-50 step allowlist as `revit_batch`, and `code` uses `{"code":"...","transaction":"auto"|"none"}`. The script runs after the steps with `ScriptContext.Document` set to the processed model. `exports` is a list of `revit_export` requests without `document`; an export folder can contain `{model}`. Without an export folder, files go to `<save.output_dir>\<model>` when an output directory is set, or `%LOCALAPPDATA%\RevitModelMcp\exports\<model>` otherwise. The result reports each model's open settings, step summary, script return value and log, export files, saved path, `dialogsDismissed`, elapsed time, status, and error. `dialogsDismissed` is `{ "messages": [{ "message": "...", "count": 1 }], "truncated": false }`; it combines dismissed dialogs and warnings, retains up to 50 distinct messages, and counts repeats. `truncated=true` means further distinct messages were omitted. A failed model does not stop later models unless `stop_on_error=true`. `revit_jobs` reports that the job is running, but has no per-model progress fields; the server waits up to `response_timeout_s`.
+`steps` uses the same 1-50 step allowlist as `revit_batch`, and `code` uses `{"code":"...","transaction":"auto"|"none"}`. The script runs after the steps with `ScriptContext.Document` set to the processed model. `exports` is a list of `revit_export` requests without `document`; an export folder can contain `{model}`. Without an export folder, files go to `<save.output_dir>\<model>` when an output directory is set, or `%LOCALAPPDATA%\RevitModelMcp\exports\<model>` otherwise. The result reports each model's open settings, step summary, script return value and log, export files, saved path, `dialogsDismissed`, elapsed time, status, and error. `dialogsDismissed` is `{ "messages": [{ "message": "...", "count": 1 }], "truncated": false }`; it combines dismissed dialogs and warnings, retains up to 50 distinct messages, and counts repeats. `truncated=true` means further distinct messages were omitted. A failed model does not stop later models unless `stop_on_error=true`. `revit_jobs(job_id=jobId)` reports `currentIndex` (one-based), `total`, redacted `currentPath`, and completed per-model results while the action runs.
 
 The final response has `partial=true` when at least one model fails and includes the results for all processed models.
 
