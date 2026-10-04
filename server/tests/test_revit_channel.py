@@ -2006,7 +2006,10 @@ asyncio.run(RevitReadChannel(SimulatedHost()).execute(ReadJob.ping()))
 def test_long_action_budget_boundary_preserves_result_and_job(completed):
     async def check():
         host = FakeRemoteHost()
-        host.instance_info = {"addinVersion": "0.7.0", "commands": ["process-models"]}
+        host.instance_info = {
+            "addinVersion": "0.7.0",
+            "commands": ["process-models", "jobs/persisted"],
+        }
         host.response_name = None
 
         async def expire_response_wait(command, known_names, timeout_seconds, correlation_id):
@@ -2019,7 +2022,11 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
             "success": True,
             "partial": not completed,
             "message": "Done" if completed else "Command accepted and running.",
-            "data": {"currentIndex": 2, "total": 4, "models": [{"status": "done"}]},
+            "data": {
+                "currentIndex": 2,
+                "total": 4,
+                "models": [{"status": "done", "result": {"files": ["a.ifc"]}}],
+            },
             "verification": {"warning": "Check exported files."},
         }
         host.fetch_job = AsyncMock(return_value=response)
@@ -2035,7 +2042,11 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
         else:
             assert result["status"] == "running"
             assert result["jobId"] == job_id
-            assert result["progress"]["currentIndex"] == 2
+            assert result["progress"] == {
+                "currentIndex": 2,
+                "total": 4,
+                "models": [{"status": "done"}],
+            }
             assert result["partial"] == [{"status": "done"}]
             assert "may already have changed" in result["message"]
 
@@ -2045,7 +2056,7 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
 def test_long_action_completed_before_budget_keeps_response_shape():
     async def check():
         host = FakeRemoteHost()
-        host.instance_info = {"addinVersion": "0.7.0", "commands": ["export"]}
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["export", "jobs/persisted"]}
         response = {"command": "export", "success": True, "data": {"files": ["a.ifc"]}}
         host.response_content = json.dumps(response)
         host.fetch_job = AsyncMock()
@@ -2158,7 +2169,10 @@ def test_file_action_fetch_and_cancel_use_retained_instance_job_files():
 def test_budget_expires_before_pickup_without_removing_submitted_action():
     async def check():
         host = FakeRemoteHost()
-        host.instance_info = {"addinVersion": "0.7.0", "commands": ["process-models"]}
+        host.instance_info = {
+            "addinVersion": "0.7.0",
+            "commands": ["process-models", "jobs/persisted"],
+        }
 
         async def pickup(_):
             await asyncio.sleep(1)
@@ -2169,6 +2183,58 @@ def test_budget_expires_before_pickup_without_removing_submitted_action():
             result = await RevitReadChannel(host).execute(
                 ReadJob("process-models", {"command": "process-models"})
             )
+        assert result["status"] == "running"
+        assert result["jobId"] == json.loads(host.written_content)["jobId"]
+        assert host.deleted_names == []
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("persisted", [False, True])
+def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["export"]}
+        if persisted:
+            host.instance_info["commands"].append("jobs/persisted")
+        host.response_content = json.dumps({"command": "export", "success": True, "data": {}})
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10):
+            await RevitReadChannel(host).execute(ReadJob("export", {"command": "export"}), 120)
+        if persisted:
+            assert host.response_timeout <= 10
+        else:
+            assert host.response_timeout == 120
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("error_type", [RemoteCommandTimeoutError, RevitChannelError, TimeoutError])
+def test_file_poll_boundary_error_returns_running_job(error_type):
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {
+            "addinVersion": "0.7.0",
+            "commands": ["process-models", "jobs/persisted"],
+        }
+        host.response_content = json.dumps(
+            {
+                "command": "process-models",
+                "success": True,
+                "partial": True,
+                "message": "Command accepted and running.",
+                "data": {"total": 4},
+            }
+        )
+        host.wait_for_new_response = AsyncMock(
+            side_effect=[host.response_name, error_type("Poll timed out.")]
+        )
+        host.fetch_job = AsyncMock(side_effect=error_type("Boundary fetch timed out."))
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1):
+            result = await RevitReadChannel(host).execute(
+                ReadJob("process-models", {"command": "process-models"})
+            )
+        assert host.wait_for_new_response.await_count == 2
+        assert host.wait_for_new_response.await_args.args[2] < 1
         assert result["status"] == "running"
         assert result["jobId"] == json.loads(host.written_content)["jobId"]
         assert host.deleted_names == []

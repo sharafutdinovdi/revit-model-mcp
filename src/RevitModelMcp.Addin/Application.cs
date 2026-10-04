@@ -30,7 +30,7 @@ public sealed class Application : ExternalApplication
 
     internal static readonly string[] SupportedCommands =
     [
-        "ping", "jobs", "model-health", "links-status", "shared-coordinates",
+        "ping", "jobs", "jobs/persisted", "model-health", "links-status", "shared-coordinates",
         "parameter-fill-check", "document-info", "documents", "ui-state", "list-views", "view-summary",
         "view-info", "view-elements", "element-details", "view-warnings", "export-view", "schedule-data",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",

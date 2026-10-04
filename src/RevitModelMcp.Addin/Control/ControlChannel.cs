@@ -52,7 +52,7 @@ internal sealed class ControlChannel
             var source = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _httpCompletions.Add(jobId, source);
             if (job.Kind == ControlJobKind.Jobs && job.CancelJobId is not null)
-                _earlyCancellations[jobId] = CancelJob(job.CancelJobId, job.ClientId);
+                _earlyCancellations[jobId] = CancelJob(job.CancelJobId, job.ClientId, false);
             completion = source.Task;
             return submitted;
         }
@@ -127,7 +127,7 @@ internal sealed class ControlChannel
                     PluginLog.Warn($"File job rejected. Error='{submitted.Error}'.");
                 }
                 else if (parsed.Kind == ControlJobKind.Jobs && parsed.CancelJobId is not null)
-                    _earlyCancellations[jobId] = CancelJob(parsed.CancelJobId, parsed.ClientId);
+                    _earlyCancellations[jobId] = CancelJob(parsed.CancelJobId, parsed.ClientId, false);
                 try { File.Delete(claimedPath); }
                 catch (IOException) { PluginLog.Warn("Claimed job file could not be removed."); }
             }
@@ -256,13 +256,15 @@ internal sealed class ControlChannel
         }
     }
 
-    public JobCancellation CancelJob(string jobId, string clientId)
+    public JobCancellation CancelJob(string jobId, string clientId) => CancelJob(jobId, clientId, true);
+
+    private JobCancellation CancelJob(string jobId, string clientId, bool isAction)
     {
         var job = _scheduler.Status(jobId);
         if (job is not null && ActionJobParser.IsAction(job.Command) && ActionCommandExecutor.ReadOnlyMode)
             return new(false, job.State, "read-only mode");
         var cancellation = _scheduler.Cancel(jobId, clientId,
-            job is not null && ActionJobParser.IsAction(job.Command));
+            isAction && job is not null && ActionJobParser.IsAction(job.Command));
         if (!cancellation.Cancelled || cancellation.State != JobState.Cancelled || job is null)
             return cancellation;
         var parsed = ControlJobParser.Parse(job.Payload);
@@ -314,7 +316,7 @@ internal sealed class ControlChannel
         {
             var cancellation = parsed.CancelJobId is null ? null :
                 _earlyCancellations.TryRemove(_current!.JobId, out var early) ? early :
-                CancelJob(parsed.CancelJobId, parsed.ClientId);
+                CancelJob(parsed.CancelJobId, parsed.ClientId, false);
             var data = new JobListData
             {
                 Jobs = _scheduler.ActiveJobs().Select(job => new JobSummary

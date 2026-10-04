@@ -125,11 +125,23 @@ def tool_budget_seconds() -> float:
 
 def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str, Any]:
     data = (response or {}).get("data")
+    progress = (
+        {key: data[key] for key in ("currentIndex", "total", "currentPath") if key in data}
+        if isinstance(data, dict)
+        else None
+    )
+    models = (
+        [{"status": model["status"]} for model in data.get("models", []) if "status" in model]
+        if isinstance(data, dict)
+        else []
+    )
+    if progress is not None and models:
+        progress["models"] = models
     return {
         "status": "running",
         "jobId": job_id,
-        "progress": data,
-        "partial": data.get("models", []) if isinstance(data, dict) else [],
+        "progress": progress,
+        "partial": models,
         "message": "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
     }
 
@@ -672,7 +684,10 @@ class RevitReadChannel:
             or job.command == "execute-code"
         )
         budget = tool_budget_seconds() if candidate else 50
-        background = (
+        instance = getattr(self.remote, "instance_info", {})
+        if not isinstance(instance, dict):
+            instance = {}
+        background = "jobs/persisted" in instance.get("commands", []) and (
             job.command in LONG_ACTION_COMMANDS
             or (job.command == "open-document" and job.payload.get("audit") is True)
             or (job.command == "execute-code" and timeout_seconds > budget)
@@ -738,7 +753,7 @@ class RevitReadChannel:
                     ),
                     max(0, deadline - loop.time()) if background else None,
                 )
-            except (ResponseTimeoutError, TimeoutError):
+            except (RevitChannelError, TimeoutError):
                 if not background:
                     raise
                 response_name = None
@@ -749,7 +764,9 @@ class RevitReadChannel:
                         self.remote.finish_job(response_name, [], False, None),
                         timeout=max(0, deadline - loop.time()),
                     )
-                except TimeoutError:
+                except (RevitChannelError, TimeoutError):
+                    if not background:
+                        raise
                     break
                 try:
                     envelope = json.loads(content)
@@ -786,7 +803,7 @@ class RevitReadChannel:
                     response_name = await self.remote.wait_for_new_response(
                         job.command, known_responses, deadline - loop.time(), correlation_id
                     )
-                except ResponseTimeoutError:
+                except (RevitChannelError, TimeoutError):
                     if not background:
                         raise
                     response_name = None
@@ -795,7 +812,7 @@ class RevitReadChannel:
                 # Recheck at the boundary: a completed result wins over the budget.
                 try:
                     response = await asyncio.wait_for(self.remote.fetch_job(job_id), 1)
-                except TimeoutError:
+                except (RevitChannelError, TimeoutError):
                     return running_job(job_id)
                 if _is_intermediate_response(response):
                     return running_job(job_id, response)

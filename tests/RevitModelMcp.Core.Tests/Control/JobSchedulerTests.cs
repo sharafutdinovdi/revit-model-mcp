@@ -125,6 +125,8 @@ public sealed class JobSchedulerTests
         scheduler.MarkCancellable("process");
         scheduler.PublishProgress("process", "one model completed");
         await Assert.That(scheduler.Status("process")?.Result).IsEqualTo("one model completed");
+        await Assert.That(scheduler.Cancel("process", "new-client").Cancelled).IsFalse();
+        await Assert.That(scheduler.IsCancellationRequested("process")).IsFalse();
         await Assert.That(scheduler.Cancel("process", "new-client", true).Cancelled).IsTrue();
         await Assert.That(scheduler.IsCancellationRequested("process")).IsTrue();
         scheduler.Complete("process", "cancelled with one completed model", true);
@@ -137,6 +139,8 @@ public sealed class JobSchedulerTests
     {
         var scheduler = new JobScheduler();
         scheduler.Submit("export", "old-client", "Alice", "export", "{}");
+        await Assert.That(scheduler.Cancel("export", "new-client").Cancelled).IsFalse();
+        await Assert.That(scheduler.Status("export")?.State).IsEqualTo(JobState.Queued);
         await Assert.That(scheduler.Cancel("export", "new-client", true).Cancelled).IsTrue();
         await Assert.That(scheduler.TakeNext()).IsNull();
     }

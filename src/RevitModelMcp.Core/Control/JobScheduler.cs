@@ -134,7 +134,7 @@ public sealed class JobScheduler
         lock (_sync)
         {
             EvictExpired();
-            if (!_jobs.TryGetValue(jobId, out var entry) || (entry.ClientId != clientId && !ActionJobParser.IsAction(entry.Command)))
+            if (!_jobs.TryGetValue(jobId, out var entry) || (entry.ClientId != clientId && !(isAction && ActionJobParser.IsAction(entry.Command))))
                 return new(false, null, "Job not found for this client.");
             if (entry.State is JobState.Queued or JobState.WaitingRevit)
             {
