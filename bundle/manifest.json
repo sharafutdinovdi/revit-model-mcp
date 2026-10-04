@@ -262,6 +262,14 @@
       "description": "Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
+      "name": "revit_link_cad",
+      "description": "Link or import a DWG into a plan view on the Revit workstation. Return CAD layers and extents in mm."
+    },
+    {
+      "name": "revit_walls_from_cad",
+      "description": "Pair parallel CAD lines on selected layers and build basic walls in one undo entry. Dimensions are mm."
+    },
+    {
       "name": "revit_create_view",
       "description": "Create a plan, section, 3D or drafting view. Box coordinates use model millimetres."
     },

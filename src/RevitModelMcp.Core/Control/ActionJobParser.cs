@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
+        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -55,6 +55,15 @@ public static class ActionJobParser
                 EndMm = job.EndMm ?? [],
                 WallType = job.WallType,
                 HeightMm = job.HeightMm ?? 3000,
+                CadId = job.CadId ?? 0,
+                CadLink = job.CadLink ?? true,
+                Origin = job.Origin ?? "internal",
+                Units = job.Units ?? "auto",
+                Layers = job.Layers,
+                MinThicknessMm = job.MinThicknessMm ?? 80,
+                MaxThicknessMm = job.MaxThicknessMm ?? 700,
+                MinLengthMm = job.MinLengthMm ?? 300,
+                Join = job.Join ?? true,
                 ElementId = job.ActionElementId ?? 0,
                 Parameter = job.Parameter,
                 ParameterId = job.ParameterId,
@@ -368,6 +377,25 @@ public static class ActionJobParser
                 Require(!action.StartMm.SequenceEqual(action.EndMm), "Wall endpoints must differ.");
                 Require(Finite(action.HeightMm) && action.HeightMm > 0, "heightMm must be finite and positive.");
                 Require(action.WallType is null || !string.IsNullOrWhiteSpace(action.WallType), "wallType must not be blank.");
+            }
+            if (command == "link-cad")
+            {
+                NwcPathValidator.EnsureAbsoluteNoTraversal(action.DocumentPath!, "path", trustedNetworkRoots);
+                Require(action.DocumentPath!.EndsWith(".dwg", StringComparison.OrdinalIgnoreCase), "path must have the .dwg extension.");
+                Require(action.Origin is "internal" or "shared" or "center", "origin is invalid.");
+                Require(action.Units is "auto" or "mm" or "cm" or "m" or "in" or "ft", "units is invalid.");
+                Require(ValidOptional(action.View) && ValidOptional(action.Level), "view and level must not be blank.");
+                Require(action.Layers is null || ValidNames(action.Layers), "layers must contain names.");
+            }
+            if (command == "walls-from-cad")
+            {
+                Require(action.CadId > 0, "cadId must be positive.");
+                Require(action.Layers is { Count: > 0 } && ValidNames(action.Layers), "layers must contain names.");
+                Require(!string.IsNullOrWhiteSpace(action.Level), "level is required.");
+                Require(ValidOptional(action.WallType), "wallType must not be blank.");
+                Require(Finite(action.HeightMm, action.MinThicknessMm, action.MaxThicknessMm, action.MinLengthMm) &&
+                    action.HeightMm > 0 && action.MinThicknessMm > 0 && action.MaxThicknessMm >= action.MinThicknessMm && action.MinLengthMm > 0,
+                    "height and thickness and length limits must be finite and positive.");
             }
             if (command is "set-parameter" or "update-parameters")
             {
@@ -761,6 +789,15 @@ public sealed class ActionJobContract
     public List<double> EndMm { get; set; } = [];
     public string? WallType { get; set; }
     public double HeightMm { get; set; }
+    public long CadId { get; set; }
+    public bool CadLink { get; set; }
+    public string Origin { get; set; } = "internal";
+    public string Units { get; set; } = "auto";
+    public List<string>? Layers { get; set; }
+    public double MinThicknessMm { get; set; }
+    public double MaxThicknessMm { get; set; }
+    public double MinLengthMm { get; set; }
+    public bool Join { get; set; }
     public long ElementId { get; set; }
     public string? Parameter { get; set; }
     public string? ParameterId { get; set; }
@@ -1367,6 +1404,15 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "endMm")] public List<double>? EndMm { get; set; }
     [DataMember(Name = "wallType")] public string? WallType { get; set; }
     [DataMember(Name = "heightMm")] public double? HeightMm { get; set; }
+    [DataMember(Name = "cadId")] public long? CadId { get; set; }
+    [DataMember(Name = "cadLink")] public bool? CadLink { get; set; }
+    [DataMember(Name = "origin")] public string? Origin { get; set; }
+    [DataMember(Name = "units")] public string? Units { get; set; }
+    [DataMember(Name = "layers")] public List<string>? Layers { get; set; }
+    [DataMember(Name = "minThicknessMm")] public double? MinThicknessMm { get; set; }
+    [DataMember(Name = "maxThicknessMm")] public double? MaxThicknessMm { get; set; }
+    [DataMember(Name = "minLengthMm")] public double? MinLengthMm { get; set; }
+    [DataMember(Name = "join")] public bool? Join { get; set; }
     [DataMember(Name = "elementId")] public long? ActionElementId { get; set; }
     [DataMember(Name = "parameter")] public string? Parameter { get; set; }
     [DataMember(Name = "parameterId")] public string? ParameterId { get; set; }
@@ -1518,6 +1564,30 @@ public sealed class ActionResultData
     [DataMember(Name = "placed", EmitDefaultValue = false)] public int? Placed { get; set; }
     [DataMember(Name = "createdElementIds", EmitDefaultValue = false)] public List<long>? CreatedElementIds { get; set; }
     [DataMember(Name = "perTypeCounts", EmitDefaultValue = false)] public Dictionary<string, int>? PerTypeCounts { get; set; }
+    [DataMember(Name = "layers", EmitDefaultValue = false)] public List<CadLayerResult>? CadLayers { get; set; }
+    [DataMember(Name = "extentsMm", EmitDefaultValue = false)] public List<List<double>>? ExtentsMm { get; set; }
+    [DataMember(Name = "walls", EmitDefaultValue = false)] public List<CadWallResult>? Walls { get; set; }
+    [DataMember(Name = "unpairedLines", EmitDefaultValue = false)] public int? UnpairedLines { get; set; }
+    [DataMember(Name = "skippedShortSegments", EmitDefaultValue = false)] public int? SkippedShortSegments { get; set; }
+}
+
+[DataContract]
+public sealed class CadLayerResult
+{
+    [DataMember(Name = "name")] public string Name { get; set; } = "";
+    [DataMember(Name = "lineCount")] public int LineCount { get; set; }
+}
+
+[DataContract]
+public sealed class CadWallResult
+{
+    [DataMember(Name = "id", EmitDefaultValue = false)] public long? Id { get; set; }
+    [DataMember(Name = "type")] public string Type { get; set; } = "";
+    [DataMember(Name = "thicknessMm")] public double ThicknessMm { get; set; }
+    [DataMember(Name = "typeMismatchMm")] public double TypeMismatchMm { get; set; }
+    [DataMember(Name = "lengthMm")] public double LengthMm { get; set; }
+    [DataMember(Name = "startMm")] public List<double> StartMm { get; set; } = [];
+    [DataMember(Name = "endMm")] public List<double> EndMm { get; set; } = [];
 }
 
 [DataContract]

@@ -13,6 +13,7 @@ public sealed class ActionSummaryContext
     public string? TypeName { get; init; }
     public string? Parameter { get; init; }
     public string? WallType { get; init; }
+    public bool CadLink { get; init; }
     public int BatchStepCount { get; init; }
     public int ProcessTotal { get; init; }
     public int ProcessFailed { get; init; }
@@ -59,6 +60,8 @@ public static class ActionSummaryBuilder
             "load-family" => $"{(context.DryRun ? "Would load" : "Loaded")} {Plural(context.Count, "family")} in {doc}.",
             "place-families" => $"{(context.DryRun ? "Would place" : "Placed")} {Plural(context.Count, "family")} in {doc}.",
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
+            "link-cad" => $"{(context.DryRun ? "Would " : "")}{(context.CadLink ? (context.DryRun ? "link" : "Linked") : (context.DryRun ? "import" : "Imported"))} CAD in {doc}.",
+            "walls-from-cad" => $"{(context.DryRun ? "Would create" : "Created")} {Plural(context.Count, "wall")} from CAD in {doc}.",
             "create-view" => $"{(context.DryRun ? "Would create" : "Created")} {ViewKindLabel(context.ViewKind)} '{context.ViewName}' in {doc}.",
             "duplicate-view" => $"{(context.DryRun ? "Would duplicate" : "Duplicated")} view '{context.ViewName}' in {doc}.",
             "apply-view-template" => $"{(context.DryRun ? "Would apply" : "Applied")} a view template to {Plural(context.Count, "view")} in {doc}.",

@@ -378,6 +378,235 @@ internal static class ActionMutations
         return new ActionResultData { Id = RevitValueReader.GetId(wall.Id), LengthMm = line.Length.ToMillimeters() };
     }
 
+    internal static ActionResultData LinkCad(Document document, ActionJobContract action)
+    {
+        var view = action.View is not null
+            ? ReadCommandReader.FindView(document, action.View) as ViewPlan
+            : action.Level is not null
+                ? document.CollectElements().OfClass<ViewPlan>().Cast<ViewPlan>()
+                    .FirstOrDefault(candidate => !candidate.IsTemplate && candidate.ViewType == ViewType.FloorPlan &&
+                        string.Equals(candidate.GenLevel?.Name, action.Level, StringComparison.OrdinalIgnoreCase))
+                : document.ActiveView as ViewPlan;
+        if (view is null || view.IsTemplate || view.ViewType is not (ViewType.FloorPlan or ViewType.CeilingPlan or ViewType.EngineeringPlan or ViewType.AreaPlan))
+            throw new ArgumentException("A plan view is required. Supply view or a level with a floor plan.");
+        using var options = new DWGImportOptions
+        {
+            ThisViewOnly = true,
+            Placement = action.Origin switch
+            {
+                "shared" => ImportPlacement.Shared,
+                "center" => ImportPlacement.Centered,
+                _ => ImportPlacement.Origin
+            },
+            Unit = action.Units switch
+            {
+                "mm" => ImportUnit.Millimeter,
+                "cm" => ImportUnit.Centimeter,
+                "m" => ImportUnit.Meter,
+                "in" => ImportUnit.Inch,
+                "ft" => ImportUnit.Foot,
+                _ => ImportUnit.Default
+            }
+        };
+        if (action.Layers is not null) options.SetLayerSelection(action.Layers);
+        ImportInstance instance;
+        if (action.CadLink)
+            instance = ImportInstance.Create(document, view, action.DocumentPath!, options, out _);
+        else
+        {
+            if (!document.Import(action.DocumentPath!, options, view, out var id))
+                throw new InvalidOperationException("DWG import failed.");
+            instance = document.GetElement(id) as ImportInstance
+                ?? throw new InvalidOperationException("DWG import did not create an import instance.");
+        }
+        document.Regenerate();
+        var segments = ReadCadSegments(document, instance);
+        var points = segments.SelectMany(segment => new[] { segment.Start, segment.End }).ToList();
+        var layerCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (instance.Category?.SubCategories is not null)
+            foreach (Category layer in instance.Category.SubCategories)
+                layerCounts[layer.Name] = 0;
+        foreach (var segment in segments)
+            layerCounts[segment.Layer] = layerCounts.GetValueOrDefault(segment.Layer) + 1;
+        return new ActionResultData
+        {
+            Id = RevitValueReader.GetId(instance.Id),
+            CadLayers = layerCounts.Select(pair => new CadLayerResult { Name = pair.Key, LineCount = pair.Value })
+                .OrderBy(layer => layer.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            ExtentsMm = points.Count == 0 ? null :
+            [
+                [points.Min(point => point.X).ToMillimeters(), points.Min(point => point.Y).ToMillimeters()],
+                [points.Max(point => point.X).ToMillimeters(), points.Max(point => point.Y).ToMillimeters()]
+            ],
+            Verification = new ActionVerification { Changed = [RevitValueReader.GetId(instance.Id)] }
+        };
+    }
+
+    internal static ActionResultData WallsFromCad(Document document, ActionJobContract action)
+    {
+        var instance = document.GetElement(CreateId(action.CadId)) as ImportInstance
+            ?? throw new ArgumentException($"CAD import instance {action.CadId} was not found.");
+        var level = FindLevel(document, action.Level!);
+        var selectedLayers = new HashSet<string>(action.Layers!, StringComparer.OrdinalIgnoreCase);
+        var source = ReadCadSegments(document, instance).Where(segment => selectedLayers.Contains(segment.Layer)).ToList();
+        var minimumLength = Millimeters(action.MinLengthMm);
+        var skippedShort = source.Count(segment => segment.Length < minimumLength);
+        var segments = source.Where(segment => segment.Length >= minimumLength).ToList();
+        var candidates = new List<(int First, int Second, double Start, double End, double Thickness)>();
+        for (var first = 0; first < segments.Count; first++)
+        for (var second = first + 1; second < segments.Count; second++)
+        {
+            var left = segments[first];
+            var right = segments[second];
+            var direction = (left.End - left.Start).Normalize();
+            var otherDirection = (right.End - right.Start).Normalize();
+            if (Math.Abs(direction.DotProduct(otherDirection)) < Math.Cos(Math.PI / 180)) continue;
+            var offset = right.Start - left.Start;
+            var thickness = Math.Abs(direction.X * offset.Y - direction.Y * offset.X);
+            if (thickness < Millimeters(action.MinThicknessMm) || thickness > Millimeters(action.MaxThicknessMm)) continue;
+            var rightStart = offset.DotProduct(direction);
+            var rightEnd = (right.End - left.Start).DotProduct(direction);
+            var start = Math.Max(0, Math.Min(rightStart, rightEnd));
+            var end = Math.Min(left.Length, Math.Max(rightStart, rightEnd));
+            if (end - start < minimumLength) continue;
+            candidates.Add((first, second, start, end, thickness));
+        }
+        var basicTypes = document.CollectElements().OfClass<WallType>().Cast<WallType>()
+            .Where(type => type.Kind == WallKind.Basic).ToList();
+        if (basicTypes.Count == 0)
+            return new ActionResultData
+            {
+                Count = 0,
+                Walls = [],
+                UnpairedLines = segments.Count,
+                SkippedShortSegments = skippedShort,
+                Warning = "No basic wall type exists in this project.",
+                Verification = new ActionVerification { Changed = [] }
+            };
+        var selectedType = action.WallType is null ? null : basicTypes.FirstOrDefault(type =>
+            string.Equals(type.Name, action.WallType, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException($"Basic wall type '{action.WallType}' was not found.");
+        var paired = new HashSet<int>();
+        var planned = new List<(CadWallResult Result, WallType Type, XYZ Start, XYZ End)>();
+        foreach (var pair in candidates.OrderByDescending(pair => pair.End - pair.Start))
+        {
+            if (paired.Contains(pair.First) || paired.Contains(pair.Second)) continue;
+            var first = segments[pair.First];
+            var second = segments[pair.Second];
+            var direction = (first.End - first.Start).Normalize();
+            var oppositePoint = first.Start + direction * (second.Start - first.Start).DotProduct(direction);
+            var normalOffset = second.Start - oppositePoint;
+            var start = first.Start + direction * pair.Start + normalOffset / 2;
+            var end = first.Start + direction * pair.End + normalOffset / 2;
+            start = new XYZ(start.X, start.Y, level.ProjectElevation);
+            end = new XYZ(end.X, end.Y, level.ProjectElevation);
+            var type = selectedType ?? basicTypes.OrderBy(candidate => Math.Abs(candidate.Width - pair.Thickness)).First();
+            planned.Add((new CadWallResult
+            {
+                Type = type.Name,
+                ThicknessMm = pair.Thickness.ToMillimeters(),
+                TypeMismatchMm = Math.Abs(type.Width - pair.Thickness).ToMillimeters(),
+                LengthMm = (end - start).GetLength().ToMillimeters(),
+                StartMm = [start.X.ToMillimeters(), start.Y.ToMillimeters()],
+                EndMm = [end.X.ToMillimeters(), end.Y.ToMillimeters()]
+            }, type, start, end));
+            paired.Add(pair.First);
+            paired.Add(pair.Second);
+        }
+        if (action.Join)
+        {
+            var tolerance = Millimeters(10);
+            for (var first = 0; first < planned.Count; first++)
+            for (var second = first + 1; second < planned.Count; second++)
+            for (var firstEnd = 0; firstEnd < 2; firstEnd++)
+            for (var secondEnd = 0; secondEnd < 2; secondEnd++)
+            {
+                var anchor = firstEnd == 0 ? planned[first].Start : planned[first].End;
+                var target = secondEnd == 0 ? planned[second].Start : planned[second].End;
+                if (anchor.DistanceTo(target) > tolerance) continue;
+                var item = planned[second];
+                planned[second] = secondEnd == 0
+                    ? (item.Result, item.Type, anchor, item.End)
+                    : (item.Result, item.Type, item.Start, anchor);
+            }
+            foreach (var wall in planned)
+            {
+                wall.Result.StartMm = [wall.Start.X.ToMillimeters(), wall.Start.Y.ToMillimeters()];
+                wall.Result.EndMm = [wall.End.X.ToMillimeters(), wall.End.Y.ToMillimeters()];
+                wall.Result.LengthMm = (wall.End - wall.Start).GetLength().ToMillimeters();
+            }
+        }
+        var created = new List<Wall>();
+        if (!action.DryRun)
+        {
+            foreach (var wall in planned)
+            {
+                var element = Wall.Create(document, Line.CreateBound(wall.Start, wall.End), wall.Type.Id,
+                    level.Id, Millimeters(action.HeightMm), 0, false, false);
+                WallUtils.DisallowWallJoinAtEnd(element, 0);
+                WallUtils.DisallowWallJoinAtEnd(element, 1);
+                wall.Result.Id = RevitValueReader.GetId(element.Id);
+                created.Add(element);
+            }
+        }
+        if (action.Join && !action.DryRun)
+        {
+            var tolerance = Millimeters(10);
+            for (var index = 0; index < planned.Count; index++)
+            for (var end = 0; end < 2; end++)
+            {
+                var point = end == 0 ? planned[index].Start : planned[index].End;
+                if (planned.Where((_, other) => other != index).Any(other =>
+                    point.DistanceTo(other.Start) <= tolerance || point.DistanceTo(other.End) <= tolerance))
+                    WallUtils.AllowWallJoinAtEnd(created[index], end);
+            }
+        }
+        return new ActionResultData
+        {
+            Count = planned.Count,
+            Walls = planned.Select(wall => wall.Result).ToList(),
+            UnpairedLines = segments.Count - paired.Count,
+            SkippedShortSegments = skippedShort,
+            Verification = new ActionVerification { Changed = created.Select(wall => RevitValueReader.GetId(wall.Id)).ToList() }
+        };
+    }
+
+    private sealed record CadSegment(XYZ Start, XYZ End, string Layer)
+    {
+        public double Length => (End - Start).GetLength();
+    }
+
+    private static List<CadSegment> ReadCadSegments(Document document, ImportInstance instance)
+    {
+        var segments = new List<CadSegment>();
+        var geometry = instance.get_Geometry(new Options { IncludeNonVisibleObjects = false });
+        if (geometry is null) return segments;
+        void Add(GeometryElement objects)
+        {
+            foreach (var item in objects)
+            {
+                if (item is GeometryInstance nested)
+                {
+                    Add(nested.GetInstanceGeometry());
+                    continue;
+                }
+                var layer = (document.GetElement(item.GraphicsStyleId) as GraphicsStyle)?.GraphicsStyleCategory?.Name;
+                if (string.IsNullOrWhiteSpace(layer)) continue;
+                if (item is Line line)
+                    segments.Add(new CadSegment(line.GetEndPoint(0), line.GetEndPoint(1), layer!));
+                else if (item is PolyLine polyline)
+                {
+                    var points = polyline.GetCoordinates();
+                    for (var index = 1; index < points.Count; index++)
+                        if (points[index - 1].DistanceTo(points[index]) > 1e-9)
+                            segments.Add(new CadSegment(points[index - 1], points[index], layer!));
+                }
+            }
+        }
+        Add(geometry);
+        return segments;
+    }
+
     internal static ActionResultData CreateView(Document document, ActionJobContract action)
     {
         var family = action.Kind switch

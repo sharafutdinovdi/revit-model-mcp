@@ -40,6 +40,8 @@ ACTION_TOOLS = {
     "revit_load_family",
     "revit_place_families",
     "revit_create_wall",
+    "revit_link_cad",
+    "revit_walls_from_cad",
     "revit_create_view",
     "revit_duplicate_view",
     "revit_apply_view_template",
@@ -93,6 +95,8 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_process_models",
                     "revit_load_family",
                     "revit_place_families",
+                    "revit_link_cad",
+                    "revit_walls_from_cad",
                 }
             )
             assert tool.annotations.read_only_hint is False
@@ -501,6 +505,57 @@ def test_nwc_export_defaults_and_options_reach_channel():
         "targetProcessId": 42,
         "path": "C:\\x\\a.nwc",
         "overwrite": False,
+        "dryRun": False,
+    }
+
+
+def test_cad_actions_map_arguments_and_timeouts():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_link_cad",
+            {
+                "path": r"C:\Plans\Floor.dwg",
+                "view": 12,
+                "link": False,
+                "layers": ["Walls"],
+                "dry_run": True,
+            },
+        )
+    )
+    assert execute.await_args.args[1] == 600
+    assert execute.await_args.args[0].payload == {
+        "command": "link-cad",
+        "targetProcessId": 42,
+        "path": r"C:\Plans\Floor.dwg",
+        "view": "12",
+        "level": None,
+        "cadLink": False,
+        "origin": "internal",
+        "units": "auto",
+        "layers": ["Walls"],
+        "dryRun": True,
+    }
+    asyncio.run(
+        server.call_tool(
+            "revit_walls_from_cad",
+            {"cad_id": 17, "layers": ["Walls"], "level": "Level 1", "min_length_mm": 500},
+        )
+    )
+    assert execute.await_args.args[0].payload == {
+        "command": "walls-from-cad",
+        "targetProcessId": 42,
+        "cadId": 17,
+        "layers": ["Walls"],
+        "level": "Level 1",
+        "wallType": None,
+        "heightMm": 3000,
+        "minThicknessMm": 80,
+        "maxThicknessMm": 700,
+        "minLengthMm": 500,
+        "join": True,
         "dryRun": False,
     }
 

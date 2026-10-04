@@ -5,6 +5,23 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class ActionSummaryBuilderTests
 {
     [Test]
+    public async Task CadActions_ReportNamedUndoSummaries()
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "link-cad", DocumentTitle = "Project.rvt", CadLink = true
+        })).IsEqualTo("Linked CAD in Project.rvt.");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "link-cad", DocumentTitle = "Project.rvt", CadLink = false, DryRun = true
+        })).IsEqualTo("Would import CAD in Project.rvt.");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "walls-from-cad", DocumentTitle = "Project.rvt", Count = 3, DryRun = true
+        })).IsEqualTo("Would create 3 walls from CAD in Project.rvt.");
+    }
+
+    [Test]
     public async Task ProcessModels_ReportsTotals()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
