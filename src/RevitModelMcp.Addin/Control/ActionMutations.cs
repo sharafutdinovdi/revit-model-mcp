@@ -1,6 +1,9 @@
 using System.Globalization;
 using System.IO;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Electrical;
+using Autodesk.Revit.DB.Mechanical;
+using Autodesk.Revit.DB.Plumbing;
 using Autodesk.Revit.DB.Structure;
 using Nice3point.Revit.Extensions;
 using Nice3point.Revit.Toolkit.Options;
@@ -376,6 +379,120 @@ internal static class ActionMutations
         var line = Line.CreateBound(start, end);
         var wall = Wall.Create(document, line, wallType.Id, level.Id, Millimeters(action.HeightMm), 0, false, false);
         return new ActionResultData { Id = RevitValueReader.GetId(wall.Id), LengthMm = line.Length.ToMillimeters() };
+    }
+
+    internal static ActionResultData CreateMepRun(Document document, ActionJobContract action)
+    {
+        var level = FindLevel(document, action.Level!);
+        var offset = action.OffsetMm ?? (action.Kind is "duct" or "cable_tray" ? 2700 : 2500);
+        var points = action.PointsMm!.Select(point => new XYZ(Millimeters(point[0]), Millimeters(point[1]),
+            point.Count == 3 ? Millimeters(point[2]) : level.ProjectElevation + Millimeters(offset))).ToList();
+        if (points.Zip(points.Skip(1), (start, end) => start.DistanceTo(end) <= Millimeters(2.54)).Any(shortSegment => shortSegment))
+            throw new ArgumentException("Consecutive points must be more than 2.54 mm apart.");
+
+        var typeId = action.Kind switch
+        {
+            "duct" => FindMepType<DuctType>(document, action.TypeName).Id,
+            "pipe" => FindMepType<PipeType>(document, action.TypeName).Id,
+            "cable_tray" => FindMepType<CableTrayType>(document, action.TypeName).Id,
+            _ => FindMepType<ConduitType>(document, action.TypeName).Id
+        };
+        var systemId = action.Kind switch
+        {
+            "duct" => FindMepType<MechanicalSystemType>(document, action.SystemType).Id,
+            "pipe" => FindMepType<PipingSystemType>(document, action.SystemType).Id,
+            _ => ElementId.InvalidElementId
+        };
+        var segments = new List<MEPCurve>();
+        var result = new ActionResultData { SegmentIds = [], FittingIds = [], UnjoinedPairs = [], LengthMm = 0 };
+        for (var index = 0; index < points.Count - 1; index++)
+        {
+            var start = points[index];
+            var end = points[index + 1];
+            var segment = action.Kind switch
+            {
+                "duct" => (MEPCurve)Duct.Create(document, systemId, typeId, level.Id, start, end),
+                "pipe" => Pipe.Create(document, systemId, typeId, level.Id, start, end),
+                "cable_tray" => CableTray.Create(document, typeId, start, end, level.Id),
+                _ => Conduit.Create(document, typeId, start, end, level.Id)
+            };
+            SetMepSize(segment, action);
+            segments.Add(segment);
+            result.SegmentIds.Add(RevitValueReader.GetId(segment.Id));
+            result.LengthMm += start.DistanceTo(end).ToMillimeters();
+        }
+        document.Regenerate();
+        for (var index = 1; index < segments.Count; index++)
+        {
+            var previous = NearestConnector(segments[index - 1], points[index]);
+            var current = NearestConnector(segments[index], points[index]);
+            using var fittingTransaction = new SubTransaction(document);
+            fittingTransaction.Start();
+            try
+            {
+                var fitting = document.Create.NewElbowFitting(previous, current);
+                if (fittingTransaction.Commit() == TransactionStatus.Committed)
+                    result.FittingIds.Add(RevitValueReader.GetId(fitting.Id));
+                else
+                    result.UnjoinedPairs.Add([result.SegmentIds[index - 1], result.SegmentIds[index]]);
+            }
+            catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+            {
+                if (fittingTransaction.GetStatus() == TransactionStatus.Started) fittingTransaction.RollBack();
+                result.UnjoinedPairs.Add([result.SegmentIds[index - 1], result.SegmentIds[index]]);
+            }
+        }
+        if (action.ConnectTo is not null)
+        {
+            var existing = document.GetElement(CreateId(action.ConnectTo.Value));
+            var connectorManager = existing switch
+            {
+                MEPCurve curve => curve.ConnectorManager,
+                FamilyInstance instance => instance.MEPModel?.ConnectorManager,
+                _ => null
+            } ?? throw new ArgumentException($"Element {action.ConnectTo} has no MEP connectors.");
+            var start = NearestConnector(segments[0], points[0]);
+            var target = connectorManager.Connectors.Cast<Connector>()
+                .Where(connector => !connector.IsConnected && connector.Domain == start.Domain &&
+                    connector.Origin.DistanceTo(start.Origin) <= Millimeters(50))
+                .OrderBy(connector => connector.Origin.DistanceTo(start.Origin)).FirstOrDefault();
+            target?.ConnectTo(start);
+        }
+        result.Count = result.SegmentIds.Count;
+        result.Verification = new ActionVerification { Changed = result.SegmentIds.Concat(result.FittingIds).ToList() };
+        return result;
+    }
+
+    private static T FindMepType<T>(Document document, string? name) where T : ElementType
+    {
+        using var types = document.CollectElements().OfClass<T>();
+        var match = types.Cast<T>().FirstOrDefault(type => name is null ||
+            string.Equals(type.Name, name, StringComparison.OrdinalIgnoreCase));
+        return match ?? throw new ArgumentException($"{typeof(T).Name} '{name ?? "default"}' was not found.");
+    }
+
+    private static Connector NearestConnector(MEPCurve segment, XYZ point) =>
+        segment.ConnectorManager.Connectors.Cast<Connector>()
+            .OrderBy(connector => connector.Origin.DistanceTo(point)).First();
+
+    private static void SetMepSize(MEPCurve segment, ActionJobContract action)
+    {
+        var shape = segment.ConnectorManager.Connectors.Cast<Connector>().First().Shape;
+        if (action.Kind == "duct" && action.DiameterMm is not null && shape != ConnectorProfileType.Round)
+            throw new ArgumentException("diameterMm requires a round duct type.");
+        if (action.Kind == "duct" && (action.WidthMm is not null || action.MepHeightMm is not null) && shape != ConnectorProfileType.Rectangular)
+            throw new ArgumentException("widthMm and heightMm require a rectangular duct type.");
+        SetSize(action.WidthMm, action.Kind == "cable_tray" ? BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM : BuiltInParameter.RBS_CURVE_WIDTH_PARAM);
+        SetSize(action.MepHeightMm, action.Kind == "cable_tray" ? BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM : BuiltInParameter.RBS_CURVE_HEIGHT_PARAM);
+        SetSize(action.DiameterMm, action.Kind == "conduit" ? BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM : BuiltInParameter.RBS_CURVE_DIAMETER_PARAM);
+
+        void SetSize(double? millimeters, BuiltInParameter parameterId)
+        {
+            if (millimeters is null) return;
+            var parameter = segment.get_Parameter(parameterId);
+            if (parameter is null || parameter.IsReadOnly || !parameter.Set(Millimeters(millimeters.Value)))
+                throw new ArgumentException($"Cannot set {parameterId} on the selected {action.Kind} type.");
+        }
     }
 
     internal static ActionResultData CreateView(Document document, ActionJobContract action)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import re
 from pathlib import PureWindowsPath
@@ -43,6 +44,8 @@ ParameterValue = Union[
     Annotated[float, Field(strict=True, allow_inf_nan=False)],
 ]
 Point = Annotated[list[Number], Field(min_length=2, max_length=2)]
+MepPoint = Annotated[list[Number], Field(min_length=2, max_length=3)]
+MepPoints = Annotated[list[MepPoint], Field(min_length=2, max_length=200)]
 CopyCount = Annotated[int, Field(strict=True, ge=1, le=100)]
 MaxElements = Annotated[int, Field(strict=True, ge=1, le=20000)]
 
@@ -165,6 +168,18 @@ _BATCH_FIELDS = {
         "wall_type": (Name | None, ...),
         "height_mm": (PositiveLength, 3000),
     },
+    "create_mep_run": {
+        "kind": (Literal["duct", "pipe", "cable_tray", "conduit"], ...),
+        "points_mm": (MepPoints, ...),
+        "level": (Name, ...),
+        "type_name": (Name | None, None),
+        "system_type": (Name | None, None),
+        "width_mm": (PositiveLength | None, None),
+        "height_mm": (PositiveLength | None, None),
+        "diameter_mm": (PositiveLength | None, None),
+        "offset_mm": (Number | None, None),
+        "connect_to": (ElementId | None, None),
+    },
     "set_parameter": {
         "element_id": (ElementId, ...),
         "parameter": (Name, ...),
@@ -210,6 +225,7 @@ for _action in (
     "place_family",
     "load_family",
     "create_wall",
+    "create_mep_run",
     "set_parameter",
     "delete",
     "create_view",
@@ -224,6 +240,31 @@ _BATCH_MODELS = {
 }
 
 
+def validate_mep_run(
+    kind: str,
+    points_mm: list[list[float]],
+    system_type: str | None = None,
+    width_mm: float | None = None,
+    height_mm: float | None = None,
+    diameter_mm: float | None = None,
+) -> None:
+    if system_type is not None and kind not in {"duct", "pipe"}:
+        raise ValueError("system_type requires duct or pipe.")
+    if (width_mm is not None or height_mm is not None) and kind not in {"duct", "cable_tray"}:
+        raise ValueError("width_mm and height_mm require duct or cable_tray.")
+    if diameter_mm is not None and kind == "cable_tray":
+        raise ValueError("diameter_mm is not supported for cable trays.")
+    if (
+        kind == "duct"
+        and diameter_mm is not None
+        and (width_mm is not None or height_mm is not None)
+    ):
+        raise ValueError("Duct diameter cannot be combined with width or height.")
+    for first, second in zip(points_mm, points_mm[1:]):
+        if len(first) == len(second) and math.dist(first, second) <= 2.54:
+            raise ValueError("Consecutive points must be more than 2.54 mm apart.")
+
+
 class BatchStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal[
@@ -236,6 +277,7 @@ class BatchStep(BaseModel):
         "place_family",
         "load_family",
         "create_wall",
+        "create_mep_run",
         "set_parameter",
         "delete",
         "select",
@@ -254,6 +296,15 @@ class BatchStep(BaseModel):
             raise ValueError("element_ids must not be empty unless reset is true.")
         if self.action == "create_wall" and self.args["start_mm"] == self.args["end_mm"]:
             raise ValueError("Wall endpoints must differ.")
+        if self.action == "create_mep_run":
+            validate_mep_run(
+                self.args["kind"],
+                self.args["points_mm"],
+                self.args["system_type"],
+                self.args["width_mm"],
+                self.args["height_mm"],
+                self.args["diameter_mm"],
+            )
         if self.action == "create_view":
             data = self.args
             if (
@@ -630,6 +681,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_load_family": "Load Families",
             "revit_place_families": "Place Families",
             "revit_create_wall": "Create Wall",
+            "revit_create_mep_run": "Create MEP Run",
             "revit_create_view": "Create View",
             "revit_duplicate_view": "Duplicate View",
             "revit_apply_view_template": "Apply View Template",
@@ -1228,6 +1280,49 @@ def register_actions(mcp, execute, host_provider) -> None:
             heightMm=height_mm,
             dryRun=dry_run,
             document=document,
+        )
+
+    @action
+    async def revit_create_mep_run(
+        kind: Literal["duct", "pipe", "cable_tray", "conduit"],
+        points_mm: MepPoints,
+        level: Name,
+        type_name: Name | None = None,
+        system_type: Name | None = None,
+        width_mm: PositiveLength | None = None,
+        height_mm: PositiveLength | None = None,
+        diameter_mm: PositiveLength | None = None,
+        offset_mm: Number | None = None,
+        connect_to: ElementId | None = None,
+        document: Document = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Create connected duct, pipe, cable tray or conduit segments from model millimetre points. Missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs."""
+        try:
+            validate_mep_run(
+                kind,
+                points_mm,
+                system_type,
+                width_mm,
+                height_mm,
+                diameter_mm,
+            )
+        except ValueError as error:
+            raise ToolError(str(error)) from error
+        return await send(
+            "create-mep-run",
+            kind=kind,
+            pointsMm=points_mm,
+            level=level,
+            typeName=type_name,
+            systemType=system_type,
+            widthMm=width_mm,
+            heightMm=height_mm,
+            diameterMm=diameter_mm,
+            offsetMm=offset_mm,
+            connectTo=connect_to,
+            document=document,
+            dryRun=dry_run,
         )
 
     @action

@@ -75,6 +75,7 @@ ACTION_TOOL_NAMES = {
     "revit_load_family",
     "revit_place_families",
     "revit_create_wall",
+    "revit_create_mep_run",
     "revit_create_view",
     "revit_duplicate_view",
     "revit_apply_view_template",
@@ -424,6 +425,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(all(not tool.annotations.read_only_hint for tool in action_tools.values()))
         for name, required in {
             "revit_create_view": {"kind"},
+            "revit_create_mep_run": {"kind", "points_mm", "level"},
             "revit_duplicate_view": {"view"},
             "revit_apply_view_template": {"views", "template"},
             "revit_create_sheet": {"number", "name"},

@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
+        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -129,7 +129,14 @@ public static class ActionJobParser
                 Box = job.Box,
                 Sheet = job.Sheet,
                 Number = job.Number,
-                TitleBlock = job.TitleBlock
+                TitleBlock = job.TitleBlock,
+                PointsMm = job.PointsMm,
+                SystemType = job.SystemType,
+                WidthMm = job.WidthMm,
+                MepHeightMm = job.HeightMm,
+                DiameterMm = job.DiameterMm,
+                OffsetMm = job.OffsetMm,
+                ConnectTo = job.ConnectTo
             };
             if (command == "process-models")
             {
@@ -205,7 +212,7 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet",
+                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "create-wall" or "create-mep-run" or "set-parameter" or "delete" or "select" or "isolate" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet",
                         "Unknown batch step.");
                     var parsed = Parse(stepCommand, step!, trustedNetworkRoots);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
@@ -368,6 +375,28 @@ public static class ActionJobParser
                 Require(!action.StartMm.SequenceEqual(action.EndMm), "Wall endpoints must differ.");
                 Require(Finite(action.HeightMm) && action.HeightMm > 0, "heightMm must be finite and positive.");
                 Require(action.WallType is null || !string.IsNullOrWhiteSpace(action.WallType), "wallType must not be blank.");
+            }
+            if (command == "create-mep-run")
+            {
+                Require(action.Kind is "duct" or "pipe" or "cable_tray" or "conduit", "kind must be duct, pipe, cable_tray or conduit.");
+                Require(!string.IsNullOrWhiteSpace(action.Level), "level is required.");
+                Require(action.PointsMm is { Count: >= 2 and <= 200 } && action.PointsMm.All(point => point is { Count: 2 or 3 } && Finite(point.ToArray())),
+                    "pointsMm must contain 2 to 200 finite XY or XYZ points.");
+                Require(action.PointsMm!.Zip(action.PointsMm!.Skip(1), (start, end) =>
+                    start.Count != end.Count || Math.Sqrt(Enumerable.Range(0, start.Count).Sum(index => Math.Pow(start[index] - end[index], 2))) > 2.54).All(valid => valid),
+                    "Consecutive points must be more than 2.54 mm apart.");
+                Require(ValidOptional(action.TypeName) && ValidOptional(action.SystemType), "Optional type names must not be blank.");
+                Require(action.ConnectTo is null or > 0, "connectTo must be a positive element ID.");
+                Require(action.OffsetMm is null || Finite(action.OffsetMm.Value), "offsetMm must be finite.");
+                Require(new[] { action.WidthMm, action.MepHeightMm, action.DiameterMm }.All(value => value is null || Finite(value.Value) && value > 0),
+                    "Sizes must be finite and positive.");
+                Require(action.SystemType is null || action.Kind is "duct" or "pipe", "systemType requires duct or pipe.");
+                Require(action.Kind is "duct" or "cable_tray" || action.WidthMm is null && action.MepHeightMm is null,
+                    "widthMm and heightMm require duct or cable_tray.");
+                Require(action.Kind is "duct" or "pipe" or "conduit" || action.DiameterMm is null,
+                    "diameterMm is not supported for cable trays.");
+                Require(action.Kind != "duct" || action.DiameterMm is null || action.WidthMm is null && action.MepHeightMm is null,
+                    "Duct diameter cannot be combined with width or height.");
             }
             if (command is "set-parameter" or "update-parameters")
             {
@@ -776,6 +805,13 @@ public sealed class ActionJobContract
     public string? Sheet { get; set; }
     public string? Number { get; set; }
     public string? TitleBlock { get; set; }
+    public List<List<double>>? PointsMm { get; set; }
+    public string? SystemType { get; set; }
+    public double? WidthMm { get; set; }
+    public double? MepHeightMm { get; set; }
+    public double? DiameterMm { get; set; }
+    public double? OffsetMm { get; set; }
+    public long? ConnectTo { get; set; }
 }
 
 [DataContract]
@@ -1338,6 +1374,12 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "sheet")] public string? Sheet { get; set; }
     [DataMember(Name = "number")] public string? Number { get; set; }
     [DataMember(Name = "titleBlock")] public string? TitleBlock { get; set; }
+    [DataMember(Name = "pointsMm")] public List<List<double>>? PointsMm { get; set; }
+    [DataMember(Name = "systemType")] public string? SystemType { get; set; }
+    [DataMember(Name = "widthMm")] public double? WidthMm { get; set; }
+    [DataMember(Name = "diameterMm")] public double? DiameterMm { get; set; }
+    [DataMember(Name = "offsetMm")] public double? OffsetMm { get; set; }
+    [DataMember(Name = "connectTo")] public long? ConnectTo { get; set; }
     [DataMember(Name = "dryRun")] public bool? DryRun { get; set; }
     [DataMember(Name = "steps")] public List<ControlJobContract>? Steps { get; set; }
     [DataMember(Name = "elementIds")] public List<long>? ElementIds { get; set; }
@@ -1506,6 +1548,9 @@ public sealed class ActionResultData
     [DataMember(Name = "category", EmitDefaultValue = false)] public string? Category { get; set; }
     [DataMember(Name = "level", EmitDefaultValue = false)] public string? Level { get; set; }
     [DataMember(Name = "lengthMm", EmitDefaultValue = false)] public double? LengthMm { get; set; }
+    [DataMember(Name = "segmentIds", EmitDefaultValue = false)] public List<long>? SegmentIds { get; set; }
+    [DataMember(Name = "fittingIds", EmitDefaultValue = false)] public List<long>? FittingIds { get; set; }
+    [DataMember(Name = "unjoinedPairs", EmitDefaultValue = false)] public List<List<long>>? UnjoinedPairs { get; set; }
     [DataMember(Name = "oldValue", EmitDefaultValue = false)] public string? OldValue { get; set; }
     [DataMember(Name = "newValue", EmitDefaultValue = false)] public string? NewValue { get; set; }
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }

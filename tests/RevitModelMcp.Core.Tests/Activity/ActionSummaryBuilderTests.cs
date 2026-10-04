@@ -5,6 +5,17 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class ActionSummaryBuilderTests
 {
     [Test]
+    public async Task CreateMepRun_ReportsSegmentsAndKind()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "create-mep-run", DocumentTitle = "Model.rvt", ViewKind = "cable_tray", Count = 4
+        });
+        await Assert.That(summary).IsEqualTo("Created 4 segments of cable tray in Model.rvt.");
+        await Assert.That(ActionSummaryBuilder.BuildGroupName("client", summary)).StartsWith("MCP (client): Created");
+    }
+
+    [Test]
     public async Task ProcessModels_ReportsTotals()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext

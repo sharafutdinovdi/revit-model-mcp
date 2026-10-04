@@ -59,6 +59,7 @@ public static class ActionSummaryBuilder
             "load-family" => $"{(context.DryRun ? "Would load" : "Loaded")} {Plural(context.Count, "family")} in {doc}.",
             "place-families" => $"{(context.DryRun ? "Would place" : "Placed")} {Plural(context.Count, "family")} in {doc}.",
             "create-wall" => $"{(context.DryRun ? "Would create" : "Created")} a{WallTypeLabel(context.WallType)} wall in {doc}.",
+            "create-mep-run" => $"{(context.DryRun ? "Would create" : "Created")} {Plural(context.Count, "segment")} of {context.ViewKind?.Replace('_', ' ')} in {doc}.",
             "create-view" => $"{(context.DryRun ? "Would create" : "Created")} {ViewKindLabel(context.ViewKind)} '{context.ViewName}' in {doc}.",
             "duplicate-view" => $"{(context.DryRun ? "Would duplicate" : "Duplicated")} view '{context.ViewName}' in {doc}.",
             "apply-view-template" => $"{(context.DryRun ? "Would apply" : "Applied")} a view template to {Plural(context.Count, "view")} in {doc}.",
