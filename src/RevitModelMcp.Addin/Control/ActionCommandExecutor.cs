@@ -183,7 +183,7 @@ internal static class ActionCommandExecutor
                 var (writable, readOnly) = ProcessModelsJob.SelectWritableInPlacePaths(paths,
                     path => new FileInfo(path).IsReadOnly);
                 refused = readOnly.Select(path => new ProcessModelResult
-                    { Path = path, Status = "refused", Error = "read-only file" }).ToList();
+                { Path = path, Status = "refused", Error = "read-only file" }).ToList();
                 paths = writable;
                 if (paths.Count == 0)
                 {
