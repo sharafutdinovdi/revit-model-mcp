@@ -188,6 +188,7 @@ internal sealed class ControlChannel
             {
                 var fallback = CommandResponse<object>.Fail(_current.Command,
                     "The command ended without a response.", 0, _currentJob?.CorrelationId);
+                fallback.Error = fallback.Message;
                 fallback.Client = new ClientIdentity { Name = _current.ClientName, Id = _current.ClientId };
                 fallback.JobId = _current.JobId;
                 fallback.QueuedMs = _currentQueuedMs;
@@ -216,7 +217,7 @@ internal sealed class ControlChannel
         var path = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
             _currentStartedAt.LocalDateTime, _currentJob.Command, _currentJob.CorrelationId);
         try { return File.Exists(path) ? File.ReadAllText(path) : null; }
-        catch (IOException) { return null; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
     }
 
     private static bool IsSuccessfulOrPartial(string json)
@@ -381,8 +382,9 @@ internal sealed class ControlChannel
             _session = null;
             return;
         }
-        TryWriteError(application, _currentJob?.Command ?? "invalid", $"Job processing failed: {exception}",
-            DateTimeOffset.Now, _currentJob?.CorrelationId);
+        TryWriteError(application, _currentJob?.Command ?? "invalid",
+            $"Job processing failed ({exception.GetType().Name}).",
+            _currentStartedAt, _currentJob?.CorrelationId);
     }
 
     private static void TryWriteError(UIApplication application, string command, string message,

@@ -259,15 +259,16 @@ internal static class ActionCommandExecutor
     {
         var stopwatch = Stopwatch.StartNew();
         var result = new ProcessModelResult { Path = path };
+        var dismissedMessages = new List<string>();
         Document? document = null;
         ChangeCapture? changes = null;
         TransactionGroup? group = null;
         string? undoName = null;
         var failures = new ActionFailures();
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments) =>
-            SuppressTaskDialog(arguments, result.DialogsDismissed);
+            SuppressTaskDialog(arguments, dismissedMessages);
         void SuppressWarnings(object? sender, FailuresProcessingEventArgs arguments) =>
-            DismissOpenWarnings(arguments, result.DialogsDismissed);
+            DismissOpenWarnings(arguments, dismissedMessages);
         application.DialogBoxShowing += SuppressDialog;
         application.Application.FailuresProcessing += SuppressWarnings;
         try
@@ -398,7 +399,7 @@ internal static class ActionCommandExecutor
         finally
         {
             group?.Dispose();
-            result.DialogsDismissed.AddRange(failures.WarningsDismissed);
+            dismissedMessages.AddRange(failures.WarningsDismissed);
             if (document is not null)
             {
                 var activity = new ActionResultData
@@ -423,6 +424,7 @@ internal static class ActionCommandExecutor
             }
             application.DialogBoxShowing -= SuppressDialog;
             application.Application.FailuresProcessing -= SuppressWarnings;
+            result.DialogsDismissed = ProcessDialogSummary.FromMessages(dismissedMessages);
             result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         }
         return result;

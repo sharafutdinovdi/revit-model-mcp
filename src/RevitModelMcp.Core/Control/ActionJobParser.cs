@@ -759,8 +759,45 @@ public sealed class ProcessModelResult
     [DataMember(Name = "code", EmitDefaultValue = false)] public ProcessModelCodeResult? Code { get; set; }
     [DataMember(Name = "exports", EmitDefaultValue = false)] public List<ActionResultData>? Exports { get; set; }
     [DataMember(Name = "saved", EmitDefaultValue = false)] public string? Saved { get; set; }
-    [DataMember(Name = "dialogsDismissed")] public List<string> DialogsDismissed { get; set; } = [];
+    [DataMember(Name = "dialogsDismissed")] public ProcessDialogSummary DialogsDismissed { get; set; } = new();
     [DataMember(Name = "error", EmitDefaultValue = false)] public string? Error { get; set; }
+}
+
+[DataContract]
+public sealed class ProcessDialogSummary
+{
+    [DataMember(Name = "messages")] public List<ProcessDialogCount> Messages { get; set; } = [];
+    [DataMember(Name = "truncated")] public bool Truncated { get; set; }
+
+    public static ProcessDialogSummary FromMessages(IEnumerable<string> messages)
+    {
+        var summary = new ProcessDialogSummary();
+        var counts = new Dictionary<string, ProcessDialogCount>(StringComparer.Ordinal);
+        foreach (var message in messages)
+        {
+            if (counts.TryGetValue(message, out var item))
+            {
+                item.Count++;
+                continue;
+            }
+            if (counts.Count == 50)
+            {
+                summary.Truncated = true;
+                continue;
+            }
+            item = new ProcessDialogCount { Message = message, Count = 1 };
+            counts.Add(message, item);
+            summary.Messages.Add(item);
+        }
+        return summary;
+    }
+}
+
+[DataContract]
+public sealed class ProcessDialogCount
+{
+    [DataMember(Name = "message")] public string Message { get; set; } = string.Empty;
+    [DataMember(Name = "count")] public int Count { get; set; }
 }
 
 [DataContract]

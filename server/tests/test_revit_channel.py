@@ -639,6 +639,41 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(remote.finish_job.await_count, 2)
                         self.assertIn(remote.response_name, remote.deleted_names)
 
+    async def test_process_models_partial_result_is_terminal(self) -> None:
+        remote = FakeRemoteHost()
+        partial = {
+            "command": "process-models",
+            "success": False,
+            "partial": True,
+            "message": "Processed 0 of 1 models; 1 failed, 0 skipped.",
+            "data": {
+                "models": [
+                    {
+                        "path": r"C:\Models\missing.rvt",
+                        "status": "failed",
+                        "error": "File not found.",
+                    }
+                ],
+                "total": 1,
+                "done": 0,
+                "failed": 1,
+            },
+            "elapsedMs": 5,
+        }
+
+        async def read_response(name, cleanup_names, download_artifact, save_to):
+            partial["correlationId"] = json.loads(remote.written_content)["correlationId"]
+            return json.dumps(partial), None
+
+        remote.finish_job = AsyncMock(side_effect=read_response)
+        result = await RevitReadChannel(remote)._execute_serial(
+            ReadJob("process-models", {"command": "process-models"}), 10, 300
+        )
+
+        self.assertEqual(result, partial)
+        self.assertEqual(remote.finish_job.await_count, 1)
+        self.assertIn(remote.response_name, remote.deleted_names)
+
     async def test_list_views_progress_name_containing_terminal_text_is_intermediate(self) -> None:
         for elapsed_ms in (0, 61000):
             with self.subTest(elapsed_ms=elapsed_ms):

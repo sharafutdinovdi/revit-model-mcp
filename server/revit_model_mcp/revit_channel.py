@@ -742,6 +742,8 @@ class RevitReadChannel:
 def _is_intermediate_response(response: dict[str, Any]) -> bool:
     if response.get("partial") is not True:
         return False
+    if response.get("command") == "process-models":
+        return False
     message = response.get("message")
     if isinstance(message, str) and message.startswith("Processed "):
         return True

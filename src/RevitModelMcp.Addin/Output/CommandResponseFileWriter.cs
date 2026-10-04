@@ -50,7 +50,22 @@ internal sealed class CommandResponseFileWriter
         catch (Exception exception)
         {
             PluginLog.Error($"Response write failed. Command='{response.Command}'. Path='{_path}'.", exception);
-            throw;
+            var message = $"Response delivery failed ({exception.GetType().Name}).";
+            var failure = CommandResponse<object>.Fail(response.Command, message, response.ElapsedMs, _correlationId);
+            failure.Error = message;
+            failure.Responder = _responder;
+            try
+            {
+                if (ResponseDelivery.Current is { } delivery)
+                    delivery(CommandResponseJsonSerializer.Serialize(failure));
+                else
+                    CommandResponseJsonFile.Write(_path, failure);
+            }
+            catch (Exception fallbackException)
+            {
+                PluginLog.Error($"Fallback response write failed. Command='{response.Command}'. Path='{_path}'.", fallbackException);
+                throw;
+            }
         }
     }
 

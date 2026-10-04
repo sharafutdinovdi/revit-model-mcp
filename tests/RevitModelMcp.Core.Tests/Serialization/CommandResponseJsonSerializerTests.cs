@@ -11,6 +11,54 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task ProcessModels_SerializesDoneFailedAndSkippedModels()
+    {
+        var data = new ActionResultData
+        {
+            Total = 3, Done = 1, Failed = 1, SkippedCount = 1,
+            Summary = "Processed 1 of 3 models; 1 failed, 1 skipped.",
+            Models =
+            [
+                new ProcessModelResult
+                {
+                    Path = @"C:\Models\Done.rvt", Status = "done",
+                    Opened = new ProcessModelOpenedResult { Mode = "detached" },
+                    Code = new ProcessModelCodeResult { ReturnValue = 42, ReturnValueMarker = "return-marker", Log = ["ran"] },
+                    Exports = [new ActionResultData { Folder = @"C:\Out\Done", Files = [new ExportedFile { Name = "Done.ifc", SizeBytes = 10 }] }],
+                    Saved = @"C:\Out\Done.rvt",
+                    DialogsDismissed = ProcessDialogSummary.FromMessages(["Space warning", "Space warning", "Other warning"])
+                },
+                new ProcessModelResult { Path = @"C:\Models\Missing.rvt", Status = "failed", Error = "File not found." },
+                new ProcessModelResult { Path = @"C:\Models\Open.rvt", Status = "skipped", Error = "Already open." }
+            ]
+        };
+
+        using var json = Parse(CommandResponse<ActionResultData>.PartialResult("process-models", data, data.Summary!, 5));
+        var models = json.RootElement.GetProperty("data").GetProperty("models");
+        await Assert.That(models.GetArrayLength()).IsEqualTo(3);
+        await Assert.That(models[0].GetProperty("code").GetProperty("returnValue").GetInt32()).IsEqualTo(42);
+        await Assert.That(models[0].GetProperty("exports")[0].GetProperty("files")[0].GetProperty("name").GetString()).IsEqualTo("Done.ifc");
+        await Assert.That(models[0].GetProperty("saved").GetString()).IsEqualTo(@"C:\Out\Done.rvt");
+        var dismissed = models[0].GetProperty("dialogsDismissed");
+        await Assert.That(dismissed.GetProperty("messages")[0].GetProperty("count").GetInt32()).IsEqualTo(2);
+        await Assert.That(dismissed.GetProperty("truncated").GetBoolean()).IsFalse();
+        await Assert.That(models[1].GetProperty("error").GetString()).IsEqualTo("File not found.");
+        await Assert.That(models[1].GetProperty("dialogsDismissed").GetProperty("messages").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(models[2].GetProperty("status").GetString()).IsEqualTo("skipped");
+    }
+
+    [Test]
+    public async Task ProcessModels_DismissedMessagesLimitDistinctEntries()
+    {
+        var summary = ProcessDialogSummary.FromMessages(
+            Enumerable.Range(0, 51).Select(index => $"Warning {index}").Concat(["Warning 0"]));
+
+        await Assert.That(summary.Messages.Count).IsEqualTo(50);
+        await Assert.That(summary.Messages[0].Count).IsEqualTo(2);
+        await Assert.That(summary.Truncated).IsTrue();
+    }
+
+    [Test]
     public async Task ExecuteCode_SerializesLimitedJsonValuesAndDiagnostics()
     {
         var response = CommandResponse<ActionResultData>.Ok("execute-code", new ActionResultData
