@@ -9,6 +9,20 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task SelectWritableInPlacePaths_SeparatesReadOnlySources()
+    {
+        var (writable, refused) = ProcessModelsJob.SelectWritableInPlacePaths(
+            ["A.rvt", "B.rvt", "C.rvt"], path => path == "B.rvt");
+
+        await Assert.That(writable).IsEquivalentTo(["A.rvt", "C.rvt"]);
+        await Assert.That(refused).IsEquivalentTo(["B.rvt"]);
+        var (none, allRefused) = ProcessModelsJob.SelectWritableInPlacePaths(
+            ["B.rvt"], path => path == "B.rvt");
+        await Assert.That(none).IsEmpty();
+        await Assert.That(allRefused).IsEquivalentTo(["B.rvt"]);
+    }
+
+    [Test]
     public async Task ProcessModels_ParsesNestedActionsAndRejectsInvalidSources()
     {
         var valid = ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\Models\\A.rvt"],"steps":[{"command":"set-parameter","elementId":1,"parameter":"Mark","value":"done"}],"code":{"code":"return 1;","transaction":"auto"},"exports":[{"format":"ifc"}],"save":{"mode":"output_dir","outputDir":"C:\\Out"}}}""");

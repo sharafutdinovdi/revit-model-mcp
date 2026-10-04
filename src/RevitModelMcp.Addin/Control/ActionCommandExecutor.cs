@@ -177,8 +177,23 @@ internal static class ActionCommandExecutor
             foreach (var path in paths) DocumentPathValidator.Validate(path);
             if (paths.Select(path => path.Replace('/', '\\')).Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Count)
                 throw new ArgumentException("The source contains duplicate models.");
+            var refused = new List<ProcessModelResult>();
             if (request.Save?.Mode == "in_place" && !request.DryRun)
             {
+                var (writable, readOnly) = ProcessModelsJob.SelectWritableInPlacePaths(paths,
+                    path => new FileInfo(path).IsReadOnly);
+                refused = readOnly.Select(path => new ProcessModelResult
+                    { Path = path, Status = "refused", Error = "read-only file" }).ToList();
+                paths = writable;
+                if (paths.Count == 0)
+                {
+                    data = new ActionResultData { Models = refused, Total = refused.Count };
+                    response = CommandResponse<ActionResultData>.Fail(job.Command,
+                        "All source models were refused: read-only file.", stopwatch.ElapsedMilliseconds);
+                    response.Data = data;
+                    WriteProcessResponse(application, job, startedAt, response);
+                    return;
+                }
                 var identity = string.Join("\n", paths);
                 var arguments = ProcessConfirmationArguments(request);
                 var state = string.Join("\n", paths.Select(path => File.Exists(path)
@@ -188,6 +203,8 @@ internal static class ActionCommandExecutor
                     data = new ActionResultData
                     {
                         NeedsConfirmation = true,
+                        Models = refused,
+                        Total = paths.Count + refused.Count,
                         ConfirmationText = "Save in place will overwrite these source models: " + string.Join(", ", paths),
                         ConfirmToken = ConfirmationStore.Tokens.Issue("process-models", identity, arguments, state),
                         Summary = $"Needs confirmation to save {paths.Count} models in place."
@@ -204,7 +221,7 @@ internal static class ActionCommandExecutor
             }
             else if (request.ConfirmToken is not null)
                 throw new ArgumentException("confirm_token applies only to in_place saves.");
-            data = new ActionResultData { Models = [], DryRun = request.DryRun, Total = paths.Count };
+            data = new ActionResultData { Models = refused, DryRun = request.DryRun, Total = paths.Count + refused.Count };
             foreach (var path in paths)
             {
                 var model = ProcessOneModel(application, job, request, path, paths);

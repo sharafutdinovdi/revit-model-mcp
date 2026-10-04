@@ -802,6 +802,19 @@ public class SheetViewPlacement
 [DataContract]
 public sealed class ProcessModelsJob
 {
+    public static (List<string> Writable, List<string> Refused) SelectWritableInPlacePaths(
+        IEnumerable<string> paths, Func<string, bool> isReadOnly)
+    {
+        var writable = new List<string>();
+        var refused = new List<string>();
+        foreach (var path in paths)
+        {
+            if (isReadOnly(path)) refused.Add(path);
+            else writable.Add(path);
+        }
+        return (writable, refused);
+    }
+
     [DataMember(Name = "paths")] public List<string>? Paths { get; set; }
     [DataMember(Name = "folder")] public string? Folder { get; set; }
     [DataMember(Name = "recursive")] public bool Recursive { get; set; }
