@@ -9,6 +9,30 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    [Arguments(2700, true)]
+    [Arguments(2700.005, true)]
+    [Arguments(2794, false)]
+    [Arguments(2888, false)]
+    [Arguments(double.NaN, false)]
+    [Arguments(double.PositiveInfinity, false)]
+    public async Task PlacementOffset_VerifiesElevationFromLevel(double actualMm, bool matches)
+    {
+        await Assert.That(FamilyPlacementContract.OffsetMatches(2700, actualMm)).IsEqualTo(matches);
+    }
+
+    [Test]
+    public async Task PlaceFamilies_PreservesLevelOffsetForExplicitAndRoomPlacements()
+    {
+        var explicitPlacement = ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Diffuser","typeName":"A","level":"Level 1","xMm":0,"yMm":0,"zMm":2700}]}""");
+        var roomPlacement = ControlJobParser.Parse("""{"command":"place-families","atRooms":{"family":"Diffuser","typeName":"A","level":"Level 1","zMm":2700}}""");
+        await Assert.That(explicitPlacement.Action!.Placements![0].ZMm).IsEqualTo(2700);
+        await Assert.That(roomPlacement.Action!.AtRooms!.ZMm).IsEqualTo(2700);
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("place-families",
+            new ActionResultData { InstanceOffsetsMm = new Dictionary<string, double?> { ["42"] = 2700, ["43"] = null } }, 1));
+        await Assert.That(json).Contains("\"instanceOffsetsMm\":{\"42\":2700,\"43\":null}");
+    }
+
+    [Test]
     public async Task OverrideGraphics_ValidatesOptionsAndBatchStep()
     {
         var valid = ControlJobParser.Parse("""{"command":"override-graphics","elementIds":[42],"color":"#12AB34","viewScope":"list","views":["Level 1"],"lineWeight":16,"transparency":100}""");

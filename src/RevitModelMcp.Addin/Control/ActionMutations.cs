@@ -314,6 +314,7 @@ internal static class ActionMutations
             throw new ArgumentException($"Host {hostId} must be a wall, floor or ceiling.");
         FamilyInstance instance;
         var rotationPoint = point;
+        var faceHosted = host is not null && symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased;
         if (host is null)
             instance = document.Create.NewFamilyInstance(point, symbol, level, StructuralType.NonStructural);
         else if (symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased)
@@ -327,6 +328,18 @@ internal static class ActionMutations
         }
         else
             instance = document.Create.NewFamilyInstance(point, symbol, host, level, StructuralType.NonStructural);
+        if (!faceHosted)
+        {
+            document.Regenerate();
+            var offset = InstanceOffset(instance);
+            if (offset is null) throw new InvalidOperationException("The placed instance has no elevation offset parameter.");
+            if (!FamilyPlacementContract.OffsetMatches(zMm, offset.AsDouble().ToMillimeters()))
+            {
+                if (offset.IsReadOnly || !offset.Set(Millimeters(zMm)))
+                    throw new InvalidOperationException("The placed instance elevation offset could not be set.");
+                document.Regenerate();
+            }
+        }
         if (action.RotationDeg != 0)
             instance.Rotate(Line.CreateBound(rotationPoint, rotationPoint + XYZ.BasisZ), action.RotationDeg * Math.PI / 180);
         if (parameters is not null)
@@ -336,7 +349,20 @@ internal static class ActionMutations
                 if (candidate.Owner != "instance") throw new ArgumentException($"Parameter '{name}' is not an instance parameter.");
                 SetParameter(document, new ActionJobContract { ElementId = RevitValueReader.GetId(instance.Id), Parameter = name, Value = value });
             }
+        document.Regenerate();
+        if (!faceHosted && !FamilyPlacementContract.OffsetMatches(zMm, InstanceOffset(instance)!.AsDouble().ToMillimeters()))
+            throw new InvalidOperationException("The placed instance elevation offset does not match z_mm.");
         return instance;
+    }
+
+    private static Parameter? InstanceOffset(FamilyInstance instance)
+    {
+        foreach (var identifier in new[] { BuiltInParameter.INSTANCE_ELEVATION_PARAM, BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM })
+        {
+            var parameter = instance.get_Parameter(identifier);
+            if (parameter is not null && parameter.StorageType == StorageType.Double && parameter.HasValue) return parameter;
+        }
+        return null;
     }
 
     private static (Face Face, IntersectionResult Projection) ClosestHostFace(Element host, XYZ point)
@@ -400,7 +426,7 @@ internal static class ActionMutations
     {
         var failed = new List<PlacementFailure>();
         var skipped = new List<PlacementFailure>();
-        var result = new ActionResultData { Loaded = [], Failed = failed, Skipped = skipped, CreatedElementIds = [], PerTypeCounts = [] };
+        var result = new ActionResultData { Loaded = [], Failed = failed, Skipped = skipped, CreatedElementIds = [], PerTypeCounts = [], InstanceOffsetsMm = [] };
         foreach (var path in action.Load ?? []) result.Loaded.Add(LoadFamily(document, path, false, false));
         var placements = action.Placements ?? [];
         if (action.AtRooms is not null)
@@ -450,6 +476,8 @@ internal static class ActionMutations
                 }, placement.ZMm, placement.HostId, placement.Parameters);
                 if (subtransaction.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Placement was rolled back.");
                 result.CreatedElementIds.Add(RevitValueReader.GetId(instance.Id));
+                result.InstanceOffsetsMm[RevitValueReader.GetId(instance.Id).ToString(System.Globalization.CultureInfo.InvariantCulture)] =
+                    InstanceOffset(instance)?.AsDouble().ToMillimeters();
                 var key = $"{placement.Family}: {placement.TypeName}";
                 result.PerTypeCounts[key] = result.PerTypeCounts.TryGetValue(key, out var count) ? count + 1 : 1;
             }

@@ -1506,6 +1506,9 @@ public sealed partial class ControlJobContract
 [DataContract]
 public sealed class FamilyPlacementContract : SheetViewPlacement
 {
+    public static bool OffsetMatches(double requestedMm, double actualMm) =>
+        !double.IsNaN(actualMm) && !double.IsInfinity(actualMm) && Math.Abs(requestedMm - actualMm) <= 0.01;
+
     [DataMember(Name = "family")] public string? Family { get; set; }
     [DataMember(Name = "typeName")] public string? TypeName { get; set; }
     [DataMember(Name = "zMm")] public double ZMm { get; set; }
@@ -1632,6 +1635,7 @@ public sealed class ActionResultData
     [DataMember(Name = "outsideFilterCount", EmitDefaultValue = false)] public int? OutsideFilterCount { get; set; }
     [DataMember(Name = "id", EmitDefaultValue = false)] public long? Id { get; set; }
     [DataMember(Name = "category", EmitDefaultValue = false)] public string? Category { get; set; }
+    [DataMember(Name = "instanceOffsetsMm", EmitDefaultValue = false)] public Dictionary<string, double?>? InstanceOffsetsMm { get; set; }
     [DataMember(Name = "level", EmitDefaultValue = false)] public string? Level { get; set; }
     [DataMember(Name = "lengthMm", EmitDefaultValue = false)] public double? LengthMm { get; set; }
     [DataMember(Name = "segmentIds", EmitDefaultValue = false)] public List<long>? SegmentIds { get; set; }
