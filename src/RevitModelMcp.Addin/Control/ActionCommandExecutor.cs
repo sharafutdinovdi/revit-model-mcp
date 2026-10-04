@@ -881,7 +881,7 @@ internal static class ActionCommandExecutor
             "copy" or "mirror" or "update-parameters" => data.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
-            "load-family" or "place-families" => data.Count ?? 0,
+            "load-family" or "place-families" or "create-mep-run" => data.Count ?? 0,
             "apply-view-template" or "place-views-on-sheet" => data.Count ?? 0,
             _ => 0
         };
@@ -1044,6 +1044,8 @@ internal static class ActionCommandExecutor
                 return ActionMutations.PlaceFamilies(document, action);
             case "create-wall":
                 return ActionMutations.CreateWall(document, action);
+            case "create-mep-run":
+                return ActionMutations.CreateMepRun(document, action);
             case "set-parameter":
                 return ActionMutations.SetParameter(document, action);
             case "create-view":

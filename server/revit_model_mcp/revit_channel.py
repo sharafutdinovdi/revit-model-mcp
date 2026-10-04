@@ -79,6 +79,7 @@ ACTION_COMMANDS = frozenset(
         "load-family",
         "place-families",
         "create-wall",
+        "create-mep-run",
         "create-view",
         "duplicate-view",
         "apply-view-template",

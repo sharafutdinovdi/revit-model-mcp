@@ -41,6 +41,7 @@ ACTION_TOOLS = {
     "revit_load_family",
     "revit_place_families",
     "revit_create_wall",
+    "revit_create_mep_run",
     "revit_create_view",
     "revit_duplicate_view",
     "revit_apply_view_template",
@@ -1526,3 +1527,58 @@ def test_create_view_batch_mapping_and_validation():
     assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-view"
     with pytest.raises((ToolError, ValueError)):
         asyncio.run(server.call_tool("revit_create_view", {"kind": "section"}))
+
+
+def test_create_mep_run_maps_points_sizes_and_batch():
+    import asyncio
+
+    server, execute, _ = action_server()
+    arguments = {
+        "kind": "duct",
+        "points_mm": [[0, 0], [1000, 0], [1000, 1000, 3000]],
+        "level": "Level 1",
+        "width_mm": 400,
+        "height_mm": 200,
+        "connect_to": 42,
+        "dry_run": True,
+    }
+    asyncio.run(server.call_tool("revit_create_mep_run", arguments))
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "create-mep-run"
+    assert payload["pointsMm"] == arguments["points_mm"]
+    assert payload["widthMm"] == 400
+    assert payload["heightMm"] == 200
+    assert payload["connectTo"] == 42
+    assert payload["dryRun"] is True
+
+    asyncio.run(
+        server.call_tool(
+            "revit_batch", {"steps": [{"action": "create_mep_run", "args": arguments}]}
+        )
+    )
+    assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-mep-run"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"kind": "duct", "points_mm": [[0, 0]], "level": "L1"},
+        {"kind": "pipe", "points_mm": [[0, 0], [0, 0]], "level": "L1"},
+        {"kind": "conduit", "points_mm": [[0, 0], [100, 0]], "level": "L1", "width_mm": 10},
+        {"kind": "cable_tray", "points_mm": [[0, 0], [100, 0]], "level": "L1", "diameter_mm": 10},
+        {
+            "kind": "duct",
+            "points_mm": [[0, 0], [100, 0]],
+            "level": "L1",
+            "width_mm": 10,
+            "diameter_mm": 10,
+        },
+    ],
+)
+def test_create_mep_run_rejects_invalid_geometry_and_sizes(arguments):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises((ToolError, ValueError)):
+        asyncio.run(server.call_tool("revit_create_mep_run", arguments))
+    execute.assert_not_awaited()

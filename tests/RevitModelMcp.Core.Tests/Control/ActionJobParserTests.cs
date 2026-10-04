@@ -29,6 +29,38 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task CreateMepRun_ParsesDirectAndBatchActions()
+    {
+        const string direct = """{"command":"create-mep-run","kind":"duct","pointsMm":[[0,0],[1000,0],[1000,1000,3000]],"level":"Level 1","widthMm":400,"heightMm":200,"connectTo":42}""";
+        var result = ControlJobParser.Parse(direct);
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.PointsMm!.Count).IsEqualTo(3);
+        await Assert.That(result.Action.MepHeightMm).IsEqualTo(200);
+        await Assert.That(result.Action.ConnectTo).IsEqualTo(42);
+        var batch = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"create-mep-run","kind":"pipe","pointsMm":[[0,0],[1000,0]],"level":"Level 1"}]}""");
+        await Assert.That(batch.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(batch.Action!.Steps[0].Command).IsEqualTo("create-mep-run");
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("create-mep-run", new ActionResultData
+        {
+            SegmentIds = [11, 12], FittingIds = [13], UnjoinedPairs = [[11, 12]], LengthMm = 2000
+        }, 1));
+        await Assert.That(json).Contains("\"segmentIds\":[11,12]");
+        await Assert.That(json).Contains("\"fittingIds\":[13]");
+        await Assert.That(json).Contains("\"unjoinedPairs\":[[11,12]]");
+    }
+
+    [Test]
+    [Arguments("""{"command":"create-mep-run","kind":"pipe","pointsMm":[[0,0]],"level":"L1"}""")]
+    [Arguments("""{"command":"create-mep-run","kind":"pipe","pointsMm":[[0,0],[0,0]],"level":"L1"}""")]
+    [Arguments("""{"command":"create-mep-run","kind":"conduit","pointsMm":[[0,0],[100,0]],"level":"L1","widthMm":10}""")]
+    [Arguments("""{"command":"create-mep-run","kind":"cable_tray","pointsMm":[[0,0],[100,0]],"level":"L1","diameterMm":10}""")]
+    [Arguments("""{"command":"create-mep-run","kind":"duct","pointsMm":[[0,0],[100,0]],"level":"L1","widthMm":10,"diameterMm":10}""")]
+    public async Task CreateMepRun_RejectsInvalidInputs(string json)
+    {
+        await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SelectWritableInPlacePaths_SeparatesReadOnlySources()
     {
         var (writable, refused) = ProcessModelsJob.SelectWritableInPlacePaths(
