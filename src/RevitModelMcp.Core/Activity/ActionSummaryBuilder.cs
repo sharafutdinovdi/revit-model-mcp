@@ -13,6 +13,7 @@ public sealed class ActionSummaryContext
     public string? TypeName { get; init; }
     public string? Parameter { get; init; }
     public string? WallType { get; init; }
+    public bool Reset { get; init; }
     public int BatchStepCount { get; init; }
     public int ProcessTotal { get; init; }
     public int ProcessFailed { get; init; }
@@ -48,6 +49,7 @@ public static class ActionSummaryBuilder
             "isolate" => context.Count == 0
                 ? $"Reset temporary isolation in {doc}."
                 : $"Isolated {Plural(context.Count, "element")} in {doc}.",
+            "override-graphics" => $"{(context.DryRun ? context.Reset ? "Would reset" : "Would highlight" : context.Reset ? "Reset" : "Highlighted")} {Plural(context.Count, "element")} in {doc}.",
             "move" => $"{(context.DryRun ? "Would move" : "Moved")} {Plural(context.Count, "element")} in {doc}.",
             "rotate" => $"{(context.DryRun ? "Would rotate" : "Rotated")} {Plural(context.Count, "element")} in {doc}.",
             "copy" => $"{(context.DryRun ? "Would copy" : "Copied")} {Plural(context.Count, "element")} in {doc}.",

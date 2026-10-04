@@ -65,6 +65,7 @@ ACTION_TOOL_NAMES = {
     "revit_select",
     "revit_show",
     "revit_isolate",
+    "revit_override_graphics",
     "revit_move",
     "revit_rotate",
     "revit_copy",
@@ -423,6 +424,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
         self.assertTrue(all(not tool.annotations.read_only_hint for tool in action_tools.values()))
         for name, required in {
+            "revit_override_graphics": {"element_ids"},
             "revit_create_view": {"kind"},
             "revit_duplicate_view": {"view"},
             "revit_apply_view_template": {"views", "template"},

@@ -226,6 +226,10 @@
       "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
+      "name": "revit_override_graphics",
+      "description": "Colour elements in selected model views; reset restores overrides saved in this Revit session."
+    },
+    {
       "name": "revit_rotate",
       "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center."
     },

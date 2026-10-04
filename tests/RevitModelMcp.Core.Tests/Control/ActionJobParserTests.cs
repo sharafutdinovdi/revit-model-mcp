@@ -9,6 +9,26 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    public async Task OverrideGraphics_ValidatesOptionsAndBatchStep()
+    {
+        var valid = ControlJobParser.Parse("""{"command":"override-graphics","elementIds":[42],"color":"#12AB34","viewScope":"list","views":["Level 1"],"lineWeight":16,"transparency":100}""");
+        await Assert.That(valid.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(valid.Action!.Color).IsEqualTo("#12AB34");
+        await Assert.That(valid.Action.Views).IsEquivalentTo(["Level 1"]);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"override-graphics","elementIds":[42]}]}""").Kind)
+            .IsEqualTo(ControlJobKind.Action);
+        foreach (var json in new[]
+        {
+            """{"command":"override-graphics","elementIds":[]}""",
+            """{"command":"override-graphics","elementIds":[42],"color":"red"}""",
+            """{"command":"override-graphics","elementIds":[42],"lineWeight":17}""",
+            """{"command":"override-graphics","elementIds":[42],"transparency":101}""",
+            """{"command":"override-graphics","elementIds":[42],"viewScope":"list"}"""
+        })
+            await Assert.That(ControlJobParser.Parse(json).Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task SelectWritableInPlacePaths_SeparatesReadOnlySources()
     {
         var (writable, refused) = ProcessModelsJob.SelectWritableInPlacePaths(

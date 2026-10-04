@@ -45,6 +45,7 @@ ParameterValue = Union[
 Point = Annotated[list[Number], Field(min_length=2, max_length=2)]
 CopyCount = Annotated[int, Field(strict=True, ge=1, le=100)]
 MaxElements = Annotated[int, Field(strict=True, ge=1, le=20000)]
+ViewReferences = Annotated[list[Name | ElementId], Field(min_length=1)]
 
 
 class UpdateFilters(BaseModel):
@@ -108,6 +109,16 @@ class SheetPlacement(BaseModel):
 _BATCH_FIELDS = {
     "select": {"element_ids": (ElementIds, ...)},
     "isolate": {"element_ids": (ElementIds, ...), "reset": (bool, False)},
+    "override_graphics": {
+        "element_ids": (NonEmptyIds, ...),
+        "color": (Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")], "#FF0000"),
+        "views": (Literal["active", "all"] | ViewReferences, "active"),
+        "halftone_others": (bool, False),
+        "line_weight": (Annotated[int, Field(strict=True, ge=1, le=16)] | None, None),
+        "fill": (bool, True),
+        "transparency": (Annotated[int, Field(strict=True, ge=0, le=100)], 0),
+        "reset": (bool, False),
+    },
     "move": {
         "element_ids": (NonEmptyIds, ...),
         "dx_mm": (Number, ...),
@@ -216,6 +227,7 @@ for _action in (
     "duplicate_view",
     "apply_view_template",
     "create_sheet",
+    "override_graphics",
 ):
     _BATCH_FIELDS[_action]["dry_run"] = (bool, False)
 _BATCH_MODELS = {
@@ -244,6 +256,7 @@ class BatchStep(BaseModel):
         "duplicate_view",
         "apply_view_template",
         "create_sheet",
+        "override_graphics",
     ]
     args: dict
 
@@ -276,7 +289,7 @@ class BatchStep(BaseModel):
             first, *rest = key.split("_")
             return first + "".join(part.title() for part in rest)
 
-        return {
+        payload = {
             "command": self.action.replace("_", "-"),
             **{
                 ("queryFilters" if key == "filters" else camel(key)): (
@@ -290,6 +303,12 @@ class BatchStep(BaseModel):
                 if key != "parameter_id" or value is not None
             },
         }
+        if self.action == "override_graphics":
+            views = payload.pop("views")
+            payload["viewScope"] = views if isinstance(views, str) else "list"
+            if isinstance(views, list):
+                payload["views"] = [str(view) for view in views]
+        return payload
 
 
 class ProcessOpen(BaseModel):
@@ -620,6 +639,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_select": "Select Elements",
             "revit_show": "Show Elements",
             "revit_isolate": "Isolate Elements",
+            "revit_override_graphics": "Highlight Elements",
             "revit_move": "Move Elements",
             "revit_rotate": "Rotate Elements",
             "revit_copy": "Copy Elements",
@@ -1006,6 +1026,35 @@ def register_actions(mcp, execute, host_provider) -> None:
             dxMm=dx_mm,
             dyMm=dy_mm,
             dzMm=dz_mm,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_override_graphics(
+        element_ids: NonEmptyIds,
+        color: Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$")] = "#FF0000",
+        views: Literal["active", "all"] | ViewReferences = "active",
+        halftone_others: bool = False,
+        line_weight: Annotated[int, Field(strict=True, ge=1, le=16)] | None = None,
+        fill: bool = True,
+        transparency: Annotated[int, Field(strict=True, ge=0, le=100)] = 0,
+        reset: bool = False,
+        document: Document = None,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        """Colour elements in selected model views; reset restores overrides saved in this Revit session."""
+        return await send(
+            "override-graphics",
+            elementIds=element_ids,
+            color=color,
+            viewScope=views if isinstance(views, str) else "list",
+            views=[str(view) for view in views] if isinstance(views, list) else None,
+            halftoneOthers=halftone_others,
+            lineWeight=line_weight,
+            fill=fill,
+            transparency=transparency,
+            reset=reset,
             dryRun=dry_run,
             document=document,
         )

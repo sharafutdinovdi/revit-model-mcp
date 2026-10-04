@@ -35,6 +35,7 @@ Jobs without `targetDocument` retain the active-document behavior.
 | --- | --- | --- |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
 | `revit_show` | `element_ids`, `select=true` | Show nonempty IDs; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
+| `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
 | `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
 | `revit_rotate` | `element_ids`, `angle_deg`, `center_mm=null` | Rotate around a vertical axis through the given model XY point in mm or the combined bounding box center. Pinned elements are refused. |
@@ -154,7 +155,7 @@ With `stop_on_error=true`, the first failed family rolls back the whole project 
 
 `type_name` and `wall_type` are required arguments that accept `null`.
 
-`revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_update_parameters`, `revit_place_family`, `revit_create_wall`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet`, `revit_set_parameter` and `revit_delete` accept `dry_run=false`.
+`revit_override_graphics`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_update_parameters`, `revit_place_family`, `revit_create_wall`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet`, `revit_set_parameter` and `revit_delete` accept `dry_run=false`.
 A dry run executes the mutation, reads its prospective result, and rolls back its transaction. Dry runs never commit. The activity pane lists elements reported by the action result.
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.
