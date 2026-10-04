@@ -1862,3 +1862,30 @@ public static class CadWallPlanner
         }
     }
 }
+
+public static class MepRunSizing
+{
+    public static string DiameterParameter(string kind) => kind switch
+    {
+        "pipe" => "RBS_PIPE_DIAMETER_PARAM",
+        "conduit" => "RBS_CONDUIT_DIAMETER_PARAM",
+        "duct" => "RBS_CURVE_DIAMETER_PARAM",
+        _ => throw new ArgumentException("Diameter requires pipe, conduit or round duct.", nameof(kind))
+    };
+
+    public static double ResolvePipeDiameter(double requestedMm, IEnumerable<double> availableSizesMm)
+    {
+        var sizes = availableSizesMm.Distinct().OrderBy(size => size).ToList();
+        var match = sizes.FindIndex(size => Math.Abs(size - requestedMm) <= 0.01);
+        if (match >= 0) return sizes[match];
+        throw new ArgumentException(PipeSizeError(requestedMm, sizes));
+    }
+
+    public static string PipeSizeError(double requestedMm, IEnumerable<double> availableSizesMm)
+    {
+        var sizes = string.Join(", ", availableSizesMm.Distinct().OrderBy(size => size)
+            .Select(size => size.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)));
+        return $"Cannot set pipe diameter {requestedMm.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} mm. " +
+            $"Available pipe segment sizes (mm): {(sizes.Length == 0 ? "none" : sizes)}.";
+    }
+}

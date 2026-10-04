@@ -61,6 +61,26 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("pipe", "RBS_PIPE_DIAMETER_PARAM")]
+    [Arguments("conduit", "RBS_CONDUIT_DIAMETER_PARAM")]
+    [Arguments("duct", "RBS_CURVE_DIAMETER_PARAM")]
+    public async Task MepRunSizing_SelectsDiameterParameter(string kind, string expected)
+    {
+        await Assert.That(MepRunSizing.DiameterParameter(kind)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task MepRunSizing_ResolvesNominalSizesAndReportsAvailableSizes()
+    {
+        await Assert.That(MepRunSizing.ResolvePipeDiameter(50, [25, 50.000001, 100])).IsEqualTo(50.000001);
+        await Assert.That(() => MepRunSizing.ResolvePipeDiameter(51, [100, 25, 50, 25]))
+            .Throws<ArgumentException>().WithMessage("Cannot set pipe diameter 51 mm. Available pipe segment sizes (mm): 25, 50, 100.");
+        await Assert.That(() => MepRunSizing.ResolvePipeDiameter(50, []))
+            .Throws<ArgumentException>().WithMessage("Cannot set pipe diameter 50 mm. Available pipe segment sizes (mm): none.");
+        await Assert.That(() => MepRunSizing.DiameterParameter("cable_tray")).Throws<ArgumentException>();
+    }
+
+    [Test]
     public async Task CadActions_ValidateArgumentsAndTrustedPaths()
     {
         var link = ControlJobParser.Parse("""{"command":"link-cad","path":"C:\\Plans\\Floor.dwg","origin":"center","units":"mm","layers":["Walls"]}""");

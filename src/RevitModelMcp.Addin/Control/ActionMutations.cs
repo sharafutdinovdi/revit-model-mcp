@@ -584,7 +584,40 @@ internal static class ActionMutations
             throw new ArgumentException("widthMm and heightMm require a rectangular duct type.");
         SetSize(action.WidthMm, action.Kind == "cable_tray" ? BuiltInParameter.RBS_CABLETRAY_WIDTH_PARAM : BuiltInParameter.RBS_CURVE_WIDTH_PARAM);
         SetSize(action.MepHeightMm, action.Kind == "cable_tray" ? BuiltInParameter.RBS_CABLETRAY_HEIGHT_PARAM : BuiltInParameter.RBS_CURVE_HEIGHT_PARAM);
-        SetSize(action.DiameterMm, action.Kind == "conduit" ? BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM : BuiltInParameter.RBS_CURVE_DIAMETER_PARAM);
+        if (action.DiameterMm is double diameter)
+        {
+            var parameterId = (BuiltInParameter)Enum.Parse(typeof(BuiltInParameter), MepRunSizing.DiameterParameter(action.Kind));
+            if (segment is Pipe pipe)
+            {
+                using var preferences = pipe.PipeType.RoutingPreferenceManager;
+                using var conditions = new RoutingConditions(RoutingPreferenceErrorLevel.None);
+                using var condition = new RoutingCondition(Millimeters(diameter));
+                conditions.AppendCondition(condition);
+                var segmentId = preferences.GetMEPPartId(RoutingPreferenceRuleGroupType.Segments, conditions);
+                var pipeSegment = pipe.Document.GetElement(segmentId) as PipeSegment;
+                var sizes = pipeSegment is not null
+                    ? pipeSegment.GetSizes().Select(size => size.NominalDiameter.ToMillimeters()).ToList()
+                    : Enumerable.Range(0, preferences.GetNumberOfRules(RoutingPreferenceRuleGroupType.Segments))
+                        .Select(index => pipe.Document.GetElement(preferences.GetRule(RoutingPreferenceRuleGroupType.Segments, index).MEPPartId))
+                        .OfType<PipeSegment>().SelectMany(candidate => candidate.GetSizes())
+                        .Select(size => size.NominalDiameter.ToMillimeters()).ToList();
+                if (pipeSegment is null) throw new ArgumentException(MepRunSizing.PipeSizeError(diameter, sizes));
+                var nominalDiameter = MepRunSizing.ResolvePipeDiameter(diameter, sizes);
+                try
+                {
+                    SetSize(nominalDiameter, parameterId);
+                }
+                catch (Autodesk.Revit.Exceptions.ArgumentException)
+                {
+                    throw new ArgumentException(MepRunSizing.PipeSizeError(diameter, sizes));
+                }
+                catch (ArgumentException)
+                {
+                    throw new ArgumentException(MepRunSizing.PipeSizeError(diameter, sizes));
+                }
+            }
+            else SetSize(diameter, parameterId);
+        }
 
         void SetSize(double? millimeters, BuiltInParameter parameterId)
         {
