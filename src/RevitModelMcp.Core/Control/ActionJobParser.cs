@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -43,6 +43,10 @@ public static class ActionJobParser
                 IncludeTypeParameters = job.IncludeTypeParameters ?? false,
                 Family = job.Family,
                 TypeName = job.TypeName,
+                Paths = job.Paths,
+                Load = job.Load,
+                Placements = job.Placements,
+                AtRooms = job.AtRooms,
                 Level = job.Level,
                 XMm = job.XMm ?? 0,
                 YMm = job.YMm ?? 0,
@@ -194,9 +198,9 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
+                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
                         "Unknown batch step.");
-                    var parsed = Parse(stepCommand, step!);
+                    var parsed = Parse(stepCommand, step!, trustedNetworkRoots);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
                     action.Steps.Add(parsed);
                 }
@@ -287,6 +291,32 @@ public static class ActionJobParser
                 Require(Finite(action.XMm, action.YMm, action.RotationDeg), "Placement coordinates and rotation must be finite.");
                 Require(action.TypeName is null || !string.IsNullOrWhiteSpace(action.TypeName), "typeName must not be blank.");
             }
+            if (command == "load-family") ValidateFamilyPaths(action.Paths, "paths", trustedNetworkRoots);
+            if (command == "place-families")
+            {
+                Require((action.Placements is null) != (action.AtRooms is null), "Exactly one of placements or atRooms is required.");
+                if (action.Load is not null) ValidateFamilyPaths(action.Load, "load", trustedNetworkRoots);
+                if (action.Placements is not null)
+                {
+                    Require(action.Placements.Count is > 0 and <= 2000, "placements must contain 1 to 2000 items.");
+                    foreach (var placement in action.Placements)
+                    {
+                        if (placement is null) throw new ArgumentException("Placement must not be null.");
+                        Require(!string.IsNullOrWhiteSpace(placement.Family) && !string.IsNullOrWhiteSpace(placement.TypeName) && !string.IsNullOrWhiteSpace(placement.Level), "Placement family, typeName and level are required.");
+                        Require(Finite(placement.XMm, placement.YMm, placement.ZMm, placement.RotationDeg), "Placement coordinates and rotation must be finite.");
+                        Require(placement.HostId is null or > 0, "hostId must be positive.");
+                        ValidatePlacementParameters(placement.Parameters);
+                    }
+                }
+                else
+                {
+                    var rooms = action.AtRooms!;
+                    Require(!string.IsNullOrWhiteSpace(rooms.Family) && !string.IsNullOrWhiteSpace(rooms.TypeName), "atRooms family and typeName are required.");
+                    Require(Finite(rooms.ZMm, rooms.RotationDeg), "Room offset and rotation must be finite.");
+                    Require(rooms.Rooms is null || rooms.Rooms.Count > 0 && rooms.Rooms.All(name => !string.IsNullOrWhiteSpace(name)), "rooms must contain names or numbers.");
+                    ValidatePlacementParameters(rooms.Parameters);
+                }
+            }
             if (command is "place-family" or "create-wall")
                 Require(!string.IsNullOrWhiteSpace(action.Level), "level is required.");
             if (command == "create-wall")
@@ -364,6 +394,26 @@ public static class ActionJobParser
     }
 
     private static bool Finite(params double[] values) => values.All(value => !double.IsNaN(value) && !double.IsInfinity(value));
+
+    private static void ValidateFamilyPaths(List<string>? paths, string label, IReadOnlyCollection<string>? trustedNetworkRoots)
+    {
+        Require(paths is { Count: > 0 and <= 100 }, $"{label} must contain 1 to 100 paths.");
+        foreach (var path in paths!)
+        {
+            Require(path is not null && path.EndsWith(".rfa", StringComparison.OrdinalIgnoreCase), $"{label} must contain .rfa paths.");
+            DocumentPathValidator.Validate(path, label, trustedNetworkRoots);
+        }
+    }
+
+    private static void ValidatePlacementParameters(Dictionary<string, object>? parameters)
+    {
+        if (parameters is null) return;
+        foreach (var (name, value) in parameters)
+        {
+            Require(!string.IsNullOrWhiteSpace(name) && value is not null, "Parameter name and value are required.");
+            ParameterResolution.ValidateJsonValue(name, value!);
+        }
+    }
 
     public static ViewVisibilityOptions ParseVisibility(ControlJobContract job)
     {
@@ -652,6 +702,10 @@ public sealed class ActionJobContract
     public ElementFilterSpec? QueryFilters { get; set; }
     public string? Family { get; set; }
     public string? TypeName { get; set; }
+    public List<string>? Paths { get; set; }
+    public List<string>? Load { get; set; }
+    public List<FamilyPlacementContract>? Placements { get; set; }
+    public RoomPlacementContract? AtRooms { get; set; }
     public double XMm { get; set; }
     public double YMm { get; set; }
     public string? Level { get; set; }
@@ -723,7 +777,7 @@ public sealed class ProcessModelsJob
         if (opening.Activate == true) throw new ArgumentException("Processed models must open in the background.");
         if (Steps is not null)
         {
-            var parsed = ActionJobParser.Parse("batch", new ControlJobContract { Steps = Steps });
+            var parsed = ActionJobParser.Parse("batch", new ControlJobContract { Steps = Steps }, trustedNetworkRoots);
             if (parsed.Error is not null) throw new ArgumentException(parsed.Error);
         }
         if (Code is not null)
@@ -1208,6 +1262,10 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "includeTypeParameters")] public bool? IncludeTypeParameters { get; set; }
     [DataMember(Name = "queryFilters")] public ControlJobContract? QueryFilters { get; set; }
     [DataMember(Name = "typeName")] public string? TypeName { get; set; }
+    [DataMember(Name = "paths")] public List<string>? Paths { get; set; }
+    [DataMember(Name = "load")] public List<string>? Load { get; set; }
+    [DataMember(Name = "placements")] public List<FamilyPlacementContract>? Placements { get; set; }
+    [DataMember(Name = "atRooms")] public RoomPlacementContract? AtRooms { get; set; }
     [DataMember(Name = "xMm")] public double? XMm { get; set; }
     [DataMember(Name = "yMm")] public double? YMm { get; set; }
     [DataMember(Name = "rotationDeg")] public double? RotationDeg { get; set; }
@@ -1223,6 +1281,32 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "operations")] public List<FamilyEditOperationContract>? Operations { get; set; }
     [DataMember(Name = "overwriteParameterValues")] public bool? OverwriteParameterValues { get; set; }
     [DataMember(Name = "stopOnError")] public bool? StopOnError { get; set; }
+}
+
+[DataContract]
+public sealed class FamilyPlacementContract
+{
+    [DataMember(Name = "family")] public string? Family { get; set; }
+    [DataMember(Name = "typeName")] public string? TypeName { get; set; }
+    [DataMember(Name = "xMm")] public double XMm { get; set; }
+    [DataMember(Name = "yMm")] public double YMm { get; set; }
+    [DataMember(Name = "zMm")] public double ZMm { get; set; }
+    [DataMember(Name = "level")] public string? Level { get; set; }
+    [DataMember(Name = "rotationDeg")] public double RotationDeg { get; set; }
+    [DataMember(Name = "hostId")] public long? HostId { get; set; }
+    [DataMember(Name = "parameters")] public Dictionary<string, object>? Parameters { get; set; }
+}
+
+[DataContract]
+public sealed class RoomPlacementContract
+{
+    [DataMember(Name = "family")] public string? Family { get; set; }
+    [DataMember(Name = "typeName")] public string? TypeName { get; set; }
+    [DataMember(Name = "level")] public string? Level { get; set; }
+    [DataMember(Name = "rooms")] public List<string>? Rooms { get; set; }
+    [DataMember(Name = "zMm")] public double ZMm { get; set; }
+    [DataMember(Name = "rotationDeg")] public double RotationDeg { get; set; }
+    [DataMember(Name = "parameters")] public Dictionary<string, object>? Parameters { get; set; }
 }
 
 [DataContract]
@@ -1249,12 +1333,15 @@ public sealed class SharedParameterSpec
 }
 
 [DataContract]
+[KnownType(typeof(List<string>))]
+[KnownType(typeof(List<PlacementFailure>))]
+[KnownType(typeof(Dictionary<string, List<long>>))]
 public sealed class ActionResultData
 {
     [DataMember(Name = "models", EmitDefaultValue = false)] public List<ProcessModelResult>? Models { get; set; }
     [DataMember(Name = "total", EmitDefaultValue = false)] public int? Total { get; set; }
     [DataMember(Name = "done", EmitDefaultValue = false)] public int? Done { get; set; }
-    [DataMember(Name = "failed", EmitDefaultValue = false)] public int? Failed { get; set; }
+    [DataMember(Name = "failed", EmitDefaultValue = false)] public object? Failed { get; set; }
     [DataMember(Name = "skippedCount", EmitDefaultValue = false)] public int? SkippedCount { get; set; }
     [IgnoreDataMember] public string? CodeError { get; set; }
     [IgnoreDataMember] public object? ReturnValue { get; set; }
@@ -1286,7 +1373,7 @@ public sealed class ActionResultData
     [DataMember(Name = "folder", EmitDefaultValue = false)] public string? Folder { get; set; }
     [DataMember(Name = "files", EmitDefaultValue = false)] public List<ExportedFile>? Files { get; set; }
     [DataMember(Name = "targets", EmitDefaultValue = false)] public List<string>? Targets { get; set; }
-    [DataMember(Name = "skipped", EmitDefaultValue = false)] public List<string>? Skipped { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public object? Skipped { get; set; }
     [DataMember(Name = "bytes", EmitDefaultValue = false)] public long? Bytes { get; set; }
     [DataMember(Name = "sha256", EmitDefaultValue = false)] public string? Sha256 { get; set; }
     [DataMember(Name = "elapsedMs", EmitDefaultValue = false)] public long? ElapsedMs { get; set; }
@@ -1325,8 +1412,11 @@ public sealed class ActionResultData
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }
     [DataMember(Name = "closestFamilies", EmitDefaultValue = false)] public List<string>? ClosestFamilies { get; set; }
     [DataMember(Name = "copies", EmitDefaultValue = false)] public List<List<long>>? Copies { get; set; }
-    [DataMember(Name = "skipped", EmitDefaultValue = false)] public Dictionary<string, List<long>>? Skipped { get; set; }
     [DataMember(Name = "values", EmitDefaultValue = false)] public List<ParameterChange>? Values { get; set; }
+    [DataMember(Name = "loaded", EmitDefaultValue = false)] public List<FamilyLoadResult>? Loaded { get; set; }
+    [DataMember(Name = "placed", EmitDefaultValue = false)] public int? Placed { get; set; }
+    [DataMember(Name = "createdElementIds", EmitDefaultValue = false)] public List<long>? CreatedElementIds { get; set; }
+    [DataMember(Name = "perTypeCounts", EmitDefaultValue = false)] public Dictionary<string, int>? PerTypeCounts { get; set; }
 }
 
 [DataContract]
@@ -1342,4 +1432,26 @@ public sealed class ExportedFile
 {
     [DataMember(Name = "name")] public string Name { get; set; } = string.Empty;
     [DataMember(Name = "sizeBytes")] public long SizeBytes { get; set; }
+}
+
+[DataContract]
+public sealed class FamilyLoadResult
+{
+    [DataMember(Name = "family")] public string Family { get; set; } = string.Empty;
+    [DataMember(Name = "status")] public string Status { get; set; } = string.Empty;
+    [DataMember(Name = "types")] public List<string> Types { get; set; } = [];
+
+    public static string StatusFor(string familyName, bool wasLoaded, bool loadSucceeded)
+    {
+        if (!loadSucceeded && !wasLoaded) throw new InvalidOperationException($"Could not load family '{familyName}'.");
+        if (!loadSucceeded) return "unchanged";
+        return wasLoaded ? "reloaded" : "loaded";
+    }
+}
+
+[DataContract]
+public sealed class PlacementFailure
+{
+    [DataMember(Name = "index")] public int Index { get; set; }
+    [DataMember(Name = "reason")] public string Reason { get; set; } = string.Empty;
 }

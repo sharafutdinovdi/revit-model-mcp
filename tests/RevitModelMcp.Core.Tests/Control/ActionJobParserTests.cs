@@ -286,6 +286,8 @@ public sealed class ActionJobParserTests
         await Assert.That(ControlJobParser.Parse("""{"command":"open-document","path":"C:\\a.rte","audit":true,"worksets":"close","worksetsClose":["*Link*"]}""").Kind).IsEqualTo(ControlJobKind.Action);
         await Assert.That(ControlJobParser.Parse("""{"command":"new-document","kind":"family","template":"C:\\a.rft"}""").Kind).IsEqualTo(ControlJobKind.Action);
     }
+
+    [Test]
     [Arguments("rotate", "\"elementIds\":[1],\"angleDeg\":90")]
     [Arguments("copy", "\"elementIds\":[1],\"dxMm\":100,\"dyMm\":0,\"count\":2")]
     [Arguments("mirror", "\"elementIds\":[1],\"axis\":\"x\",\"pointMm\":[0,0]")]
@@ -315,6 +317,65 @@ public sealed class ActionJobParserTests
     {
         await Assert.That(ControlJobParser.Parse($"{{\"command\":\"{command}\",{arguments}}}").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    [Arguments(false, true, "loaded")]
+    [Arguments(true, true, "reloaded")]
+    [Arguments(true, false, "unchanged")]
+    public async Task FamilyLoadResult_ReportsLoadStatus(bool wasLoaded, bool loadSucceeded, string expectedStatus)
+    {
+        await Assert.That(FamilyLoadResult.StatusFor("Chair", wasLoaded, loadSucceeded)).IsEqualTo(expectedStatus);
+    }
+
+    [Test]
+    public async Task FamilyLoadResult_RejectsFailedFirstLoad()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Task.FromResult(FamilyLoadResult.StatusFor("Chair", false, false)));
+    }
+
+    [Test]
+    public async Task ActionResults_SerializeSharedFieldsForEachAction()
+    {
+        var process = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
+            "process-models", new ActionResultData { Failed = 1 }, 1));
+        var parameters = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
+            "update-parameters", new ActionResultData
+            {
+                Skipped = new Dictionary<string, List<long>> { ["missing"] = [1] }
+            }, 1));
+        var families = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
+            "place-families", new ActionResultData
+            {
+                Failed = new List<PlacementFailure> { new() { Index = 1, Reason = "Unavailable" } },
+                Skipped = new List<PlacementFailure> { new() { Index = 2, Reason = "No room" } }
+            }, 1));
+        await Assert.That(process.Contains("\"failed\":1")).IsTrue();
+        await Assert.That(parameters.Contains("\"key\":\"missing\"")).IsTrue();
+        await Assert.That(families.Contains("\"failed\":[")).IsTrue();
+        await Assert.That(families.Contains("\"skipped\":[")).IsTrue();
+    }
+
+    [Test]
+    public async Task BulkFamilyJobs_ValidatePathsAndPlacementLimits()
+    {
+        var load = ControlJobParser.Parse("""{"command":"load-family","paths":["C:\\Families\\Chair.rfa"]}""");
+        await Assert.That(load.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(load.Action!.Paths!.Count).IsEqualTo(1);
+        await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"load-family","paths":["C:\\Families\\Chair.rfa"]}]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(ControlJobParser.Parse("""{"command":"load-family","paths":["C:\\Families\\Chair.rvt"]}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ActionJobParser.Parse("load-family", new ControlJobContract { Paths = Enumerable.Repeat(@"C:\Families\Chair.rfa", 101).ToList() }).Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"place-families","placements":[],"atRooms":{"family":"Chair","typeName":"A"}}""").Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Chair","typeName":"A","level":"L1","xMm":0,"yMm":0}]}""").Kind).IsEqualTo(ControlJobKind.Action);
+        var withParameters = ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Chair","typeName":"A","level":"L1","xMm":0,"yMm":0,"parameters":{"Mark":"C1"}}]}""");
+        await Assert.That(withParameters.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(withParameters.Action!.Placements![0].Parameters!["Mark"]).IsEqualTo("C1");
+        await Assert.That(ControlJobParser.Parse("""{"command":"place-families","atRooms":{"family":"Chair","typeName":"A","rooms":["101"]}}""").Kind).IsEqualTo(ControlJobKind.Action);
+        var tooMany = new ControlJobContract
+        {
+            Placements = Enumerable.Range(0, 2001).Select(_ => new FamilyPlacementContract { Family = "Chair", TypeName = "A", Level = "L1" }).ToList()
+        };
+        await Assert.That(ActionJobParser.Parse("place-families", tooMany).Kind).IsEqualTo(ControlJobKind.Invalid);
     }
 
     [Test]

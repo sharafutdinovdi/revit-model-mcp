@@ -72,6 +72,8 @@ ACTION_TOOL_NAMES = {
     "revit_change_type",
     "revit_update_parameters",
     "revit_place_family",
+    "revit_load_family",
+    "revit_place_families",
     "revit_create_wall",
     "revit_set_parameter",
     "revit_delete",

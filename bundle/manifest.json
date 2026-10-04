@@ -250,6 +250,14 @@
       "description": "Place a loaded unhosted family on a named level for layout.\n\nfamily accepts a family name or Family: Type, case-insensitively.\nnull type_name uses the embedded type or the first type. Conflicting types\nare rejected. Missing families return similar names with categories.\nModel XY is in millimetres and Z rotation in degrees.\nUse roomCenterMm when placing something inside a room.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
+      "name": "revit_load_family",
+      "description": "Load workstation .rfa files in one undo entry. Existing families are skipped unless overwrite is true."
+    },
+    {
+      "name": "revit_place_families",
+      "description": "Load optional families and place instances in one transaction and undo entry."
+    },
+    {
       "name": "revit_create_wall",
       "description": "Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },

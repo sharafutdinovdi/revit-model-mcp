@@ -36,6 +36,8 @@ ACTION_TOOLS = {
     "revit_change_type",
     "revit_update_parameters",
     "revit_place_family",
+    "revit_load_family",
+    "revit_place_families",
     "revit_create_wall",
     "revit_set_parameter",
     "revit_delete",
@@ -83,6 +85,8 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_execute_code",
                     "revit_export",
                     "revit_process_models",
+                    "revit_load_family",
+                    "revit_place_families",
                 }
             )
             assert tool.annotations.read_only_hint is False
@@ -797,6 +801,151 @@ def test_action_arguments_reach_channel_in_millimeters(
     else:
         assert "targetDocument" not in job.payload
     assert job.payload == {"command": command, **payload, "targetProcessId": 42}
+
+
+@pytest.mark.parametrize(
+    "name,arguments,expected",
+    [
+        (
+            "revit_load_family",
+            {"paths": [r"C:\Families\Chair.rfa"]},
+            {
+                "paths": [r"C:\Families\Chair.rfa"],
+                "overwrite": False,
+                "overwriteParameterValues": False,
+            },
+        ),
+        (
+            "revit_place_families",
+            {
+                "placements": [
+                    {"family": "Chair", "type_name": "A", "x_mm": 1, "y_mm": 2, "level": "L1"}
+                ]
+            },
+            {
+                "placements": [
+                    {
+                        "family": "Chair",
+                        "typeName": "A",
+                        "xMm": 1.0,
+                        "yMm": 2.0,
+                        "zMm": 0.0,
+                        "level": "L1",
+                        "rotationDeg": 0.0,
+                    }
+                ]
+            },
+        ),
+        (
+            "revit_place_families",
+            {"at_rooms": {"family": "Chair", "type_name": "A", "level": "L1"}},
+            {
+                "atRooms": {
+                    "family": "Chair",
+                    "typeName": "A",
+                    "level": "L1",
+                    "zMm": 0.0,
+                    "rotationDeg": 0.0,
+                }
+            },
+        ),
+    ],
+)
+def test_bulk_family_payloads(name, arguments, expected):
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool(name, arguments))
+    payload = execute.await_args.args[0].payload
+    for key, value in expected.items():
+        assert payload[key] == value
+    assert payload["dryRun"] is False
+
+
+def test_bulk_placement_options_reach_channel():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_place_families",
+            {
+                "placements": [
+                    {
+                        "family": "Chair",
+                        "type_name": "A",
+                        "x_mm": 100,
+                        "y_mm": 200,
+                        "z_mm": 300,
+                        "level": "L1",
+                        "host_id": 42,
+                        "parameters": {"Mark": "C1"},
+                    }
+                ],
+                "load": [r"C:\Families\Chair.rfa"],
+                "stop_on_error": False,
+                "response_timeout_s": 600,
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.payload["placements"][0]["hostId"] == 42
+    assert job.payload["placements"][0]["zMm"] == 300.0
+    assert job.payload["placements"][0]["parameters"] == {"Mark": "C1"}
+    assert job.payload["load"] == [r"C:\Families\Chair.rfa"]
+    assert job.payload["stopOnError"] is False
+    assert execute.await_args.args[1] == 600
+
+
+def test_batch_accepts_load_family_step():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {"steps": [{"action": "load_family", "args": {"paths": [r"C:\Families\Chair.rfa"]}}]},
+        )
+    )
+    step = execute.await_args.args[0].payload["steps"][0]
+    assert step["command"] == "load-family"
+    assert step["paths"] == [r"C:\Families\Chair.rfa"]
+    assert step["overwriteParameterValues"] is False
+
+
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("revit_load_family", {"paths": []}),
+        ("revit_load_family", {"paths": ["x"] * 101}),
+        ("revit_place_families", {}),
+        ("revit_place_families", {"placements": [], "at_rooms": {"family": "A", "type_name": "B"}}),
+        (
+            "revit_place_families",
+            {
+                "placements": [
+                    {"family": "A", "type_name": "B", "x_mm": 0, "y_mm": 0, "level": "L"}
+                ]
+                * 2001
+            },
+        ),
+        (
+            "revit_place_families",
+            {
+                "placements": [
+                    {"family": "A", "type_name": "B", "x_mm": math.inf, "y_mm": 0, "level": "L"}
+                ]
+            },
+        ),
+    ],
+)
+def test_bulk_family_limits(name, arguments):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(Exception):
+        asyncio.run(server.call_tool(name, arguments))
+    execute.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

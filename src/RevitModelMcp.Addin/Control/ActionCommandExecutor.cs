@@ -122,7 +122,7 @@ internal static class ActionCommandExecutor
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
             if (exception is ActionMutations.MatchLimitException limit)
                 response.Data = new ActionResultData { MatchedCount = limit.Count, Count = limit.Count };
-            if (job.Command is "export-nwc" or "export" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
+            if (job.Command is "export-nwc" or "load-family" or "place-families" or "export" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else if (job.Command == "execute-code")
                 PluginLog.Warn("Code execution failed. Source and exception details omitted from log.");
@@ -219,11 +219,11 @@ internal static class ActionCommandExecutor
                 Command = "process-models",
                 Count = data.Done.Value,
                 ProcessTotal = paths.Count,
-                ProcessFailed = data.Failed.Value,
+                ProcessFailed = (int)data.Failed!,
                 ProcessSkipped = data.SkippedCount.Value,
                 DryRun = request.DryRun
             });
-            response = data.Failed > 0
+            response = (int)data.Failed! > 0
                 ? CommandResponse<ActionResultData>.PartialResult(job.Command, data, data.Summary, stopwatch.ElapsedMilliseconds)
                 : CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
         }
@@ -600,7 +600,7 @@ internal static class ActionCommandExecutor
             Folder = folder,
             Files = planned.Select(name => new ExportedFile { Name = name }).ToList(),
             Targets = selected.Select(view => view is ViewSheet sheet ? $"{sheet.SheetNumber}: {sheet.Name}" : view.Name).ToList(),
-            Skipped = [],
+            Skipped = new List<string>(),
             DryRun = action.DryRun,
             ElapsedMs = 0,
             Summary = $"{(action.DryRun ? "Would export" : "Exported")} {planned.Count} {request.Format.ToUpperInvariant()} file(s) from {document.Title}."
@@ -792,6 +792,8 @@ internal static class ActionCommandExecutor
                     try
                     {
                         ActionVerifier.CaptureAfter(document, command, action, data);
+                        if (command == "place-families" && data.CreatedElementIds!.Any(id => document.GetElement(CreateId(id)) is null))
+                            throw new InvalidOperationException("Post-commit verification found a missing family instance.");
                     }
                     catch (Exception exception)
                     {
@@ -800,7 +802,8 @@ internal static class ActionCommandExecutor
                     }
                     if (group is not null)
                     {
-                        var groupName = ActionSummaryBuilder.BuildGroupName(clientName, data.Summary);
+                        var undoSummary = command == "place-families" ? $"Place {data.Placed} families" : data.Summary;
+                        var groupName = ActionSummaryBuilder.BuildGroupName(clientName, undoSummary!);
                         group.SetName(groupName);
                         if (group.Assimilate() != TransactionStatus.Committed)
                             throw new InvalidOperationException("Could not assimilate the action transaction group.");
@@ -859,6 +862,7 @@ internal static class ActionCommandExecutor
             "copy" or "mirror" or "update-parameters" => data.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
+            "load-family" or "place-families" => data.Count ?? 0,
             _ => 0
         };
         return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -976,6 +980,10 @@ internal static class ActionCommandExecutor
                 };
             case "place-family":
                 return ActionMutations.PlaceFamily(document, action);
+            case "load-family":
+                return ActionMutations.LoadFamilies(document, action);
+            case "place-families":
+                return ActionMutations.PlaceFamilies(document, action);
             case "create-wall":
                 return ActionMutations.CreateWall(document, action);
             case "set-parameter":
