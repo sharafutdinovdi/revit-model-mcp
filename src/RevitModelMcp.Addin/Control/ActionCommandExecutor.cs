@@ -833,7 +833,7 @@ internal static class ActionCommandExecutor
 
     internal static ActionResultData ExecuteUndoLast(Document document, UIDocument? uiDocument)
     {
-        var newest = ActivityLog.Newest();
+        var newest = ActivityLog.NewestUndoable();
         if (newest?.Command == "remove-links" && newest.UndoEntryName is not null)
             throw new InvalidOperationException(LinkRemoval.UndoWarning);
         var (trackedDocumentTitle, lastTransactionName) = UndoTracker.Snapshot();

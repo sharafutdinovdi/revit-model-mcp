@@ -3,10 +3,13 @@ namespace RevitModelMcp.Core.Activity;
 /// <summary>
 /// Pure eligibility check for <c>revit_undo_last</c>: allowed only when the target document is active,
 /// no command is pending, and the name Revit reports for its last undo entry matches the name recorded
-/// for the newest activity entry.
+/// for the newest undoable activity entry.
 /// </summary>
 public static class UndoEligibility
 {
+    public static ActivityEntry? NewestUndoable(IEnumerable<ActivityEntry> entries) =>
+        entries.FirstOrDefault(entry => !entry.Undone && !string.IsNullOrEmpty(entry.UndoEntryName));
+
     public static bool IsAllowed(
         bool isActiveDocument,
         bool hasPendingCommand,

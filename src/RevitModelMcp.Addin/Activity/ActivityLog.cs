@@ -47,6 +47,11 @@ internal static class ActivityLog
         lock (SyncRoot) return Entries.First?.Value;
     }
 
+    public static ActivityEntry? NewestUndoable()
+    {
+        lock (SyncRoot) return UndoEligibility.NewestUndoable(Entries);
+    }
+
     /// <summary>Marks the most recent activity entry whose recorded undo entry name matches as undone.</summary>
     public static bool MarkUndoneByEntryName(string undoEntryName)
     {
