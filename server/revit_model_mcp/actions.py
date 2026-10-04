@@ -14,10 +14,13 @@ from revit_model_mcp.revit_channel import (
     DEFAULT_TIMEOUT_SECONDS,
     ReadJob,
     RevitChannelError,
+    _optional_text,
+    _unique_texts,
     resolve_instance,
     select_instance,
     with_client_identity,
 )
+from revit_model_mcp.universal_jobs import common_payload
 
 ElementId = Annotated[int, Field(strict=True, gt=0, le=9223372036854775807)]
 ElementIds = list[ElementId]
@@ -40,6 +43,34 @@ ParameterValue = Union[
     Annotated[float, Field(strict=True, allow_inf_nan=False)],
 ]
 Point = Annotated[list[Number], Field(min_length=2, max_length=2)]
+CopyCount = Annotated[int, Field(strict=True, ge=1, le=100)]
+MaxElements = Annotated[int, Field(strict=True, ge=1, le=20000)]
+
+
+class UpdateFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    categories: list[str] | None = None
+    family: str | None = None
+    type_name: str | None = None
+    level: str | None = None
+    view: str | None = None
+    workset: str | None = None
+    phase: str | None = None
+    area_scheme: str | None = None
+    parameter_filters: list[dict[str, Any]] | None = None
+
+
+def query_filter_payload(filters: UpdateFilters) -> dict[str, Any]:
+    payload = common_payload(
+        "query-elements",
+        **filters.model_dump(),
+        optional_text=_optional_text,
+        unique_texts=_unique_texts,
+    )
+    del payload["command"]
+    return payload
+
+
 Document = Annotated[
     str | None,
     Field(
@@ -57,6 +88,37 @@ _BATCH_FIELDS = {
         "dx_mm": (Number, ...),
         "dy_mm": (Number, ...),
         "dz_mm": (Number, 0),
+    },
+    "rotate": {
+        "element_ids": (NonEmptyIds, ...),
+        "angle_deg": (Number, ...),
+        "center_mm": (Point | None, None),
+    },
+    "copy": {
+        "element_ids": (NonEmptyIds, ...),
+        "dx_mm": (Number, ...),
+        "dy_mm": (Number, ...),
+        "dz_mm": (Number, 0),
+        "count": (CopyCount, 1),
+    },
+    "mirror": {
+        "element_ids": (NonEmptyIds, ...),
+        "axis": (Literal["x", "y"], ...),
+        "point_mm": (Point, ...),
+        "copy": (bool, True),
+    },
+    "change_type": {
+        "element_ids": (NonEmptyIds, ...),
+        "type_name": (Name, ...),
+        "family": (Name | None, None),
+    },
+    "update_parameters": {
+        "filters": (UpdateFilters, ...),
+        "parameter": (Name, ...),
+        "value": (ParameterValue, ...),
+        "parameter_id": (ParameterId | None, None),
+        "max_elements": (MaxElements, 5000),
+        "include_type_parameters": (bool, False),
     },
     "place_family": {
         "family": (Name, ...),
@@ -81,7 +143,18 @@ _BATCH_FIELDS = {
     },
     "delete": {"element_ids": (NonEmptyIds, ...)},
 }
-for _action in ("move", "place_family", "create_wall", "set_parameter", "delete"):
+for _action in (
+    "move",
+    "rotate",
+    "copy",
+    "mirror",
+    "change_type",
+    "update_parameters",
+    "place_family",
+    "create_wall",
+    "set_parameter",
+    "delete",
+):
     _BATCH_FIELDS[_action]["dry_run"] = (bool, False)
 _BATCH_MODELS = {
     action: create_model(action, __config__=ConfigDict(extra="forbid"), **fields)
@@ -92,7 +165,18 @@ _BATCH_MODELS = {
 class BatchStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal[
-        "move", "place_family", "create_wall", "set_parameter", "delete", "select", "isolate"
+        "move",
+        "rotate",
+        "copy",
+        "mirror",
+        "change_type",
+        "update_parameters",
+        "place_family",
+        "create_wall",
+        "set_parameter",
+        "delete",
+        "select",
+        "isolate",
     ]
     args: dict
 
@@ -113,7 +197,11 @@ class BatchStep(BaseModel):
         return {
             "command": self.action.replace("_", "-"),
             **{
-                camel(key): value
+                ("queryFilters" if key == "filters" else camel(key)): (
+                    query_filter_payload(UpdateFilters.model_validate(value))
+                    if key == "filters"
+                    else value
+                )
                 for key, value in self.args.items()
                 if key != "parameter_id" or value is not None
             },
@@ -425,6 +513,11 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_show": "Show Elements",
             "revit_isolate": "Isolate Elements",
             "revit_move": "Move Elements",
+            "revit_rotate": "Rotate Elements",
+            "revit_copy": "Copy Elements",
+            "revit_mirror": "Mirror Elements",
+            "revit_change_type": "Change Element Type",
+            "revit_update_parameters": "Update Parameters",
             "revit_place_family": "Place Family",
             "revit_create_wall": "Create Wall",
             "revit_set_parameter": "Set Parameter",
@@ -798,6 +891,108 @@ def register_actions(mcp, execute, host_provider) -> None:
             dxMm=dx_mm,
             dyMm=dy_mm,
             dzMm=dz_mm,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_rotate(
+        element_ids: NonEmptyIds,
+        angle_deg: Number,
+        center_mm: Point | None = None,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Rotate elements about a vertical axis through center_mm, or their combined bounding box center."""
+        return await send(
+            "rotate",
+            elementIds=element_ids,
+            angleDeg=angle_deg,
+            centerMm=center_mm,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_copy(
+        element_ids: NonEmptyIds,
+        dx_mm: Number,
+        dy_mm: Number,
+        dz_mm: Number = 0,
+        count: CopyCount = 1,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Create 1 to 100 successive copies at multiples of the model-axis offset in mm."""
+        return await send(
+            "copy",
+            elementIds=element_ids,
+            dxMm=dx_mm,
+            dyMm=dy_mm,
+            dzMm=dz_mm,
+            count=count,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_mirror(
+        element_ids: NonEmptyIds,
+        axis: Literal["x", "y"],
+        point_mm: Point,
+        copy: bool = True,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Mirror across a model X or Y parallel line through point_mm; copy keeps originals."""
+        return await send(
+            "mirror",
+            elementIds=element_ids,
+            axis=axis,
+            pointMm=point_mm,
+            copy=copy,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_change_type(
+        element_ids: NonEmptyIds,
+        type_name: Name,
+        family: Name | None = None,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Change each element to one compatible type; family resolves duplicate type names."""
+        return await send(
+            "change-type",
+            elementIds=element_ids,
+            typeName=type_name,
+            family=family,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_update_parameters(
+        filters: UpdateFilters,
+        parameter: Name,
+        value: ParameterValue,
+        parameter_id: ParameterId | None = None,
+        max_elements: MaxElements = 5000,
+        include_type_parameters: bool = False,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Update a parameter on elements matching the same filters as revit_query_elements."""
+        return await send(
+            "update-parameters",
+            queryFilters=query_filter_payload(filters),
+            parameter=parameter,
+            value=value,
+            parameterId=parameter_id,
+            maxElements=max_elements,
+            includeTypeParameters=include_type_parameters,
             dryRun=dry_run,
             document=document,
         )

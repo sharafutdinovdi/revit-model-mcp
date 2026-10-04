@@ -18,7 +18,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
+        "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "create-wall" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -33,6 +33,14 @@ public static class ActionJobParser
                 DxMm = job.DxMm ?? 0,
                 DyMm = job.DyMm ?? 0,
                 DzMm = job.DzMm ?? 0,
+                AngleDeg = job.AngleDeg ?? 0,
+                CenterMm = job.CenterMm,
+                Count = job.Count ?? 1,
+                Axis = job.Axis,
+                PointMm = job.PointMm,
+                Copy = job.Copy ?? true,
+                MaxElements = job.MaxElements ?? 5000,
+                IncludeTypeParameters = job.IncludeTypeParameters ?? false,
                 Family = job.Family,
                 TypeName = job.TypeName,
                 Level = job.Level,
@@ -125,6 +133,13 @@ public static class ActionJobParser
                 Require(action.TransactionMode is "auto" or "none", "transaction must be auto or none.");
                 Require(action.TransactionMode != "none" || !action.DryRun, "dry_run requires transaction=auto.");
             }
+            if (command == "update-parameters")
+            {
+                Require(job.QueryFilters is not null, "filters is required.");
+                var query = UniversalJobParser.ParseQuery(job.QueryFilters!);
+                Require(query.Error is null, query.Error ?? "Invalid filters.");
+                action.QueryFilters = query.Filters;
+            }
             if (command == "open-document")
             {
                 DocumentPathValidator.Validate(action.DocumentPath, "path", trustedNetworkRoots);
@@ -179,8 +194,8 @@ public static class ActionJobParser
                 foreach (var step in job.Steps!)
                 {
                     var stepCommand = step?.Command ?? string.Empty;
-                    Require(stepCommand is "move" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
-                        "Batch steps must be move, place-family, create-wall, set-parameter, delete, select or isolate.");
+                    Require(stepCommand is "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "create-wall" or "set-parameter" or "delete" or "select" or "isolate",
+                        "Unknown batch step.");
                     var parsed = Parse(stepCommand, step!);
                     Require(parsed.Error is null, $"Step {action.Steps.Count}: {parsed.Error}");
                     action.Steps.Add(parsed);
@@ -221,7 +236,7 @@ public static class ActionJobParser
                         Require(operation.Shared.HasValue, "set_shared requires shared.");
                 }
             }
-            if (command is "select" or "show" or "isolate" or "move" or "delete")
+            if (command is "select" or "show" or "isolate" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "delete")
             {
                 Require(job.ElementIds is not null, "elementIds is required.");
                 Require(action.ElementIds.All(elementId => elementId > 0), "Element IDs must be positive.");
@@ -232,6 +247,26 @@ public static class ActionJobParser
             {
                 Require(job.DxMm.HasValue && job.DyMm.HasValue, "dxMm and dyMm are required.");
                 Require(Finite(action.DxMm, action.DyMm, action.DzMm), "Move offsets must be finite millimetres.");
+            }
+            if (command == "rotate")
+            {
+                Require(job.AngleDeg.HasValue && Finite(action.AngleDeg), "angleDeg must be finite.");
+                Require(action.CenterMm is null || action.CenterMm.Count == 2 && Finite(action.CenterMm.ToArray()), "centerMm must contain two finite coordinates.");
+            }
+            if (command == "copy")
+            {
+                Require(job.DxMm.HasValue && job.DyMm.HasValue && Finite(action.DxMm, action.DyMm, action.DzMm), "Copy offsets must be finite.");
+                Require(action.Count is >= 1 and <= 100, "count must be 1 to 100.");
+            }
+            if (command == "mirror")
+            {
+                Require(action.Axis is "x" or "y", "axis must be x or y.");
+                Require(action.PointMm is { Count: 2 } && Finite(action.PointMm.ToArray()), "pointMm must contain two finite coordinates.");
+            }
+            if (command == "change-type")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.TypeName), "typeName is required.");
+                Require(action.Family is null || !string.IsNullOrWhiteSpace(action.Family), "family must not be blank.");
             }
             if (command == "place-family")
             {
@@ -262,9 +297,10 @@ public static class ActionJobParser
                 Require(Finite(action.HeightMm) && action.HeightMm > 0, "heightMm must be finite and positive.");
                 Require(action.WallType is null || !string.IsNullOrWhiteSpace(action.WallType), "wallType must not be blank.");
             }
-            if (command == "set-parameter")
+            if (command is "set-parameter" or "update-parameters")
             {
-                Require(action.ElementId > 0, "elementId must be positive.");
+                if (command == "set-parameter") Require(action.ElementId > 0, "elementId must be positive.");
+                else Require(action.MaxElements is >= 1 and <= 20000, "maxElements must be 1 to 20000.");
                 Require(!string.IsNullOrWhiteSpace(action.Parameter), "parameter is required.");
                 Require(action.Value is not null, "value is required (an empty string is allowed).");
                 if (action.ParameterId is not null) ParameterResolution.ValidateIdentifier(action.ParameterId);
@@ -605,6 +641,15 @@ public sealed class ActionJobContract
     public double DxMm { get; set; }
     public double DyMm { get; set; }
     public double DzMm { get; set; }
+    public double AngleDeg { get; set; }
+    public List<double>? CenterMm { get; set; }
+    public int Count { get; set; }
+    public string? Axis { get; set; }
+    public List<double>? PointMm { get; set; }
+    public bool Copy { get; set; }
+    public int MaxElements { get; set; }
+    public bool IncludeTypeParameters { get; set; }
+    public ElementFilterSpec? QueryFilters { get; set; }
     public string? Family { get; set; }
     public string? TypeName { get; set; }
     public double XMm { get; set; }
@@ -1153,6 +1198,15 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "dxMm")] public double? DxMm { get; set; }
     [DataMember(Name = "dyMm")] public double? DyMm { get; set; }
     [DataMember(Name = "dzMm")] public double? DzMm { get; set; }
+    [DataMember(Name = "angleDeg")] public double? AngleDeg { get; set; }
+    [DataMember(Name = "centerMm")] public List<double>? CenterMm { get; set; }
+    [DataMember(Name = "count")] public int? Count { get; set; }
+    [DataMember(Name = "axis")] public string? Axis { get; set; }
+    [DataMember(Name = "pointMm")] public List<double>? PointMm { get; set; }
+    [DataMember(Name = "copy")] public bool? Copy { get; set; }
+    [DataMember(Name = "maxElements")] public int? MaxElements { get; set; }
+    [DataMember(Name = "includeTypeParameters")] public bool? IncludeTypeParameters { get; set; }
+    [DataMember(Name = "queryFilters")] public ControlJobContract? QueryFilters { get; set; }
     [DataMember(Name = "typeName")] public string? TypeName { get; set; }
     [DataMember(Name = "xMm")] public double? XMm { get; set; }
     [DataMember(Name = "yMm")] public double? YMm { get; set; }
@@ -1259,6 +1313,9 @@ public sealed class ActionResultData
     [DataMember(Name = "summary", EmitDefaultValue = false)] public string? Summary { get; set; }
 
     [DataMember(Name = "count", EmitDefaultValue = false)] public int? Count { get; set; }
+    [DataMember(Name = "matchedCount", EmitDefaultValue = false)] public int? MatchedCount { get; set; }
+    [DataMember(Name = "affectedTypeIds", EmitDefaultValue = false)] public List<long>? AffectedTypeIds { get; set; }
+    [DataMember(Name = "outsideFilterCount", EmitDefaultValue = false)] public int? OutsideFilterCount { get; set; }
     [DataMember(Name = "id", EmitDefaultValue = false)] public long? Id { get; set; }
     [DataMember(Name = "category", EmitDefaultValue = false)] public string? Category { get; set; }
     [DataMember(Name = "level", EmitDefaultValue = false)] public string? Level { get; set; }
@@ -1267,6 +1324,17 @@ public sealed class ActionResultData
     [DataMember(Name = "newValue", EmitDefaultValue = false)] public string? NewValue { get; set; }
     [DataMember(Name = "parameterScope", EmitDefaultValue = false)] public string? ParameterScope { get; set; }
     [DataMember(Name = "closestFamilies", EmitDefaultValue = false)] public List<string>? ClosestFamilies { get; set; }
+    [DataMember(Name = "copies", EmitDefaultValue = false)] public List<List<long>>? Copies { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public Dictionary<string, List<long>>? Skipped { get; set; }
+    [DataMember(Name = "values", EmitDefaultValue = false)] public List<ParameterChange>? Values { get; set; }
+}
+
+[DataContract]
+public sealed class ParameterChange
+{
+    [DataMember(Name = "id")] public long Id { get; set; }
+    [DataMember(Name = "oldValue")] public string? OldValue { get; set; }
+    [DataMember(Name = "newValue")] public string? NewValue { get; set; }
 }
 
 [DataContract]

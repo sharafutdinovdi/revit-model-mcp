@@ -120,6 +120,8 @@ internal static class ActionCommandExecutor
             response.Error = error;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
+            if (exception is ActionMutations.MatchLimitException limit)
+                response.Data = new ActionResultData { MatchedCount = limit.Count, Count = limit.Count };
             if (job.Command is "export-nwc" or "export" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else if (job.Command == "execute-code")
@@ -853,7 +855,8 @@ internal static class ActionCommandExecutor
     {
         var count = command switch
         {
-            "move" or "select" or "isolate" => ids?.Count ?? 0,
+            "move" or "rotate" or "change-type" or "select" or "isolate" => ids?.Count ?? 0,
+            "copy" or "mirror" or "update-parameters" => data.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
             _ => 0
@@ -954,6 +957,16 @@ internal static class ActionCommandExecutor
             case "move":
                 ElementTransformUtils.MoveElements(document, ids, new XYZ(Millimeters(action.DxMm), Millimeters(action.DyMm), Millimeters(action.DzMm)));
                 return new ActionResultData { Count = ids.Count };
+            case "rotate":
+                return ActionMutations.Rotate(document, action, ids);
+            case "copy":
+                return ActionMutations.Copy(document, action, ids);
+            case "mirror":
+                return ActionMutations.Mirror(document, action, ids);
+            case "change-type":
+                return ActionMutations.ChangeType(document, action, ids);
+            case "update-parameters":
+                return ActionMutations.UpdateParameters(document, action);
             case "delete":
                 var deleted = document.Delete(ids).Select(RevitValueReader.GetId).OrderBy(value => value).ToList();
                 return new ActionResultData

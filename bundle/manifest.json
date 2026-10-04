@@ -226,6 +226,26 @@
       "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
+      "name": "revit_rotate",
+      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center."
+    },
+    {
+      "name": "revit_copy",
+      "description": "Create 1 to 100 successive copies at multiples of the model-axis offset in mm."
+    },
+    {
+      "name": "revit_mirror",
+      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals."
+    },
+    {
+      "name": "revit_change_type",
+      "description": "Change each element to one compatible type; family resolves duplicate type names."
+    },
+    {
+      "name": "revit_update_parameters",
+      "description": "Update a parameter on elements matching the same filters as revit_query_elements."
+    },
+    {
       "name": "revit_place_family",
       "description": "Place a loaded unhosted family on a named level for layout.\n\nfamily accepts a family name or Family: Type, case-insensitively.\nnull type_name uses the embedded type or the first type. Conflicting types\nare rejected. Missing families return similar names with categories.\nModel XY is in millimetres and Z rotation in degrees.\nUse roomCenterMm when placing something inside a room.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },

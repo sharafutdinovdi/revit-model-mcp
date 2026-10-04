@@ -286,6 +286,37 @@ public sealed class ActionJobParserTests
         await Assert.That(ControlJobParser.Parse("""{"command":"open-document","path":"C:\\a.rte","audit":true,"worksets":"close","worksetsClose":["*Link*"]}""").Kind).IsEqualTo(ControlJobKind.Action);
         await Assert.That(ControlJobParser.Parse("""{"command":"new-document","kind":"family","template":"C:\\a.rft"}""").Kind).IsEqualTo(ControlJobKind.Action);
     }
+    [Arguments("rotate", "\"elementIds\":[1],\"angleDeg\":90")]
+    [Arguments("copy", "\"elementIds\":[1],\"dxMm\":100,\"dyMm\":0,\"count\":2")]
+    [Arguments("mirror", "\"elementIds\":[1],\"axis\":\"x\",\"pointMm\":[0,0]")]
+    [Arguments("change-type", "\"elementIds\":[1],\"typeName\":\"Basic\"")]
+    [Arguments("update-parameters", "\"queryFilters\":{\"categories\":[\"Walls\"],\"level\":\"Level 1\"},\"parameter\":\"Mark\",\"value\":\"A\"")]
+    public async Task NewActions_ParseDirectAndBatch(string command, string arguments)
+    {
+        var step = $"{{\"command\":\"{command}\",{arguments}}}";
+        await Assert.That(ControlJobParser.Parse(step).Kind).IsEqualTo(ControlJobKind.Action);
+        var batch = ControlJobParser.Parse($"{{\"command\":\"batch\",\"steps\":[{step}]}}");
+        await Assert.That(batch.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(batch.Action!.Steps[0].Command).IsEqualTo(command);
+        if (command == "update-parameters")
+        {
+            await Assert.That(batch.Action.Steps[0].Action!.QueryFilters!.Categories[0]).IsEqualTo("Walls");
+            await Assert.That(batch.Action.Steps[0].Action!.QueryFilters!.Level).IsEqualTo("Level 1");
+        }
+    }
+
+    [Test]
+    [Arguments("rotate", "\"elementIds\":[1],\"angleDeg\":1e999")]
+    [Arguments("copy", "\"elementIds\":[1],\"dxMm\":1,\"dyMm\":0,\"count\":101")]
+    [Arguments("mirror", "\"elementIds\":[1],\"axis\":\"z\",\"pointMm\":[0,0]")]
+    [Arguments("change-type", "\"elementIds\":[1],\"typeName\":\"\"")]
+    [Arguments("update-parameters", "\"queryFilters\":{},\"parameter\":\"Mark\",\"value\":\"A\",\"maxElements\":20001")]
+    public async Task NewActions_RejectInvalidArguments(string command, string arguments)
+    {
+        await Assert.That(ControlJobParser.Parse($"{{\"command\":\"{command}\",{arguments}}}").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
     [Test]
     public async Task SetParameter_PreservesIdentifierAndTypedValueInDirectAndBatchJobs()
     {
@@ -299,6 +330,15 @@ public sealed class ActionJobParserTests
         await Assert.That(Convert.ToDouble(batch.Action.Steps[0].Action!.Value)).IsEqualTo(3.5);
         var shared = ControlJobParser.Parse("""{"command":"set-parameter","elementId":1,"parameter":"Code","parameterId":"f5257291-6b0b-4ef4-a9a1-b5aa937127a4","value":"ok"}""");
         await Assert.That(shared.Action!.ParameterId).IsEqualTo("f5257291-6b0b-4ef4-a9a1-b5aa937127a4");
+    }
+
+    [Test]
+    public async Task UpdateParameters_TypeParametersRequireExplicitOptInInDirectAndBatchJobs()
+    {
+        var direct = ControlJobParser.Parse("""{"command":"update-parameters","queryFilters":{},"parameter":"Mark","value":"A"}""");
+        var batch = ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"update-parameters","queryFilters":{},"parameter":"Mark","value":"A","includeTypeParameters":true}]}""");
+        await Assert.That(direct.Action!.IncludeTypeParameters).IsFalse();
+        await Assert.That(batch.Action!.Steps[0].Action!.IncludeTypeParameters).IsTrue();
     }
 
     [Test]

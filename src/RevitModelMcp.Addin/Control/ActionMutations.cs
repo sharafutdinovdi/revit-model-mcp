@@ -4,11 +4,173 @@ using Autodesk.Revit.DB.Structure;
 using Nice3point.Revit.Extensions;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Control;
 
 internal static class ActionMutations
 {
+    internal static ActionResultData Rotate(Document document, ActionJobContract action, List<ElementId> ids)
+    {
+        var pinned = ids.Where(id => document.GetElement(id)?.Pinned == true).Select(RevitValueReader.GetId).ToList();
+        if (pinned.Count > 0) throw new InvalidOperationException($"Pinned elements cannot rotate: {string.Join(", ", pinned)}.");
+        var boxes = ids.Select(id => document.GetElement(id)!.get_BoundingBox(null)).ToList();
+        if (action.CenterMm is null && boxes.Any(box => box is null))
+            throw new InvalidOperationException("All elements need bounding boxes when centerMm is omitted.");
+        var x = action.CenterMm is null ? (boxes.Min(box => box!.Min.X) + boxes.Max(box => box!.Max.X)) / 2 : Millimeters(action.CenterMm[0]);
+        var y = action.CenterMm is null ? (boxes.Min(box => box!.Min.Y) + boxes.Max(box => box!.Max.Y)) / 2 : Millimeters(action.CenterMm[1]);
+        var origin = new XYZ(x, y, 0);
+        try
+        {
+            ElementTransformUtils.RotateElements(document, ids, Line.CreateBound(origin, origin + XYZ.BasisZ), action.AngleDeg * Math.PI / 180);
+        }
+        catch (Autodesk.Revit.Exceptions.ArgumentException exception)
+        {
+            throw new InvalidOperationException($"Elements cannot rotate: {string.Join(", ", action.ElementIds)}. {exception.Message}", exception);
+        }
+        return new ActionResultData { Count = ids.Count, Verification = new ActionVerification { Changed = action.ElementIds } };
+    }
+
+    internal static ActionResultData Copy(Document document, ActionJobContract action, List<ElementId> ids)
+    {
+        var copies = new List<List<long>>();
+        for (var index = 1; index <= action.Count; index++)
+            copies.Add(ElementTransformUtils.CopyElements(document, ids,
+                new XYZ(Millimeters(action.DxMm * index), Millimeters(action.DyMm * index), Millimeters(action.DzMm * index)))
+                .Select(RevitValueReader.GetId).ToList());
+        return new ActionResultData
+        {
+            Count = copies.Sum(copy => copy.Count),
+            Copies = copies,
+            Verification = new ActionVerification { Changed = copies.SelectMany(copy => copy).ToList() }
+        };
+    }
+
+    internal static ActionResultData Mirror(Document document, ActionJobContract action, List<ElementId> ids)
+    {
+        var incompatible = ids.Where(id => !ElementTransformUtils.CanMirrorElement(document, id))
+            .Select(RevitValueReader.GetId).ToList();
+        if (incompatible.Count > 0)
+            throw new InvalidOperationException($"Elements cannot mirror: {string.Join(", ", incompatible)}.");
+        var point = new XYZ(Millimeters(action.PointMm![0]), Millimeters(action.PointMm[1]), 0);
+        var direction = action.Axis == "x" ? XYZ.BasisX : XYZ.BasisY;
+        var plane = Plane.CreateByNormalAndOrigin(direction.CrossProduct(XYZ.BasisZ), point);
+        var created = ElementTransformUtils.MirrorElements(document, ids, plane, action.Copy)
+            .Select(RevitValueReader.GetId).ToList();
+        return new ActionResultData
+        {
+            Count = action.Copy ? created.Count : ids.Count,
+            Copies = action.Copy ? [created] : null,
+            Verification = new ActionVerification { Changed = action.Copy ? created : action.ElementIds }
+        };
+    }
+
+    internal static ActionResultData ChangeType(Document document, ActionJobContract action, List<ElementId> ids)
+    {
+        var targets = new List<(Element Element, ElementId TypeId)>();
+        foreach (var id in ids)
+        {
+            var element = document.GetElement(id)!;
+            var valid = element.GetValidTypes().Select(typeId => (Id: typeId, Type: document.GetElement(typeId) as ElementType))
+                .Where(item => item.Type is not null).ToList();
+            var matching = valid.Where(item => string.Equals(item.Type!.Name, action.TypeName, StringComparison.OrdinalIgnoreCase) &&
+                (action.Family is null || string.Equals(item.Type.FamilyName, action.Family, StringComparison.OrdinalIgnoreCase))).ToList();
+            if (matching.Count != 1)
+                throw new ArgumentException($"Element {RevitValueReader.GetId(id)} has {matching.Count} compatible targets named '{action.TypeName}'. Candidates: {string.Join(", ", valid.Select(item => $"{item.Type!.FamilyName}: {item.Type.Name}"))}.");
+            targets.Add((element, matching[0].Id));
+        }
+        var changed = new List<long>();
+        foreach (var (element, typeId) in targets)
+        {
+            var replacement = element.ChangeTypeId(typeId);
+            changed.Add(RevitValueReader.GetId(replacement == ElementId.InvalidElementId ? element.Id : replacement));
+        }
+        return new ActionResultData { Count = changed.Count, Verification = new ActionVerification { Changed = changed } };
+    }
+
+    internal static ActionResultData UpdateParameters(Document document, ActionJobContract action)
+    {
+        var context = QueryFilterBuilder.Build(document, action.QueryFilters!, []);
+        using var collector = context.CreateCollector();
+        var ids = collector.ToElementIds().ToList();
+        if (ids.Count > action.MaxElements)
+            throw new MatchLimitException(ids.Count, action.MaxElements);
+        var result = new ActionResultData
+        {
+            MatchedCount = ids.Count,
+            Values = [],
+            Skipped = new Dictionary<string, List<long>>
+            {
+                ["missing"] = [],
+                ["readOnly"] = [],
+                ["typeParameter"] = []
+            }
+        };
+        var matchedIds = ids.Select(RevitValueReader.GetId).ToHashSet();
+        var affectedTypeIds = new HashSet<long>();
+        var changedIds = new List<long>();
+        foreach (var id in ids)
+        {
+            var element = document.GetElement(id)!;
+            Parameter parameter;
+            var isTypeParameter = false;
+            try { (parameter, _) = ResolveParameter(element, action.Parameter!, action.ParameterId, false); }
+            catch (ArgumentException exception) when (exception.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    (parameter, _) = ResolveParameter(element, action.Parameter!, action.ParameterId);
+                    isTypeParameter = true;
+                }
+                catch (ArgumentException typeException) when (typeException.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Skipped["missing"].Add(RevitValueReader.GetId(id));
+                    continue;
+                }
+            }
+            if (isTypeParameter && !action.IncludeTypeParameters)
+            {
+                result.Skipped["typeParameter"].Add(RevitValueReader.GetId(id));
+                continue;
+            }
+            if (parameter.IsReadOnly)
+            {
+                result.Skipped["readOnly"].Add(RevitValueReader.GetId(id));
+                continue;
+            }
+            var targetId = isTypeParameter ? RevitValueReader.GetId(element.GetTypeId()) : RevitValueReader.GetId(id);
+            if (isTypeParameter && !affectedTypeIds.Add(targetId)) continue;
+            var oldValue = ParameterValue(parameter);
+            var value = ParameterResolution.ValidateValue(action.Parameter!, parameter.StorageType.ToString(), action.Value!);
+            var changed = parameter.StorageType switch
+            {
+                StorageType.String => parameter.Set((string)value),
+                StorageType.Integer => parameter.Set((int)value),
+                StorageType.Double => parameter.Set(ParameterDouble(parameter, (double)value)),
+                _ => throw new ArgumentException("Only String, Integer and Double parameters are supported.")
+            };
+            if (!changed) throw new InvalidOperationException($"Revit could not set parameter on element {targetId}.");
+            changedIds.Add(targetId);
+            if (result.Values.Count < 50) result.Values.Add(new ParameterChange { Id = targetId, OldValue = oldValue, NewValue = ParameterValue(parameter) });
+        }
+        if (affectedTypeIds.Count > 0)
+        {
+            result.AffectedTypeIds = affectedTypeIds.OrderBy(id => id).ToList();
+            using var instances = new FilteredElementCollector(document).WhereElementIsNotElementType();
+            result.OutsideFilterCount = instances.Count(element =>
+                affectedTypeIds.Contains(RevitValueReader.GetId(element.GetTypeId())) &&
+                !matchedIds.Contains(RevitValueReader.GetId(element.Id)));
+        }
+        result.Verification = new ActionVerification { Changed = changedIds };
+        result.Count = result.Verification.Changed.Count;
+        return result;
+    }
+
+    internal sealed class MatchLimitException(int count, int limit)
+        : ArgumentException($"Matched {count} elements, exceeding maxElements={limit}.")
+    {
+        public int Count { get; } = count;
+    }
     internal static ActionResultData PlaceFamily(Document document, ActionJobContract action)
     {
         using var symbols = document.CollectElements().OfClass<FamilySymbol>()
@@ -82,7 +244,7 @@ internal static class ActionMutations
         };
     }
 
-    internal static (Parameter Parameter, ParameterCandidate Candidate) ResolveParameter(Element element, string name, string? parameterId)
+    internal static (Parameter Parameter, ParameterCandidate Candidate) ResolveParameter(Element element, string name, string? parameterId, bool includeType = true)
     {
         var found = new List<(Parameter Parameter, ParameterCandidate Candidate)>();
         void Collect(Element owner, string scope)
@@ -100,8 +262,11 @@ internal static class ActionMutations
             }
         }
         Collect(element, "instance");
-        var type = element.Document.GetElement(element.GetTypeId());
-        if (type is not null) Collect(type, "type");
+        if (includeType)
+        {
+            var type = element.Document.GetElement(element.GetTypeId());
+            if (type is not null) Collect(type, "type");
+        }
         var selected = ParameterResolution.Resolve(name, parameterId, found.Select(item => item.Candidate));
         return found.First(item => item.Candidate == selected);
     }
