@@ -554,9 +554,9 @@ internal static class ActionCommandExecutor
         var allSheets = sheetCollector.Cast<ViewSheet>().Where(sheet => !sheet.IsTemplate).ToList();
         foreach (var reference in request.Sheets ?? [])
         {
-            var sheet = allSheets.FirstOrDefault(item => item.SheetNumber == reference)
-                ?? allSheets.FirstOrDefault(item => item.Name == reference)
-                ?? ReadCommandReader.FindView(document, reference) as ViewSheet;
+            var sheet = ViewReferenceMatcher.Find(allSheets, reference,
+                item => RevitValueReader.GetId(item.Id), item => item.Name,
+                item => item.SheetNumber, item => item.ViewType.ToString());
             Add(sheet ?? throw new ArgumentException($"Sheet '{reference}' was not found."));
         }
         if (request.SheetSet is not null)

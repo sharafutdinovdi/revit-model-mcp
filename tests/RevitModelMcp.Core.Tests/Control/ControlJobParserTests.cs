@@ -500,6 +500,52 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    public async Task ViewReferenceMatcher_MatchesSheetNumberCaseInsensitively()
+    {
+        var views = new[]
+        {
+            new TestView(42, "Floor Plan"),
+            new TestView(84, "North Sheet", "NX-201", "DrawingSheet")
+        };
+
+        var sheet = ViewReferenceMatcher.Find(views, "nx-201", view => view.Id, view => view.Name,
+            view => view.SheetNumber, view => view.Type);
+
+        await Assert.That(sheet?.Id).IsEqualTo(84);
+    }
+
+    [Test]
+    public async Task ViewReferenceMatcher_IdPrecedesNumericSheetNumber()
+    {
+        var views = new[]
+        {
+            new TestView(42, "Floor Plan"),
+            new TestView(84, "North Sheet", "42", "DrawingSheet")
+        };
+
+        var view = ViewReferenceMatcher.Find(views, "42", item => item.Id, item => item.Name,
+            item => item.SheetNumber, item => item.Type);
+
+        await Assert.That(view?.Id).IsEqualTo(42);
+    }
+
+    [Test]
+    public async Task ViewReferenceMatcher_NameAndSheetNumberCollisionIsAmbiguous()
+    {
+        var views = new[]
+        {
+            new TestView(42, "NX-201", Type: "FloorPlan"),
+            new TestView(84, "North Sheet", "NX-201", "DrawingSheet")
+        };
+
+        var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "NX-201",
+            view => view.Id, view => view.Name, view => view.SheetNumber, view => view.Type));
+
+        await Assert.That(error?.Message).Contains("id=42, name=NX-201, type=FloorPlan");
+        await Assert.That(error?.Message).Contains("id=84, name=North Sheet, type=DrawingSheet");
+    }
+
+    [Test]
     public async Task ViewNotFound_ReturnsListViewsHint()
     {
         var response = CommandResponse<object>.ViewNotFound("export-view", "Missing View", 12);
@@ -627,5 +673,5 @@ public sealed class ControlJobParserTests
         await Assert.That(parsed.ClientId).IsEqualTo("client-1");
     }
 
-    private sealed record TestView(long Id, string Name);
+    private sealed record TestView(long Id, string Name, string? SheetNumber = null, string Type = "FloorPlan");
 }

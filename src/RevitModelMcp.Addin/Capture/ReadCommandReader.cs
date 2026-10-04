@@ -247,7 +247,8 @@ internal static class ReadCommandReader
             .OfClass(typeof(View))
             .Cast<View>()
             .Where(view => !view.IsTemplate);
-        return ViewReferenceMatcher.Find(views, name, view => RevitValueReader.GetId(view.Id), view => view.Name);
+        return ViewReferenceMatcher.Find(views, name, view => RevitValueReader.GetId(view.Id), view => view.Name,
+            view => (view as ViewSheet)?.SheetNumber, view => view.ViewType.ToString());
     }
 
     public static ViewDumpHeader ReadHeader(Document document, View view, int elementCount)

@@ -323,19 +323,10 @@ internal static class DocumentActions
     {
         var views = new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>()
             .Where(item => !item.IsTemplate).ToList();
-        View? view = null;
-        if (long.TryParse(action.View, out var id))
-            view = views.FirstOrDefault(item => RevitValueReader.GetId(item.Id) == id);
-        if (view is null)
-        {
-            var matches = views.Where(item => string.Equals(item.Name, action.View, StringComparison.Ordinal) &&
-                (action.ViewType is null || string.Equals(item.ViewType.ToString(), action.ViewType, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-            if (matches.Count > 1)
-                throw new InvalidOperationException($"View '{action.View}' is ambiguous: " +
-                    string.Join("; ", matches.Select(item => $"id={RevitValueReader.GetId(item.Id)}, name={item.Name}, type={item.ViewType}")));
-            view = matches.SingleOrDefault();
-        }
+        var view = ViewReferenceMatcher.Find(views.Where(item => action.ViewType is null ||
+                string.Equals(item.ViewType.ToString(), action.ViewType, StringComparison.OrdinalIgnoreCase)),
+            action.View!, item => RevitValueReader.GetId(item.Id), item => item.Name,
+            item => (item as ViewSheet)?.SheetNumber, item => item.ViewType.ToString());
         if (view is null) throw new InvalidOperationException($"View '{action.View}' was not found.");
         if (!document.Equals(application.ActiveUIDocument?.Document))
         {
