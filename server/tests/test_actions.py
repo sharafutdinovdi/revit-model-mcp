@@ -559,9 +559,30 @@ def test_cad_actions_map_arguments_and_timeouts():
         "minThicknessMm": 80,
         "maxThicknessMm": 700,
         "minLengthMm": 500,
+        "maxGapMm": 3000,
         "join": True,
         "dryRun": False,
     }
+
+
+@pytest.mark.parametrize("max_gap_mm", [-1, float("inf"), float("nan")])
+def test_walls_from_cad_rejects_invalid_gap(max_gap_mm):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises((ToolError, ValueError)):
+        asyncio.run(
+            server.call_tool(
+                "revit_walls_from_cad",
+                {
+                    "cad_id": 17,
+                    "layers": ["Walls"],
+                    "level": "L1",
+                    "max_gap_mm": max_gap_mm,
+                },
+            )
+        )
+    execute.assert_not_awaited()
 
 
 def test_file_export_maps_targets_options_and_timeout():

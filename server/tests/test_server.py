@@ -441,6 +441,12 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(required.issubset(action_tools[name].input_schema["required"]))
             self.assertIn("dry_run", properties)
             self.assertIn("document", properties)
+        self.assertEqual(
+            action_tools["revit_walls_from_cad"].input_schema["properties"]["max_gap_mm"][
+                "default"
+            ],
+            3000,
+        )
         self.assertIn(
             "Call revit_list_views next",
             tools["revit_document_info"].description,

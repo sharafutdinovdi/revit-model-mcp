@@ -69,6 +69,7 @@ public static class ActionJobParser
                 MinThicknessMm = job.MinThicknessMm ?? 80,
                 MaxThicknessMm = job.MaxThicknessMm ?? 700,
                 MinLengthMm = job.MinLengthMm ?? 300,
+                MaxGapMm = job.MaxGapMm ?? 3000,
                 Join = job.Join ?? true,
                 ElementId = job.ActionElementId ?? 0,
                 Parameter = job.Parameter,
@@ -436,9 +437,9 @@ public static class ActionJobParser
                 Require(action.Layers is { Count: > 0 } && ValidNames(action.Layers), "layers must contain names.");
                 Require(!string.IsNullOrWhiteSpace(action.Level), "level is required.");
                 Require(ValidOptional(action.WallType), "wallType must not be blank.");
-                Require(Finite(action.HeightMm, action.MinThicknessMm, action.MaxThicknessMm, action.MinLengthMm) &&
-                    action.HeightMm > 0 && action.MinThicknessMm > 0 && action.MaxThicknessMm >= action.MinThicknessMm && action.MinLengthMm > 0,
-                    "height and thickness and length limits must be finite and positive.");
+                Require(Finite(action.HeightMm, action.MinThicknessMm, action.MaxThicknessMm, action.MinLengthMm, action.MaxGapMm) &&
+                    action.HeightMm > 0 && action.MinThicknessMm > 0 && action.MaxThicknessMm >= action.MinThicknessMm && action.MinLengthMm > 0 && action.MaxGapMm >= 0,
+                    "height, thickness and length limits must be finite and positive; maxGapMm must be finite and non-negative.");
             }
             if (command is "set-parameter" or "update-parameters")
             {
@@ -846,6 +847,7 @@ public sealed class ActionJobContract
     public double MinThicknessMm { get; set; }
     public double MaxThicknessMm { get; set; }
     public double MinLengthMm { get; set; }
+    public double MaxGapMm { get; set; }
     public bool Join { get; set; }
     public long ElementId { get; set; }
     public string? Parameter { get; set; }
@@ -1480,6 +1482,7 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "minThicknessMm")] public double? MinThicknessMm { get; set; }
     [DataMember(Name = "maxThicknessMm")] public double? MaxThicknessMm { get; set; }
     [DataMember(Name = "minLengthMm")] public double? MinLengthMm { get; set; }
+    [DataMember(Name = "maxGapMm")] public double? MaxGapMm { get; set; }
     [DataMember(Name = "join")] public bool? Join { get; set; }
     [DataMember(Name = "elementId")] public long? ActionElementId { get; set; }
     [DataMember(Name = "parameter")] public string? Parameter { get; set; }
@@ -1640,6 +1643,7 @@ public sealed class ActionResultData
     [DataMember(Name = "layers", EmitDefaultValue = false)] public List<CadLayerResult>? CadLayers { get; set; }
     [DataMember(Name = "extentsMm", EmitDefaultValue = false)] public List<List<double>>? ExtentsMm { get; set; }
     [DataMember(Name = "walls", EmitDefaultValue = false)] public List<CadWallResult>? Walls { get; set; }
+    [DataMember(Name = "mergedSegments", EmitDefaultValue = false)] public int? MergedSegments { get; set; }
     [DataMember(Name = "unpairedLines", EmitDefaultValue = false)] public int? UnpairedLines { get; set; }
     [DataMember(Name = "skippedShortSegments", EmitDefaultValue = false)] public int? SkippedShortSegments { get; set; }
 }
@@ -1698,4 +1702,154 @@ public sealed class PlacementFailure
 {
     [DataMember(Name = "index")] public int Index { get; set; }
     [DataMember(Name = "reason")] public string Reason { get; set; } = string.Empty;
+}
+
+
+public readonly record struct CadPlanPoint(double X, double Y)
+{
+    public static CadPlanPoint operator +(CadPlanPoint left, CadPlanPoint right) => new(left.X + right.X, left.Y + right.Y);
+    public static CadPlanPoint operator -(CadPlanPoint left, CadPlanPoint right) => new(left.X - right.X, left.Y - right.Y);
+    public static CadPlanPoint operator *(CadPlanPoint point, double scale) => new(point.X * scale, point.Y * scale);
+    public double Length => Math.Sqrt(X * X + Y * Y);
+    public double Dot(CadPlanPoint other) => X * other.X + Y * other.Y;
+    public double Cross(CadPlanPoint other) => X * other.Y - Y * other.X;
+}
+
+public sealed record CadPlanSegment(CadPlanPoint Start, CadPlanPoint End, string Layer)
+{
+    public double Length => (End - Start).Length;
+    public CadPlanPoint Direction => (End - Start) * (1 / Length);
+}
+
+public sealed record CadWallPlan(CadPlanPoint Start, CadPlanPoint End, double ThicknessMm);
+public sealed record CadWallPlanningResult(List<CadWallPlan> Walls, int UnpairedLines, int MergedSegments, int SkippedShortSegments);
+
+public static class CadWallPlanner
+{
+    public static CadWallPlanningResult Build(IEnumerable<CadPlanSegment> source, double minThicknessMm,
+        double maxThicknessMm, double minLengthMm, double maxGapMm, bool join)
+    {
+        var segments = source.Where(segment => segment.Length > 1e-6).ToList();
+        var mergedSegments = 0;
+        var angleTolerance = Math.Cos(Math.PI / 360);
+        for (var first = 0; first < segments.Count; first++)
+        {
+            for (var second = first + 1; second < segments.Count; second++)
+            {
+                var left = segments[first];
+                var right = segments[second];
+                var direction = left.Direction;
+                if (!string.Equals(left.Layer, right.Layer, StringComparison.OrdinalIgnoreCase) ||
+                    Math.Abs(direction.Dot(right.Direction)) < angleTolerance ||
+                    Math.Abs(direction.Cross(right.Start - left.Start)) > 5 ||
+                    Math.Abs(direction.Cross(right.End - left.Start)) > 5) continue;
+                var start = Math.Min(direction.Dot(right.Start - left.Start), direction.Dot(right.End - left.Start));
+                var end = Math.Max(direction.Dot(right.Start - left.Start), direction.Dot(right.End - left.Start));
+                if (Math.Max(0, Math.Max(start - left.Length, -end)) > maxGapMm) continue;
+                segments[first] = left with
+                {
+                    Start = left.Start + direction * Math.Min(0, start),
+                    End = left.Start + direction * Math.Max(left.Length, end)
+                };
+                segments.RemoveAt(second);
+                mergedSegments++;
+                second = first;
+            }
+        }
+        var skippedShort = segments.Count(segment => segment.Length < minLengthMm);
+        segments = segments.Where(segment => segment.Length >= minLengthMm).ToList();
+        var remaining = segments.Select(segment => new List<(double Start, double End)> { (0, segment.Length) }).ToList();
+        var paired = new HashSet<int>();
+        var walls = new List<CadWallPlan>();
+        while (true)
+        {
+            (int First, int Second, double Start, double End, double Thickness)? best = null;
+            for (var first = 0; first < segments.Count; first++)
+            for (var second = first + 1; second < segments.Count; second++)
+            {
+                var left = segments[first];
+                var right = segments[second];
+                var direction = left.Direction;
+                var alignment = direction.Dot(right.Direction);
+                if (Math.Abs(alignment) < angleTolerance) continue;
+                var offset = right.Start - left.Start;
+                var thickness = Math.Abs(direction.Cross(offset));
+                if (thickness < minThicknessMm || thickness > maxThicknessMm) continue;
+                var origin = direction.Dot(offset);
+                foreach (var leftInterval in remaining[first])
+                foreach (var rightInterval in remaining[second])
+                {
+                    var rightStart = origin + alignment * rightInterval.Start;
+                    var rightEnd = origin + alignment * rightInterval.End;
+                    var start = Math.Max(leftInterval.Start, Math.Min(rightStart, rightEnd));
+                    var end = Math.Min(leftInterval.End, Math.Max(rightStart, rightEnd));
+                    if (end - start < minLengthMm || best is not null && end - start <= best.Value.End - best.Value.Start) continue;
+                    best = (first, second, start, end, thickness);
+                }
+            }
+            if (best is null) break;
+            var pair = best.Value;
+            var firstSegment = segments[pair.First];
+            var secondSegment = segments[pair.Second];
+            var firstDirection = firstSegment.Direction;
+            var normalOffset = secondSegment.Start - firstSegment.Start -
+                firstDirection * firstDirection.Dot(secondSegment.Start - firstSegment.Start);
+            walls.Add(new CadWallPlan(firstSegment.Start + firstDirection * pair.Start + normalOffset * 0.5,
+                firstSegment.Start + firstDirection * pair.End + normalOffset * 0.5, pair.Thickness));
+            Consume(pair.First, pair.Start, pair.End);
+            var secondStart = secondSegment.Direction.Dot(firstSegment.Start + firstDirection * pair.Start - secondSegment.Start);
+            var secondEnd = secondSegment.Direction.Dot(firstSegment.Start + firstDirection * pair.End - secondSegment.Start);
+            Consume(pair.Second, Math.Min(secondStart, secondEnd), Math.Max(secondStart, secondEnd));
+            paired.Add(pair.First);
+            paired.Add(pair.Second);
+        }
+        if (join) SnapJunctions(walls, maxThicknessMm);
+        return new CadWallPlanningResult(walls, segments.Count - paired.Count, mergedSegments, skippedShort);
+
+        void Consume(int index, double start, double end)
+        {
+            var intervals = new List<(double Start, double End)>();
+            foreach (var interval in remaining[index])
+            {
+                if (end <= interval.Start || start >= interval.End) intervals.Add(interval);
+                else
+                {
+                    if (start - interval.Start >= minLengthMm) intervals.Add((interval.Start, start));
+                    if (interval.End - end >= minLengthMm) intervals.Add((end, interval.End));
+                }
+            }
+            remaining[index] = intervals;
+        }
+    }
+
+    private static void SnapJunctions(List<CadWallPlan> walls, double tolerance)
+    {
+        for (var first = 0; first < walls.Count; first++)
+        for (var second = first + 1; second < walls.Count; second++)
+        {
+            var left = walls[first];
+            var right = walls[second];
+            var leftVector = left.End - left.Start;
+            var rightVector = right.End - right.Start;
+            var denominator = leftVector.Cross(rightVector);
+            if (Math.Abs(denominator) < 1e-6) continue;
+            var offset = right.Start - left.Start;
+            var leftDistance = offset.Cross(rightVector) / denominator;
+            var rightDistance = offset.Cross(leftVector) / denominator;
+            if (leftDistance < -tolerance / leftVector.Length || leftDistance > 1 + tolerance / leftVector.Length ||
+                rightDistance < -tolerance / rightVector.Length || rightDistance > 1 + tolerance / rightVector.Length) continue;
+            var intersection = left.Start + leftVector * leftDistance;
+            walls[first] = Snap(left, intersection);
+            walls[second] = Snap(right, intersection);
+        }
+
+        CadWallPlan Snap(CadWallPlan wall, CadPlanPoint intersection)
+        {
+            var startDistance = (wall.Start - intersection).Length;
+            var endDistance = (wall.End - intersection).Length;
+            if (startDistance <= tolerance && startDistance <= endDistance) return wall with { Start = intersection };
+            if (endDistance <= tolerance) return wall with { End = intersection };
+            return wall;
+        }
+    }
 }

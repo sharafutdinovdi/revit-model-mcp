@@ -666,28 +666,10 @@ internal static class ActionMutations
         var level = FindLevel(document, action.Level!);
         var selectedLayers = new HashSet<string>(action.Layers!, StringComparer.OrdinalIgnoreCase);
         var source = ReadCadSegments(document, instance).Where(segment => selectedLayers.Contains(segment.Layer)).ToList();
-        var minimumLength = Millimeters(action.MinLengthMm);
-        var skippedShort = source.Count(segment => segment.Length < minimumLength);
-        var segments = source.Where(segment => segment.Length >= minimumLength).ToList();
-        var candidates = new List<(int First, int Second, double Start, double End, double Thickness)>();
-        for (var first = 0; first < segments.Count; first++)
-        for (var second = first + 1; second < segments.Count; second++)
-        {
-            var left = segments[first];
-            var right = segments[second];
-            var direction = (left.End - left.Start).Normalize();
-            var otherDirection = (right.End - right.Start).Normalize();
-            if (Math.Abs(direction.DotProduct(otherDirection)) < Math.Cos(Math.PI / 180)) continue;
-            var offset = right.Start - left.Start;
-            var thickness = Math.Abs(direction.X * offset.Y - direction.Y * offset.X);
-            if (thickness < Millimeters(action.MinThicknessMm) || thickness > Millimeters(action.MaxThicknessMm)) continue;
-            var rightStart = offset.DotProduct(direction);
-            var rightEnd = (right.End - left.Start).DotProduct(direction);
-            var start = Math.Max(0, Math.Min(rightStart, rightEnd));
-            var end = Math.Min(left.Length, Math.Max(rightStart, rightEnd));
-            if (end - start < minimumLength) continue;
-            candidates.Add((first, second, start, end, thickness));
-        }
+        var geometry = CadWallPlanner.Build(source.Select(segment => new CadPlanSegment(
+                new CadPlanPoint(segment.Start.X.ToMillimeters(), segment.Start.Y.ToMillimeters()),
+                new CadPlanPoint(segment.End.X.ToMillimeters(), segment.End.Y.ToMillimeters()), segment.Layer)),
+            action.MinThicknessMm, action.MaxThicknessMm, action.MinLengthMm, action.MaxGapMm, action.Join);
         var basicTypes = document.CollectElements().OfClass<WallType>().Cast<WallType>()
             .Where(type => type.Kind == WallKind.Basic).ToList();
         if (basicTypes.Count == 0)
@@ -695,63 +677,30 @@ internal static class ActionMutations
             {
                 Count = 0,
                 Walls = [],
-                UnpairedLines = segments.Count,
-                SkippedShortSegments = skippedShort,
+                UnpairedLines = geometry.UnpairedLines,
+                MergedSegments = geometry.MergedSegments,
+                SkippedShortSegments = geometry.SkippedShortSegments,
                 Warning = "No basic wall type exists in this project.",
                 Verification = new ActionVerification { Changed = [] }
             };
         var selectedType = action.WallType is null ? null : basicTypes.FirstOrDefault(type =>
             string.Equals(type.Name, action.WallType, StringComparison.OrdinalIgnoreCase))
             ?? throw new ArgumentException($"Basic wall type '{action.WallType}' was not found.");
-        var paired = new HashSet<int>();
         var planned = new List<(CadWallResult Result, WallType Type, XYZ Start, XYZ End)>();
-        foreach (var pair in candidates.OrderByDescending(pair => pair.End - pair.Start))
+        foreach (var wall in geometry.Walls)
         {
-            if (paired.Contains(pair.First) || paired.Contains(pair.Second)) continue;
-            var first = segments[pair.First];
-            var second = segments[pair.Second];
-            var direction = (first.End - first.Start).Normalize();
-            var oppositePoint = first.Start + direction * (second.Start - first.Start).DotProduct(direction);
-            var normalOffset = second.Start - oppositePoint;
-            var start = first.Start + direction * pair.Start + normalOffset / 2;
-            var end = first.Start + direction * pair.End + normalOffset / 2;
-            start = new XYZ(start.X, start.Y, level.ProjectElevation);
-            end = new XYZ(end.X, end.Y, level.ProjectElevation);
-            var type = selectedType ?? basicTypes.OrderBy(candidate => Math.Abs(candidate.Width - pair.Thickness)).First();
+            var start = new XYZ(Millimeters(wall.Start.X), Millimeters(wall.Start.Y), level.ProjectElevation);
+            var end = new XYZ(Millimeters(wall.End.X), Millimeters(wall.End.Y), level.ProjectElevation);
+            var type = selectedType ?? basicTypes.OrderBy(candidate => Math.Abs(candidate.Width.ToMillimeters() - wall.ThicknessMm)).First();
             planned.Add((new CadWallResult
             {
                 Type = type.Name,
-                ThicknessMm = pair.Thickness.ToMillimeters(),
-                TypeMismatchMm = Math.Abs(type.Width - pair.Thickness).ToMillimeters(),
+                ThicknessMm = wall.ThicknessMm,
+                TypeMismatchMm = Math.Abs(type.Width.ToMillimeters() - wall.ThicknessMm),
                 LengthMm = (end - start).GetLength().ToMillimeters(),
-                StartMm = [start.X.ToMillimeters(), start.Y.ToMillimeters()],
-                EndMm = [end.X.ToMillimeters(), end.Y.ToMillimeters()]
+                StartMm = [wall.Start.X, wall.Start.Y],
+                EndMm = [wall.End.X, wall.End.Y]
             }, type, start, end));
-            paired.Add(pair.First);
-            paired.Add(pair.Second);
-        }
-        if (action.Join)
-        {
-            var tolerance = Millimeters(10);
-            for (var first = 0; first < planned.Count; first++)
-            for (var second = first + 1; second < planned.Count; second++)
-            for (var firstEnd = 0; firstEnd < 2; firstEnd++)
-            for (var secondEnd = 0; secondEnd < 2; secondEnd++)
-            {
-                var anchor = firstEnd == 0 ? planned[first].Start : planned[first].End;
-                var target = secondEnd == 0 ? planned[second].Start : planned[second].End;
-                if (anchor.DistanceTo(target) > tolerance) continue;
-                var item = planned[second];
-                planned[second] = secondEnd == 0
-                    ? (item.Result, item.Type, anchor, item.End)
-                    : (item.Result, item.Type, item.Start, anchor);
-            }
-            foreach (var wall in planned)
-            {
-                wall.Result.StartMm = [wall.Start.X.ToMillimeters(), wall.Start.Y.ToMillimeters()];
-                wall.Result.EndMm = [wall.End.X.ToMillimeters(), wall.End.Y.ToMillimeters()];
-                wall.Result.LengthMm = (wall.End - wall.Start).GetLength().ToMillimeters();
-            }
         }
         var created = new List<Wall>();
         if (!action.DryRun)
@@ -774,7 +723,7 @@ internal static class ActionMutations
             {
                 var point = end == 0 ? planned[index].Start : planned[index].End;
                 if (planned.Where((_, other) => other != index).Any(other =>
-                    point.DistanceTo(other.Start) <= tolerance || point.DistanceTo(other.End) <= tolerance))
+                    Line.CreateBound(other.Start, other.End).Distance(point) <= tolerance))
                     WallUtils.AllowWallJoinAtEnd(created[index], end);
             }
         }
@@ -782,8 +731,9 @@ internal static class ActionMutations
         {
             Count = planned.Count,
             Walls = planned.Select(wall => wall.Result).ToList(),
-            UnpairedLines = segments.Count - paired.Count,
-            SkippedShortSegments = skippedShort,
+            UnpairedLines = geometry.UnpairedLines,
+            MergedSegments = geometry.MergedSegments,
+            SkippedShortSegments = geometry.SkippedShortSegments,
             Verification = new ActionVerification { Changed = created.Select(wall => RevitValueReader.GetId(wall.Id)).ToList() }
         };
     }

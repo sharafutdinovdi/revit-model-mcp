@@ -1414,12 +1414,13 @@ def register_actions(mcp, execute, host_provider) -> None:
         min_thickness_mm: PositiveLength = 80,
         max_thickness_mm: PositiveLength = 700,
         min_length_mm: PositiveLength = 300,
+        max_gap_mm: Annotated[float, Field(ge=0, allow_inf_nan=False)] = 3000,
         join: bool = True,
         document: Document = None,
         dry_run: bool = False,
         response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Pair parallel CAD lines on selected layers and build basic walls in one undo entry. Dimensions are mm."""
+        """Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm."""
         if max_thickness_mm < min_thickness_mm:
             raise ToolError("max_thickness_mm must be at least min_thickness_mm.")
         return await send(
@@ -1432,6 +1433,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             minThicknessMm=min_thickness_mm,
             maxThicknessMm=max_thickness_mm,
             minLengthMm=min_length_mm,
+            maxGapMm=max_gap_mm,
             join=join,
             document=document,
             dryRun=dry_run,

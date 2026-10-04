@@ -275,7 +275,7 @@
     },
     {
       "name": "revit_walls_from_cad",
-      "description": "Pair parallel CAD lines on selected layers and build basic walls in one undo entry. Dimensions are mm."
+      "description": "Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm."
     },
     {
       "name": "revit_create_view",

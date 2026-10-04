@@ -85,6 +85,66 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task CadWallPlanner_BridgesDoorAndJoinsRectangle()
+    {
+        var result = CadWallPlanner.Build([
+            Segment(0, 0, 2000, 0), Segment(3000, 0, 5000, 0),
+            Segment(0, 200, 2000, 200), Segment(3000, 200, 5000, 200),
+            Segment(0, 4000, 5000, 4000), Segment(0, 3800, 5000, 3800),
+            Segment(0, 0, 0, 4000), Segment(200, 0, 200, 4000),
+            Segment(5000, 0, 5000, 4000), Segment(4800, 0, 4800, 4000)
+        ], 80, 700, 300, 3000, true);
+        await Assert.That(result.Walls.Count).IsEqualTo(4);
+        await Assert.That(result.MergedSegments).IsEqualTo(2);
+        await Assert.That(result.UnpairedLines).IsEqualTo(0);
+        foreach (var wall in result.Walls)
+        foreach (var endpoint in new[] { wall.Start, wall.End })
+            await Assert.That(result.Walls.Where(other => other != wall).Any(other =>
+                (other.Start - endpoint).Length < 1e-6 || (other.End - endpoint).Length < 1e-6)).IsTrue();
+    }
+
+    [Test]
+    public async Task CadWallPlanner_TJunctionMeetsTrunk()
+    {
+        var result = CadWallPlanner.Build([
+            Segment(0, 0, 5000, 0), Segment(0, 200, 5000, 200),
+            Segment(2400, 200, 2400, 3000), Segment(2600, 200, 2600, 3000)
+        ], 80, 700, 300, 3000, true);
+        await Assert.That(result.Walls.Count).IsEqualTo(2);
+        var branch = result.Walls.Single(wall => Math.Abs(wall.Start.X - wall.End.X) < 1e-6);
+        await Assert.That(branch.Start).IsEqualTo(new CadPlanPoint(2500, 100));
+    }
+
+    [Test]
+    public async Task CadWallPlanner_ReusesLineWithDifferentPartners()
+    {
+        var result = CadWallPlanner.Build([
+            Segment(0, 0, 5000, 0), Segment(0, 200, 2000, 200), Segment(2000, 300, 5000, 300)
+        ], 80, 700, 300, 100, false);
+        await Assert.That(result.Walls.Count).IsEqualTo(2);
+        await Assert.That(result.UnpairedLines).IsEqualTo(0);
+        await Assert.That(result.Walls.Sum(wall => (wall.End - wall.Start).Length)).IsEqualTo(5000);
+    }
+
+    [Test]
+    public async Task CadWallPlanner_MergesShortPiecesBeforeFilteringAndHonorsGap()
+    {
+        var segments = new[] { Segment(0, 0, 100, 0), Segment(200, 0, 1000, 0), Segment(0, 200, 1000, 200) };
+        var bridged = CadWallPlanner.Build(segments, 80, 700, 300, 100, false);
+        await Assert.That(bridged.MergedSegments).IsEqualTo(1);
+        await Assert.That((bridged.Walls[0].End - bridged.Walls[0].Start).Length).IsEqualTo(1000);
+        var separated = CadWallPlanner.Build(segments, 80, 700, 300, 99, false);
+        await Assert.That(separated.MergedSegments).IsEqualTo(0);
+        await Assert.That(separated.SkippedShortSegments).IsEqualTo(1);
+        await Assert.That((separated.Walls[0].End - separated.Walls[0].Start).Length).IsEqualTo(800);
+        await Assert.That(ControlJobParser.Parse("""{"command":"walls-from-cad","cadId":5,"layers":["Walls"],"level":"L1","maxGapMm":-1}""").Kind)
+            .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    private static CadPlanSegment Segment(double startX, double startY, double endX, double endY) =>
+        new(new CadPlanPoint(startX, startY), new CadPlanPoint(endX, endY), "Walls");
+
+    [Test]
     public async Task SelectWritableInPlacePaths_SeparatesReadOnlySources()
     {
         var (writable, refused) = ProcessModelsJob.SelectWritableInPlacePaths(
