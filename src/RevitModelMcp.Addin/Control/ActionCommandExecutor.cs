@@ -975,12 +975,15 @@ internal static class ActionCommandExecutor
                 verification.After = new ActionFacts { Elements = affected.Select(view => new ActionFacts { Id = RevitValueReader.GetId(view.Id) }).ToList() };
                 break;
             case "place-views-on-sheet":
-                verification.After = new ActionFacts { Elements = verification.Changed!.Select(id =>
+                verification.After = new ActionFacts
+                {
+                    Elements = verification.Changed!.Select(id =>
                 {
                     var element = document.GetElement(CreateId(id))
                         ?? throw new InvalidOperationException($"Verification could not find element {id}.");
                     return new ActionFacts { Id = RevitValueReader.GetId(element.Id) };
-                }).ToList() };
+                }).ToList()
+                };
                 break;
         }
     }
