@@ -8,7 +8,8 @@ public static class ViewReferenceMatcher
         Func<T, long> idSelector,
         Func<T, string> nameSelector,
         Func<T, string?>? sheetNumberSelector = null,
-        Func<T, string>? typeSelector = null)
+        Func<T, string>? typeSelector = null,
+        Func<T, string?>? sheetCollectionSelector = null)
         where T : class
     {
         var candidates = views as IReadOnlyList<T> ?? views.ToList();
@@ -21,7 +22,10 @@ public static class ViewReferenceMatcher
         {
             throw new InvalidOperationException($"View '{reference}' is ambiguous: " +
                 string.Join("; ", matches.Select(view =>
-                    $"id={idSelector(view)}, name={nameSelector(view)}, type={typeSelector?.Invoke(view) ?? "unknown"}")));
+                    $"id={idSelector(view)}, name={nameSelector(view)}, type={typeSelector?.Invoke(view) ?? "unknown"}" +
+                    (sheetNumberSelector?.Invoke(view) is string number ? $", number={number}" : string.Empty) +
+                    (sheetCollectionSelector is not null && sheetNumberSelector?.Invoke(view) is not null
+                        ? $", collection={sheetCollectionSelector(view) ?? "none"}" : string.Empty))));
         }
         if (byName.Count == 1) return byName[0];
 

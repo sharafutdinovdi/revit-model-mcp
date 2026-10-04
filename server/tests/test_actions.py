@@ -1,6 +1,8 @@
 import json
 import math
 import os
+import re
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -1637,3 +1639,56 @@ def test_create_mep_run_rejects_invalid_geometry_and_sizes(arguments):
     with pytest.raises((ToolError, ValueError)):
         asyncio.run(server.call_tool("revit_create_mep_run", arguments))
     execute.assert_not_awaited()
+
+
+def test_addin_schedule_not_found_precedes_non_schedule_error():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs"
+    ).read_text()
+    schedule = source.split("internal static ScheduleDataResult ReadSchedule(", 1)[1]
+    assert re.search(
+        r"if \(view is null\)\s+throw new ArgumentException\("
+        r"\$\"Schedule '\{reference\}' was not found\.\"\);",
+        schedule,
+    )
+    assert schedule.index("Schedule '{reference}' was not found.") < schedule.index(
+        "'{reference}' is not a schedule."
+    )
+    assert "if (view is not ViewSchedule schedule || schedule.IsTemplate)" in schedule
+
+
+def test_addin_change_type_empty_candidates_has_specific_error():
+    source = (
+        Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Addin/Control/ActionMutations.cs"
+    ).read_text()
+    change_type = source.split("internal static ActionResultData ChangeType(", 1)[1].split(
+        "internal static ActionResultData UpdateParameters(", 1
+    )[0]
+    assert re.search(
+        r"if \(valid.Count == 0\)\s+throw new ArgumentException\("
+        r"\$\"Element \{RevitValueReader.GetId\(id\)\} has no compatible types\.\"\);",
+        change_type,
+    )
+    assert change_type.index("has no compatible types.") < change_type.index("Candidates:")
+
+
+def test_batch_allowlists_and_process_models_schema_match():
+    import asyncio
+
+    from revit_model_mcp.actions import _BATCH_FIELDS, BatchStep
+
+    parser = (
+        Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Core/Control/ActionJobParser.cs"
+    ).read_text()
+    allowlist = parser.split("Require(stepCommand is ", 1)[1].split('"Unknown batch step."', 1)[0]
+    commands = set(re.findall(r'"([a-z-]+)"', allowlist))
+    actions = set(_BATCH_FIELDS)
+    assert commands == {action.replace("_", "-") for action in actions}
+    assert set(BatchStep.model_json_schema()["properties"]["action"]["enum"]) == actions
+    assert {"override_graphics", "create_mep_run"} <= actions
+    server, _, _ = action_server()
+    tools = asyncio.run(server.list_tools())
+    for name in ("revit_batch", "revit_process_models"):
+        schema = next(tool.input_schema for tool in tools if tool.name == name)
+        assert set(schema["$defs"]["BatchStep"]["properties"]["action"]["enum"]) == actions

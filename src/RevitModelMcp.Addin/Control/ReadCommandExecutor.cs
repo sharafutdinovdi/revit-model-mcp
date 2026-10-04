@@ -207,6 +207,8 @@ internal static class ReadCommandExecutor
     internal static ScheduleDataResult ReadSchedule(Document document, string reference, int offset, int maxRows)
     {
         var view = ReadCommandReader.FindView(document, reference);
+        if (view is null)
+            throw new ArgumentException($"Schedule '{reference}' was not found.");
         if (view is not ViewSchedule schedule || schedule.IsTemplate)
             throw new ArgumentException($"'{reference}' is not a schedule.");
         var table = schedule.GetTableData();

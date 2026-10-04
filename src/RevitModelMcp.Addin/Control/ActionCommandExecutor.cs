@@ -573,7 +573,7 @@ internal static class ActionCommandExecutor
         {
             var sheet = ViewReferenceMatcher.Find(allSheets, reference,
                 item => RevitValueReader.GetId(item.Id), item => item.Name,
-                item => item.SheetNumber, item => item.ViewType.ToString());
+                item => item.SheetNumber, item => item.ViewType.ToString(), ReadCommandReader.SheetCollectionName);
             Add(sheet ?? throw new ArgumentException($"Sheet '{reference}' was not found."));
         }
         if (request.SheetSet is not null)

@@ -248,7 +248,16 @@ internal static class ReadCommandReader
             .Cast<View>()
             .Where(view => !view.IsTemplate);
         return ViewReferenceMatcher.Find(views, name, view => RevitValueReader.GetId(view.Id), view => view.Name,
-            view => (view as ViewSheet)?.SheetNumber, view => view.ViewType.ToString());
+            view => (view as ViewSheet)?.SheetNumber, view => view.ViewType.ToString(), SheetCollectionName);
+    }
+
+    internal static string? SheetCollectionName(View view)
+    {
+#if REVIT2027_OR_GREATER
+        if (view is ViewSheet sheet)
+            return view.Document.GetElement(sheet.SheetCollectionId)?.Name;
+#endif
+        return null;
     }
 
     public static ViewDumpHeader ReadHeader(Document document, View view, int elementCount)

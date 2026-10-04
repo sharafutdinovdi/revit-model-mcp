@@ -326,7 +326,7 @@ internal static class DocumentActions
         var view = ViewReferenceMatcher.Find(views.Where(item => action.ViewType is null ||
                 string.Equals(item.ViewType.ToString(), action.ViewType, StringComparison.OrdinalIgnoreCase)),
             action.View!, item => RevitValueReader.GetId(item.Id), item => item.Name,
-            item => (item as ViewSheet)?.SheetNumber, item => item.ViewType.ToString());
+            item => (item as ViewSheet)?.SheetNumber, item => item.ViewType.ToString(), ReadCommandReader.SheetCollectionName);
         if (view is null) throw new InvalidOperationException($"View '{action.View}' was not found.");
         if (!document.Equals(application.ActiveUIDocument?.Document))
         {

@@ -176,6 +176,8 @@ internal static class ActionMutations
             var element = document.GetElement(id)!;
             var valid = element.GetValidTypes().Select(typeId => (Id: typeId, Type: document.GetElement(typeId) as ElementType))
                 .Where(item => item.Type is not null).ToList();
+            if (valid.Count == 0)
+                throw new ArgumentException($"Element {RevitValueReader.GetId(id)} has no compatible types.");
             var matching = valid.Where(item => string.Equals(item.Type!.Name, action.TypeName, StringComparison.OrdinalIgnoreCase) &&
                 (action.Family is null || string.Equals(item.Type.FamilyName, action.Family, StringComparison.OrdinalIgnoreCase))).ToList();
             if (matching.Count != 1)

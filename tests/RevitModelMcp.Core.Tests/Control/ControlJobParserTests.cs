@@ -546,6 +546,33 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ViewReferenceMatcher_DuplicateSheetNumbers_ListCandidates(bool includeCollections)
+    {
+        var views = new[]
+        {
+            new TestView(42, "North Sheet", "A-101", "DrawingSheet", "Architecture"),
+            new TestView(84, "South Sheet", "A-101", "DrawingSheet", "Structure")
+        };
+
+        var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "a-101",
+            view => view.Id, view => view.Name, view => view.SheetNumber, view => view.Type,
+            includeCollections ? view => view.Collection : null));
+
+        await Assert.That(error!.Message).Contains("id=42, name=North Sheet, type=DrawingSheet, number=A-101");
+        await Assert.That(error.Message).Contains("id=84, name=South Sheet, type=DrawingSheet, number=A-101");
+        if (includeCollections)
+        {
+            await Assert.That(error.Message).Contains("collection=Architecture");
+            await Assert.That(error.Message).Contains("collection=Structure");
+        }
+        var selected = ViewReferenceMatcher.Find(views, "84", view => view.Id, view => view.Name,
+            view => view.SheetNumber, view => view.Type);
+        await Assert.That(selected?.Id).IsEqualTo(84);
+    }
+
+    [Test]
     public async Task ViewNotFound_ReturnsListViewsHint()
     {
         var response = CommandResponse<object>.ViewNotFound("export-view", "Missing View", 12);
@@ -673,5 +700,6 @@ public sealed class ControlJobParserTests
         await Assert.That(parsed.ClientId).IsEqualTo("client-1");
     }
 
-    private sealed record TestView(long Id, string Name, string? SheetNumber = null, string Type = "FloorPlan");
+    private sealed record TestView(long Id, string Name, string? SheetNumber = null, string Type = "FloorPlan",
+        string? Collection = null);
 }
