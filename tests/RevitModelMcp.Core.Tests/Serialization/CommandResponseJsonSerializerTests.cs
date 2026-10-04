@@ -15,7 +15,9 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var data = new ActionResultData
         {
-            CurrentIndex = 2, Total = 4, CurrentPath = @"C:\Private\Second.rvt",
+            CurrentIndex = 2,
+            Total = 4,
+            CurrentPath = @"C:\Private\Second.rvt",
             Models = [new ProcessModelResult { Path = @"C:\Private\First.rvt", Status = "done" }],
             Cancelled = true
         };
