@@ -199,7 +199,7 @@
     },
     {
       "name": "revit_execute_code",
-      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode.\n\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_undo_last",
@@ -327,7 +327,7 @@
     },
     {
       "name": "revit_edit_families",
-      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode.\n\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_batch_start",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import math
 import os
 import re
@@ -703,7 +704,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_execute_code",
         }:
             function.__doc__ = (
-                (function.__doc__ or "")
+                inspect.cleandoc(function.__doc__ or "")
                 + "\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
             )
         title = {
