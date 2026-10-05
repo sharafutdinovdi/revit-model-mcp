@@ -99,6 +99,10 @@ def endpoint():
                 state["drop_once"] = False
                 self.close_connection = True
                 return
+            length = int(self.headers.get("Content-Length") or 0)
+            if length and state["status"] != 200 and state["status"] != 202:
+                # Unread request data makes Windows reset the connection on close.
+                self.rfile.read(length)
             if state["status"] == 302:
                 self.send_response(302)
                 self.send_header("Location", state["redirect"])

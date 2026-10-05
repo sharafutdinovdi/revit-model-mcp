@@ -728,7 +728,7 @@ class RevitReadChannel:
             try:
                 pickup = await asyncio.wait_for(
                     self.remote.wait_until_trigger_is_gone(pickup_timeout_seconds),
-                    max(0, tool_deadline - loop.time()) if background else None,
+                    min(budget, max(0, tool_deadline - loop.time())) if background else None,
                 )
             except TimeoutError:
                 return running_job(job_id)
@@ -748,15 +748,21 @@ class RevitReadChannel:
                 if background
                 else loop.time() + timeout_seconds
             )
+
+            def remaining() -> float:
+                # A frozen clock can round the difference above the budget.
+                left = max(0, deadline - loop.time())
+                return min(budget, timeout_seconds, left) if background else left
+
             try:
                 response_name = await asyncio.wait_for(
                     self.remote.wait_for_new_response(
                         job.command,
                         known_responses,
-                        max(0, deadline - loop.time()) if background else timeout_seconds,
+                        remaining() if background else timeout_seconds,
                         correlation_id,
                     ),
-                    max(0, deadline - loop.time()) if background else None,
+                    remaining() if background else None,
                 )
             except (RevitChannelError, TimeoutError):
                 if not background:
@@ -767,7 +773,7 @@ class RevitReadChannel:
                 try:
                     content, _ = await asyncio.wait_for(
                         self.remote.finish_job(response_name, [], False, None),
-                        timeout=max(0, deadline - loop.time()),
+                        timeout=remaining(),
                     )
                 except (RevitChannelError, TimeoutError):
                     if not background:
@@ -798,15 +804,15 @@ class RevitReadChannel:
                     if not _is_intermediate_response(result):
                         break
                     result = None
-                remaining = deadline - loop.time()
-                if remaining <= 0:
+                left = remaining()
+                if left <= 0:
                     break
-                await asyncio.sleep(min(1, remaining))
+                await asyncio.sleep(min(1, left))
                 if loop.time() >= deadline:
                     break
                 try:
                     response_name = await self.remote.wait_for_new_response(
-                        job.command, known_responses, deadline - loop.time(), correlation_id
+                        job.command, known_responses, remaining(), correlation_id
                     )
                 except (RevitChannelError, TimeoutError):
                     if not background:
