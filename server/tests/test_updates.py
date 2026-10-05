@@ -131,3 +131,19 @@ def test_compatibility_gate_falls_back_to_commands_for_unparseable_version():
     check_addin_compatibility("ping", {"addinVersion": "unknown", "commands": ["ping"]})
     with pytest.raises(RevitChannelError, match="needs add-in 0.6.0 or later"):
         check_addin_compatibility("ping", {"addinVersion": "unknown", "commands": []})
+
+
+@pytest.mark.parametrize(
+    ("cached", "current", "expected"),
+    [
+        ("0.7.0", "0.9.0", "0.9.0"),
+        ("1.0.0", "0.9.0", "1.0.0"),
+        (None, "0.9.0", "0.9.0"),
+        (None, "0.0.0+unknown", None),
+        ("0.7.0", "0.0.0+unknown", "0.7.0"),
+    ],
+)
+def test_update_status_latest_known_is_never_older_than_current(cached, current, expected):
+    state = {"latestKnown": cached} if cached else {}
+    with patch.object(updates, "read_state", return_value=state):
+        assert updates.update_status(current)["latestKnownVersion"] == expected

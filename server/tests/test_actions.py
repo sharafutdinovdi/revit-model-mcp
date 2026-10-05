@@ -1836,3 +1836,22 @@ def test_process_progress_current_path_is_redacted():
         assert redact_model_paths({"progress": {"currentPath": r"C:\Private\Model.rvt"}}) == {
             "progress": {"currentPath": "Model.rvt"}
         }
+
+
+def test_mirror_batch_step_keeps_copy_arg():
+    from revit_model_mcp.actions import BatchStep
+
+    base = {"element_ids": [1], "axis": "x", "point_mm": [0, 0]}
+    assert BatchStep(action="mirror", args=base).args["copy"] is True
+    assert BatchStep(action="mirror", args={**base, "copy": False}).args["copy"] is False
+
+
+def test_actions_import_emits_no_user_warning():
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-W", "error::UserWarning", "-c", "import revit_model_mcp.actions"],
+        check=False,
+    )
+    assert result.returncode == 0

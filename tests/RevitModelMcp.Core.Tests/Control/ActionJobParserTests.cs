@@ -580,7 +580,7 @@ public sealed class ActionJobParserTests
         var parameters = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
             "update-parameters", new ActionResultData
             {
-                Skipped = new Dictionary<string, List<long>> { ["missing"] = [1] }
+                Skipped = new SkippedByReason { Missing = [1] }
             }, 1));
         var families = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
             "place-families", new ActionResultData
@@ -589,9 +589,23 @@ public sealed class ActionJobParserTests
                 Skipped = new List<PlacementFailure> { new() { Index = 2, Reason = "No room" } }
             }, 1));
         await Assert.That(process.Contains("\"failed\":1")).IsTrue();
-        await Assert.That(parameters.Contains("\"key\":\"missing\"")).IsTrue();
+        await Assert.That(parameters.Contains("\"skipped\":{\"missing\":[1],\"readOnly\":[],\"typeParameter\":[]}")).IsTrue();
+        await Assert.That(parameters.Contains("__type")).IsFalse();
         await Assert.That(families.Contains("\"failed\":[")).IsTrue();
         await Assert.That(families.Contains("\"skipped\":[")).IsTrue();
+    }
+
+    [Test]
+    public async Task ActionResults_KeepUserTextThatLooksLikeTypeInformation()
+    {
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
+            "update-parameters", new ActionResultData
+            {
+                Values = [new ParameterChange { Id = 1, OldValue = "\"__type\":\"x\",", NewValue = "b" }],
+                Skipped = new SkippedByReason()
+            }, 1));
+        await Assert.That(json.Contains("\"oldValue\":\"\\\"__type\\\":\\\"x\\\",\"")).IsTrue();
+        await Assert.That(json.Contains("\"skipped\":{\"missing\":[]")).IsTrue();
     }
 
     [Test]
