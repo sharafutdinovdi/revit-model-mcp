@@ -736,15 +736,16 @@ public sealed class DocumentConfirmationTokens(Func<DateTimeOffset>? clock = nul
             _issuedOrder.Remove(token);
             if (stored.Expires <= _clock() || stored.Command != command)
                 return DocumentConfirmationResult.Invalid;
-            if (stored.State != state) return DocumentConfirmationResult.DocumentChanged;
-            return stored.Document == document && stored.Arguments == arguments
-                ? DocumentConfirmationResult.Valid
-                : DocumentConfirmationResult.Invalid;
+            if (stored.Document != document || stored.Arguments != arguments)
+                return DocumentConfirmationResult.ArgumentsMismatch;
+            return stored.State != state
+                ? DocumentConfirmationResult.DocumentChanged
+                : DocumentConfirmationResult.Valid;
         }
     }
 }
 
-public enum DocumentConfirmationResult { Invalid, Valid, DocumentChanged }
+public enum DocumentConfirmationResult { Invalid, Valid, DocumentChanged, ArgumentsMismatch }
 
 /// <summary>
 /// Builds the confirmation identity and argument fingerprint for a document action from stable,

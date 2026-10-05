@@ -695,7 +695,7 @@ class RevitReadChannel:
         background = "jobs/persisted" in instance.get("commands", []) and (
             job.command in LONG_ACTION_COMMANDS
             or (job.command == "open-document" and job.payload.get("audit") is True)
-            or (job.command == "execute-code" and timeout_seconds > budget)
+            or job.command == "execute-code"
         )
         loop = asyncio.get_running_loop()
         tool_deadline = loop.time() + budget if background else None

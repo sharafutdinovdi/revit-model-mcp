@@ -603,10 +603,9 @@ internal static class DocumentActions
                 ConfirmToken = ConfirmationStore.Tokens.Issue(command, identity, arguments, state)
             };
         var result = ConfirmationStore.Tokens.Consume(action.ConfirmToken, command, identity, arguments, state);
-        if (result == DocumentConfirmationResult.DocumentChanged)
-            throw new InvalidOperationException("The document changed after the preview; request a new confirmation.");
         if (result != DocumentConfirmationResult.Valid)
-            throw new InvalidOperationException("Confirmation token is invalid, expired or does not match the arguments.");
+            throw new InvalidOperationException(ConfirmationStore.Rejection(result,
+                "The document changed after the preview. The confirmation token is used up; repeat the call without confirm_token to get a new one."));
         return null;
     }
 

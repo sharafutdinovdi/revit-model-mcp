@@ -43,6 +43,8 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 **Regression to watch (found before):** the add-in must reference `RevitAPI/RevitAPIUI` pinned to `<year>.0.0.0` (≤ installed build) and `System.Diagnostics.DiagnosticSource 8.x`, or it fails to load. Confirm per version.
 
+**Expected journal line:** Revit 2022 and 2025 journals can log `API_ERROR: Assembly version conflict in some references in RevitModelMcp.dll`. It is not a pinning fault and the add-in loads and works. The pinned `RevitAPI`, `RevitAPIUI`, `UIFramework`, `UIFrameworkServices` and `AdWindows` references are equal to or older than the installed Revit assemblies (for example RevitAPI 25.0.0.0 against 25.5.0.0 on 2025; 22.0.0.0 against 22.0.0.0 on 2022). The remaining differences are the add-in's own `System.*` and `Microsoft.CodeAnalysis` dependencies, which differ from the copies Revit ships (Revit 2022 ships System.Collections.Immutable 1.2.2.0 and System.Memory 4.0.1.0; the add-in references 8.0.0.0 and 4.0.1.2 and loads its own copies from the plugin folder). Other add-ins log the same line. Treat it as a failure only when the add-in does not start.
+
 ---
 
 ## 2. Server + client wiring (every documented method)

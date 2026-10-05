@@ -215,9 +215,8 @@ internal static class ActionCommandExecutor
                 }
                 var confirmation = ConfirmationStore.Tokens.Consume(request.ConfirmToken, "process-models", identity, arguments, state);
                 if (confirmation != DocumentConfirmationResult.Valid)
-                    throw new InvalidOperationException(confirmation == DocumentConfirmationResult.DocumentChanged
-                        ? "Source models changed after preview; request a new confirmation."
-                        : "Confirmation token is invalid, expired or does not match the arguments.");
+                    throw new InvalidOperationException(ConfirmationStore.Rejection(confirmation,
+                        "The source models changed on disk after the preview (size or modification time). The confirmation token is used up; run the call again without confirm_token to get a new one."));
             }
             else if (request.ConfirmToken is not null)
                 throw new ArgumentException("confirm_token applies only to in_place saves.");
