@@ -6,6 +6,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.8.0...v0.9.0) (2026-10-05)
+
+
+### Features
+
+* **actions:** work with the Revit session ([#169](https://github.com/sharafutdinovdi/revit-model-mcp/issues/169)) ([f646389](https://github.com/sharafutdinovdi/revit-model-mcp/commit/f646389f81cf206c26ed7a4e08b2ee2affcfda7c))
+
+
+### Documentation
+
+* roadmap direction moves to the Revit session ([#166](https://github.com/sharafutdinovdi/revit-model-mcp/issues/166)) ([5a23383](https://github.com/sharafutdinovdi/revit-model-mcp/commit/5a23383e616ea464d66aee552118403f5b8c7167))
+
 ## [0.8.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.7.0...v0.8.0) (2026-10-02)
 
 
