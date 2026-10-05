@@ -74,13 +74,13 @@ public sealed class UndoEligibilityTests
     }
 
     [Test]
-    public async Task IsAllowed_LastTransactionUnknown_ReportsNoneInReason()
+    public async Task IsAllowed_LastTransactionUnknown_ExplainsNewestOnly()
     {
         var allowed = UndoEligibility.IsAllowed(
             isActiveDocument: true, hasPendingCommand: false,
             recordedUndoName: "MCP (claude-code): Moved 3 elements in Project1.rvt",
             lastTransactionName: null, out var reason);
         await Assert.That(allowed).IsFalse();
-        await Assert.That(reason).IsEqualTo("the last change in Revit is not ours: (none)");
+        await Assert.That(reason).IsEqualTo("Revit reports no undo entry that belongs to this MCP action; only the newest MCP action can be undone");
     }
 }

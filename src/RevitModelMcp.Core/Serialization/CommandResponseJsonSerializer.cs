@@ -37,7 +37,8 @@ public static class CommandResponseJsonSerializer
             });
         using var stream = new MemoryStream();
         serializer.WriteObject(stream, response);
-        var json = Encoding.UTF8.GetString(stream.ToArray());
+        var json = Encoding.UTF8.GetString(stream.ToArray())
+            .Replace("\"__type\":\"SkippedByReason:#RevitModelMcp.Core.Control\",", string.Empty, StringComparison.Ordinal);
         if (response is CommandResponse<ActionResultData> { Command: "execute-code", Data: { } action })
         {
             const string dataStart = "\"data\":{";

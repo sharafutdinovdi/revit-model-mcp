@@ -25,7 +25,7 @@ public static class ViewReferenceMatcher
                     $"id={idSelector(view)}, name={nameSelector(view)}, type={typeSelector?.Invoke(view) ?? "unknown"}" +
                     (sheetNumberSelector?.Invoke(view) is string number ? $", number={number}" : string.Empty) +
                     (sheetCollectionSelector is not null && sheetNumberSelector?.Invoke(view) is not null
-                        ? $", collection={sheetCollectionSelector(view) ?? "none"}" : string.Empty))));
+                        ? $", collection={sheetCollectionSelector(view) ?? "none"}" : string.Empty))) + ". Pass the numeric id instead.");
         }
         if (byName.Count == 1) return byName[0];
 

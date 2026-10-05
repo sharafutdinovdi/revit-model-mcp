@@ -98,6 +98,7 @@ Other numeric filter values follow document display units; returned query values
 See the [feed format](feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.
 Parameter names come from the model's language; use `revit_list_catalog(section="parameters")` before filtering.
 `save_to` is a new file path on the MCP client's machine and never overwrites an existing file.
+The path is resolved on the machine that runs the MCP server, which is the client's machine for local and SSH setups; a path from another machine is not translated.
 
 `revit_element_details` returns geometry alongside parameters in `data`.
 `revit_query_elements(include_geometry=True)` adds the same fields to each element in the returned page.
