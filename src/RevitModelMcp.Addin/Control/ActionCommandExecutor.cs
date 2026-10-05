@@ -11,6 +11,7 @@ using RevitModelMcp.Activity;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
 
@@ -247,7 +248,6 @@ internal static class ActionCommandExecutor
                         "Command accepted and running.", stopwatch.ElapsedMilliseconds));
                 if (model.Status == "failed" && request.StopOnError) break;
             }
-            if (ResponseDelivery.CancellationRequested?.Invoke() == true) data.Cancelled = true;
             data.Done = data.Models.Count(model => model.Status == "done");
             data.Failed = data.Models.Count(model => model.Status == "failed");
             data.SkippedCount = data.Models.Count(model => model.Status == "skipped");
@@ -1183,7 +1183,7 @@ internal static class ActionCommandExecutor
                 }
                 rollBack = true;
             }
-            Message = errors.Count > 0 ? string.Join("; ", errors) : null;
+            Message = errors.Count > 0 ? RepeatedMessages.Join(errors) : null;
             if (rollBack) return FailureProcessingResult.ProceedWithRollBack;
             return resolved ? FailureProcessingResult.ProceedWithCommit : FailureProcessingResult.Continue;
         }

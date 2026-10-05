@@ -33,7 +33,8 @@ public static class CommandResponseJsonSerializer
             typeof(CommandResponse<T>),
             new DataContractJsonSerializerSettings
             {
-                UseSimpleDictionaryFormat = true
+                UseSimpleDictionaryFormat = true,
+                EmitTypeInformation = System.Runtime.Serialization.EmitTypeInformation.Never
             });
         using var stream = new MemoryStream();
         serializer.WriteObject(stream, response);

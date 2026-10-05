@@ -554,6 +554,16 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    public async Task ViewReferenceMatcher_DuplicateName_AsksForNumericId()
+    {
+        var views = new[] { new TestView(1, "Plan"), new TestView(2, "Plan") };
+
+        var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "Plan", view => view.Id, view => view.Name));
+
+        await Assert.That(error.Message).Contains("Pass the numeric id instead");
+    }
+
+    [Test]
     public async Task ViewReferenceMatcher_MatchesSheetNumberCaseInsensitively()
     {
         var views = new[]

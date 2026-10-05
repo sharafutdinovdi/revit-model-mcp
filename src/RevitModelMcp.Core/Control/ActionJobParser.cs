@@ -1587,9 +1587,17 @@ public sealed class SharedParameterSpec
 }
 
 [DataContract]
+public sealed class SkippedByReason
+{
+    [DataMember(Name = "missing")] public List<long> Missing { get; set; } = [];
+    [DataMember(Name = "readOnly")] public List<long> ReadOnly { get; set; } = [];
+    [DataMember(Name = "typeParameter")] public List<long> TypeParameter { get; set; } = [];
+}
+
+[DataContract]
 [KnownType(typeof(List<string>))]
 [KnownType(typeof(List<PlacementFailure>))]
-[KnownType(typeof(Dictionary<string, List<long>>))]
+[KnownType(typeof(SkippedByReason))]
 public sealed class ActionResultData
 {
     [DataMember(Name = "currentIndex", EmitDefaultValue = false)] public int? CurrentIndex { get; set; }

@@ -299,7 +299,7 @@ internal sealed class PipeChannel : IDisposable
         var submitted = _channel.SubmitHttp(command, request.Job, out var completion);
         if (submitted.Job is null || completion is null)
         {
-            var error = Error(request.Id, submitted.Error ?? "submission_failed", "The job was not queued.");
+            var error = Error(request.Id, submitted.Error ?? "submission_failed", JobScheduler.SubmissionMessage(submitted.Error) ?? "The job was not queued.");
             error.RetryAfterMs = submitted.RetryAfterMs;
             error.JobId = command.JobId;
             return error;

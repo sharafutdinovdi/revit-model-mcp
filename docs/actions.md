@@ -73,7 +73,7 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_walls_from_cad` | `cad_id`, `layers`, `level`, `wall_type=null`, `height_mm=3000`, `min_thickness_mm=80`, `max_thickness_mm=700`, `min_length_mm=300`, `max_gap_mm=3000`, `join=true`, `dry_run=false`, `response_timeout_s=600` | Bridge openings and pair parallel CAD lines. Returns walls, unpairedLines, mergedSegments and width mismatches. |
 | `revit_create_view` | `kind`, `name=null`, `level=null`, `view_family_type=null`, `template=null`, `scale=null`, `box=null`, `element_ids=null`, `display_style=null`, `detail_level=null` | Create a floor, ceiling or structural plan, section, 3D or drafting view. Plans need a level. Sections need a box or element IDs; element bounds expand by 1000 mm. A 3D view without bounds shows the whole model without a section box. 3D defaults are shaded and fine; other kinds keep view type defaults. Sections look along +Y. Styles: hidden_line, shaded, consistent_colors, realistic. Detail: coarse, medium, fine. |
 | `revit_duplicate_view` | `view`, `mode="duplicate"`, `name=null` | Duplicate a view, include detailing or create a dependent view. |
-| `revit_apply_view_template` | `views`, `template` | Apply a matching template to one or more views. Type mismatches are reported in `typeMismatches`. |
+| `revit_apply_view_template` | `views`, `template` | Apply a matching template to one or more views. Type mismatches are reported in `typeMismatches`. When no view matches the template type the call is refused and nothing is committed. |
 | `revit_create_sheet` | `number`, `name`, `title_block=null` | Create a sheet with a loaded title block. Sheet numbers must be unique. |
 | `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
@@ -356,7 +356,7 @@ the following hold, tracked from Revit's `DocumentChanged` event:
 
 Otherwise it refuses with a clear reason, for example `the last change in Revit is not ours: Move Elements`
 when the user made an unrelated edit since the last MCP action, or `there is no recorded MCP action to
-undo` when nothing has run yet. Only the single most recent action is covered; there is no redo and no
+undo` when nothing has run yet. When Revit reports no matching undo entry, for example after the newest action was already undone, the refusal says so. Only the single most recent action is covered; there is no redo and no
 undo of an older entry. The same button appears on the newest row of the activity pane, disabled once it no
 longer applies.
 

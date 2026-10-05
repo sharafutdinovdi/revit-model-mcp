@@ -56,6 +56,8 @@ def endpoint():
 
         def handle_request(self):
             route = urlsplit(self.path)
+            # Unread request data makes Windows reset the connection on close.
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             state["requests"].append((self.command, self.path, self.headers.get("Authorization")))
             if route.path == "/health":
                 encoded_nonce = self.headers.get("X-RevitMcp-Nonce")
@@ -108,7 +110,7 @@ def endpoint():
             if state["status"] not in (200, 202):
                 return self.reply(state["status"], {"error": "error"})
             if self.command == "POST":
-                state["payload"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                state["payload"] = json.loads(body)
                 if state["status"] == 202:
                     return self.reply(202, {"jobId": "job-1"})
             if route.path.startswith("/jobs/"):

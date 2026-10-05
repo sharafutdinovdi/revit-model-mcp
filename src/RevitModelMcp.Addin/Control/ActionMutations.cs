@@ -205,12 +205,7 @@ internal static class ActionMutations
         var ids = collector.ToElementIds().ToList();
         if (ids.Count > action.MaxElements)
             throw new MatchLimitException(ids.Count, action.MaxElements);
-        var skipped = new Dictionary<string, List<long>>
-        {
-            ["missing"] = [],
-            ["readOnly"] = [],
-            ["typeParameter"] = []
-        };
+        SkippedByReason skipped = new();
         var result = new ActionResultData { MatchedCount = ids.Count, Values = [], Skipped = skipped };
         var matchedIds = ids.Select(RevitValueReader.GetId).ToHashSet();
         var affectedTypeIds = new HashSet<long>();
@@ -230,18 +225,18 @@ internal static class ActionMutations
                 }
                 catch (ArgumentException typeException) when (typeException.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
                 {
-                    skipped["missing"].Add(RevitValueReader.GetId(id));
+                    skipped.Missing.Add(RevitValueReader.GetId(id));
                     continue;
                 }
             }
             if (isTypeParameter && !action.IncludeTypeParameters)
             {
-                skipped["typeParameter"].Add(RevitValueReader.GetId(id));
+                skipped.TypeParameter.Add(RevitValueReader.GetId(id));
                 continue;
             }
             if (parameter.IsReadOnly)
             {
-                skipped["readOnly"].Add(RevitValueReader.GetId(id));
+                skipped.ReadOnly.Add(RevitValueReader.GetId(id));
                 continue;
             }
             var targetId = isTypeParameter ? RevitValueReader.GetId(element.GetTypeId()) : RevitValueReader.GetId(id);
@@ -962,6 +957,7 @@ internal static class ActionMutations
             names.Add(view.Name);
             changed.Add(RevitValueReader.GetId(view.Id));
         }
+        if (names.Count == 0) throw new ArgumentException(ViewTemplateRefusal.Message(action.Template!, mismatches));
         return new ActionResultData
         {
             Count = names.Count,
