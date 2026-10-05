@@ -33,8 +33,9 @@ Jobs without `targetDocument` retain the active-document behavior.
 
 ## Long action jobs
 
-`revit_process_models`, `revit_export`, `revit_export_nwc`, `revit_edit_families`, audited `revit_open_document`, and `revit_execute_code` with a long response timeout can outlive the tool wait.
+`revit_process_models`, `revit_export`, `revit_export_nwc`, `revit_edit_families`, audited `revit_open_document`, and `revit_execute_code` can outlive the tool wait.
 `REVIT_MCP_TOOL_BUDGET_S` defaults to 40 seconds, so that the first response arrives within a 60-second client limit even over SSH, and accepts 10 through 200.
+`revit_execute_code` with a `response_timeout_s` below the budget waits for that timeout, then returns the same running response instead of an error.
 Short actions return their existing response shape.
 An unfinished long action returns `status:"running"`, `jobId`, `progress`, `partial`, and a warning that the action may already have changed the model.
 Call `revit_jobs(job_id=jobId, wait_s=40)` until the original action response is returned.
@@ -127,7 +128,7 @@ IFC exports the whole model or one view selected through `views`. Its options ar
 
 The final response has `partial=true` when at least one model fails and includes the results for all processed models.
 
-`save.mode` is `none` by default. `output_dir` saves copies with the original file names and refuses a target equal to any source. Detached workshared models are saved as new centrals. `in_place` is allowed only for non-workshared local or UNC models opened directly, without `local_copy` or `read_only_local`. Its first call returns `needsConfirmation`, `confirmationText` listing writable source files, and `confirmToken`. Read-only source files appear in `models` with status `refused` and error `read-only file`; they are excluded from the token and processing. If every source is read-only, the call fails without a token. Retry with `confirm_token` only after reviewing the list. `dry_run=true` opens each model, runs steps and code inside a rolled-back transaction group, resolves exports without writing, and never saves. `code.transaction="none"` is incompatible with `dry_run` because the script owns its transactions.
+`save.mode` is `none` by default. `output_dir` saves copies with the original file names and refuses a target equal to any source. Detached workshared models are saved as new centrals. `in_place` is allowed only for non-workshared local or UNC models opened directly, without `local_copy` or `read_only_local`. Its first call returns `needsConfirmation`, `confirmationText` listing writable source files, and `confirmToken`. Read-only source files appear in `models` with status `refused` and error `read-only file`; they are excluded from the token and processing. If every source is read-only, the call fails without a token. Retry with `confirm_token` only after reviewing the list. A failed confirmation, for any reason, uses up the token; repeat the call without `confirm_token` to get a new preview and token. `dry_run=true` opens each model, runs steps and code inside a rolled-back transaction group, resolves exports without writing, and never saves. `code.transaction="none"` is incompatible with `dry_run` because the script owns its transactions.
 
 ### NWC export options
 
@@ -345,7 +346,7 @@ The view may already be active if zoom fails.
 
 `revit_sync_document` always needs confirmation and a non-empty `comment`. It rejects detached and family documents. `relinquish` is `"all"`, `"none"` or a map of `borrowed`, `user_worksets`, `family_worksets`, `view_worksets` and `standard_worksets` booleans. `compact=false`; `save_local_before` and `save_local_after` default to true. The central lock callback does not wait for a lock.
 
-For confirmation, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document, arguments and document state; a change after the preview requires a new token. A token guards against accidents, not against an agent replaying it; use read-only mode for unattended runs. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
+For confirmation, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document, arguments and document state; a change after the preview requires a new token. A failed confirmation, for any reason, uses up the token; repeat the call without `confirm_token` to get a new preview and token. A token guards against accidents, not against an agent replaying it; use read-only mode for unattended runs. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
 
 These operations require no open transaction and cannot be included in `revit_batch`. Read-only mode applies. A committed open, close, save or sync carries a `summary` and appears in the MCP activity pane, but opens no undo entry: use Revit's own history for these document-level changes.
 

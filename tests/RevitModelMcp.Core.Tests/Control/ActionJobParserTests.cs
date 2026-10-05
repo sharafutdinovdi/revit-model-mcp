@@ -686,7 +686,7 @@ public sealed class ActionJobParserTests
         var now = DateTimeOffset.UtcNow;
         var tokens = new DocumentConfirmationTokens(() => now);
         var first = tokens.Issue("save-document", "document-1", "path=A", "state-1");
-        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=B", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
+        await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=B", "state-1")).IsEqualTo(DocumentConfirmationResult.ArgumentsMismatch);
         await Assert.That(tokens.Consume(first, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
         var second = tokens.Issue("save-document", "document-1", "path=A", "state-1");
         await Assert.That(tokens.Consume(second, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Valid);
@@ -694,6 +694,19 @@ public sealed class ActionJobParserTests
         var third = tokens.Issue("save-document", "document-1", "path=A", "state-1");
         now = now.AddMinutes(5);
         await Assert.That(tokens.Consume(third, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
+    }
+
+    [Test]
+    [Arguments("document-1", "path=A", "state-2", DocumentConfirmationResult.DocumentChanged)]
+    [Arguments("document-1", "path=B", "state-2", DocumentConfirmationResult.ArgumentsMismatch)]
+    [Arguments("document-2", "path=A", "state-1", DocumentConfirmationResult.ArgumentsMismatch)]
+    public async Task DocumentConfirmationTokens_ClassifyMismatchAndBurnToken(
+        string document, string arguments, string state, DocumentConfirmationResult expected)
+    {
+        var tokens = new DocumentConfirmationTokens();
+        var token = tokens.Issue("save-document", "document-1", "path=A", "state-1");
+        await Assert.That(tokens.Consume(token, "save-document", document, arguments, state)).IsEqualTo(expected);
+        await Assert.That(tokens.Consume(token, "save-document", "document-1", "path=A", "state-1")).IsEqualTo(DocumentConfirmationResult.Invalid);
     }
 
     [Test]

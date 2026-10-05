@@ -464,13 +464,14 @@ def addressed_tool(function):
 async def revit_jobs(
     cancel_job_id: str | None = None,
     job_id: str | None = None,
-    wait_s: Annotated[int, Field(ge=0, le=50)] = 40,
+    wait_s: Annotated[int, Field(ge=0, le=50, description="Seconds to wait, 0 through 50.")] = 40,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """List recent jobs, or poll an action jobId for up to wait_s seconds.
 
+    wait_s accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends; call again while the job is still running.
     A running job returns progress and partial per-model results.
     A finished job returns the original action response, including verification warnings.
     Results remain on the workstation for 24 hours, across MCP server restarts.
