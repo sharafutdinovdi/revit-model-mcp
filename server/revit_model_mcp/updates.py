@@ -75,10 +75,18 @@ def _write_state(path: Path, state: dict[str, str]) -> None:
     temporary.replace(path)
 
 
-def update_status() -> dict[str, str | None]:
+def update_status(current: str | None = None) -> dict[str, str | None]:
     state = read_state()
+    latest = state.get("latestKnown")
+    if (
+        current is not None
+        and "+" not in current
+        and stable_version_key(current) is not None
+        and (not latest or newer_stable(current, latest))
+    ):
+        latest = current
     return {
-        "latestKnownVersion": state.get("latestKnown"),
+        "latestKnownVersion": latest,
         "updateCheck": "disabled"
         if os.environ.get("REVIT_MCP_NO_UPDATE_CHECK") == "1"
         else state.get("lastChecked"),

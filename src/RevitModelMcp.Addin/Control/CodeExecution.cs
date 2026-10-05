@@ -47,9 +47,14 @@ public sealed class ScriptContext
 
 internal static class CodeExecution
 {
-    private sealed record CompiledCode(byte[] Assembly, byte[] Symbols);
-    private static readonly Dictionary<string, CompiledCode> Cache = [];
-    private static readonly Queue<string> CacheOrder = [];
+    private sealed class CompiledCode(byte[] assembly, byte[] symbols)
+    {
+        public byte[] Assembly { get; } = assembly;
+        public byte[] Symbols { get; } = symbols;
+        public System.Reflection.Assembly? Loaded { get; set; }
+    }
+
+    private static readonly BoundedLruCache<string, CompiledCode> Cache = new(32);
 
     public static ActionResultData Execute(UIApplication application, Document? document, UIDocument? uiDocument,
         ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId)
@@ -73,7 +78,7 @@ internal static class CodeExecution
             result.Warning = "The script owns transactions and document lifecycle. Undo is not guaranteed.";
         WriteAudit(code, clientName, document?.Title, document?.PathName, action.TransactionMode, jobId);
         var key = CodeSource.CacheKey(code, action.TransactionMode);
-        if (!Cache.TryGetValue(key, out var compiled))
+        if (!Cache.TryGet(key, out var compiled))
         {
             var source = CodeSource.BuildSource(code);
             var references = GetReferences();
@@ -110,9 +115,7 @@ internal static class CodeExecution
                 return result;
             }
             compiled = new CompiledCode(assemblyStream.ToArray(), symbolsStream.ToArray());
-            Cache[key] = compiled;
-            CacheOrder.Enqueue(key);
-            if (CacheOrder.Count > 32) Cache.Remove(CacheOrder.Dequeue());
+            Cache.Set(key, compiled);
         }
 
         var context = new ScriptContext(application, uiDocument, document);
@@ -138,7 +141,9 @@ internal static class CodeExecution
                     .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
             }
 #if NETFRAMEWORK
-            var script = Assembly.Load(compiled.Assembly, compiled.Symbols);
+            // .NET Framework cannot unload assemblies, so load once per cache entry.
+            // Reuse bounds growth to the cache size per distinct source.
+            var script = compiled.Loaded ??= Assembly.Load(compiled.Assembly, compiled.Symbols);
 #else
             using var assemblyInput = new MemoryStream(compiled.Assembly);
             using var symbolsInput = new MemoryStream(compiled.Symbols);

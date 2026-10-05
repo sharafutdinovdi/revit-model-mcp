@@ -34,6 +34,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 - [ ] **1.1 MSI — SingleUser**: run `RevitModelMcp-<ver>-SingleUser.msi`. Installer completes without error.
 - [ ] **1.2 MSI — MultiUser**: on a separate profile/machine, run `RevitModelMcp-<ver>-MultiUser.msi`. Completes; add-in visible for all users.
+- [ ] **1.2a MSI scope conflict**: install SingleUser, then run MultiUser: it is refused with the "SingleUser ... already installed for this user" message. Uninstall SingleUser, install MultiUser, then run SingleUser: it is refused with the "MultiUser ... already installed on this computer" message. Uninstall each; no add-in files remain.
 - [ ] **1.3 Clone script**: `./install.ps1 -Source Release` from a clone. Completes.
 - [ ] **1.4 Manifest present**: `%APPDATA%\Autodesk\Revit\Addins\<year>\RevitModelMcp.addin` exists and points to a `RevitModelMcp.dll` that exists.
 - [ ] **1.5 DLL version**: the installed `RevitModelMcp.dll` matches the release version.
@@ -166,6 +167,7 @@ Actions run by default; either `REVIT_MCP_READ_ONLY=1` **or** the workstation `r
 - [ ] **5.1 Local** (`REVIT_MCP_HOST=local`) on the workstation — all of §3 passes.
 - [ ] **5.2 SSH tunnel** (remote client → workstation loopback) — `revit_ping` + a read tool pass from M2.
 - [ ] **5.3 HTTP** (loopback + bearer token) — `/health` (no token) responds; an authenticated read works. ⚠️ **Re-verify issue #44**: the HTTP listener (port 53110) not binding. Confirm fixed or still open.
+- [ ] **5.3a HTTP health and tool call**: with HTTP enabled, `curl -i http://127.0.0.1:<port>/health` returns `200` and a JSON body whose `commands` is a non-empty list. Then run one tool (for example `revit_ping`) with `REVIT_MCP_HOST=http://127.0.0.1:<port>` and a valid `REVIT_MCP_TOKEN`; it succeeds instead of `Revit endpoint returned HTTP 500`.
 - [ ] **5.4 Concurrency / channel contention** ⚠️ **found 2026-09-15**: fire several tool calls in quick succession (as the agent does when reasoning). Earlier run showed *4 of 7* parallel calls failing (single file-channel "busy: trigger.txt exists"). Test rapid/parallel calls and record the failure rate; if the channel serializes poorly, file an issue.
 
 ---

@@ -211,13 +211,7 @@ internal static class ActionMutations
     internal static ActionResultData UpdateParameters(Document document, ActionJobContract action, ISet<long>? inGroup = null)
     {
         var ids = MatchedIds(document, action);
-        var skipped = new Dictionary<string, List<long>>
-        {
-            ["missing"] = [],
-            ["readOnly"] = [],
-            ["typeParameter"] = [],
-            ["inGroup"] = []
-        };
+        SkippedByReason skipped = new();
         var result = new ActionResultData { MatchedCount = ids.Count, Values = [], Skipped = skipped };
         var matchedIds = ids.Select(RevitValueReader.GetId).ToHashSet();
         var affectedTypeIds = new HashSet<long>();
@@ -237,23 +231,23 @@ internal static class ActionMutations
                 }
                 catch (ArgumentException typeException) when (typeException.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
                 {
-                    skipped["missing"].Add(RevitValueReader.GetId(id));
+                    skipped.Missing.Add(RevitValueReader.GetId(id));
                     continue;
                 }
             }
             if (isTypeParameter && !action.IncludeTypeParameters)
             {
-                skipped["typeParameter"].Add(RevitValueReader.GetId(id));
+                skipped.TypeParameter.Add(RevitValueReader.GetId(id));
                 continue;
             }
             if (parameter.IsReadOnly)
             {
-                skipped["readOnly"].Add(RevitValueReader.GetId(id));
+                skipped.ReadOnly.Add(RevitValueReader.GetId(id));
                 continue;
             }
             if (inGroup?.Contains(RevitValueReader.GetId(id)) == true)
             {
-                skipped["inGroup"].Add(RevitValueReader.GetId(id));
+                skipped.InGroup.Add(RevitValueReader.GetId(id));
                 continue;
             }
             var targetId = isTypeParameter ? RevitValueReader.GetId(element.GetTypeId()) : RevitValueReader.GetId(id);
@@ -279,8 +273,8 @@ internal static class ActionMutations
                 affectedTypeIds.Contains(RevitValueReader.GetId(element.GetTypeId())) &&
                 !matchedIds.Contains(RevitValueReader.GetId(element.Id)));
         }
-        if (skipped["inGroup"].Count > 0)
-            result.Warning = $"{skipped["inGroup"].Count} {(skipped["inGroup"].Count == 1 ? "element was" : "elements were")} skipped because they belong to groups; Revit allows changes to group members only in group edit mode.";
+        if (skipped.InGroup.Count > 0)
+            result.Warning = $"{skipped.InGroup.Count} {(skipped.InGroup.Count == 1 ? "element was" : "elements were")} skipped because they belong to groups; Revit allows changes to group members only in group edit mode.";
         result.Verification = new ActionVerification { Changed = changedIds };
         result.Count = result.Verification.Changed.Count;
         return result;
@@ -977,6 +971,7 @@ internal static class ActionMutations
             names.Add(view.Name);
             changed.Add(RevitValueReader.GetId(view.Id));
         }
+        if (names.Count == 0) throw new ArgumentException(ViewTemplateRefusal.Message(action.Template!, mismatches));
         return new ActionResultData
         {
             Count = names.Count,

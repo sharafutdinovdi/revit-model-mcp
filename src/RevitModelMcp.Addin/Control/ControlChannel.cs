@@ -33,7 +33,7 @@ internal sealed class ControlChannel
     public ControlChannel(string triggerFilePath)
     {
         _triggerFilePath = triggerFilePath;
-        _scheduler = new JobScheduler(resultDirectory: Path.Combine(Path.GetDirectoryName(triggerFilePath)!, "jobs"));
+        _scheduler = new JobScheduler(resultDirectory: Path.Combine(Path.GetDirectoryName(triggerFilePath)!, "jobs"), log: PluginLog.Warn);
     }
 
     public JobScheduler Scheduler => _scheduler;
@@ -112,10 +112,11 @@ internal sealed class ControlChannel
                 var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content);
                 if (submitted.Job is null)
                 {
-                    if (submitted.Error == "queue_full")
+                    if (submitted.Error is "queue_full" or "invalid_job_id" or "persist_failed")
                     {
-                        var response = CommandResponse<object>.Fail(parsed.Command, "queue_full", 0, parsed.CorrelationId);
-                        response.Error = "queue_full";
+                        var message = JobScheduler.SubmissionMessage(submitted.Error);
+                        var response = CommandResponse<object>.Fail(parsed.Command, message ?? submitted.Error, 0, parsed.CorrelationId);
+                        response.Error = submitted.Error;
                         response.RetryAfterMs = submitted.RetryAfterMs;
                         response.Client = new ClientIdentity { Name = parsed.ClientName, Id = parsed.ClientId };
                         response.JobId = jobId;

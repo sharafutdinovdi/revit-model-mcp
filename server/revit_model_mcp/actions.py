@@ -145,7 +145,7 @@ _BATCH_FIELDS = {
         "element_ids": (NonEmptyIds, ...),
         "axis": (Literal["x", "y"], ...),
         "point_mm": (Point, ...),
-        "copy": (bool, True),
+        "copy_enabled": (bool, Field(default=True, alias="copy")),
     },
     "change_type": {
         "element_ids": (NonEmptyIds, ...),
@@ -310,7 +310,7 @@ class BatchStep(BaseModel):
 
     @model_validator(mode="after")
     def validate_args(self):
-        self.args = _BATCH_MODELS[self.action].model_validate(self.args).model_dump()
+        self.args = _BATCH_MODELS[self.action].model_validate(self.args).model_dump(by_alias=True)
         if self.action == "isolate" and not self.args["reset"] and not self.args["element_ids"]:
             raise ValueError("element_ids must not be empty unless reset is true.")
         if self.action == "create_wall" and self.args["start_mm"] == self.args["end_mm"]:

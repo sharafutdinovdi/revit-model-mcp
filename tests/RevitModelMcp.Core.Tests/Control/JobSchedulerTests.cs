@@ -173,4 +173,146 @@ public sealed class JobSchedulerTests
             JobResponseMetadata.Current = null;
         }
     }
+
+    private static string NewId() => Guid.NewGuid().ToString("N");
+
+    private static string NewTempDirectory()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    [Test]
+    public async Task DashedGuidActionJobIsRejectedAndSchedulerKeepsRunning()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            var rejected = scheduler.Submit(Guid.NewGuid().ToString(), "a", "Alice", "delete", "{}");
+            await Assert.That(rejected.Error).IsEqualTo("invalid_job_id");
+            await Assert.That(scheduler.HasPending).IsFalse();
+            await Assert.That(scheduler.ActiveJobs().Count).IsEqualTo(0);
+            var actionId = NewId();
+            await Assert.That(scheduler.Submit("ping-1", "a", "Alice", "ping", "{}").Error).IsNull();
+            await Assert.That(scheduler.Submit(actionId, "a", "Alice", "delete", "{}").Error).IsNull();
+            await Assert.That(scheduler.TakeNext()?.JobId).IsEqualTo("ping-1");
+            scheduler.Complete("ping-1", "{}", true);
+            await Assert.That(scheduler.TakeNext()?.JobId).IsEqualTo(actionId);
+            scheduler.Complete(actionId, "{}", true);
+            await Assert.That(scheduler.Status(actionId)?.State).IsEqualTo(JobState.Done);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task ResultWriteFailureDoesNotWedgeScheduler()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var fail = false;
+            var scheduler = new JobScheduler(resultDirectory: directory, writeResult: (_, _) =>
+            {
+                if (fail) throw new IOException("disk full");
+            });
+            var actionId = NewId();
+            await Assert.That(scheduler.Submit(actionId, "a", "Alice", "delete", "{}").Error).IsNull();
+            scheduler.Submit("ping-1", "a", "Alice", "ping", "{}");
+            await Assert.That(scheduler.TakeNext()?.JobId).IsEqualTo(actionId);
+            fail = true;
+            scheduler.Complete(actionId, "{\"done\":true}", true);
+            var status = scheduler.Status(actionId);
+            await Assert.That(status?.State).IsEqualTo(JobState.Done);
+            await Assert.That(status?.Result).IsEqualTo("{\"done\":true}");
+            await Assert.That(scheduler.TakeNext()).IsNotNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task AcceptedWriteFailureRejectsSubmissionWithoutEnqueueing()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var fail = true;
+            var scheduler = new JobScheduler(resultDirectory: directory, writeResult: (_, _) =>
+            {
+                if (fail) throw new IOException("disk full");
+            });
+            var actionId = NewId();
+            var rejected = scheduler.Submit(actionId, "a", "Alice", "delete", "{}");
+            await Assert.That(rejected.Error).IsEqualTo("persist_failed");
+            await Assert.That(scheduler.HasPending).IsFalse();
+            await Assert.That(scheduler.ActiveJobs().Count).IsEqualTo(0);
+            fail = false;
+            var accepted = scheduler.Submit(actionId, "a", "Alice", "delete", "{}");
+            await Assert.That(accepted.Error).IsNull();
+            await Assert.That(accepted.Job?.Position).IsEqualTo(1);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task ProgressWriteFailureKeepsInMemoryResult()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var fail = false;
+            var scheduler = new JobScheduler(resultDirectory: directory, writeResult: (_, _) =>
+            {
+                if (fail) throw new IOException("disk full");
+            });
+            var actionId = NewId();
+            scheduler.Submit(actionId, "a", "Alice", "delete", "{}");
+            scheduler.TakeNext();
+            fail = true;
+            scheduler.PublishProgress(actionId, "{\"progress\":1}");
+            await Assert.That(scheduler.Status(actionId)?.Result).IsEqualTo("{\"progress\":1}");
+            scheduler.Complete(actionId, "{}", true);
+            await Assert.That(scheduler.Status(actionId)?.State).IsEqualTo(JobState.Done);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task EvictExpiredDeleteFailureDoesNotThrow()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var logged = new List<string>();
+            var scheduler = new JobScheduler(clock: () => now, resultDirectory: directory,
+                log: logged.Add, writeResult: (_, _) => { });
+            var actionId = NewId();
+            scheduler.Submit(actionId, "a", "Alice", "delete", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(actionId, "{}", true);
+            Directory.CreateDirectory(Path.Combine(directory, $"{actionId}.json"));
+            now += TimeSpan.FromHours(25);
+            await Assert.That(scheduler.Status(actionId)).IsNull();
+            await Assert.That(scheduler.ActiveJobs().Count).IsEqualTo(0);
+            await Assert.That(logged.Any(line => line.Contains(directory))).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
 }
