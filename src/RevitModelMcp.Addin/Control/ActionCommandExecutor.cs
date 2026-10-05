@@ -177,6 +177,12 @@ internal static class ActionCommandExecutor
             foreach (var path in paths) DocumentPathValidator.Validate(path);
             if (paths.Select(path => path.Replace('/', '\\')).Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Count)
                 throw new ArgumentException("The source contains duplicate models.");
+            if (request.Save?.Mode == "output_dir" ||
+                request.Exports?.Any(export => export.Folder is null || export.Folder.Contains("{model}")) == true)
+            {
+                var collisions = ProcessOutputCollisions.Find(paths);
+                if (collisions.Count > 0) throw new ArgumentException(ProcessOutputCollisions.FormatError(collisions));
+            }
             var refused = new List<ProcessModelResult>();
             if (request.Save?.Mode == "in_place" && !request.DryRun)
             {
@@ -446,36 +452,45 @@ internal static class ActionCommandExecutor
         }
         finally
         {
-            group?.Dispose();
+            void Cleanup(string step, Action action)
+            {
+                try { action(); }
+                catch (Exception exception)
+                {
+                    var sentence = $"Cleanup failed ({step}): {exception.Message}";
+                    result.Status = "failed";
+                    result.Error = result.Error is null ? sentence : result.Error + " " + sentence;
+                }
+            }
+            Cleanup("transaction group", () => group?.Dispose());
             dismissedMessages.AddRange(failures.WarningsDismissed);
             if (document is not null)
             {
-                var activity = new ActionResultData
+                Cleanup("activity record", () =>
                 {
-                    Title = document.Title,
-                    DryRun = request.DryRun,
-                    UndoName = undoName,
-                    Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                    var activity = new ActionResultData
                     {
-                        Command = "process-models",
-                        DocumentTitle = document.Title,
-                        DryRun = request.DryRun
-                    })
-                };
-                var activityResponse = result.Status == "done"
-                    ? CommandResponse<ActionResultData>.Ok(job.Command, activity, stopwatch.ElapsedMilliseconds)
-                    : CommandResponse<ActionResultData>.Fail(job.Command, result.Error ?? "Model processing failed.", stopwatch.ElapsedMilliseconds);
-                ActivityRecorder.RecordAction(job, document, activity, activityResponse, changes);
-                changes?.Dispose();
-                try { DocumentActions.CloseForProcessing(application, document); }
-                catch (Exception exception)
-                {
-                    result.Status = "failed";
-                    result.Error = result.Error is null ? exception.Message : result.Error + " Close failed: " + exception.Message;
-                }
+                        Title = document.Title,
+                        DryRun = request.DryRun,
+                        UndoName = undoName,
+                        Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                        {
+                            Command = "process-models",
+                            DocumentTitle = document.Title,
+                            DryRun = request.DryRun
+                        })
+                    };
+                    var activityResponse = result.Status == "done"
+                        ? CommandResponse<ActionResultData>.Ok(job.Command, activity, stopwatch.ElapsedMilliseconds)
+                        : CommandResponse<ActionResultData>.Fail(job.Command, result.Error ?? "Model processing failed.", stopwatch.ElapsedMilliseconds);
+                    ActivityRecorder.RecordAction(job, document, activity, activityResponse, changes);
+                });
             }
-            application.DialogBoxShowing -= SuppressDialog;
-            application.Application.FailuresProcessing -= SuppressWarnings;
+            Cleanup("change capture", () => changes?.Dispose());
+            if (document is not null)
+                Cleanup("close", () => DocumentActions.CloseForProcessing(application, document));
+            Cleanup("dialog handler", () => application.DialogBoxShowing -= SuppressDialog);
+            Cleanup("warning handler", () => application.Application.FailuresProcessing -= SuppressWarnings);
             result.DialogsDismissed = ProcessDialogSummary.FromMessages(dismissedMessages);
             result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         }
