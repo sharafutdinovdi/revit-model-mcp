@@ -33,12 +33,12 @@ public static class CommandResponseJsonSerializer
             typeof(CommandResponse<T>),
             new DataContractJsonSerializerSettings
             {
-                UseSimpleDictionaryFormat = true
+                UseSimpleDictionaryFormat = true,
+                EmitTypeInformation = System.Runtime.Serialization.EmitTypeInformation.Never
             });
         using var stream = new MemoryStream();
         serializer.WriteObject(stream, response);
-        var json = Encoding.UTF8.GetString(stream.ToArray())
-            .Replace("\"__type\":\"SkippedByReason:#RevitModelMcp.Core.Control\",", string.Empty);
+        var json = Encoding.UTF8.GetString(stream.ToArray());
         if (response is CommandResponse<ActionResultData> { Command: "execute-code", Data: { } action })
         {
             const string dataStart = "\"data\":{";

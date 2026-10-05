@@ -596,6 +596,19 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task ActionResults_KeepUserTextThatLooksLikeTypeInformation()
+    {
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok(
+            "update-parameters", new ActionResultData
+            {
+                Values = [new ParameterChange { Id = 1, OldValue = "\"__type\":\"x\",", NewValue = "b" }],
+                Skipped = new SkippedByReason()
+            }, 1));
+        await Assert.That(json.Contains("\"oldValue\":\"\\\"__type\\\":\\\"x\\\",\"")).IsTrue();
+        await Assert.That(json.Contains("\"skipped\":{\"missing\":[]")).IsTrue();
+    }
+
+    [Test]
     public async Task BulkFamilyJobs_ValidatePathsAndPlacementLimits()
     {
         var load = ControlJobParser.Parse("""{"command":"load-family","paths":["C:\\Families\\Chair.rfa"]}""");
