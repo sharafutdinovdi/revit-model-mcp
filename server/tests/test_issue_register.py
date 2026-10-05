@@ -274,7 +274,7 @@ def test_early_budget_timer_starts_one_capture(tmp_path):
             await asyncio.Event().wait()
 
         with (
-            patch.object(server, "ISSUE_CAPTURE_BUDGET_SECONDS", 0.01),
+            patch.object(server, "ISSUE_CAPTURE_BUDGET_SECONDS", 0.2),
             patch.object(server.channel, "execute", side_effect=stuck_capture),
         ):
             return await server.revit_issue_register(
@@ -285,7 +285,7 @@ def test_early_budget_timer_starts_one_capture(tmp_path):
 
     loop = asyncio.new_event_loop()
     # asyncio fires timers up to this much early, as on Windows (15.6 ms).
-    loop._clock_resolution = 0.5
+    loop._clock_resolution = 1.0
     try:
         result = loop.run_until_complete(run())
     finally:
