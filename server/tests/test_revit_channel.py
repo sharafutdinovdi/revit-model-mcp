@@ -2208,6 +2208,31 @@ def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
     asyncio.run(check())
 
 
+@pytest.mark.parametrize("persisted", [False, True])
+def test_execute_code_below_budget_returns_running_job_when_persisted(persisted):
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["execute-code"]}
+        if persisted:
+            host.instance_info["commands"].append("jobs/persisted")
+        error = TimeoutError if persisted else ResponseTimeoutError
+        host.wait_for_new_response = AsyncMock(side_effect=error("Poll timed out."))
+        host.fetch_job = AsyncMock(side_effect=TimeoutError("Boundary fetch timed out."))
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=40):
+            execute = RevitReadChannel(host).execute(
+                ReadJob("execute-code", {"command": "execute-code"}), 30
+            )
+            if persisted:
+                result = await execute
+                assert result["status"] == "running"
+                assert result["jobId"] == json.loads(host.written_content)["jobId"]
+            else:
+                with pytest.raises(ResponseTimeoutError):
+                    await execute
+
+    asyncio.run(check())
+
+
 def test_background_wait_never_exceeds_budget_when_clock_is_frozen():
     async def check():
         loop = asyncio.get_running_loop()

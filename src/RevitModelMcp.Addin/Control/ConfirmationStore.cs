@@ -9,6 +9,14 @@ internal static class ConfirmationStore
 
     internal static DocumentConfirmationTokens Tokens { get; } = new();
 
+    internal static string Rejection(DocumentConfirmationResult result, string changedMessage) => result switch
+    {
+        DocumentConfirmationResult.DocumentChanged => changedMessage,
+        DocumentConfirmationResult.ArgumentsMismatch =>
+            "The arguments or models differ from the preview. The confirmation token is used up; repeat the call without confirm_token to get a new one, then confirm with identical arguments.",
+        _ => "Confirmation token is unknown, expired or already used. Repeat the call without confirm_token to get a new one."
+    };
+
     internal static string State(Document document)
     {
         if (!Documents.TryGetValue(document, out var tracked))
