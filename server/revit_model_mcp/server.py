@@ -675,21 +675,22 @@ async def revit_model_health(
     selected = sorted(range(len(groups)), key=lambda i: groups[i]["count"], reverse=True)[:5]
     snapshots, notes, warnings = {}, {}, []
     deadline = asyncio.get_running_loop().time() + HEALTH_CAPTURE_BUDGET_SECONDS
+    exhausted = False
     try:
         with tempfile.TemporaryDirectory(prefix="revit_health_") as directory:
             for index in selected:
                 ids = warning_ids(groups[index])[:50]
                 remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0 or not ids:
+                if exhausted or remaining <= 0 or not ids:
                     notes[index] = (
                         "Snapshot skipped: capture time budget exhausted"
-                        if remaining <= 0
+                        if exhausted or remaining <= 0
                         else "Snapshot skipped: no affected elements available"
                     )
                     warnings.append(f"Warning group {index + 1}: {notes[index]}")
                     continue
                 try:
-                    async with asyncio.timeout(remaining):
+                    async with asyncio.timeout(remaining) as budget:
                         result = await _execute(
                             ReadJob(
                                 "capture-elements",
@@ -713,6 +714,8 @@ async def revit_model_health(
                             f"Warning group {index + 1}: snapshot missing element IDs {missing}"
                         )
                 except (ToolError, OSError, ValueError, KeyError, TypeError, TimeoutError) as error:
+                    # The timer can fire early; only the budget expiring ends the loop.
+                    exhausted = exhausted or budget.expired()
                     notes[index] = (
                         f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
                     )
@@ -1320,16 +1323,17 @@ async def revit_issue_register(
         warnings = [f"{issues[index]['id']}: {notes[index]}" for index in skipped]
         snapshots = {}
         deadline = asyncio.get_running_loop().time() + ISSUE_CAPTURE_BUDGET_SECONDS
+        exhausted = False
         with tempfile.TemporaryDirectory(prefix="revit_issue_register_") as directory:
             for index in selected:
                 issue = issues[index]
                 remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0:
+                if exhausted or remaining <= 0:
                     notes[index] = "Snapshot skipped: capture time budget exhausted"
                     warnings.append(f"{issue['id']}: {notes[index]}")
                     continue
                 try:
-                    async with asyncio.timeout(remaining):
+                    async with asyncio.timeout(remaining) as budget:
                         result = await _execute(
                             ReadJob(
                                 "capture-elements",
@@ -1351,6 +1355,8 @@ async def revit_issue_register(
                     if missing:
                         warnings.append(f"{issue['id']}: snapshot missing element IDs {missing}")
                 except (ToolError, OSError, ValueError, KeyError, TimeoutError) as error:
+                    # The timer can fire early; only the budget expiring ends the loop.
+                    exhausted = exhausted or budget.expired()
                     notes[index] = (
                         f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
                     )
