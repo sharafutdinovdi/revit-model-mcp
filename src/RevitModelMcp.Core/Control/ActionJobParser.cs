@@ -1082,6 +1082,7 @@ public sealed class ProcessModelResult
     [DataMember(Name = "saved", EmitDefaultValue = false)] public string? Saved { get; set; }
     [DataMember(Name = "dialogsDismissed")] public ProcessDialogSummary DialogsDismissed { get; set; } = new();
     [DataMember(Name = "error", EmitDefaultValue = false)] public string? Error { get; set; }
+    [DataMember(Name = "warnings", EmitDefaultValue = false)] public List<string>? Warnings { get; set; }
 }
 
 [DataContract]

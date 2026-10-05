@@ -301,6 +301,20 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task ProcessModelResult_SerializesWarningsOnlyWhenPresent()
+    {
+        var withWarnings = new ActionResultData
+        {
+            Models = [new ProcessModelResult { Path = "C:\\A.rvt", Status = "done", Warnings = ["Cleanup failed (change capture): boom"] }]
+        };
+        var without = new ActionResultData { Models = [new ProcessModelResult { Path = "C:\\A.rvt", Status = "done" }] };
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("process-models", withWarnings, 1));
+        var plain = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("process-models", without, 1));
+        await Assert.That(json.Contains("\"warnings\":[\"Cleanup failed (change capture): boom\"]")).IsTrue();
+        await Assert.That(plain.Contains("\"warnings\"")).IsFalse();
+    }
+
+    [Test]
     public async Task ExecuteCode_ValidatesModeSizeAndBatchExclusion()
     {
         var parsed = ControlJobParser.Parse("""{"command":"execute-code","code":"return 42;"}""");
