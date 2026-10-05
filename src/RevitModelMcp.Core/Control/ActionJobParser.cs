@@ -1589,10 +1589,10 @@ public sealed class SharedParameterSpec
 [DataContract]
 public sealed class SkippedByReason
 {
-    [DataMember(Name = "missing")] public List<long> Missing { get; set; } = [];
-    [DataMember(Name = "readOnly")] public List<long> ReadOnly { get; set; } = [];
-    [DataMember(Name = "typeParameter")] public List<long> TypeParameter { get; set; } = [];
-    [DataMember(Name = "inGroup")] public List<long> InGroup { get; set; } = [];
+    [DataMember(Name = "missing", Order = 0)] public List<long> Missing { get; set; } = [];
+    [DataMember(Name = "readOnly", Order = 1)] public List<long> ReadOnly { get; set; } = [];
+    [DataMember(Name = "typeParameter", Order = 2)] public List<long> TypeParameter { get; set; } = [];
+    [DataMember(Name = "inGroup", Order = 3)] public List<long> InGroup { get; set; } = [];
 }
 
 [DataContract]
