@@ -6,20 +6,35 @@ public static class ViewReferenceMatcher
         IEnumerable<T> views,
         string reference,
         Func<T, long> idSelector,
-        Func<T, string> nameSelector)
+        Func<T, string> nameSelector,
+        Func<T, string?>? sheetNumberSelector = null,
+        Func<T, string>? typeSelector = null,
+        Func<T, string?>? sheetCollectionSelector = null)
         where T : class
     {
         var candidates = views as IReadOnlyList<T> ?? views.ToList();
-        var byName = candidates.FirstOrDefault(view =>
-            string.Equals(nameSelector(view), reference, StringComparison.Ordinal));
-        if (byName is not null)
+        var byName = candidates.Where(view =>
+            string.Equals(nameSelector(view), reference, StringComparison.Ordinal)).ToList();
+        var bySheetNumber = sheetNumberSelector is null ? [] : candidates.Where(view =>
+            string.Equals(sheetNumberSelector(view), reference, StringComparison.OrdinalIgnoreCase)).ToList();
+        var matches = byName.Concat(bySheetNumber).Distinct().ToList();
+        if (matches.Count > 1)
         {
-            return byName;
+            throw new InvalidOperationException($"View '{reference}' is ambiguous: " +
+                string.Join("; ", matches.Select(view =>
+                    $"id={idSelector(view)}, name={nameSelector(view)}, type={typeSelector?.Invoke(view) ?? "unknown"}" +
+                    (sheetNumberSelector?.Invoke(view) is string number ? $", number={number}" : string.Empty) +
+                    (sheetCollectionSelector is not null && sheetNumberSelector?.Invoke(view) is not null
+                        ? $", collection={sheetCollectionSelector(view) ?? "none"}" : string.Empty))));
         }
+        if (byName.Count == 1) return byName[0];
 
-        return long.TryParse(reference, out var id)
-            ? candidates.FirstOrDefault(view => idSelector(view) == id)
-            : null;
+        if (long.TryParse(reference, out var id))
+        {
+            var byId = candidates.FirstOrDefault(view => idSelector(view) == id);
+            if (byId is not null) return byId;
+        }
+        return bySheetNumber.SingleOrDefault();
     }
 }
 

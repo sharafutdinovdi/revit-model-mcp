@@ -1,16 +1,21 @@
 import json
 import math
 import os
+import re
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp.actions import (
+    UpdateFilters,
     _send_action,
     millimeters_to_feet,
+    query_filter_payload,
     redact_model_paths,
     register_actions,
 )
@@ -22,19 +27,43 @@ from revit_model_mcp.revit_channel import (
 )
 
 ACTION_TOOLS = {
+    "revit_cancel_job",
+    "revit_process_models",
+    "revit_execute_code",
     "revit_select",
     "revit_show",
     "revit_isolate",
+    "revit_override_graphics",
     "revit_move",
+    "revit_rotate",
+    "revit_copy",
+    "revit_mirror",
+    "revit_change_type",
+    "revit_update_parameters",
     "revit_place_family",
+    "revit_load_family",
+    "revit_place_families",
     "revit_create_wall",
+    "revit_create_mep_run",
+    "revit_link_cad",
+    "revit_walls_from_cad",
+    "revit_create_view",
+    "revit_duplicate_view",
+    "revit_apply_view_template",
+    "revit_create_sheet",
+    "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
     "revit_export_nwc",
+    "revit_export",
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
+    "revit_activate_document",
+    "revit_activate_view",
+    "revit_close_views",
+    "revit_new_document",
     "revit_close_document",
     "revit_save_document",
     "revit_sync_document",
@@ -61,7 +90,19 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
         for name in ACTION_TOOLS:
             tool = tools[name]
             assert ("response_timeout_s" in tool.input_schema["properties"]) is (
-                name in {"revit_export_nwc", "revit_edit_families", "revit_align_link_datums"}
+                name
+                in {
+                    "revit_export_nwc",
+                    "revit_edit_families",
+                    "revit_align_link_datums",
+                    "revit_execute_code",
+                    "revit_export",
+                    "revit_process_models",
+                    "revit_load_family",
+                    "revit_place_families",
+                    "revit_link_cad",
+                    "revit_walls_from_cad",
+                }
             )
             assert tool.annotations.read_only_hint is False
             assert tool.title and len(tool.title) <= 40
@@ -90,6 +131,58 @@ def test_stdio_read_only_blocks_execution_without_hiding_tools():
     asyncio.run(check())
 
 
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("revit_activate_document", {"document": "Tower"}),
+        ("revit_activate_view", {"view": "Level 1"}),
+        ("revit_close_views", {}),
+        ("revit_new_document", {}),
+    ],
+)
+def test_session_actions_refused_in_read_only_mode(name, arguments):
+    import asyncio
+
+    server, execute, _ = action_server(read_only=True)
+    result = asyncio.run(server.call_tool(name, arguments))
+    assert "read-only mode" in str(result)
+    execute.assert_not_awaited()
+
+
+def test_session_action_mappings():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_activate_document", {"document": "Tower"}))
+    assert execute.await_args.args[0].payload["command"] == "activate-document"
+    asyncio.run(
+        server.call_tool(
+            "revit_activate_view",
+            {"view": "3D", "document": "Tower", "activate_document": True, "view_type": "ThreeD"},
+        )
+    )
+    assert execute.await_args.args[0].payload["activateDocument"] is True
+    assert execute.await_args.args[0].payload["viewType"] == "ThreeD"
+    assert execute.await_args.args[0].payload["zoom"] == "fit"
+    asyncio.run(server.call_tool("revit_close_views", {"views": ["3D"], "keep_active": False}))
+    assert execute.await_args.args[0].payload["keepActive"] is False
+    asyncio.run(
+        server.call_tool(
+            "revit_new_document", {"template": r"C:\\T.rft", "kind": "family", "name": "Door"}
+        )
+    )
+    assert execute.await_args.args[0].payload["kind"] == "family"
+    assert execute.await_args.args[0].payload["name"] == "Door"
+    asyncio.run(
+        server.call_tool(
+            "revit_open_document",
+            {"path": r"C:\\M.rvt", "audit": True, "worksets": {"close": ["*Link*"]}},
+        )
+    )
+    assert execute.await_args.args[0].payload["worksetsClose"] == ["*Link*"]
+    assert execute.await_args.args[0].payload["audit"] is True
+
+
 def action_server(read_only=False):
     server = MCPServer("actions-test")
     execute = AsyncMock(return_value={"success": True, "data": {}, "activeView": "Level 1"})
@@ -98,6 +191,137 @@ def action_server(read_only=False):
     with patch.dict(os.environ, {"REVIT_MCP_READ_ONLY": "1" if read_only else "0"}):
         register_actions(server, execute, lambda: host)
     return server, execute, host
+
+
+def test_execute_code_maps_arguments_and_respects_read_only():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_execute_code", {"code": "return 42;"}))
+    job = execute.await_args.args[0]
+    assert job.command == "execute-code"
+    assert job.payload["code"] == "return 42;"
+    assert job.payload["transaction"] == "auto"
+    assert job.payload["dryRun"] is False
+    assert execute.await_args.args[1] == 600
+
+    with pytest.raises(Exception):
+        asyncio.run(
+            server.call_tool(
+                "revit_execute_code",
+                {
+                    "code": "return 42;",
+                    "transaction": "none",
+                    "dry_run": True,
+                },
+            )
+        )
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_models_maps_steps_code_exports_and_save():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\Models\A.rvt"],
+                "open": {"mode": "detached", "worksets": {"close": ["*Link*"]}, "audit": True},
+                "steps": [
+                    {
+                        "action": "set_parameter",
+                        "args": {"element_id": 1, "parameter": "Mark", "value": "done"},
+                    }
+                ],
+                "code": {"code": "return 1;"},
+                "exports": [{"format": "ifc", "folder": r"C:\Out\{model}"}],
+                "save": {"mode": "output_dir", "output_dir": r"C:\Saved"},
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.command == "process-models"
+    assert execute.await_args.args[1] == 14400
+    process = job.payload["process"]
+    assert process["open"]["worksetsClose"] == ["*Link*"]
+    assert process["open"]["audit"] is True
+    assert process["steps"][0]["command"] == "set-parameter"
+    assert process["code"] == {"code": "return 1;", "transaction": "auto"}
+    assert process["exports"][0]["format"] == "ifc"
+    assert process["save"] == {
+        "mode": "output_dir",
+        "outputDir": r"C:\Saved",
+        "compact": True,
+        "overwrite": False,
+    }
+
+
+def test_process_models_confirmation_flow_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.side_effect = [
+        {"success": True, "data": {"needsConfirmation": True, "confirmToken": "token"}},
+        {"success": True, "data": {"models": []}},
+    ]
+    arguments = {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "in_place"}}
+    preview = asyncio.run(server.call_tool("revit_process_models", arguments))
+    assert "needsConfirmation" in str(preview)
+    asyncio.run(server.call_tool("revit_process_models", {**arguments, "confirm_token": "token"}))
+    assert execute.await_count == 2
+    assert execute.await_args.args[0].payload["process"]["confirmToken"] == "token"
+
+    for invalid in (
+        {},
+        {"paths": ["relative.rvt"]},
+        {"paths": [r"C:\Models\A.rvt"], "folder": r"C:\Models"},
+        {
+            "paths": [r"C:\Models\A.rvt"],
+            "code": {"code": "return 1;", "transaction": "none"},
+            "dry_run": True,
+        },
+        {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "output_dir", "output_dir": r"C:\Models"}},
+        {
+            "paths": [r"C:\Models\A.rvt"],
+            "open": {"mode": "local_copy"},
+            "save": {"mode": "in_place"},
+        },
+    ):
+        with pytest.raises(Exception):
+            asyncio.run(server.call_tool("revit_process_models", invalid))
+    assert execute.await_count == 2
+
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    response = asyncio.run(blocked.call_tool("revit_process_models", arguments))
+    assert "read-only mode" in str(response)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_models_redacts_nested_paths():
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        result = redact_model_paths(
+            {
+                "data": {
+                    "models": [
+                        {
+                            "path": r"C:\Models\A.rvt",
+                            "saved": r"C:\Out\A.rvt",
+                            "dialogsDismissed": [r"Opened C:\Models\A.rvt"],
+                            "code": {"log": [r"Read C:\Models\A.rvt"]},
+                        }
+                    ]
+                }
+            }
+        )
+    model = result["data"]["models"][0]
+    assert model["path"] == "A.rvt"
+    assert model["saved"] == "A.rvt"
+    assert "C:\\Models" not in str(model)
 
 
 def test_document_action_mapping_and_confirmation_shape():
@@ -267,6 +491,14 @@ def test_response_message_paths_are_unchanged_when_redaction_is_off():
         assert redact_model_paths(response) is response
 
 
+def test_export_folder_is_redacted_when_enabled():
+    response = {"data": {"folder": r"C:\Models\exports\2026", "files": [{"name": "Doors.csv"}]}}
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths(response) == {
+            "data": {"folder": "2026", "files": [{"name": "Doors.csv"}]}
+        }
+
+
 def test_nwc_export_defaults_and_options_reach_channel():
     import asyncio
 
@@ -280,6 +512,113 @@ def test_nwc_export_defaults_and_options_reach_channel():
         "path": "C:\\x\\a.nwc",
         "overwrite": False,
         "dryRun": False,
+    }
+
+
+def test_cad_actions_map_arguments_and_timeouts():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_link_cad",
+            {
+                "path": r"C:\Plans\Floor.dwg",
+                "view": 12,
+                "link": False,
+                "layers": ["Walls"],
+                "dry_run": True,
+            },
+        )
+    )
+    assert execute.await_args.args[1] == 600
+    assert execute.await_args.args[0].payload == {
+        "command": "link-cad",
+        "targetProcessId": 42,
+        "path": r"C:\Plans\Floor.dwg",
+        "view": "12",
+        "level": None,
+        "cadLink": False,
+        "origin": "internal",
+        "units": "auto",
+        "layers": ["Walls"],
+        "dryRun": True,
+    }
+    asyncio.run(
+        server.call_tool(
+            "revit_walls_from_cad",
+            {"cad_id": 17, "layers": ["Walls"], "level": "Level 1", "min_length_mm": 500},
+        )
+    )
+    assert execute.await_args.args[0].payload == {
+        "command": "walls-from-cad",
+        "targetProcessId": 42,
+        "cadId": 17,
+        "layers": ["Walls"],
+        "level": "Level 1",
+        "wallType": None,
+        "heightMm": 3000,
+        "minThicknessMm": 80,
+        "maxThicknessMm": 700,
+        "minLengthMm": 500,
+        "maxGapMm": 3000,
+        "join": True,
+        "dryRun": False,
+    }
+
+
+@pytest.mark.parametrize("max_gap_mm", [-1, float("inf"), float("nan")])
+def test_walls_from_cad_rejects_invalid_gap(max_gap_mm):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises((ToolError, ValueError)):
+        asyncio.run(
+            server.call_tool(
+                "revit_walls_from_cad",
+                {
+                    "cad_id": 17,
+                    "layers": ["Walls"],
+                    "level": "L1",
+                    "max_gap_mm": max_gap_mm,
+                },
+            )
+        )
+    execute.assert_not_awaited()
+
+
+def test_file_export_maps_targets_options_and_timeout():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_export",
+            {
+                "format": "pdf",
+                "sheets": ["A1"],
+                "all_sheets": True,
+                "folder": r"C:\Exports",
+                "options": {"combine": False},
+                "overwrite": True,
+                "dry_run": True,
+                "response_timeout_s": 600,
+            },
+        )
+    )
+    assert execute.await_args.args[1] == 600
+    assert execute.await_args.args[0].payload == {
+        "command": "export",
+        "targetProcessId": 42,
+        "format": "pdf",
+        "views": None,
+        "sheets": ["A1"],
+        "sheetSet": None,
+        "allSheets": True,
+        "folder": r"C:\Exports",
+        "options": {"combine": False},
+        "overwrite": True,
+        "dryRun": True,
     }
 
 
@@ -444,9 +783,77 @@ def test_action_response_timeout_reaches_channel(response_timeout_s):
         ("revit_show", {"element_ids": [1]}, {"elementIds": [1], "select": True}),
         ("revit_isolate", {"element_ids": [], "reset": True}, {"elementIds": [], "reset": True}),
         (
+            "revit_override_graphics",
+            {"element_ids": [1]},
+            {
+                "elementIds": [1],
+                "color": "#FF0000",
+                "viewScope": "active",
+                "views": None,
+                "halftoneOthers": False,
+                "lineWeight": None,
+                "fill": True,
+                "transparency": 0,
+                "reset": False,
+                "dryRun": False,
+            },
+        ),
+        (
+            "revit_override_graphics",
+            {"element_ids": [1], "views": [23, "Section A"], "reset": True},
+            {
+                "elementIds": [1],
+                "color": "#FF0000",
+                "viewScope": "list",
+                "views": ["23", "Section A"],
+                "halftoneOthers": False,
+                "lineWeight": None,
+                "fill": True,
+                "transparency": 0,
+                "reset": True,
+                "dryRun": False,
+            },
+        ),
+        (
             "revit_move",
             {"element_ids": [1], "dx_mm": 304.8, "dy_mm": -50},
             {"elementIds": [1], "dxMm": 304.8, "dyMm": -50.0, "dzMm": 0},
+        ),
+        (
+            "revit_rotate",
+            {"element_ids": [1], "angle_deg": 45},
+            {"elementIds": [1], "angleDeg": 45.0, "centerMm": None},
+        ),
+        (
+            "revit_copy",
+            {"element_ids": [1], "dx_mm": 100, "dy_mm": 0, "count": 2},
+            {"elementIds": [1], "dxMm": 100.0, "dyMm": 0.0, "dzMm": 0, "count": 2},
+        ),
+        (
+            "revit_mirror",
+            {"element_ids": [1], "axis": "x", "point_mm": [0, 0]},
+            {"elementIds": [1], "axis": "x", "pointMm": [0.0, 0.0], "copy": True},
+        ),
+        (
+            "revit_change_type",
+            {"element_ids": [1], "type_name": "Basic"},
+            {"elementIds": [1], "typeName": "Basic", "family": None},
+        ),
+        (
+            "revit_update_parameters",
+            {
+                "filters": {"categories": ["Walls"], "level": "L1"},
+                "parameter": "Mark",
+                "value": "A",
+            },
+            {
+                "queryFilters": {"categories": ["Walls"], "level": "L1"},
+                "parameter": "Mark",
+                "value": "A",
+                "parameterId": None,
+                "maxElements": 5000,
+                "includeTypeParameters": False,
+            },
         ),
         (
             "revit_place_family",
@@ -517,6 +924,171 @@ def test_action_arguments_reach_channel_in_millimeters(
 
 
 @pytest.mark.parametrize(
+    "name,arguments,expected",
+    [
+        (
+            "revit_load_family",
+            {"paths": [r"C:\Families\Chair.rfa"]},
+            {
+                "paths": [r"C:\Families\Chair.rfa"],
+                "overwrite": False,
+                "overwriteParameterValues": False,
+            },
+        ),
+        (
+            "revit_place_families",
+            {
+                "placements": [
+                    {"family": "Chair", "type_name": "A", "x_mm": 1, "y_mm": 2, "level": "L1"}
+                ]
+            },
+            {
+                "placements": [
+                    {
+                        "family": "Chair",
+                        "typeName": "A",
+                        "xMm": 1.0,
+                        "yMm": 2.0,
+                        "zMm": 0.0,
+                        "level": "L1",
+                        "rotationDeg": 0.0,
+                    }
+                ]
+            },
+        ),
+        (
+            "revit_place_families",
+            {"at_rooms": {"family": "Chair", "type_name": "A", "level": "L1"}},
+            {
+                "atRooms": {
+                    "family": "Chair",
+                    "typeName": "A",
+                    "level": "L1",
+                    "zMm": 0.0,
+                    "rotationDeg": 0.0,
+                }
+            },
+        ),
+    ],
+)
+def test_bulk_family_payloads(name, arguments, expected):
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool(name, arguments))
+    payload = execute.await_args.args[0].payload
+    for key, value in expected.items():
+        assert payload[key] == value
+    assert payload["dryRun"] is False
+
+
+def test_bulk_placement_options_reach_channel():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_place_families",
+            {
+                "placements": [
+                    {
+                        "family": "Chair",
+                        "type_name": "A",
+                        "x_mm": 100,
+                        "y_mm": 200,
+                        "z_mm": 300,
+                        "level": "L1",
+                        "host_id": 42,
+                        "parameters": {"Mark": "C1"},
+                    }
+                ],
+                "load": [r"C:\Families\Chair.rfa"],
+                "stop_on_error": False,
+                "response_timeout_s": 600,
+            },
+        )
+    )
+    job = execute.await_args.args[0]
+    assert job.payload["placements"][0]["hostId"] == 42
+    assert job.payload["placements"][0]["zMm"] == 300.0
+    assert job.payload["placements"][0]["parameters"] == {"Mark": "C1"}
+    assert job.payload["load"] == [r"C:\Families\Chair.rfa"]
+    assert job.payload["stopOnError"] is False
+    assert execute.await_args.args[1] == 600
+
+
+def test_batch_accepts_load_family_step():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {"steps": [{"action": "load_family", "args": {"paths": [r"C:\Families\Chair.rfa"]}}]},
+        )
+    )
+    step = execute.await_args.args[0].payload["steps"][0]
+    assert step["command"] == "load-family"
+    assert step["paths"] == [r"C:\Families\Chair.rfa"]
+    assert step["overwriteParameterValues"] is False
+
+
+def test_batch_accepts_override_graphics_step():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {"action": "override_graphics", "args": {"element_ids": [42], "views": [17]}}
+                ]
+            },
+        )
+    )
+    step = execute.await_args.args[0].payload["steps"][0]
+    assert step["command"] == "override-graphics"
+    assert step["viewScope"] == "list"
+    assert step["views"] == ["17"]
+
+
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("revit_load_family", {"paths": []}),
+        ("revit_load_family", {"paths": ["x"] * 101}),
+        ("revit_place_families", {}),
+        ("revit_place_families", {"placements": [], "at_rooms": {"family": "A", "type_name": "B"}}),
+        (
+            "revit_place_families",
+            {
+                "placements": [
+                    {"family": "A", "type_name": "B", "x_mm": 0, "y_mm": 0, "level": "L"}
+                ]
+                * 2001
+            },
+        ),
+        (
+            "revit_place_families",
+            {
+                "placements": [
+                    {"family": "A", "type_name": "B", "x_mm": math.inf, "y_mm": 0, "level": "L"}
+                ]
+            },
+        ),
+    ],
+)
+def test_bulk_family_limits(name, arguments):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(Exception):
+        asyncio.run(server.call_tool(name, arguments))
+    execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
     "name,arguments",
     [
         ("revit_select", {"element_ids": [0]}),
@@ -526,8 +1098,20 @@ def test_action_arguments_reach_channel_in_millimeters(
         ("revit_show", {"element_ids": []}),
         ("revit_delete", {"element_ids": []}),
         ("revit_isolate", {"element_ids": []}),
+        ("revit_override_graphics", {"element_ids": [], "views": "all"}),
+        ("revit_override_graphics", {"element_ids": [1], "color": "red"}),
+        ("revit_override_graphics", {"element_ids": [1], "line_weight": 17}),
+        ("revit_override_graphics", {"element_ids": [1], "transparency": 101}),
         ("revit_move", {"element_ids": [1], "dx_mm": math.inf, "dy_mm": 0}),
         ("revit_move", {"element_ids": [1], "dx_mm": 0}),
+        ("revit_rotate", {"element_ids": [1], "angle_deg": math.inf}),
+        ("revit_copy", {"element_ids": [1], "dx_mm": 1, "dy_mm": 0, "count": 101}),
+        ("revit_mirror", {"element_ids": [1], "axis": "z", "point_mm": [0, 0]}),
+        ("revit_change_type", {"element_ids": [1], "type_name": ""}),
+        (
+            "revit_update_parameters",
+            {"filters": {}, "parameter": "Mark", "value": "A", "max_elements": 20001},
+        ),
         (
             "revit_create_wall",
             {"start_mm": [0], "end_mm": [1, 2], "level": "Level 1", "wall_type": None},
@@ -806,6 +1390,81 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
     assert tool.annotations.idempotent_hint is False
 
 
+def test_update_parameters_batch_uses_query_filter_names():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {
+                        "action": "update_parameters",
+                        "args": {
+                            "filters": {
+                                "categories": ["Walls"],
+                                "level": "Level 1",
+                                "type_name": "Basic",
+                                "area_scheme": "Gross",
+                                "parameter_filters": [
+                                    {"parameter": "Mark", "operator": "not_empty"}
+                                ],
+                            },
+                            "parameter": "Comments",
+                            "value": "Reviewed",
+                        },
+                    }
+                ]
+            },
+        )
+    )
+    step = execute.await_args.args[0].payload["steps"][0]
+    assert step["command"] == "update-parameters"
+    assert step["queryFilters"] == {
+        "categories": ["Walls"],
+        "level": "Level 1",
+        "type": "Basic",
+        "areaScheme": "Gross",
+        "parameterFilters": [{"parameter": "Mark", "operator": "not_empty"}],
+    }
+    assert step["parameter"] == "Comments"
+    assert step["value"] == "Reviewed"
+    assert step["maxElements"] == 5000
+    assert step["includeTypeParameters"] is False
+
+
+def test_update_parameters_normalizes_filters_and_type_opt_in():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_update_parameters",
+            {
+                "filters": {
+                    "categories": [" Walls ", "walls"],
+                    "parameter_filters": [{"parameter": " Mark ", "operator": " NOT_EMPTY "}],
+                },
+                "parameter": "Comments",
+                "value": "Reviewed",
+                "include_type_parameters": True,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["queryFilters"] == {
+        "categories": ["Walls"],
+        "parameterFilters": [{"parameter": "Mark", "operator": "not_empty"}],
+    }
+    assert payload["includeTypeParameters"] is True
+
+
+def test_update_parameters_rejects_invalid_parameter_filters():
+    with pytest.raises(ValueError, match="requires parameter and operator"):
+        query_filter_payload(UpdateFilters(parameter_filters=[{"parameter": "Mark"}]))
+
+
 def test_in_process_action_titles():
     import asyncio
 
@@ -887,3 +1546,293 @@ def test_document_lifecycle_explicit_pid_precedes_document_and_rejects_contradic
             server.call_tool("revit_open_document", {"path": r"C:\models\new.rvt", "process_id": 0})
         )
     execute.assert_not_awaited()
+
+
+def test_view_and_sheet_action_mapping():
+    import asyncio
+
+    server, execute, _ = action_server()
+    cases = [
+        (
+            "revit_create_view",
+            {"kind": "section", "box": {"min_mm": [0, 0, 0], "max_mm": [100, 100, 100]}},
+            "create-view",
+            "box",
+        ),
+        (
+            "revit_duplicate_view",
+            {"view": "Level 1", "mode": "dependent"},
+            "duplicate-view",
+            "mode",
+        ),
+        (
+            "revit_apply_view_template",
+            {"views": ["Level 1"], "template": "Plan"},
+            "apply-view-template",
+            "views",
+        ),
+        ("revit_create_sheet", {"number": "A101", "name": "Plan"}, "create-sheet", "titleBlock"),
+        (
+            "revit_place_views_on_sheet",
+            {"sheet": "A101", "views": [{"view": "Level 1", "x_mm": 10, "y_mm": 20}]},
+            "place-views-on-sheet",
+            "placements",
+        ),
+    ]
+    for tool, arguments, command, key in cases:
+        asyncio.run(server.call_tool(tool, arguments))
+        payload = execute.await_args.args[0].payload
+        assert payload["command"] == command
+        assert key in payload
+        if command == "create-view":
+            assert payload["box"] == {"minMm": [0.0, 0.0, 0.0], "maxMm": [100.0, 100.0, 100.0]}
+        if command == "place-views-on-sheet":
+            assert payload["placements"] == [{"view": "Level 1", "xMm": 10.0, "yMm": 20.0}]
+
+
+def test_create_view_batch_mapping_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_batch",
+            {
+                "steps": [
+                    {"action": "create_view", "args": {"kind": "floor_plan", "level": "Level 1"}}
+                ]
+            },
+        )
+    )
+    assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-view"
+    with pytest.raises((ToolError, ValueError)):
+        asyncio.run(server.call_tool("revit_create_view", {"kind": "section"}))
+
+
+@pytest.mark.parametrize(
+    "bounds", [{}, {"element_ids": [1]}, {"box": {"min_mm": [0, 0, 0], "max_mm": [100, 100, 100]}}]
+)
+def test_create_view_3d_defaults_and_optional_bounds(bounds):
+    import asyncio
+
+    from revit_model_mcp.actions import BatchStep
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_create_view", {"kind": "3d", **bounds}))
+    payload = execute.await_args.args[0].payload
+    assert payload["displayStyle"] == "shaded"
+    assert payload["detailLevel"] == "fine"
+    assert payload["elementIds"] == bounds.get("element_ids")
+    assert (payload["box"] is None) == ("box" not in bounds)
+    step = BatchStep(action="create_view", args={"kind": "3d", **bounds})
+    assert step.payload()["displayStyle"] == "shaded"
+    assert step.payload()["detailLevel"] == "fine"
+
+
+def test_create_view_explicit_styles_and_plan_defaults():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_create_view",
+            {
+                "kind": "3d",
+                "display_style": "consistent_colors",
+                "detail_level": "medium",
+            },
+        )
+    )
+    assert execute.await_args.args[0].payload["displayStyle"] == "consistent_colors"
+    assert execute.await_args.args[0].payload["detailLevel"] == "medium"
+    asyncio.run(server.call_tool("revit_create_view", {"kind": "floor_plan", "level": "L1"}))
+    assert execute.await_args.args[0].payload["displayStyle"] is None
+    assert execute.await_args.args[0].payload["detailLevel"] is None
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"kind": "section"},
+        {"kind": "floor_plan"},
+        {"kind": "3d", "box": {"min_mm": [0, 0, 0], "max_mm": [1, 1, 1]}, "element_ids": [1]},
+        {"kind": "drafting", "element_ids": [1]},
+        {"kind": "3d", "display_style": "wireframe"},
+        {"kind": "3d", "detail_level": "undefined"},
+        {"kind": "3d", "element_ids": []},
+        {"kind": "3d", "box": {"min_mm": [0, 0, 0], "max_mm": [0, 1, 1]}},
+    ],
+)
+def test_create_view_validation_is_clean_tool_error(arguments):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(ToolError) as error:
+        asyncio.run(server.call_tool("revit_create_view", arguments))
+    assert "Traceback" not in str(error.value)
+    execute.assert_not_awaited()
+
+
+def test_create_mep_run_maps_points_sizes_and_batch():
+    import asyncio
+
+    server, execute, _ = action_server()
+    arguments = {
+        "kind": "duct",
+        "points_mm": [[0, 0], [1000, 0], [1000, 1000, 3000]],
+        "level": "Level 1",
+        "width_mm": 400,
+        "height_mm": 200,
+        "connect_to": 42,
+        "dry_run": True,
+    }
+    asyncio.run(server.call_tool("revit_create_mep_run", arguments))
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "create-mep-run"
+    assert payload["pointsMm"] == arguments["points_mm"]
+    assert payload["widthMm"] == 400
+    assert payload["heightMm"] == 200
+    assert payload["connectTo"] == 42
+    assert payload["dryRun"] is True
+
+    asyncio.run(
+        server.call_tool(
+            "revit_batch", {"steps": [{"action": "create_mep_run", "args": arguments}]}
+        )
+    )
+    assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-mep-run"
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"kind": "duct", "points_mm": [[0, 0]], "level": "L1"},
+        {"kind": "pipe", "points_mm": [[0, 0], [0, 0]], "level": "L1"},
+        {"kind": "conduit", "points_mm": [[0, 0], [100, 0]], "level": "L1", "width_mm": 10},
+        {"kind": "cable_tray", "points_mm": [[0, 0], [100, 0]], "level": "L1", "diameter_mm": 10},
+        {
+            "kind": "duct",
+            "points_mm": [[0, 0], [100, 0]],
+            "level": "L1",
+            "width_mm": 10,
+            "diameter_mm": 10,
+        },
+    ],
+)
+def test_create_mep_run_rejects_invalid_geometry_and_sizes(arguments):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises((ToolError, ValueError)):
+        asyncio.run(server.call_tool("revit_create_mep_run", arguments))
+    execute.assert_not_awaited()
+
+
+def test_addin_schedule_not_found_precedes_non_schedule_error():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs"
+    ).read_text()
+    schedule = source.split("internal static ScheduleDataResult ReadSchedule(", 1)[1]
+    assert re.search(
+        r"if \(view is null\)\s+throw new ArgumentException\("
+        r"\$\"Schedule '\{reference\}' was not found\.\"\);",
+        schedule,
+    )
+    assert schedule.index("Schedule '{reference}' was not found.") < schedule.index(
+        "'{reference}' is not a schedule."
+    )
+    assert "if (view is not ViewSchedule schedule || schedule.IsTemplate)" in schedule
+
+
+def test_addin_change_type_empty_candidates_has_specific_error():
+    source = (
+        Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Addin/Control/ActionMutations.cs"
+    ).read_text()
+    change_type = source.split("internal static ActionResultData ChangeType(", 1)[1].split(
+        "internal static ActionResultData UpdateParameters(", 1
+    )[0]
+    assert re.search(
+        r"if \(valid.Count == 0\)\s+throw new ArgumentException\("
+        r"\$\"Element \{RevitValueReader.GetId\(id\)\} has no compatible types\.\"\);",
+        change_type,
+    )
+    assert change_type.index("has no compatible types.") < change_type.index("Candidates:")
+
+
+def test_batch_allowlists_and_process_models_schema_match():
+    import asyncio
+
+    from revit_model_mcp.actions import _BATCH_FIELDS, BatchStep
+
+    parser = (
+        Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Core/Control/ActionJobParser.cs"
+    ).read_text()
+    allowlist = parser.split("Require(stepCommand is ", 1)[1].split('"Unknown batch step."', 1)[0]
+    commands = set(re.findall(r'"([a-z-]+)"', allowlist))
+    actions = set(_BATCH_FIELDS)
+    assert commands == {action.replace("_", "-") for action in actions}
+    assert set(BatchStep.model_json_schema()["properties"]["action"]["enum"]) == actions
+    assert {"override_graphics", "create_mep_run"} <= actions
+    server, _, _ = action_server()
+    tools = asyncio.run(server.list_tools())
+    for name in ("revit_batch", "revit_process_models"):
+        schema = next(tool.input_schema for tool in tools if tool.name == name)
+        assert set(schema["$defs"]["BatchStep"]["properties"]["action"]["enum"]) == actions
+
+
+@pytest.mark.parametrize(
+    "zoom,mode,ids",
+    [("fit", "fit", None), ("none", "none", None), ([42, 43, 42], "elements", [42, 43])],
+)
+def test_activate_view_zoom_mapping(zoom, mode, ids):
+    import asyncio
+
+    server, execute, _ = action_server()
+    result = asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": zoom}))
+    assert not result.is_error
+    payload = execute.await_args.args[0].payload
+    assert payload["zoom"] == mode
+    assert payload.get("zoomElementIds") == ids
+
+
+@pytest.mark.parametrize("zoom", ["invalid", [], [0], [-1], [True], [1.5], ["42"]])
+def test_activate_view_rejects_invalid_zoom(zoom):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(ToolError):
+        asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": zoom}))
+    execute.assert_not_awaited()
+
+
+def test_activate_view_element_zoom_refused_in_read_only_mode():
+    import asyncio
+
+    server, execute, _ = action_server(read_only=True)
+    result = asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": [42]}))
+    assert "read-only mode" in str(result)
+    execute.assert_not_awaited()
+
+
+def test_cancel_action_job_maps_polling_request_and_read_only_gate():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(server.call_tool("revit_cancel_job", {"job_id": "a" * 32, "process_id": 42}))
+    job = execute.await_args.args[0]
+    assert job.command == "jobs"
+    assert job.payload["fetchJobId"] == "a" * 32
+    assert job.payload["requestCancellation"] is True
+    assert job.payload["targetProcessId"] == 42
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(blocked.call_tool("revit_cancel_job", {"job_id": "a" * 32}))
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
+
+
+def test_process_progress_current_path_is_redacted():
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        assert redact_model_paths({"progress": {"currentPath": r"C:\Private\Model.rvt"}}) == {
+            "progress": {"currentPath": "Model.rvt"}
+        }

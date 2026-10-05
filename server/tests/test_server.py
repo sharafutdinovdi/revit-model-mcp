@@ -26,6 +26,8 @@ from revit_model_mcp.ssh_host import SshPowerShellHost
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
+    "revit_issue_register",
+    "revit_capture_elements",
     "revit_build_report",
     "revit_jobs",
     "revit_model_health",
@@ -36,10 +38,12 @@ EXPECTED_TOOLS = {
     "revit_ping",
     "revit_document_info",
     "revit_documents",
+    "revit_ui_state",
     "revit_list_views",
     "revit_view_summary",
     "revit_view_info",
     "revit_export_view",
+    "revit_schedule_data",
     "revit_view_elements",
     "revit_element_details",
     "revit_view_warnings",
@@ -58,19 +62,43 @@ EXPECTED_TOOLS = {
     "revit_batch_fetch",
 }
 ACTION_TOOL_NAMES = {
+    "revit_cancel_job",
+    "revit_process_models",
+    "revit_execute_code",
     "revit_select",
     "revit_show",
     "revit_isolate",
+    "revit_override_graphics",
     "revit_move",
+    "revit_rotate",
+    "revit_copy",
+    "revit_mirror",
+    "revit_change_type",
+    "revit_update_parameters",
     "revit_place_family",
+    "revit_load_family",
+    "revit_place_families",
     "revit_create_wall",
+    "revit_create_mep_run",
+    "revit_link_cad",
+    "revit_walls_from_cad",
+    "revit_create_view",
+    "revit_duplicate_view",
+    "revit_apply_view_template",
+    "revit_create_sheet",
+    "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
     "revit_batch",
     "revit_export_nwc",
+    "revit_export",
     "revit_edit_families",
     "revit_align_link_datums",
     "revit_open_document",
+    "revit_activate_document",
+    "revit_activate_view",
+    "revit_close_views",
+    "revit_new_document",
     "revit_close_document",
     "revit_save_document",
     "revit_sync_document",
@@ -78,6 +106,11 @@ ACTION_TOOL_NAMES = {
     "revit_remove_links",
     "revit_undo_last",
 }
+
+
+def test_schedule_data_maps_paging_to_read_job():
+    job = ReadJob.schedule_data("Doors", max_rows=25, offset=10)
+    assert job.payload == {"command": "schedule-data", "view": "Doors", "limit": 25, "offset": 10}
 
 
 def encode_discovery_payload(package):
@@ -152,6 +185,8 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
+    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "save_to"],
+    "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
         "parameter_rules",
         "timeout_seconds",
@@ -160,8 +195,17 @@ EXPECTED_PARAMETERS = {
     ],
     "revit_build_report": ["snapshots_dir", "output_path", "previous_dir", "findings"],
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_jobs": [
+        "cancel_job_id",
+        "job_id",
+        "wait_s",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_ui_state": [],
     "revit_list_catalog": ["section", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_aggregate_elements": [
         "group_by",
@@ -208,7 +252,17 @@ EXPECTED_PARAMETERS = {
     ],
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_view_info": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_issue_register": ["output_path", "project", "issues", "pixel_size", "document"],
+    "revit_capture_elements": [
+        "element_ids",
+        "pixel_size",
+        "padding_mm",
+        "mode",
+        "save_to",
+        "document",
+    ],
     "revit_export_view": ["view", "pixel_size", "save_to", "document"],
+    "revit_schedule_data": ["schedule", "max_rows", "offset", "document"],
     "revit_view_elements": [
         "view",
         "categories",
@@ -314,6 +368,15 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         job, _, _ = channel.calls[0]
         self.assertEqual(job.payload, {"command": "documents", "includeLinked": True})
 
+    async def test_ui_state_reads_selected_process(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_ui_state", {"process_id": 84})
+        job, _, _ = channel.calls[0]
+        self.assertEqual(job.command, "ui-state")
+        self.assertEqual(job.payload["command"], "ui-state")
+        self.assertEqual(job.payload["targetProcessId"], 84)
+
     async def test_view_info_maps_view_and_document(self) -> None:
         channel = RecordingChannel()
         with patch.object(revit_server, "channel", channel):
@@ -385,6 +448,30 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
         self.assertTrue(all(not tool.annotations.read_only_hint for tool in action_tools.values()))
+        for name, required in {
+            "revit_override_graphics": {"element_ids"},
+            "revit_create_view": {"kind"},
+            "revit_create_mep_run": {"kind", "points_mm", "level"},
+            "revit_link_cad": {"path"},
+            "revit_walls_from_cad": {"cad_id", "layers", "level"},
+            "revit_duplicate_view": {"view"},
+            "revit_apply_view_template": {"views", "template"},
+            "revit_create_sheet": {"number", "name"},
+            "revit_place_views_on_sheet": {"sheet", "views"},
+        }.items():
+            properties = action_tools[name].input_schema["properties"]
+            self.assertTrue(required.issubset(action_tools[name].input_schema["required"]))
+            self.assertIn("dry_run", properties)
+            self.assertIn("document", properties)
+        view_properties = action_tools["revit_create_view"].input_schema["properties"]
+        self.assertIn("display_style", view_properties)
+        self.assertIn("detail_level", view_properties)
+        self.assertEqual(
+            action_tools["revit_walls_from_cad"].input_schema["properties"]["max_gap_mm"][
+                "default"
+            ],
+            3000,
+        )
         self.assertIn(
             "Call revit_list_views next",
             tools["revit_document_info"].description,

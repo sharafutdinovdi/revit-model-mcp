@@ -55,6 +55,11 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, DocumentActions.List(application, job.IncludeLinked), stopwatch);
                 return;
             }
+            if (job.Kind == ControlJobKind.UiState)
+            {
+                WriteSuccess(output, job.Command, DocumentActions.UiState(application), stopwatch);
+                return;
+            }
             if (job.Kind == ControlJobKind.NwcSettingsCheck)
             {
                 var settingsPath = NwcPathValidator.EnsureAbsoluteNoTraversal(job.CoordinatorJob.SettingsXml!, "settings_xml");
@@ -62,7 +67,7 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
-            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot
+            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot or ControlJobKind.ScheduleData or ControlJobKind.CaptureElements
                 ? ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)
                 : application.ActiveUIDocument?.Document
                     ?? throw new InvalidOperationException("No active Revit document.");
@@ -141,6 +146,9 @@ internal static class ReadCommandExecutor
                     else
                         WriteSuccess(output, job.Command, ViewInfoReader.Read(document, infoView), stopwatch);
                     break;
+                case ControlJobKind.ScheduleData:
+                    WriteSuccess(output, job.Command, ReadSchedule(document, job.View!, job.Offset, job.Limit), stopwatch);
+                    break;
                 case ControlJobKind.ElementDetails:
                     ExecuteElementDetails(output, document, job, stopwatch);
                     break;
@@ -152,6 +160,9 @@ internal static class ReadCommandExecutor
                         stopwatch,
                         ReadCommandReader.ReadViewWarnings,
                         "Matching uses the elements involved in warnings.");
+                    break;
+                case ControlJobKind.CaptureElements:
+                    WriteSuccess(output, job.Command, CaptureElements(document, job, startedAt.LocalDateTime), stopwatch);
                     break;
                 case ControlJobKind.ExportView:
                     ExecuteExportView(output, document, job, stopwatch, startedAt.LocalDateTime);
@@ -194,6 +205,68 @@ internal static class ReadCommandExecutor
         {
             SkippedReadDiagnostics.Current = null;
         }
+    }
+
+    internal static ScheduleDataResult ReadSchedule(Document document, string reference, int offset, int maxRows)
+    {
+        var view = ReadCommandReader.FindView(document, reference);
+        if (view is null)
+            throw new ArgumentException($"Schedule '{reference}' was not found.");
+        if (view is not ViewSchedule schedule || schedule.IsTemplate)
+            throw new ArgumentException($"'{reference}' is not a schedule.");
+        var table = schedule.GetTableData();
+        var body = table.GetSectionData(SectionType.Body);
+        var visibleFields = schedule.Definition.GetFieldOrder()
+            .Select(schedule.Definition.GetField).Where(field => !field.IsHidden).ToList();
+        var columnNumbers = new List<int>();
+        for (var column = body.FirstColumnNumber; column <= body.LastColumnNumber; column++)
+        {
+            try
+            {
+                if (body.FirstRowNumber <= body.LastRowNumber)
+                    schedule.GetCellText(SectionType.Body, body.FirstRowNumber, column);
+                columnNumbers.Add(column);
+            }
+            catch (Autodesk.Revit.Exceptions.ArgumentException) { }
+        }
+        if (columnNumbers.Count > visibleFields.Count)
+            columnNumbers = columnNumbers.Take(visibleFields.Count).ToList();
+
+        var dataStart = body.FirstRowNumber;
+        var columns = visibleFields.Take(columnNumbers.Count).Select(field => field.ColumnHeading).ToList();
+        if (schedule.Definition.ShowHeaders && body.FirstRowNumber <= body.LastRowNumber)
+        {
+            var headingRows = new List<List<string>>();
+            for (var row = body.FirstRowNumber; row <= body.LastRowNumber; row++)
+            {
+                var hasMergedCells = false;
+                var headings = new List<string>();
+                foreach (var column in columnNumbers)
+                {
+                    var merged = body.GetMergedCell(row, column);
+                    hasMergedCells |= merged.Top == row &&
+                        (merged.Right > merged.Left || merged.Bottom > merged.Top);
+                    headings.Add(merged.Top == row
+                        ? schedule.GetCellText(SectionType.Body, merged.Top, merged.Left)
+                        : string.Empty);
+                }
+                headingRows.Add(headings);
+                dataStart = row + 1;
+                if (!hasMergedCells) break;
+            }
+            columns = ScheduleDataResult.JoinHeadings(headingRows, columnNumbers.Count);
+        }
+        var totalRows = Math.Max(0, body.LastRowNumber - dataStart + 1);
+        var rows = new List<List<string>>();
+        for (var row = dataStart + offset; row <= body.LastRowNumber && rows.Count < maxRows; row++)
+            rows.Add(columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList());
+        return new ScheduleDataResult
+        {
+            Columns = columns,
+            Rows = rows,
+            TotalRows = totalRows,
+            Truncated = offset + rows.Count < totalRows
+        };
     }
 
     public static void WriteInvalid(
@@ -301,6 +374,122 @@ internal static class ReadCommandExecutor
         var warningIds = ReadCommandReader.ReadWarningElementIds(document);
         var reader = new ViewElementReader(document, warningIds);
         WriteSuccess(output, job.Command, reader.ReadDetails(element), stopwatch);
+    }
+
+    private static ElementCaptureData CaptureElements(Document document, ControlJobParseResult job, DateTime localTime)
+    {
+        var elements = new List<Element>();
+        var missing = new List<long>();
+        foreach (var value in job.ElementIds)
+        {
+            var id = CreateElementId(value);
+            var element = id is null ? null : document.GetElement(id);
+            if (element is null || element is ElementType || element.Category?.CategoryType != CategoryType.Model ||
+                element.get_BoundingBox(null) is null)
+                missing.Add(value);
+            else elements.Add(element);
+        }
+        if (elements.Count == 0)
+            throw new ArgumentException("No model elements with bounding boxes remain in elementIds.");
+        var ids = elements.Select(element => element.Id).ToHashSet();
+        var bounds = ActionMutations.ResolveBox(document, new ActionJobContract
+        {
+            ElementIds = elements.Select(element => RevitValueReader.GetId(element.Id)).ToList()
+        }, job.PaddingMm);
+        using var group = new TransactionGroup(document, "Capture elements");
+        group.Start();
+        try
+        {
+            View view;
+            using (var transaction = new Transaction(document, "Prepare element snapshot"))
+            {
+                transaction.Start();
+                if (job.Mode == "3d")
+                {
+                    using var types = new FilteredElementCollector(document).OfClass(typeof(ViewFamilyType));
+                    var type = types.Cast<ViewFamilyType>().FirstOrDefault(candidate => candidate.ViewFamily == ViewFamily.ThreeDimensional)
+                        ?? throw new InvalidOperationException("No 3D view family type is available.");
+                    var created = View3D.CreateIsometric(document, type.Id);
+                    var height = bounds.Max.Z - bounds.Min.Z;
+                    var width = Math.Max(bounds.Max.X - bounds.Min.X, bounds.Max.Y - bounds.Min.Y);
+                    if (width < height)
+                    {
+                        var horizontalPadding = (height - width) / 2;
+                        bounds.Min = new XYZ(bounds.Min.X - horizontalPadding, bounds.Min.Y - horizontalPadding, bounds.Min.Z);
+                        bounds.Max = new XYZ(bounds.Max.X + horizontalPadding, bounds.Max.Y + horizontalPadding, bounds.Max.Z);
+                    }
+                    created.SetSectionBox(bounds);
+                    created.IsSectionBoxActive = true;
+                    view = created;
+                }
+                else
+                {
+                    using var plans = new FilteredElementCollector(document).OfClass(typeof(ViewPlan));
+                    var eligible = plans.Cast<ViewPlan>().Where(plan => !plan.IsTemplate && plan.ViewType == ViewType.FloorPlan).ToList();
+                    var level = elements.Select(element => element.LevelId).FirstOrDefault(id => id != ElementId.InvalidElementId);
+                    var source = eligible.FirstOrDefault(plan => plan.GenLevel?.Id == level) ?? eligible.FirstOrDefault()
+                        ?? throw new InvalidOperationException("No floor plan is available for an element snapshot.");
+                    view = (View)document.GetElement(source.Duplicate(ViewDuplicateOption.Duplicate));
+                    view.ViewTemplateId = ElementId.InvalidElementId;
+                    var crop = view.CropBox;
+                    var inverse = crop.Transform.Inverse;
+                    var corners = new List<XYZ>();
+                    foreach (var coordinateX in new[] { bounds.Min.X, bounds.Max.X })
+                        foreach (var coordinateY in new[] { bounds.Min.Y, bounds.Max.Y })
+                            foreach (var coordinateZ in new[] { bounds.Min.Z, bounds.Max.Z })
+                                corners.Add(inverse.OfPoint(new XYZ(coordinateX, coordinateY, coordinateZ)));
+                    crop.Min = new XYZ(corners.Min(point => point.X), corners.Min(point => point.Y), crop.Min.Z);
+                    crop.Max = new XYZ(corners.Max(point => point.X), corners.Max(point => point.Y), crop.Max.Z);
+                    view.CropBox = crop;
+                    view.CropBoxActive = true;
+                    view.CropBoxVisible = false;
+                }
+                view.DetailLevel = ViewDetailLevel.Fine;
+                view.DisplayStyle = DisplayStyle.ShadingWithEdges;
+                document.Regenerate();
+                using var patterns = new FilteredElementCollector(document).OfClass(typeof(FillPatternElement));
+                var solid = patterns.Cast<FillPatternElement>().FirstOrDefault(pattern => pattern.GetFillPattern().IsSolidFill)
+                    ?? throw new InvalidOperationException("The document has no solid fill pattern.");
+                var red = new Color(255, 0, 0);
+                using var settings = new OverrideGraphicSettings();
+                settings.SetSurfaceForegroundPatternId(solid.Id);
+                settings.SetSurfaceForegroundPatternColor(red);
+                settings.SetCutForegroundPatternId(solid.Id);
+                settings.SetCutForegroundPatternColor(red);
+                settings.SetProjectionLineColor(red);
+                settings.SetCutLineColor(red);
+                settings.SetSurfaceTransparency(0);
+                settings.SetProjectionLineWeight(6);
+                settings.SetCutLineWeight(6);
+                foreach (var id in ids) view.SetElementOverrides(id, settings);
+                using var visible = new FilteredElementCollector(document, view.Id).WhereElementIsNotElementType();
+                foreach (var id in visible.ToElementIds())
+                {
+                    if (ids.Contains(id) || document.GetElement(id)?.Category?.CategoryType != CategoryType.Model) continue;
+                    using var other = view.GetElementOverrides(id);
+                    other.SetSurfaceTransparency(60);
+                    ActionMutations.SetHalftone(view, id, other);
+                }
+                document.Regenerate();
+                if (transaction.Commit() != TransactionStatus.Committed)
+                    throw new InvalidOperationException("The temporary snapshot view could not be prepared.");
+            }
+            var image = ViewImageExporter.Export(document, view, job.PixelSize, true, localTime);
+            return new ElementCaptureData
+            {
+                FileName = image.FileName,
+                Width = image.Width,
+                Height = image.Height,
+                SizeBytes = image.SizeBytes,
+                ElementCount = elements.Count,
+                MissingIds = missing,
+                Mode = job.Mode
+            };
+        }
+        finally
+        {
+            group.RollBack();
+        }
     }
 
     private static void ExecuteExportView(

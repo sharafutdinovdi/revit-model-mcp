@@ -377,3 +377,42 @@ def test_lost_submit_reply_resumes_instead_of_reporting_duplicate_job_id(tmp_pat
     assert revit.messages(2) == ["hello", "status"]
     submitted = revit.received[1][1]["job"]["jobId"]
     assert revit.received[-1][1]["jobId"] == submitted
+
+
+def test_action_result_can_be_fetched_by_new_server_connection(tmp_path: Path) -> None:
+    write_heartbeat(tmp_path, [PIPE_PROTOCOL, "file/2"])
+
+    async def scenario():
+        async with FakeRevit() as revit:
+            job_id = "a" * 32
+            job = {"command": "export", "jobId": job_id, "correlationId": "old-request"}
+            revit.jobs[job_id] = job
+            host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
+            result = await RevitReadChannel(host).execute(
+                ReadJob(
+                    "jobs",
+                    {
+                        "command": "jobs",
+                        "fetchJobId": job_id,
+                        "waitSeconds": 0,
+                    },
+                )
+            )
+            await host.aclose()
+            assert result == FakeRevit.result(job)
+            assert revit.messages(1) == ["hello", "status"]
+
+    asyncio.run(scenario())
+
+
+def test_pipe_cancel_job_uses_existing_cancel_protocol():
+    async def scenario():
+        connection = AsyncMock()
+        connection.request.return_value = {"type": "cancel", "cancelled": True}
+        parent = AsyncMock()
+        parent.connection.return_value = connection
+        host = PipeJobHost(parent, {"processId": PID}, connection)
+        assert (await host.cancel_job("a" * 32))["cancelled"] is True
+        connection.request.assert_awaited_once_with({"type": "cancel", "jobId": "a" * 32})
+
+    asyncio.run(scenario())

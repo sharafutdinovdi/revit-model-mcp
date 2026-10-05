@@ -18,7 +18,7 @@ namespace RevitModelMcp.Control;
 internal sealed class ControlChannel
 {
     private readonly string _triggerFilePath;
-    private readonly JobScheduler _scheduler = new();
+    private readonly JobScheduler _scheduler;
     private readonly object _filesSync = new();
     private readonly Dictionary<string, TaskCompletionSource<string>> _httpCompletions = new();
     private readonly ConcurrentDictionary<string, JobCancellation> _earlyCancellations = new();
@@ -30,7 +30,11 @@ internal sealed class ControlChannel
     private string? _httpResponse;
     private volatile bool _stopped;
 
-    public ControlChannel(string triggerFilePath) => _triggerFilePath = triggerFilePath;
+    public ControlChannel(string triggerFilePath)
+    {
+        _triggerFilePath = triggerFilePath;
+        _scheduler = new JobScheduler(resultDirectory: Path.Combine(Path.GetDirectoryName(triggerFilePath)!, "jobs"));
+    }
 
     public JobScheduler Scheduler => _scheduler;
     public bool HasPendingWork => _session is not null || _scheduler.HasPending;
@@ -48,7 +52,7 @@ internal sealed class ControlChannel
             var source = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _httpCompletions.Add(jobId, source);
             if (job.Kind == ControlJobKind.Jobs && job.CancelJobId is not null)
-                _earlyCancellations[jobId] = CancelJob(job.CancelJobId, job.ClientId);
+                _earlyCancellations[jobId] = CancelJob(job.CancelJobId, job.ClientId, false);
             completion = source.Task;
             return submitted;
         }
@@ -123,7 +127,7 @@ internal sealed class ControlChannel
                     PluginLog.Warn($"File job rejected. Error='{submitted.Error}'.");
                 }
                 else if (parsed.Kind == ControlJobKind.Jobs && parsed.CancelJobId is not null)
-                    _earlyCancellations[jobId] = CancelJob(parsed.CancelJobId, parsed.ClientId);
+                    _earlyCancellations[jobId] = CancelJob(parsed.CancelJobId, parsed.ClientId, false);
                 try { File.Delete(claimedPath); }
                 catch (IOException) { PluginLog.Warn("Claimed job file could not be removed."); }
             }
@@ -160,7 +164,23 @@ internal sealed class ControlChannel
                 _current.JobId,
                 _currentQueuedMs);
             var isHttp = HasHttpCompletion(_current.JobId);
-            if (isHttp) ResponseDelivery.Current = content => _httpResponse = content;
+            ResponseDelivery.Current = content =>
+            {
+                _httpResponse = content;
+                if (ActionJobParser.IsAction(_current.Command)) _scheduler.PublishProgress(_current.JobId, content);
+                if (!isHttp)
+                {
+                    var path = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
+                        _currentStartedAt.LocalDateTime, _currentJob.Command, _currentJob.CorrelationId);
+                    CommandResponseJsonFile.WriteContent(path, content);
+                }
+            };
+            ResponseDelivery.CancellationRequested = () =>
+            {
+                if (File.Exists(Path.Combine(Path.GetDirectoryName(_triggerFilePath)!, "jobs", $"{_current.JobId}.cancel")))
+                    _scheduler.Cancel(_current.JobId, _current.ClientId, true);
+                return _scheduler.IsCancellationRequested(_current.JobId);
+            };
             if (_session is not null)
             {
                 if (_scheduler.IsCancellationRequested(_current.JobId))
@@ -183,11 +203,13 @@ internal sealed class ControlChannel
         finally
         {
             ResponseDelivery.Current = null;
+            ResponseDelivery.CancellationRequested = null;
             JobResponseMetadata.Current = null;
             if (_current is not null && _session is null)
             {
                 var fallback = CommandResponse<object>.Fail(_current.Command,
                     "The command ended without a response.", 0, _currentJob?.CorrelationId);
+                fallback.Error = fallback.Message;
                 fallback.Client = new ClientIdentity { Name = _current.ClientName, Id = _current.ClientId };
                 fallback.JobId = _current.JobId;
                 fallback.QueuedMs = _currentQueuedMs;
@@ -216,7 +238,7 @@ internal sealed class ControlChannel
         var path = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
             _currentStartedAt.LocalDateTime, _currentJob.Command, _currentJob.CorrelationId);
         try { return File.Exists(path) ? File.ReadAllText(path) : null; }
-        catch (IOException) { return null; }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
     }
 
     private static bool IsSuccessfulOrPartial(string json)
@@ -234,15 +256,20 @@ internal sealed class ControlChannel
         }
     }
 
-    public JobCancellation CancelJob(string jobId, string clientId)
+    public JobCancellation CancelJob(string jobId, string clientId) => CancelJob(jobId, clientId, true);
+
+    private JobCancellation CancelJob(string jobId, string clientId, bool isAction)
     {
         var job = _scheduler.Status(jobId);
+        if (job is not null && ActionJobParser.IsAction(job.Command) && ActionCommandExecutor.ReadOnlyMode)
+            return new(false, job.State, "read-only mode");
         var cancellation = _scheduler.Cancel(jobId, clientId,
-            job is not null && ActionJobParser.IsAction(job.Command));
+            isAction && job is not null && ActionJobParser.IsAction(job.Command));
         if (!cancellation.Cancelled || cancellation.State != JobState.Cancelled || job is null)
             return cancellation;
         var parsed = ControlJobParser.Parse(job.Payload);
-        var response = CommandResponse<object>.Fail(job.Command, "Job cancelled by its client.", 0, parsed.CorrelationId);
+        var response = CommandResponse<ActionResultData>.Fail(job.Command, "Job cancelled by its client.", 0, parsed.CorrelationId);
+        if (job.Command == "process-models") response.Data = new ActionResultData { Cancelled = true, Models = [] };
         response.Client = new ClientIdentity { Name = job.ClientName, Id = job.ClientId };
         response.JobId = job.JobId;
         response.QueuedMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds);
@@ -289,7 +316,7 @@ internal sealed class ControlChannel
         {
             var cancellation = parsed.CancelJobId is null ? null :
                 _earlyCancellations.TryRemove(_current!.JobId, out var early) ? early :
-                CancelJob(parsed.CancelJobId, parsed.ClientId);
+                CancelJob(parsed.CancelJobId, parsed.ClientId, false);
             var data = new JobListData
             {
                 Jobs = _scheduler.ActiveJobs().Select(job => new JobSummary
@@ -315,6 +342,7 @@ internal sealed class ControlChannel
         }
         if (ActionJobParser.IsAction(parsed.Command))
         {
+            if (parsed.Command == "process-models") _scheduler.MarkCancellable(_current!.JobId);
             ActionCommandExecutor.Execute(application, parsed, startedAt);
             return;
         }
@@ -381,8 +409,9 @@ internal sealed class ControlChannel
             _session = null;
             return;
         }
-        TryWriteError(application, _currentJob?.Command ?? "invalid", $"Job processing failed: {exception}",
-            DateTimeOffset.Now, _currentJob?.CorrelationId);
+        TryWriteError(application, _currentJob?.Command ?? "invalid",
+            $"Job processing failed ({exception.GetType().Name}).",
+            _currentStartedAt, _currentJob?.CorrelationId);
     }
 
     private static void TryWriteError(UIApplication application, string command, string message,

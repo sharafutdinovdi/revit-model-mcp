@@ -17,6 +17,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from revit_model_mcp.artifact_download import save_artifact
 from revit_model_mcp.revit_channel import (
@@ -304,7 +305,7 @@ class SshPowerShellHost:
                 raise RevitChannelError(
                     "Legacy file channels require exactly one running Revit instance. Update the add-in for per-PID routing."
                 )
-        else:
+        elif not job.payload.get("fetchJobId"):
             await selected._handshake()
         return selected, replace(
             job, payload={**job.payload, "targetProcessId": instance["processId"]}
@@ -343,6 +344,49 @@ class SshPowerShellHost:
             raise RevitChannelError(
                 "The selected file channel is unconfirmed: handshake timed out; its ping may still execute later."
             ) from error
+
+    async def fetch_job(self, job_id: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
+            raise RevitChannelError("Invalid action job id.")
+        output = await self._run(
+            _ps_response_reader() + f"$path = Join-Path ({self._directory}) 'jobs/{job_id}.json'; "
+            "if (-not (Test-Path -LiteralPath $path)) { "
+            f"$queued = Join-Path ({self._directory}) 'job_{job_id}.json'; "
+            "if (-not (Test-Path -LiteralPath $queued)) { throw 'Job not found or expired.' }; "
+            "$job = Get-Content -LiteralPath $queued -Raw | ConvertFrom-Json; "
+            "$pending = @{ command = $job.command; success = $true; partial = $true; "
+            "message = 'Command accepted and running.'; data = @{ state = 'queued' } } | ConvertTo-Json -Compress; "
+            "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($pending)); exit }; "
+            "if ((Get-Item -LiteralPath $path).LastWriteTimeUtc -lt [DateTime]::UtcNow.AddHours(-24)) { "
+            "Remove-Item -LiteralPath $path; throw 'Job expired.' }; "
+            "[Convert]::ToBase64String((Read-ResponseBytes $path))"
+        )
+        return json.loads(base64.b64decode(output, validate=True).decode("utf-8-sig"))
+
+    async def cancel_job(self, job_id: str) -> dict[str, Any]:
+        response = await self.fetch_job(job_id)
+        if (
+            response.get("command") != "process-models"
+            or response.get("partial") is not True
+            or response.get("message") != "Command accepted and running."
+        ):
+            return {
+                "cancelled": False,
+                "message": "The command cannot be interrupted or has already finished.",
+            }
+        await self._run(
+            f"$root = {self._root_directory}; "
+            "if (Test-Path -LiteralPath (Join-Path $root 'read-only')) { throw 'read-only mode' }; "
+            f"$jobs = Join-Path ({self._directory}) 'jobs'; "
+            "New-Item -ItemType Directory -Force -Path $jobs | Out-Null; "
+            f"$path = Join-Path $jobs '{job_id}.cancel'; "
+            "[IO.File]::WriteAllText($path, '')"
+        )
+        return {
+            "cancelled": True,
+            "jobId": job_id,
+            "message": "Cancellation requested before the next model.",
+        }
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
         if self._instance is None:

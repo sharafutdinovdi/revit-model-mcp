@@ -527,6 +527,39 @@ finally { Remove-Item $root -Recurse -Force }
     )
 
 
+def test_script_install_manifest_settings_follow_revit_year():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+$env:APPDATA = $root
+$SignThumbprint = $null
+try {
+    foreach ($year in '2024', '2026') {
+        $payload = Join-Path $root "payload-$year"
+        $folder = Join-Path $payload 'RevitModelMcp'
+        New-Item $folder -ItemType Directory -Force | Out-Null
+        Set-Content (Join-Path $folder 'RevitModelMcp.dll') 'test'
+        Copy-Item 'src/RevitModelMcp.Addin/RevitModelMcp.addin' $payload
+        Install-Year $year $payload
+        $path = Join-Path $root "Autodesk/Revit/Addins/$year/RevitModelMcp.addin"
+        [xml]$manifest = Get-Content $path
+        $settings = $manifest.SelectSingleNode('/RevitAddIns/ManifestSettings')
+        if (($year -eq '2026') -ne ($null -ne $settings)) {
+            throw "Wrong ManifestSettings for Revit $year"
+        }
+    }
+}
+finally { Remove-Item $root -Recurse -Force }
+"""
+    )
+
+
 def test_script_release_payload_checksums():
     run_powershell(
         r"""
@@ -642,3 +675,26 @@ def test_http_action_keeps_inactive_document_address(endpoint):
     asyncio.run(RevitReadChannel(host).execute(job))
     assert state["payload"]["targetDocument"] == "Inactive"
     assert state["payload"]["targetProcessId"] == 42
+
+
+def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
+    from unittest.mock import AsyncMock
+
+    async def check():
+        host = HttpHost("http://127.0.0.1:53110", token="test-token")
+        final = {"command": "export", "success": True, "data": {"files": ["a.ifc"]}}
+        host._request = AsyncMock(
+            side_effect=[
+                (200, json.dumps({"result": final}).encode(), {}),
+                (200, b'{"cancelled":true}', {}),
+            ]
+        )
+        assert await host.fetch_job("a" * 32) == final
+        assert (await host.cancel_job("a" * 32))["cancelled"] is True
+        assert host._request.await_args_list[0].args[:2] == ("GET", "/jobs/" + "a" * 32)
+        assert host._request.await_args_list[1].args[:2] == (
+            "POST",
+            "/jobs/" + "a" * 32 + "/cancel",
+        )
+
+    asyncio.run(check())

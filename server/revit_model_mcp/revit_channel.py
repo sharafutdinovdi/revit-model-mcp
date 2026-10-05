@@ -68,23 +68,82 @@ ACTION_COMMANDS = frozenset(
         "select",
         "show",
         "isolate",
+        "override-graphics",
         "move",
+        "rotate",
+        "copy",
+        "mirror",
+        "change-type",
+        "update-parameters",
         "place-family",
+        "load-family",
+        "place-families",
         "create-wall",
+        "create-mep-run",
+        "link-cad",
+        "walls-from-cad",
+        "create-view",
+        "duplicate-view",
+        "apply-view-template",
+        "create-sheet",
+        "place-views-on-sheet",
         "set-parameter",
         "delete",
         "batch",
+        "process-models",
         "export-nwc",
+        "export",
         "edit-families",
         "align-link-datums",
         "open-document",
+        "activate-document",
+        "activate-view",
+        "close-views",
+        "new-document",
         "close-document",
         "save-document",
         "sync-document",
         "set-view-visibility",
         "remove-links",
+        "execute-code",
     }
 )
+
+
+LONG_ACTION_COMMANDS = frozenset({"process-models", "export", "export-nwc", "edit-families"})
+
+
+def tool_budget_seconds() -> float:
+    try:
+        value = float(os.environ.get("REVIT_MCP_TOOL_BUDGET_S", "40"))
+    except ValueError as error:
+        raise RevitChannelError("REVIT_MCP_TOOL_BUDGET_S must be between 10 and 200.") from error
+    if not 10 <= value <= 200:
+        raise RevitChannelError("REVIT_MCP_TOOL_BUDGET_S must be between 10 and 200.")
+    return value
+
+
+def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str, Any]:
+    data = (response or {}).get("data")
+    progress = (
+        {key: data[key] for key in ("currentIndex", "total", "currentPath") if key in data}
+        if isinstance(data, dict)
+        else None
+    )
+    models = (
+        [{"status": model["status"]} for model in data.get("models", []) if "status" in model]
+        if isinstance(data, dict)
+        else []
+    )
+    if progress is not None and models:
+        progress["models"] = models
+    return {
+        "status": "running",
+        "jobId": job_id,
+        "progress": progress,
+        "partial": models,
+        "message": "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
+    }
 
 
 class RevitChannelError(RuntimeError):
@@ -159,6 +218,20 @@ class ReadJob:
     @classmethod
     def view_info(cls, view: str) -> ReadJob:
         return cls("view-info", {"command": "view-info", "view": _required_text(view, "view")})
+
+    @classmethod
+    def schedule_data(cls, schedule: str, max_rows: int = 500, offset: int = 0) -> ReadJob:
+        if max_rows < 1 or max_rows > 5000 or offset < 0:
+            raise RevitChannelError("max_rows must be 1 to 5000 and offset must be non-negative.")
+        return cls(
+            "schedule-data",
+            {
+                "command": "schedule-data",
+                "view": _required_text(schedule, "schedule"),
+                "limit": max_rows,
+                "offset": offset,
+            },
+        )
 
     @classmethod
     def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> ReadJob:
@@ -438,6 +511,10 @@ def select_instance(instances: list[dict[str, Any]], job: ReadJob) -> dict[str, 
 
 
 class RemoteHost(Protocol):
+    async def fetch_job(self, job_id: str) -> dict[str, Any]: ...
+
+    async def cancel_job(self, job_id: str) -> dict[str, Any]: ...
+
     async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]: ...
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]: ...
@@ -473,6 +550,7 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "parameter-fill-check",
         "document-info",
         "documents",
+        "ui-state",
         "list-views",
         "view-summary",
         "view-info",
@@ -480,6 +558,7 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "element-details",
         "view-warnings",
         "export-view",
+        "schedule-data",
         "query-elements",
         "aggregate-elements",
         "list-catalog",
@@ -493,14 +572,21 @@ MIN_ADDIN_VERSION = dict.fromkeys(
         "isolate",
         "move",
         "place-family",
+        "load-family",
+        "place-families",
         "create-wall",
         "set-parameter",
         "delete",
         "batch",
         "export-nwc",
+        "export",
         "edit-families",
         "align-link-datums",
         "open-document",
+        "activate-document",
+        "activate-view",
+        "close-views",
+        "new-document",
         "close-document",
         "save-document",
         "sync-document",
@@ -551,10 +637,35 @@ class RevitReadChannel:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         pickup_timeout_seconds: int = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
+        if job.command == "capture-elements":
+            from revit_model_mcp.http_host import HttpHost
+
+            if isinstance(self.remote, HttpHost):
+                raise RevitChannelError("element snapshots need the local or SSH transport")
         if timeout_seconds <= 0:
             raise RevitChannelError("timeout_seconds must be greater than zero.")
         if pickup_timeout_seconds <= 0:
             raise RevitChannelError("pickup_timeout_seconds must be greater than zero.")
+
+        if job.command == "jobs" and job.payload.get("fetchJobId"):
+            job_id = job.payload["fetchJobId"]
+            if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
+                raise RevitChannelError("job_id must be a job id returned by an action.")
+            wait_s = job.payload.get("waitSeconds", 40)
+            if not isinstance(wait_s, (int, float)) or not 0 <= wait_s <= 50:
+                raise RevitChannelError("wait_s must be between 0 and 50.")
+            remote, job = await self.remote.select_job(job)
+            if job.payload.get("requestCancellation"):
+                return await remote.cancel_job(job_id)
+            deadline = asyncio.get_running_loop().time() + wait_s
+            while True:
+                response = await remote.fetch_job(job_id)
+                if not _is_intermediate_response(response):
+                    return parse_response(json.dumps(response), response.get("command", ""))
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    return running_job(job_id, response)
+                await asyncio.sleep(min(0.25, remaining))
 
         async with self._lock:
             remote, job = await self.remote.select_job(job)
@@ -572,6 +683,22 @@ class RevitReadChannel:
     async def _execute_serial(
         self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
+        candidate = (
+            job.command in LONG_ACTION_COMMANDS
+            or (job.command == "open-document" and job.payload.get("audit") is True)
+            or job.command == "execute-code"
+        )
+        budget = tool_budget_seconds() if candidate else 40
+        instance = getattr(self.remote, "instance_info", {})
+        if not isinstance(instance, dict):
+            instance = {}
+        background = "jobs/persisted" in instance.get("commands", []) and (
+            job.command in LONG_ACTION_COMMANDS
+            or (job.command == "open-document" and job.payload.get("audit") is True)
+            or (job.command == "execute-code" and timeout_seconds > budget)
+        )
+        loop = asyncio.get_running_loop()
+        tool_deadline = loop.time() + budget if background else None
         correlation_id = uuid.uuid4().hex
         job_id = uuid.uuid4().hex
         job = replace(
@@ -598,7 +725,14 @@ class RevitReadChannel:
             )
             job_prepared = True
 
-            pickup = await self.remote.wait_until_trigger_is_gone(pickup_timeout_seconds)
+            try:
+                pickup = await asyncio.wait_for(
+                    self.remote.wait_until_trigger_is_gone(pickup_timeout_seconds),
+                    max(0, tool_deadline - loop.time()) if background else None,
+                )
+            except TimeoutError:
+                return running_job(job_id)
+
             trigger_taken = pickup.taken
             if not trigger_taken:
                 trigger_state = "is still present" if pickup.trigger_present else "is absent"
@@ -609,10 +743,25 @@ class RevitReadChannel:
                 )
 
             loop = asyncio.get_running_loop()
-            deadline = loop.time() + timeout_seconds
-            response_name = await self.remote.wait_for_new_response(
-                job.command, known_responses, timeout_seconds, correlation_id
+            deadline = (
+                min(loop.time() + timeout_seconds, tool_deadline)
+                if background
+                else loop.time() + timeout_seconds
             )
+            try:
+                response_name = await asyncio.wait_for(
+                    self.remote.wait_for_new_response(
+                        job.command,
+                        known_responses,
+                        max(0, deadline - loop.time()) if background else timeout_seconds,
+                        correlation_id,
+                    ),
+                    max(0, deadline - loop.time()) if background else None,
+                )
+            except (RevitChannelError, TimeoutError):
+                if not background:
+                    raise
+                response_name = None
             while response_name is not None:
                 # Progress writes reuse this file; cleanup must wait for a real result.
                 try:
@@ -620,7 +769,9 @@ class RevitReadChannel:
                         self.remote.finish_job(response_name, [], False, None),
                         timeout=max(0, deadline - loop.time()),
                     )
-                except TimeoutError:
+                except (RevitChannelError, TimeoutError):
+                    if not background:
+                        raise
                     break
                 try:
                     envelope = json.loads(content)
@@ -653,9 +804,24 @@ class RevitReadChannel:
                 await asyncio.sleep(min(1, remaining))
                 if loop.time() >= deadline:
                     break
-                response_name = await self.remote.wait_for_new_response(
-                    job.command, known_responses, deadline - loop.time(), correlation_id
-                )
+                try:
+                    response_name = await self.remote.wait_for_new_response(
+                        job.command, known_responses, deadline - loop.time(), correlation_id
+                    )
+                except (RevitChannelError, TimeoutError):
+                    if not background:
+                        raise
+                    response_name = None
+
+            if result is None and background:
+                # Recheck at the boundary: a completed result wins over the budget.
+                try:
+                    response = await asyncio.wait_for(self.remote.fetch_job(job_id), 1)
+                except (RevitChannelError, TimeoutError):
+                    return running_job(job_id)
+                if _is_intermediate_response(response):
+                    return running_job(job_id, response)
+                return parse_response(json.dumps(response), job.command)
 
             if result is None:
                 raise ResponseTimeoutError(
@@ -667,7 +833,7 @@ class RevitReadChannel:
                     )
                 )
 
-            if job.command == "export-view" and result.get("success") is True:
+            if job.command in ("export-view", "capture-elements") and result.get("success") is True:
                 finish_attempted = True
                 content, local_path = await self.remote.finish_job(
                     response_name,
@@ -682,11 +848,17 @@ class RevitReadChannel:
             # Preserve the original failure until temporary-file cleanup finishes.
             failure = error
 
+        if background and isinstance(failure, asyncio.CancelledError):
+            raise failure
+
         cleanup_names = [temporary_name] if job_prepared and not finish_attempted else []
         if response_name and not finish_attempted:
             cleanup_names.append(response_name)
         try:
-            await self.remote.delete_files(cleanup_names)
+            if job.command == "capture-elements":
+                await asyncio.wait_for(self.remote.delete_files(cleanup_names), 10)
+            else:
+                await self.remote.delete_files(cleanup_names)
         except (Exception, asyncio.CancelledError) as cleanup_error:
             # Cleanup failure must not replace the original command failure.
             if failure is not None:
@@ -714,6 +886,8 @@ class RevitReadChannel:
 def _is_intermediate_response(response: dict[str, Any]) -> bool:
     if response.get("partial") is not True:
         return False
+    if response.get("command") == "process-models":
+        return response.get("message") == "Command accepted and running."
     message = response.get("message")
     if isinstance(message, str) and message.startswith("Processed "):
         return True

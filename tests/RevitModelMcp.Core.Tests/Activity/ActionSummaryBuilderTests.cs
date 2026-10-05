@@ -5,6 +5,83 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class ActionSummaryBuilderTests
 {
     [Test]
+    public async Task CreateMepRun_ReportsSegmentsAndKind()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "create-mep-run",
+            DocumentTitle = "Model.rvt",
+            ViewKind = "cable_tray",
+            Count = 4
+        });
+        await Assert.That(summary).IsEqualTo("Created 4 segments of cable tray in Model.rvt.");
+        await Assert.That(ActionSummaryBuilder.BuildGroupName("client", summary)).StartsWith("MCP (client): Created");
+    }
+
+    [Test]
+    public async Task CadActions_ReportNamedUndoSummaries()
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "link-cad",
+            DocumentTitle = "Project.rvt",
+            CadLink = true
+        })).IsEqualTo("Linked CAD in Project.rvt.");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "link-cad",
+            DocumentTitle = "Project.rvt",
+            CadLink = false,
+            DryRun = true
+        })).IsEqualTo("Would import CAD in Project.rvt.");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "walls-from-cad",
+            DocumentTitle = "Project.rvt",
+            Count = 3,
+            DryRun = true
+        })).IsEqualTo("Would create 3 walls from CAD in Project.rvt.");
+    }
+
+    [Test]
+    public async Task ProcessModels_ReportsTotals()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "process-models",
+            Count = 2,
+            ProcessTotal = 3,
+            ProcessFailed = 1
+        });
+        await Assert.That(summary).IsEqualTo("Processed 2 of 3 models; 1 failed, 0 skipped.");
+    }
+
+    [Test]
+    public async Task ExecuteCode_UsesNamedUndoEntry()
+    {
+        await Assert.That(ActionSummaryBuilder.BuildGroupName("client", "Execute code"))
+            .IsEqualTo("MCP (client): Execute code");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt"
+        })).IsEqualTo("Executed code in Model.rvt.");
+    }
+
+    [Test]
+    [Arguments(CodeFailureKind.Compilation, "Code failed to compile in Model.rvt.")]
+    [Arguments(CodeFailureKind.Execution, "Code failed in Model.rvt.")]
+    public async Task ExecuteCode_FailureSummaryDescribesFailure(CodeFailureKind failure, string expected)
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt",
+            CodeFailure = failure
+        })).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task BuildSummary_Move_ReportsCountAndDocument()
     {
         var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -100,6 +177,34 @@ public sealed class ActionSummaryBuilderTests
             WallType = "Generic 200mm"
         });
         await Assert.That(summary).IsEqualTo("Created a Generic 200mm wall in Project1.rvt.");
+    }
+
+    [Test]
+    [Arguments("floor_plan", "Night L2 plan", "Created floor plan 'Night L2 plan' in Project1.rvt.")]
+    [Arguments("section", "Night section", "Created section 'Night section' in Project1.rvt.")]
+    public async Task BuildSummary_CreateView_UsesKindAndName(string kind, string name, string expected)
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "create-view",
+            DocumentTitle = "Project1.rvt",
+            ViewKind = kind,
+            ViewName = name
+        });
+        await Assert.That(summary).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task BuildSummary_CreateSheet_UsesNumberAndName()
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "create-sheet",
+            DocumentTitle = "Project1.rvt",
+            SheetNumber = "NX-101",
+            ViewName = "Night sheet"
+        });
+        await Assert.That(summary).IsEqualTo("Created sheet 'NX-101 - Night sheet' in Project1.rvt.");
     }
 
     [Test]

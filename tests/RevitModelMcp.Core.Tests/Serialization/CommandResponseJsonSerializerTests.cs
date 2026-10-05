@@ -11,6 +11,132 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task ProcessModels_SerializesProgressAndCancelledResult()
+    {
+        var data = new ActionResultData
+        {
+            CurrentIndex = 2,
+            Total = 4,
+            CurrentPath = @"C:\Private\Second.rvt",
+            Models = [new ProcessModelResult { Path = @"C:\Private\First.rvt", Status = "done" }],
+            Cancelled = true
+        };
+        var response = CommandResponse<ActionResultData>.PartialResult("process-models", data,
+            "Cancelled before the next model; completed changes remain committed.", 5);
+        var stored = CommandResponseJsonSerializer.RedactPaths(CommandResponseJsonSerializer.Serialize(response));
+        using var json = JsonDocument.Parse(stored);
+        var progress = json.RootElement.GetProperty("data");
+        await Assert.That(progress.GetProperty("currentIndex").GetInt32()).IsEqualTo(2);
+        await Assert.That(progress.GetProperty("total").GetInt32()).IsEqualTo(4);
+        await Assert.That(progress.GetProperty("currentPath").GetString()).IsEqualTo("Second.rvt");
+        await Assert.That(progress.GetProperty("models")[0].GetProperty("path").GetString()).IsEqualTo("First.rvt");
+        await Assert.That(progress.GetProperty("cancelled").GetBoolean()).IsTrue();
+        await Assert.That(stored).DoesNotContain("Private");
+    }
+
+    [Test]
+    public async Task ProcessModels_SerializesDoneFailedAndSkippedModels()
+    {
+        var data = new ActionResultData
+        {
+            Total = 3,
+            Done = 1,
+            Failed = 1,
+            SkippedCount = 1,
+            Summary = "Processed 1 of 3 models; 1 failed, 1 skipped.",
+            Models =
+            [
+                new ProcessModelResult
+                {
+                    Path = @"C:\Models\Done.rvt", Status = "done",
+                    Opened = new ProcessModelOpenedResult { Mode = "detached" },
+                    Code = new ProcessModelCodeResult { ReturnValue = 42, ReturnValueMarker = "return-marker", Log = ["ran"] },
+                    Exports = [new ActionResultData { Folder = @"C:\Out\Done", Files = [new ExportedFile { Name = "Done.ifc", SizeBytes = 10 }] }],
+                    Saved = @"C:\Out\Done.rvt",
+                    DialogsDismissed = ProcessDialogSummary.FromMessages(["Space warning", "Space warning", "Other warning"])
+                },
+                new ProcessModelResult { Path = @"C:\Models\Missing.rvt", Status = "failed", Error = "File not found." },
+                new ProcessModelResult { Path = @"C:\Models\Open.rvt", Status = "skipped", Error = "Already open." }
+            ]
+        };
+
+        using var json = Parse(CommandResponse<ActionResultData>.PartialResult("process-models", data, data.Summary!, 5));
+        var models = json.RootElement.GetProperty("data").GetProperty("models");
+        await Assert.That(models.GetArrayLength()).IsEqualTo(3);
+        await Assert.That(models[0].GetProperty("code").GetProperty("returnValue").GetInt32()).IsEqualTo(42);
+        await Assert.That(models[0].GetProperty("exports")[0].GetProperty("files")[0].GetProperty("name").GetString()).IsEqualTo("Done.ifc");
+        await Assert.That(models[0].GetProperty("saved").GetString()).IsEqualTo(@"C:\Out\Done.rvt");
+        var dismissed = models[0].GetProperty("dialogsDismissed");
+        await Assert.That(dismissed.GetProperty("messages")[0].GetProperty("count").GetInt32()).IsEqualTo(2);
+        await Assert.That(dismissed.GetProperty("truncated").GetBoolean()).IsFalse();
+        await Assert.That(models[1].GetProperty("error").GetString()).IsEqualTo("File not found.");
+        await Assert.That(models[1].GetProperty("dialogsDismissed").GetProperty("messages").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(models[2].GetProperty("status").GetString()).IsEqualTo("skipped");
+    }
+
+    [Test]
+    public async Task ProcessModels_DismissedMessagesLimitDistinctEntries()
+    {
+        var summary = ProcessDialogSummary.FromMessages(
+            Enumerable.Range(0, 51).Select(index => $"Warning {index}").Concat(["Warning 0"]));
+
+        await Assert.That(summary.Messages.Count).IsEqualTo(50);
+        await Assert.That(summary.Messages[0].Count).IsEqualTo(2);
+        await Assert.That(summary.Truncated).IsTrue();
+    }
+
+    [Test]
+    public async Task ExecuteCode_SerializesLimitedJsonValuesAndDiagnostics()
+    {
+        var response = CommandResponse<ActionResultData>.Ok("execute-code", new ActionResultData
+        {
+            ReturnValue = CodeResultLimiter.Limit(new Dictionary<string, object?>
+            {
+                ["count"] = 3,
+                ["items"] = new[] { "a", "b" }
+            }, value => value),
+            Log = ["ready"],
+            Diagnostics = [new CodeDiagnostic { Line = 2, Column = 4, Id = "CS1002", Message = "; expected" }],
+            Summary = "Executed code in Model.rvt."
+        }, 5);
+        var json = CommandResponseJsonSerializer.Serialize(response);
+        await Assert.That(json.Contains("\"returnValue\"")).IsTrue();
+        await Assert.That(json.Contains("\"count\":3")).IsTrue();
+        await Assert.That(json.Contains("\"line\":2")).IsTrue();
+    }
+
+    [Test]
+    public async Task Serialize_CreatedViewsSheetsAndPlacements_ExposeTopLevelIds()
+    {
+        var view = new ActionResultData
+        {
+            ViewId = 42,
+            ViewName = "Night section",
+            Id = 42,
+            Verification = new ActionVerification { After = new ActionFacts { Id = 42 } }
+        };
+        using var viewJson = Parse(CommandResponse<ActionResultData>.Ok("create-view", view, 1));
+        var viewData = viewJson.RootElement.GetProperty("data");
+        await Assert.That(viewData.GetProperty("viewId").GetInt64()).IsEqualTo(42);
+        await Assert.That(viewData.GetProperty("viewName").GetString()).IsEqualTo("Night section");
+        await Assert.That(viewData.TryGetProperty("view", out _)).IsFalse();
+        await Assert.That(viewData.GetProperty("verification").GetProperty("after").GetProperty("id").GetInt64()).IsEqualTo(42);
+
+        var sheet = new ActionResultData { SheetId = 51, SheetNumber = "NX-101", SheetName = "Night sheet" };
+        using var sheetJson = Parse(CommandResponse<ActionResultData>.Ok("create-sheet", sheet, 1));
+        var sheetData = sheetJson.RootElement.GetProperty("data");
+        await Assert.That(sheetData.GetProperty("sheetId").GetInt64()).IsEqualTo(51);
+        await Assert.That(sheetData.GetProperty("sheetNumber").GetString()).IsEqualTo("NX-101");
+        await Assert.That(sheetData.GetProperty("sheetName").GetString()).IsEqualTo("Night sheet");
+
+        var placements = new ActionResultData { ViewportIds = [61, 62], ScheduleInstanceIds = [63] };
+        using var placementJson = Parse(CommandResponse<ActionResultData>.Ok("place-views-on-sheet", placements, 1));
+        var placementData = placementJson.RootElement.GetProperty("data");
+        await Assert.That(placementData.GetProperty("viewportIds").EnumerateArray().Select(id => id.GetInt64())).IsEquivalentTo(new long[] { 61, 62 });
+        await Assert.That(placementData.GetProperty("scheduleInstanceIds")[0].GetInt64()).IsEqualTo(63);
+    }
+
+    [Test]
     public async Task Serialize_ModelSnapshot_UsesExactSchemaNamesAndNulls()
     {
         var snapshot = new ModelSnapshotData
@@ -742,6 +868,40 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(data.GetProperty("width").GetInt32()).IsEqualTo(1600);
         await Assert.That(data.GetProperty("sizeBytes").GetInt64()).IsEqualTo(123456);
         await Assert.That(data.GetProperty("viewType").GetString()).IsEqualTo("FloorPlan");
+    }
+
+    [Test]
+    [Arguments("3d")]
+    [Arguments("plan")]
+    public async Task Serialize_CaptureElements_PreservesFileMissingIdsAndMode(string mode)
+    {
+        var response = CommandResponse<ElementCaptureData>.Ok(
+            "capture-elements",
+            new ElementCaptureData
+            {
+                FileName = "capture_20261004_120000_000.png",
+                Width = 1600,
+                Height = 900,
+                SizeBytes = 123456,
+                ElementCount = 2,
+                MissingIds = new List<long> { 17, 4294967296 },
+                Mode = mode
+            },
+            812);
+
+        using var json = Parse(response);
+        var data = json.RootElement.GetProperty("data");
+
+        await AssertSuccess(json.RootElement, "capture-elements");
+        await Assert.That(data.GetProperty("fileName").GetString()).IsEqualTo("capture_20261004_120000_000.png");
+        await Assert.That(data.GetProperty("width").GetInt32()).IsEqualTo(1600);
+        await Assert.That(data.GetProperty("height").GetInt32()).IsEqualTo(900);
+        await Assert.That(data.GetProperty("sizeBytes").GetInt64()).IsEqualTo(123456);
+        await Assert.That(data.GetProperty("elementCount").GetInt32()).IsEqualTo(2);
+        await Assert.That(data.GetProperty("missingIds").GetArrayLength()).IsEqualTo(2);
+        await Assert.That(data.GetProperty("missingIds")[0].GetInt64()).IsEqualTo(17);
+        await Assert.That(data.GetProperty("missingIds")[1].GetInt64()).IsEqualTo(4294967296);
+        await Assert.That(data.GetProperty("mode").GetString()).IsEqualTo(mode);
     }
 
     [Test]

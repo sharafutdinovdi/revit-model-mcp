@@ -5,6 +5,22 @@ namespace RevitModelMcp.Core.Tests.Activity;
 public sealed class UndoEligibilityTests
 {
     [Test]
+    public async Task NewestUndoable_SkipsFailedNonUndoableAndUndoneEntries()
+    {
+        var committed = new ActivityEntry { UndoEntryName = "MCP: committed" };
+        var entries = new[]
+        {
+            new ActivityEntry { State = "failed" },
+            new ActivityEntry { UndoEntryName = "MCP: already undone", Undone = true },
+            new ActivityEntry { DryRun = true },
+            committed
+        };
+
+        await Assert.That(UndoEligibility.NewestUndoable(entries)).IsSameReferenceAs(committed);
+        await Assert.That(UndoEligibility.NewestUndoable(entries.Take(3))).IsNull();
+    }
+
+    [Test]
     public async Task IsAllowed_MatchingNamesActiveNoPending_ReturnsTrue()
     {
         var allowed = UndoEligibility.IsAllowed(

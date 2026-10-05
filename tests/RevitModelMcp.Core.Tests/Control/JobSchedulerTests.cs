@@ -95,6 +95,57 @@ public sealed class JobSchedulerTests
     }
 
     [Test]
+    public async Task ActionResultIsRetainedForTwentyFourHours()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var jobId = Guid.NewGuid().ToString("N");
+        var scheduler = new JobScheduler(() => now, resultDirectory: directory);
+        try
+        {
+            scheduler.Submit(jobId, "a", "Alice", "export", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(jobId, "{\"command\":\"export\",\"success\":true,\"data\":{}}", true);
+            now += TimeSpan.FromHours(23);
+            await Assert.That(scheduler.Status(jobId)?.State).IsEqualTo(JobState.Done);
+            await Assert.That(File.ReadAllText(Path.Combine(directory, $"{jobId}.json"))).Contains("\"command\":\"export\"");
+            now += TimeSpan.FromHours(1) + TimeSpan.FromTicks(1);
+            await Assert.That(scheduler.Status(jobId)).IsNull();
+            await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.json"))).IsFalse();
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Test]
+    public async Task ProcessModelsCancelsAfterClientRestartAndRetainsCompletedModels()
+    {
+        var scheduler = new JobScheduler();
+        scheduler.Submit("process", "old-client", "Alice", "process-models", "{}");
+        scheduler.TakeNext();
+        scheduler.MarkCancellable("process");
+        scheduler.PublishProgress("process", "one model completed");
+        await Assert.That(scheduler.Status("process")?.Result).IsEqualTo("one model completed");
+        await Assert.That(scheduler.Cancel("process", "new-client").Cancelled).IsFalse();
+        await Assert.That(scheduler.IsCancellationRequested("process")).IsFalse();
+        await Assert.That(scheduler.Cancel("process", "new-client", true).Cancelled).IsTrue();
+        await Assert.That(scheduler.IsCancellationRequested("process")).IsTrue();
+        scheduler.Complete("process", "cancelled with one completed model", true);
+        await Assert.That(scheduler.Status("process")?.State).IsEqualTo(JobState.Cancelled);
+        await Assert.That(scheduler.Status("process")?.Result).IsEqualTo("cancelled with one completed model");
+    }
+
+    [Test]
+    public async Task QueuedActionCanBeCancelledAfterClientRestart()
+    {
+        var scheduler = new JobScheduler();
+        scheduler.Submit("export", "old-client", "Alice", "export", "{}");
+        await Assert.That(scheduler.Cancel("export", "new-client").Cancelled).IsFalse();
+        await Assert.That(scheduler.Status("export")?.State).IsEqualTo(JobState.Queued);
+        await Assert.That(scheduler.Cancel("export", "new-client", true).Cancelled).IsTrue();
+        await Assert.That(scheduler.TakeNext()).IsNull();
+    }
+
+    [Test]
     public async Task ConcurrentSubmissionsKeepCountConsistent()
     {
         var scheduler = new JobScheduler();

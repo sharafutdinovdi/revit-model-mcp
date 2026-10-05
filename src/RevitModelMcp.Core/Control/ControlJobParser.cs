@@ -14,6 +14,7 @@ public enum ControlJobKind
     Ping,
     DocumentInfo,
     Documents,
+    UiState,
     ModelHealth,
     ModelSnapshot,
     LinksStatus,
@@ -25,7 +26,9 @@ public enum ControlJobKind
     ViewElements,
     ElementDetails,
     ViewWarnings,
+    ScheduleData,
     ExportView,
+    CaptureElements,
     QueryElements,
     AggregateElements,
     ListCatalog,
@@ -82,6 +85,9 @@ public sealed class ControlJobParseResult
     public long? SourceId { get; internal set; }
     public string? SourceName { get; internal set; }
     public int PixelSize { get; internal set; } = 1600;
+    public IReadOnlyList<long> ElementIds { get; internal set; } = [];
+    public double PaddingMm { get; internal set; } = 1500;
+    public string Mode { get; internal set; } = "3d";
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
     public IReadOnlyList<ModelSnapshotParameterRule> ParameterRules { get; internal set; } = [];
@@ -199,13 +205,16 @@ public sealed class ControlJobParseResult
             "parameter-fill-check" => ParseParameterFill(job),
             "document-info" => Create(ControlJobKind.DocumentInfo, command),
             "documents" => Documents(job.IncludeLinked ?? false),
+            "ui-state" => Create(ControlJobKind.UiState, command),
             "list-views" => ListViews(job.ViewType, job.NameContains),
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
             "view-info" => RequireView(ControlJobKind.ViewInfo, command, view),
             "view-elements" => ParseViewElements(command, view, categories, job.Offset, job.Limit),
             "element-details" => ParseElementDetails(command, job.Id),
             "view-warnings" => RequireView(ControlJobKind.ViewWarnings, command, view),
+            "capture-elements" => ParseCaptureElements(job),
             "export-view" => ParseExportView(command, view, job.PixelSize, job.ZoomToFit),
+            "schedule-data" => view is null ? Invalid(command, "schedule is required.") : ParseScheduleData(job, view),
             "query-elements" => UniversalJobParser.ParseQuery(job),
             "aggregate-elements" => UniversalJobParser.ParseAggregate(job),
             "list-catalog" => UniversalJobParser.ParseCatalog(job),
@@ -369,6 +378,37 @@ public sealed class ControlJobParseResult
             : ExportView(view, resolvedPixelSize, zoomToFit ?? true);
     }
 
+    private static ControlJobParseResult ParseCaptureElements(ControlJobContract job)
+    {
+        const string command = "capture-elements";
+        if (job.ElementIds is null || job.ElementIds.Count is < 1 or > 500 || job.ElementIds.Any(id => id <= 0))
+            return Invalid(command, "elementIds requires 1 to 500 positive integer IDs.");
+        if (job.PixelSize is < 1 or > 4000)
+            return Invalid(command, "pixelSize must be between 1 and 4000 pixels.");
+        var padding = job.PaddingMm ?? 1500;
+        if (double.IsNaN(padding) || double.IsInfinity(padding) || padding is < 0 or > 20000)
+            return Invalid(command, "paddingMm must be between 0 and 20000.");
+        var mode = job.Mode ?? "3d";
+        if (mode is not ("3d" or "plan"))
+            return Invalid(command, "mode must be 3d or plan.");
+        var result = Create(ControlJobKind.CaptureElements, command);
+        result.ElementIds = job.ElementIds.Distinct().ToList();
+        result.PixelSize = job.PixelSize ?? 1600;
+        result.PaddingMm = padding;
+        result.Mode = mode;
+        return result;
+    }
+
+    private static ControlJobParseResult ParseScheduleData(ControlJobContract job, string schedule)
+    {
+        if (job.Offset is < 0 || job.Limit is < 1 or > 5000)
+            return Invalid("schedule-data", "offset must be non-negative and max_rows must be 1 to 5000.");
+        var result = ViewCommand(ControlJobKind.ScheduleData, "schedule-data", schedule);
+        result.Offset = job.Offset ?? 0;
+        result.Limit = job.Limit ?? 500;
+        return result;
+    }
+
     private static IReadOnlyList<string> NormalizeMany(IEnumerable<string>? values)
     {
         return (values ?? Array.Empty<string>())
@@ -473,6 +513,12 @@ public sealed partial class ControlJobContract
     public List<string>? Views { get; set; }
     [DataMember(Name = "view")]
     public string? View { get; set; }
+    [DataMember(Name = "format")] public string? Format { get; set; }
+    [DataMember(Name = "sheets")] public List<string>? Sheets { get; set; }
+    [DataMember(Name = "sheetSet")] public string? SheetSet { get; set; }
+    [DataMember(Name = "allSheets")] public bool? AllSheets { get; set; }
+    [DataMember(Name = "folder")] public string? Folder { get; set; }
+    [DataMember(Name = "options")] public FileExportOptions? ExportOptions { get; set; }
     [DataMember(Name = "viewType")]
     public string? ViewType { get; set; }
     [DataMember(Name = "nameContains")]
@@ -521,6 +567,9 @@ public sealed partial class ControlJobContract
     public long? SourceId { get; set; }
     [DataMember(Name = "sourceName")]
     public string? SourceName { get; set; }
+    [DataMember(Name = "paddingMm")]
+    public double? PaddingMm { get; set; }
+
     [DataMember(Name = "pixelSize")]
     public int? PixelSize { get; set; }
     [DataMember(Name = "zoomToFit")]

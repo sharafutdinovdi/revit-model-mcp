@@ -7,6 +7,60 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_CaptureElements_DefaultsAndTarget()
+    {
+        var parsed = ControlJobParser.Parse("""
+            {"command":"capture-elements","elementIds":[10,20,10],"targetDocument":" Model ","targetProcessId":123}
+            """);
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.CaptureElements);
+        await Assert.That(parsed.ElementIds.ToArray()).IsEquivalentTo(new long[] { 10, 20 });
+        await Assert.That(parsed.PixelSize).IsEqualTo(1600);
+        await Assert.That(parsed.PaddingMm).IsEqualTo(1500);
+        await Assert.That(parsed.Mode).IsEqualTo("3d");
+        await Assert.That(parsed.TargetDocument).IsEqualTo("Model");
+        await Assert.That(parsed.TargetProcessId).IsEqualTo(123);
+        var plan = ControlJobParser.Parse("""
+            {"command":"capture-elements","elementIds":[10],"pixelSize":4000,"paddingMm":0,"mode":"plan"}
+            """);
+        await Assert.That(plan.Kind).IsEqualTo(ControlJobKind.CaptureElements);
+        await Assert.That(plan.Mode).IsEqualTo("plan");
+        await Assert.That(plan.PaddingMm).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task Parse_CaptureElements_RejectsInvalidFields()
+    {
+        foreach (var fields in new[]
+        {
+            "", "\"elementIds\":[]", "\"elementIds\":[0]", "\"elementIds\":[-1]",
+            "\"elementIds\":[1],\"pixelSize\":0", "\"elementIds\":[1],\"pixelSize\":4001",
+            "\"elementIds\":[1],\"paddingMm\":-1", "\"elementIds\":[1],\"paddingMm\":20001",
+            "\"elementIds\":[1],\"mode\":\"section\"",
+            "\"elementIds\":[1],\"mode\":\"\""
+        })
+        {
+            var content = fields.Length == 0 ? "\"command\":\"capture-elements\"" : "\"command\":\"capture-elements\"," + fields;
+            var parsed = ControlJobParser.Parse("{" + content + "}");
+            await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Invalid);
+            await Assert.That(parsed.Error).IsNotNull();
+        }
+        var excessive = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "capture-elements",
+            ElementIds = Enumerable.Range(1, 501).Select(value => (long)value).ToList()
+        });
+        await Assert.That(excessive.Kind).IsEqualTo(ControlJobKind.Invalid);
+        var boundary = ControlJobParseResult.FromContract(new ControlJobContract
+        {
+            Command = "capture-elements",
+            ElementIds = Enumerable.Range(1, 500).Select(value => (long)value).ToList(),
+            PaddingMm = 20000,
+            PixelSize = 1
+        });
+        await Assert.That(boundary.Kind).IsEqualTo(ControlJobKind.CaptureElements);
+    }
+
+    [Test]
     public async Task Parse_ModelSnapshot_PreservesOrderedRulesAndDocument()
     {
         var absent = ControlJobParser.Parse("""{"command":"model-snapshot"}""");
@@ -500,6 +554,79 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    public async Task ViewReferenceMatcher_MatchesSheetNumberCaseInsensitively()
+    {
+        var views = new[]
+        {
+            new TestView(42, "Floor Plan"),
+            new TestView(84, "North Sheet", "NX-201", "DrawingSheet")
+        };
+
+        var sheet = ViewReferenceMatcher.Find(views, "nx-201", view => view.Id, view => view.Name,
+            view => view.SheetNumber, view => view.Type);
+
+        await Assert.That(sheet?.Id).IsEqualTo(84);
+    }
+
+    [Test]
+    public async Task ViewReferenceMatcher_IdPrecedesNumericSheetNumber()
+    {
+        var views = new[]
+        {
+            new TestView(42, "Floor Plan"),
+            new TestView(84, "North Sheet", "42", "DrawingSheet")
+        };
+
+        var view = ViewReferenceMatcher.Find(views, "42", item => item.Id, item => item.Name,
+            item => item.SheetNumber, item => item.Type);
+
+        await Assert.That(view?.Id).IsEqualTo(42);
+    }
+
+    [Test]
+    public async Task ViewReferenceMatcher_NameAndSheetNumberCollisionIsAmbiguous()
+    {
+        var views = new[]
+        {
+            new TestView(42, "NX-201", Type: "FloorPlan"),
+            new TestView(84, "North Sheet", "NX-201", "DrawingSheet")
+        };
+
+        var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "NX-201",
+            view => view.Id, view => view.Name, view => view.SheetNumber, view => view.Type));
+
+        await Assert.That(error?.Message).Contains("id=42, name=NX-201, type=FloorPlan");
+        await Assert.That(error?.Message).Contains("id=84, name=North Sheet, type=DrawingSheet");
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ViewReferenceMatcher_DuplicateSheetNumbers_ListCandidates(bool includeCollections)
+    {
+        var views = new[]
+        {
+            new TestView(42, "North Sheet", "A-101", "DrawingSheet", "Architecture"),
+            new TestView(84, "South Sheet", "A-101", "DrawingSheet", "Structure")
+        };
+
+        var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "a-101",
+            view => view.Id, view => view.Name, view => view.SheetNumber, view => view.Type,
+            includeCollections ? view => view.Collection : null));
+
+        await Assert.That(error!.Message).Contains("id=42, name=North Sheet, type=DrawingSheet, number=A-101");
+        await Assert.That(error.Message).Contains("id=84, name=South Sheet, type=DrawingSheet, number=A-101");
+        if (includeCollections)
+        {
+            await Assert.That(error.Message).Contains("collection=Architecture");
+            await Assert.That(error.Message).Contains("collection=Structure");
+        }
+        var selected = ViewReferenceMatcher.Find(views, "84", view => view.Id, view => view.Name,
+            view => view.SheetNumber, view => view.Type);
+        await Assert.That(selected?.Id).IsEqualTo(84);
+    }
+
+    [Test]
     public async Task ViewNotFound_ReturnsListViewsHint()
     {
         var response = CommandResponse<object>.ViewNotFound("export-view", "Missing View", 12);
@@ -627,5 +754,6 @@ public sealed class ControlJobParserTests
         await Assert.That(parsed.ClientId).IsEqualTo("client-1");
     }
 
-    private sealed record TestView(long Id, string Name);
+    private sealed record TestView(long Id, string Name, string? SheetNumber = null, string Type = "FloorPlan",
+        string? Collection = null);
 }

@@ -173,6 +173,23 @@ public sealed record JobCancellationInfo
     [DataMember(Name = "message")] public string Message { get; init; } = string.Empty;
 }
 
+[DataContract]
+public sealed record ScheduleDataResult
+{
+    [DataMember(Name = "columns")] public List<string> Columns { get; init; } = [];
+    [DataMember(Name = "rows")] public List<List<string>> Rows { get; init; } = [];
+    [DataMember(Name = "totalRows")] public int TotalRows { get; init; }
+    [DataMember(Name = "truncated")] public bool Truncated { get; init; }
+
+    public static List<string> JoinHeadings(IReadOnlyList<List<string>> rows, int columnCount)
+    {
+        return Enumerable.Range(0, columnCount)
+            .Select(column => string.Join(" / ", rows.Select(row => row[column])
+                .Where(text => !string.IsNullOrWhiteSpace(text))))
+            .ToList();
+    }
+}
+
 public static class ReadCommandResponseFactory
 {
     public static CommandResponse<string> Ping(long elapsedMs)
@@ -545,4 +562,29 @@ public static class ActionFailurePolicy
         if (isError && hasSafeResolution && !resolutionAttempted) return ActionFailureDisposition.ResolveError;
         return ActionFailureDisposition.RollBack;
     }
+}
+
+[DataContract]
+public sealed class ElementCaptureData
+{
+    [DataMember(Name = "fileName")]
+    public string FileName { get; set; } = string.Empty;
+
+    [DataMember(Name = "width")]
+    public int Width { get; set; }
+
+    [DataMember(Name = "height")]
+    public int Height { get; set; }
+
+    [DataMember(Name = "sizeBytes")]
+    public long SizeBytes { get; set; }
+
+    [DataMember(Name = "elementCount")]
+    public int ElementCount { get; set; }
+
+    [DataMember(Name = "missingIds")]
+    public List<long> MissingIds { get; set; } = [];
+
+    [DataMember(Name = "mode")]
+    public string Mode { get; set; } = "3d";
 }

@@ -20,3 +20,9 @@ The generated skill includes the guide verbatim after its frontmatter and usage 
 
 For Claude Code, copy the `skills/revit-model-coordinator` folder into `~/.claude/skills/`.
 For Claude Desktop, zip that skill folder and upload it as a skill.
+
+## ISO 19650 issue register skill
+
+The hand-written [ISO 19650 issue register skill](../skills/iso19650-issue-register/SKILL.md) checks document requirements against the open model and calls `revit_issue_register` with evidence and element snapshots.
+For Claude Code, copy `skills/iso19650-issue-register` into `~/.claude/skills/`.
+For Claude Desktop, zip that skill folder and upload it as a skill.
