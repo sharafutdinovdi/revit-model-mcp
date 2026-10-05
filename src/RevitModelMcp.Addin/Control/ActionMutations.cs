@@ -198,13 +198,19 @@ internal static class ActionMutations
         return new ActionResultData { Count = changed.Count, Verification = new ActionVerification { Changed = changed } };
     }
 
-    internal static ActionResultData UpdateParameters(Document document, ActionJobContract action)
+    internal static List<ElementId> MatchedIds(Document document, ActionJobContract action)
     {
         var context = QueryFilterBuilder.Build(document, action.QueryFilters!, []);
         using var collector = context.CreateCollector();
         var ids = collector.ToElementIds().ToList();
         if (ids.Count > action.MaxElements)
             throw new MatchLimitException(ids.Count, action.MaxElements);
+        return ids;
+    }
+
+    internal static ActionResultData UpdateParameters(Document document, ActionJobContract action, ISet<long>? inGroup = null)
+    {
+        var ids = MatchedIds(document, action);
         SkippedByReason skipped = new();
         var result = new ActionResultData { MatchedCount = ids.Count, Values = [], Skipped = skipped };
         var matchedIds = ids.Select(RevitValueReader.GetId).ToHashSet();
@@ -239,6 +245,11 @@ internal static class ActionMutations
                 skipped.ReadOnly.Add(RevitValueReader.GetId(id));
                 continue;
             }
+            if (inGroup?.Contains(RevitValueReader.GetId(id)) == true)
+            {
+                skipped.InGroup.Add(RevitValueReader.GetId(id));
+                continue;
+            }
             var targetId = isTypeParameter ? RevitValueReader.GetId(element.GetTypeId()) : RevitValueReader.GetId(id);
             if (isTypeParameter && !affectedTypeIds.Add(targetId)) continue;
             var oldValue = ParameterValue(parameter);
@@ -262,6 +273,8 @@ internal static class ActionMutations
                 affectedTypeIds.Contains(RevitValueReader.GetId(element.GetTypeId())) &&
                 !matchedIds.Contains(RevitValueReader.GetId(element.Id)));
         }
+        if (skipped.InGroup.Count > 0)
+            result.Warning = $"{skipped.InGroup.Count} {(skipped.InGroup.Count == 1 ? "element was" : "elements were")} skipped because they belong to groups; Revit allows changes to group members only in group edit mode.";
         result.Verification = new ActionVerification { Changed = changedIds };
         result.Count = result.Verification.Changed.Count;
         return result;
@@ -720,7 +733,7 @@ internal static class ActionMutations
         };
     }
 
-    internal static ActionResultData WallsFromCad(Document document, ActionJobContract action)
+    internal static WallPlan PlanWalls(Document document, ActionJobContract action)
     {
         var instance = document.GetElement(CreateId(action.CadId)) as ImportInstance
             ?? throw new ArgumentException($"CAD import instance {action.CadId} was not found.");
@@ -733,17 +746,7 @@ internal static class ActionMutations
             action.MinThicknessMm, action.MaxThicknessMm, action.MinLengthMm, action.MaxGapMm, action.Join);
         var basicTypes = document.CollectElements().OfClass<WallType>().Cast<WallType>()
             .Where(type => type.Kind == WallKind.Basic).ToList();
-        if (basicTypes.Count == 0)
-            return new ActionResultData
-            {
-                Count = 0,
-                Walls = [],
-                UnpairedLines = geometry.UnpairedLines,
-                MergedSegments = geometry.MergedSegments,
-                SkippedShortSegments = geometry.SkippedShortSegments,
-                Warning = "No basic wall type exists in this project.",
-                Verification = new ActionVerification { Changed = [] }
-            };
+        if (basicTypes.Count == 0) return new WallPlan(level, geometry, [], true);
         var selectedType = action.WallType is null ? null : basicTypes.FirstOrDefault(type =>
             string.Equals(type.Name, action.WallType, StringComparison.OrdinalIgnoreCase))
             ?? throw new ArgumentException($"Basic wall type '{action.WallType}' was not found.");
@@ -763,6 +766,18 @@ internal static class ActionMutations
                 EndMm = [wall.End.X, wall.End.Y]
             }, type, start, end));
         }
+        return new WallPlan(level, geometry, planned, false);
+    }
+
+    internal sealed record WallPlan(Level Level, CadWallPlanningResult Geometry,
+        List<(CadWallResult Result, WallType Type, XYZ Start, XYZ End)> Planned, bool NoBasicTypes);
+
+    internal static ActionResultData WallsFromCad(Document document, ActionJobContract action, PreflightState? state)
+    {
+        var plan = state?.WallPlan ?? PlanWalls(document, action);
+        var level = plan.Level;
+        var geometry = plan.Geometry;
+        var planned = plan.Planned;
         var created = new List<Wall>();
         if (!action.DryRun)
         {
@@ -776,20 +791,19 @@ internal static class ActionMutations
                 created.Add(element);
             }
         }
+        var candidates = action.Join && !plan.NoBasicTypes ? state?.Candidates ?? WallJoinPreflight.FindCandidates(geometry.Walls) : [];
         if (action.Join && !action.DryRun)
-        {
-            var tolerance = Millimeters(10);
-            for (var index = 0; index < planned.Count; index++)
-                for (var end = 0; end < 2; end++)
-                {
-                    var point = end == 0 ? planned[index].Start : planned[index].End;
-                    if (planned.Where((_, other) => other != index).Any(other =>
-                        Line.CreateBound(other.Start, other.End).Distance(point) <= tolerance))
-                        WallUtils.AllowWallJoinAtEnd(created[index], end);
-                }
-        }
+            foreach (var candidate in candidates)
+                if (state?.SkippedEnds.Contains(candidate.End) != true)
+                    WallUtils.AllowWallJoinAtEnd(created[candidate.End.Wall], candidate.End.End);
+        var unjoined = state?.SkippedEnds.Count ?? 0;
         return new ActionResultData
         {
+            JoinedEnds = action.Join && !plan.NoBasicTypes ? candidates.Count - unjoined : null,
+            UnjoinedEnds = action.Join && !plan.NoBasicTypes ? unjoined : null,
+            UnjoinedReasons = state?.UnjoinedReasons.Count > 0 ? state.UnjoinedReasons : null,
+            Warning = plan.NoBasicTypes ? "No basic wall type exists in this project." :
+                unjoined > 0 || state?.JoinConverged == false ? WallJoinPreflight.BuildWarning(unjoined, state!.NearbyExistingIds, state.JoinConverged) : null,
             Count = planned.Count,
             Walls = planned.Select(wall => wall.Result).ToList(),
             UnpairedLines = geometry.UnpairedLines,

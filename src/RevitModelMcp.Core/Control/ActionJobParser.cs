@@ -1590,9 +1590,10 @@ public sealed class SharedParameterSpec
 [DataContract]
 public sealed class SkippedByReason
 {
-    [DataMember(Name = "missing")] public List<long> Missing { get; set; } = [];
-    [DataMember(Name = "readOnly")] public List<long> ReadOnly { get; set; } = [];
-    [DataMember(Name = "typeParameter")] public List<long> TypeParameter { get; set; } = [];
+    [DataMember(Name = "missing", Order = 0)] public List<long> Missing { get; set; } = [];
+    [DataMember(Name = "readOnly", Order = 1)] public List<long> ReadOnly { get; set; } = [];
+    [DataMember(Name = "typeParameter", Order = 2)] public List<long> TypeParameter { get; set; } = [];
+    [DataMember(Name = "inGroup", Order = 3)] public List<long> InGroup { get; set; } = [];
 }
 
 [DataContract]
@@ -1702,6 +1703,9 @@ public sealed class ActionResultData
     [DataMember(Name = "extentsMm", EmitDefaultValue = false)] public List<List<double>>? ExtentsMm { get; set; }
     [DataMember(Name = "walls", EmitDefaultValue = false)] public List<CadWallResult>? Walls { get; set; }
     [DataMember(Name = "mergedSegments", EmitDefaultValue = false)] public int? MergedSegments { get; set; }
+    [DataMember(Name = "joinedEnds", EmitDefaultValue = false)] public int? JoinedEnds { get; set; }
+    [DataMember(Name = "unjoinedEnds", EmitDefaultValue = false)] public int? UnjoinedEnds { get; set; }
+    [DataMember(Name = "unjoinedReasons", EmitDefaultValue = false)] public Dictionary<string, int>? UnjoinedReasons { get; set; }
     [DataMember(Name = "unpairedLines", EmitDefaultValue = false)] public int? UnpairedLines { get; set; }
     [DataMember(Name = "skippedShortSegments", EmitDefaultValue = false)] public int? SkippedShortSegments { get; set; }
 }

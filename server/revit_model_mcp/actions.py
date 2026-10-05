@@ -1258,7 +1258,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Update a parameter on elements matching the same filters as revit_query_elements."""
+        """Update a parameter on elements matching the same filters as revit_query_elements.
+        Members of groups that Revit refuses to change are reported in skipped.inGroup instead of failing the call; dry_run predicts this.
+        """
         return await send(
             "update-parameters",
             queryFilters=query_filter_payload(filters),
@@ -1476,7 +1478,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm."""
+        """Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm.
+        With join=true joins Revit would reject are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers.
+        """
         if max_thickness_mm < min_thickness_mm:
             raise ToolError("max_thickness_mm must be at least min_thickness_mm.")
         return await send(
@@ -1615,6 +1619,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         Without parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.
         Use a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Group members that Revit refuses to change fail with a clear message, including in dry_run.
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(

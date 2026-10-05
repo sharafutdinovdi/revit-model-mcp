@@ -255,7 +255,7 @@
     },
     {
       "name": "revit_update_parameters",
-      "description": "Update a parameter on elements matching the same filters as revit_query_elements."
+      "description": "Update a parameter on elements matching the same filters as revit_query_elements.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup instead of failing the call; dry_run predicts this."
     },
     {
       "name": "revit_place_family",
@@ -283,7 +283,7 @@
     },
     {
       "name": "revit_walls_from_cad",
-      "description": "Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm."
+      "description": "Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm.\nWith join=true joins Revit would reject are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers."
     },
     {
       "name": "revit_create_view",
@@ -307,7 +307,7 @@
     },
     {
       "name": "revit_set_parameter",
-      "description": "Set exactly one instance or type parameter. Supply parameter_id to select by BuiltInParameter name, shared GUID or positive ParameterElement ID.\nWithout parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.\nUse a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Set exactly one instance or type parameter. Supply parameter_id to select by BuiltInParameter name, shared GUID or positive ParameterElement ID.\nWithout parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.\nUse a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nGroup members that Revit refuses to change fail with a clear message, including in dry_run.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_delete",

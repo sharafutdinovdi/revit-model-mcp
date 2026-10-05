@@ -803,6 +803,7 @@ internal static class ActionCommandExecutor
             return viewData;
         }
 
+        var preflight = ActionPreflight.Run(document, command, action, ids);
         var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
         if (group is not null && group.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction group.");
@@ -816,7 +817,7 @@ internal static class ActionCommandExecutor
             try
             {
                 var before = ActionVerifier.CaptureBefore(document, command, action, ids);
-                var data = Mutate(document, command, action, ids);
+                var data = Mutate(document, command, action, ids, preflight);
                 data.DryRun = action.DryRun;
                 data.Verification ??= new ActionVerification();
                 data.Verification.Before = before;
@@ -1043,7 +1044,7 @@ internal static class ActionCommandExecutor
         }
     }
 
-    private static ActionResultData Mutate(Document document, string command, ActionJobContract action, List<ElementId> ids)
+    private static ActionResultData Mutate(Document document, string command, ActionJobContract action, List<ElementId> ids, PreflightState? preflight)
     {
         switch (command)
         {
@@ -1065,7 +1066,7 @@ internal static class ActionCommandExecutor
             case "change-type":
                 return ActionMutations.ChangeType(document, action, ids);
             case "update-parameters":
-                return ActionMutations.UpdateParameters(document, action);
+                return ActionMutations.UpdateParameters(document, action, preflight?.InGroup);
             case "delete":
                 var deleted = document.Delete(ids).Select(RevitValueReader.GetId).OrderBy(value => value).ToList();
                 return new ActionResultData
@@ -1086,7 +1087,7 @@ internal static class ActionCommandExecutor
             case "link-cad":
                 return ActionMutations.LinkCad(document, action);
             case "walls-from-cad":
-                return ActionMutations.WallsFromCad(document, action);
+                return ActionMutations.WallsFromCad(document, action, preflight);
             case "set-parameter":
                 return ActionMutations.SetParameter(document, action);
             case "create-view":
