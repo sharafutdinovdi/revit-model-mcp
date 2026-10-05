@@ -265,6 +265,38 @@ def test_capture_budget_preserves_register_and_skips_remaining(tmp_path):
     assert register["B3"].value == "Snapshot skipped: capture time budget exhausted"
 
 
+def test_early_budget_timer_starts_one_capture(tmp_path):
+    calls = []
+
+    async def run():
+        async def stuck_capture(job, *_):
+            calls.append(job)
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(server, "ISSUE_CAPTURE_BUDGET_SECONDS", 0.01),
+            patch.object(server.channel, "execute", side_effect=stuck_capture),
+        ):
+            return await server.revit_issue_register(
+                str(tmp_path / "out.xlsx"),
+                {},
+                [issue(element_ids=[1]), issue(element_ids=[2]), issue(element_ids=[3])],
+            )
+
+    loop = asyncio.new_event_loop()
+    # asyncio fires timers up to this much early, as on Windows (15.6 ms).
+    loop._clock_resolution = 0.5
+    try:
+        result = loop.run_until_complete(run())
+    finally:
+        loop.close()
+    assert len(calls) == 1
+    register = load_workbook(result["path"])["Register"]
+    assert register["B2"].value == "Snapshot unavailable: capture time budget exhausted"
+    assert register["B3"].value == "Snapshot skipped: capture time budget exhausted"
+    assert register["B4"].value == "Snapshot skipped: capture time budget exhausted"
+
+
 def test_output_validation_before_revit(tmp_path):
     output = tmp_path / "existing.xlsx"
     output.write_bytes(b"original")
