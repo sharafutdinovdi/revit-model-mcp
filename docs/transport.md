@@ -46,6 +46,8 @@ Pipe, HTTP and file jobs share one per-Revit scheduler.
 A disconnect cancels that connection's queued jobs; a running job, and above all a running action, always finishes.
 A client that reconnects with the same `clientId` can send `status` for its unfinished job to get the result and resume its pushes.
 Results expire ten minutes after completion.
+`capture-elements` downloads one PNG through the same `data.fileName` artifact mechanism as `export-view` over local, pipe and SSH transports.
+It is unavailable over HTTP and returns `element snapshots need the local or SSH transport`; `/views/{name}/image` is unchanged.
 `revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `save_to` or a new temporary directory.
 
 ## HTTP configuration

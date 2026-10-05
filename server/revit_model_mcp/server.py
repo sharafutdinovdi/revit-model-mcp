@@ -1,22 +1,38 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import base64
 import contextvars
 import functools
 import inspect
+import json
 import os
+import tempfile
 from importlib.resources import files
+from pathlib import Path
 from typing import Annotated, Any, get_type_hints
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.types import ToolAnnotations
+from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
 from revit_model_mcp.batch import register_batch
+from revit_model_mcp.health_workbook import (
+    validate_health_path,
+    warning_ids,
+    write_health_workbook,
+)
 from revit_model_mcp.http_host import HttpHost
+from revit_model_mcp.issue_register import (
+    snapshot_indices,
+    validate_capture,
+    validate_register,
+    write_register,
+)
 from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
@@ -50,6 +66,9 @@ def create_host(
 
 host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
 channel = RevitReadChannel(host)
+
+ISSUE_CAPTURE_BUDGET_SECONDS = 210
+HEALTH_CAPTURE_BUDGET_SECONDS = 60
 
 READ_ONLY_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
 TimeoutSeconds = Annotated[
@@ -391,6 +410,8 @@ def addressed_tool(function):
         "revit_list_views": "List Views",
         "revit_view_summary": "View Summary",
         "revit_view_info": "View Info",
+        "revit_capture_elements": "Capture Elements",
+        "revit_issue_register": "Issue Register",
         "revit_export_view": "Export View to PNG",
         "revit_schedule_data": "Read Schedule Data",
         "revit_view_elements": "View Elements",
@@ -613,20 +634,97 @@ async def revit_model_health(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
+    save_to: Annotated[
+        str | None,
+        Field(
+            validation_alias=AliasChoices("save_to", "saveTo"),
+            description="New .xlsx health report path on the MCP server machine; parent must exist and existing files are refused.",
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Read model quality counts before an export or hand-over.
 
     Returns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.
     Absent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.
-    Use revit_list_warnings to inspect affected elements.
+    Use save_to when the user requests a saved or Excel health report.
+    The workbook includes health checks, all warning groups, counts and up to five snapshots
+    within a 60-second capture budget. Failed or skipped snapshots become workbook warnings.
+    Without save_to, use revit_list_warnings to inspect affected elements.
     A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
     """
-    return await _execute(
+    try:
+        target = validate_health_path(save_to) if save_to is not None else None
+    except (OSError, ValueError) as error:
+        raise ToolError(str(error)) from error
+    health = await _execute(
         ReadJob("model-health", {"command": "model-health"}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
     )
+
+    if target is None:
+        return health
+    warning_result = await _execute(
+        ReadJob.list_warnings(None, True),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
+    )
+    groups = warning_result["data"]["groups"]
+    selected = sorted(range(len(groups)), key=lambda i: groups[i]["count"], reverse=True)[:5]
+    snapshots, notes, warnings = {}, {}, []
+    deadline = asyncio.get_running_loop().time() + HEALTH_CAPTURE_BUDGET_SECONDS
+    try:
+        with tempfile.TemporaryDirectory(prefix="revit_health_") as directory:
+            for index in selected:
+                ids = warning_ids(groups[index])[:50]
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0 or not ids:
+                    notes[index] = (
+                        "Snapshot skipped: capture time budget exhausted"
+                        if remaining <= 0
+                        else "Snapshot skipped: no affected elements available"
+                    )
+                    warnings.append(f"Warning group {index + 1}: {notes[index]}")
+                    continue
+                try:
+                    async with asyncio.timeout(remaining):
+                        result = await _execute(
+                            ReadJob(
+                                "capture-elements",
+                                {
+                                    "command": "capture-elements",
+                                    "elementIds": ids,
+                                    "pixelSize": 900,
+                                    "paddingMm": 1500,
+                                    "mode": "3d",
+                                },
+                                str(Path(directory) / f"snapshot_{index}.png"),
+                            ),
+                            min(120, max(1, int(remaining))),
+                            min(300, max(1, int(remaining))),
+                            document,
+                        )
+                    snapshots[index] = result["data"]["localPath"]
+                    missing = result["data"].get("missingIds", [])
+                    if missing:
+                        warnings.append(
+                            f"Warning group {index + 1}: snapshot missing element IDs {missing}"
+                        )
+                except (ToolError, OSError, ValueError, KeyError, TypeError, TimeoutError) as error:
+                    notes[index] = (
+                        f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
+                    )
+                    warnings.append(f"Warning group {index + 1}: {notes[index]}")
+            return {
+                **health,
+                "workbook": write_health_workbook(
+                    str(target), health, groups, snapshots, notes, warnings
+                ),
+            }
+    except (OSError, ValueError, TypeError) as error:
+        raise ToolError(str(error)) from error
 
 
 @addressed_tool
@@ -925,6 +1023,51 @@ async def revit_schedule_data(
 
 
 @addressed_tool
+async def revit_capture_elements(
+    element_ids: list[int],
+    pixel_size: PixelSize = 1600,
+    padding_mm: float = 1500,
+    mode: str = "3d",
+    save_to: SaveTo = None,
+    document: Document = None,
+) -> CallToolResult:
+    """Show where specific elements are in a highlighted PNG for issue evidence.
+
+    Returns PNG image content and data.localPath on the server machine.
+    Supports 1 to 500 element IDs, 3d or plan mode, and local or SSH transport.
+    The temporary view is rolled back without changing the active view or model.
+    """
+    try:
+        validate_capture(element_ids, pixel_size, padding_mm, mode)
+        result = await _execute(
+            ReadJob(
+                "capture-elements",
+                {
+                    "command": "capture-elements",
+                    "elementIds": element_ids,
+                    "pixelSize": pixel_size,
+                    "paddingMm": padding_mm,
+                    "mode": mode,
+                },
+                save_to,
+            ),
+            DEFAULT_TIMEOUT_SECONDS,
+            DEFAULT_PICKUP_TIMEOUT_SECONDS,
+            document,
+        )
+        encoded = base64.b64encode(Path(result["data"]["localPath"]).read_bytes()).decode("ascii")
+        return CallToolResult(
+            content=[
+                TextContent(type="text", text=json.dumps(result)),
+                ImageContent(type="image", data=encoded, mimeType="image/png"),
+            ],
+            structuredContent=result,
+        )
+    except (ValueError, OSError) as error:
+        raise ToolError(str(error)) from error
+
+
+@addressed_tool
 async def revit_export_view(
     view: ViewName,
     pixel_size: PixelSize = 1600,
@@ -1148,6 +1291,71 @@ def revit_build_report(
     """Build a local Excel report from snapshots without contacting Revit."""
     try:
         return build_report(snapshots_dir, output_path, previous_dir, findings)
+    except (OSError, ValueError, TypeError) as error:
+        raise ToolError(str(error)) from error
+
+
+@addressed_tool
+async def revit_issue_register(
+    output_path: str,
+    project: dict[str, Any],
+    issues: list[dict[str, Any]],
+    pixel_size: PixelSize = 900,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Write a new local .xlsx issue register with element snapshots and review documents.
+
+    Supply 1 to 60 issues with title, category, finding and severity (critical, major, minor, info).
+    Optional issue fields: id, requirement_source, requirement, recommendation, status, responsible,
+    due, element_ids, snapshot (3d, plan, none). Project fields: name, model, reviewer, client,
+    stage, date, documents (title, reference, revision). Existing output files are refused.
+    Captures at most 25 snapshots, ordered by severity then input order, within a 210-second
+    capture budget. Failed or skipped snapshots become cell notes and result warnings.
+    Snapshot capture requires local or SSH transport; workbook creation needs no model changes.
+    """
+    try:
+        target, project, issues = validate_register(output_path, project, issues, pixel_size)
+        selected, skipped = snapshot_indices(issues)
+        notes = {index: "Snapshot skipped: limit of 25 per register" for index in skipped}
+        warnings = [f"{issues[index]['id']}: {notes[index]}" for index in skipped]
+        snapshots = {}
+        deadline = asyncio.get_running_loop().time() + ISSUE_CAPTURE_BUDGET_SECONDS
+        with tempfile.TemporaryDirectory(prefix="revit_issue_register_") as directory:
+            for index in selected:
+                issue = issues[index]
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    notes[index] = "Snapshot skipped: capture time budget exhausted"
+                    warnings.append(f"{issue['id']}: {notes[index]}")
+                    continue
+                try:
+                    async with asyncio.timeout(remaining):
+                        result = await _execute(
+                            ReadJob(
+                                "capture-elements",
+                                {
+                                    "command": "capture-elements",
+                                    "elementIds": issue["element_ids"],
+                                    "pixelSize": pixel_size,
+                                    "paddingMm": 1500,
+                                    "mode": issue["snapshot"],
+                                },
+                                str(Path(directory) / f"snapshot_{index}.png"),
+                            ),
+                            min(120, max(1, int(remaining))),
+                            min(300, max(1, int(remaining))),
+                            document,
+                        )
+                    snapshots[index] = result["data"]["localPath"]
+                    missing = result["data"].get("missingIds", [])
+                    if missing:
+                        warnings.append(f"{issue['id']}: snapshot missing element IDs {missing}")
+                except (ToolError, OSError, ValueError, KeyError, TimeoutError) as error:
+                    notes[index] = (
+                        f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
+                    )
+                    warnings.append(f"{issue['id']}: {notes[index]}")
+            return write_register(str(target), project, issues, snapshots, notes, warnings)
     except (OSError, ValueError, TypeError) as error:
         raise ToolError(str(error)) from error
 

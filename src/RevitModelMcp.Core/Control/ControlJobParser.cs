@@ -28,6 +28,7 @@ public enum ControlJobKind
     ViewWarnings,
     ScheduleData,
     ExportView,
+    CaptureElements,
     QueryElements,
     AggregateElements,
     ListCatalog,
@@ -84,6 +85,9 @@ public sealed class ControlJobParseResult
     public long? SourceId { get; internal set; }
     public string? SourceName { get; internal set; }
     public int PixelSize { get; internal set; } = 1600;
+    public IReadOnlyList<long> ElementIds { get; internal set; } = [];
+    public double PaddingMm { get; internal set; } = 1500;
+    public string Mode { get; internal set; } = "3d";
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
     public IReadOnlyList<ModelSnapshotParameterRule> ParameterRules { get; internal set; } = [];
@@ -208,6 +212,7 @@ public sealed class ControlJobParseResult
             "view-elements" => ParseViewElements(command, view, categories, job.Offset, job.Limit),
             "element-details" => ParseElementDetails(command, job.Id),
             "view-warnings" => RequireView(ControlJobKind.ViewWarnings, command, view),
+            "capture-elements" => ParseCaptureElements(job),
             "export-view" => ParseExportView(command, view, job.PixelSize, job.ZoomToFit),
             "schedule-data" => view is null ? Invalid(command, "schedule is required.") : ParseScheduleData(job, view),
             "query-elements" => UniversalJobParser.ParseQuery(job),
@@ -371,6 +376,27 @@ public sealed class ControlJobParseResult
         return resolvedPixelSize is < 1 or > 4000
             ? Invalid(command, "The pixelSize must be between 1 and 4000 pixels.")
             : ExportView(view, resolvedPixelSize, zoomToFit ?? true);
+    }
+
+    private static ControlJobParseResult ParseCaptureElements(ControlJobContract job)
+    {
+        const string command = "capture-elements";
+        if (job.ElementIds is null || job.ElementIds.Count is < 1 or > 500 || job.ElementIds.Any(id => id <= 0))
+            return Invalid(command, "elementIds requires 1 to 500 positive integer IDs.");
+        if (job.PixelSize is < 1 or > 4000)
+            return Invalid(command, "pixelSize must be between 1 and 4000 pixels.");
+        var padding = job.PaddingMm ?? 1500;
+        if (double.IsNaN(padding) || double.IsInfinity(padding) || padding is < 0 or > 20000)
+            return Invalid(command, "paddingMm must be between 0 and 20000.");
+        var mode = job.Mode ?? "3d";
+        if (mode is not ("3d" or "plan"))
+            return Invalid(command, "mode must be 3d or plan.");
+        var result = Create(ControlJobKind.CaptureElements, command);
+        result.ElementIds = job.ElementIds.Distinct().ToList();
+        result.PixelSize = job.PixelSize ?? 1600;
+        result.PaddingMm = padding;
+        result.Mode = mode;
+        return result;
     }
 
     private static ControlJobParseResult ParseScheduleData(ControlJobContract job, string schedule)
@@ -541,6 +567,9 @@ public sealed partial class ControlJobContract
     public long? SourceId { get; set; }
     [DataMember(Name = "sourceName")]
     public string? SourceName { get; set; }
+    [DataMember(Name = "paddingMm")]
+    public double? PaddingMm { get; set; }
+
     [DataMember(Name = "pixelSize")]
     public int? PixelSize { get; set; }
     [DataMember(Name = "zoomToFit")]

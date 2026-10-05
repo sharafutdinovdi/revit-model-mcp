@@ -26,6 +26,8 @@ from revit_model_mcp.ssh_host import SshPowerShellHost
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
+    "revit_issue_register",
+    "revit_capture_elements",
     "revit_build_report",
     "revit_jobs",
     "revit_model_health",
@@ -183,6 +185,7 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
+    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "save_to"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
         "parameter_rules",
@@ -249,6 +252,15 @@ EXPECTED_PARAMETERS = {
     ],
     "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_view_info": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_issue_register": ["output_path", "project", "issues", "pixel_size", "document"],
+    "revit_capture_elements": [
+        "element_ids",
+        "pixel_size",
+        "padding_mm",
+        "mode",
+        "save_to",
+        "document",
+    ],
     "revit_export_view": ["view", "pixel_size", "save_to", "document"],
     "revit_schedule_data": ["schedule", "max_rows", "offset", "document"],
     "revit_view_elements": [

@@ -83,7 +83,7 @@
     },
     {
       "name": "revit_model_health",
-      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\nUse revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\nUse save_to when the user requests a saved or Excel health report.\nThe workbook includes health checks, all warning groups, counts and up to five snapshots\nwithin a 60-second capture budget. Failed or skipped snapshots become workbook warnings.\nWithout save_to, use revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_links_status",
@@ -124,6 +124,10 @@
     {
       "name": "revit_schedule_data",
       "description": "Read displayed schedule header and body cell text, with paging.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+    },
+    {
+      "name": "revit_capture_elements",
+      "description": "Show where specific elements are in a highlighted PNG for issue evidence.\n\nReturns PNG image content and data.localPath on the server machine.\nSupports 1 to 500 element IDs, 3d or plan mode, and local or SSH transport.\nThe temporary view is rolled back without changing the active view or model.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_export_view",
@@ -348,6 +352,10 @@
     {
       "name": "revit_build_report",
       "description": "Build a local Excel report from snapshots without contacting Revit."
+    },
+    {
+      "name": "revit_issue_register",
+      "description": "Write a new local .xlsx issue register with element snapshots and review documents.\n\nSupply 1 to 60 issues with title, category, finding and severity (critical, major, minor, info).\nOptional issue fields: id, requirement_source, requirement, recommendation, status, responsible,\ndue, element_ids, snapshot (3d, plan, none). Project fields: name, model, reviewer, client,\nstage, date, documents (title, reference, revision). Existing output files are refused.\nCaptures at most 25 snapshots, ordered by severity then input order, within a 210-second\ncapture budget. Failed or skipped snapshots become cell notes and result warnings.\nSnapshot capture requires local or SSH transport; workbook creation needs no model changes.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     }
   ],
   "tools_generated": true,
