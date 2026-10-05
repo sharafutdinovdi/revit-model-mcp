@@ -139,8 +139,11 @@ void BuildMultiUserMsi()
 // "Installed" keeps uninstall, repair and maintenance of the product itself working on a conflicted machine.
 IEnumerable<Property> OtherScopeProperties(string scope, Func<int, string> addinsFolder) =>
     wixEntities.Select(entity => new Property($"RMM_OTHER_SCOPE_{entity.Version}",
-        new DirectorySearch(new Id($"OtherScope{scope}Dir{entity.Version}"), addinsFolder(entity.Version), false, 0,
-            new FileSearch(new Id($"OtherScope{scope}File{entity.Version}"), "RevitModelMcp.addin")))
+        new DirectorySearch(new Id($"OtherScope{scope}Dir{entity.Version}"), null!, false, 0,
+            new FileSearch(new Id($"OtherScope{scope}File{entity.Version}"), "RevitModelMcp.addin"))
+        {
+            Path = addinsFolder(entity.Version)
+        })
     {
         Secure = true
     });
