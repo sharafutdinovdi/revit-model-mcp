@@ -34,6 +34,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 - [ ] **1.1 MSI — SingleUser**: run `RevitModelMcp-<ver>-SingleUser.msi`. Installer completes without error.
 - [ ] **1.2 MSI — MultiUser**: on a separate profile/machine, run `RevitModelMcp-<ver>-MultiUser.msi`. Completes; add-in visible for all users.
+- [ ] **1.2a MSI scope conflict**: install SingleUser, then run MultiUser: it is refused with the "SingleUser ... already installed for this user" message. Uninstall SingleUser, install MultiUser, then run SingleUser: it is refused with the "MultiUser ... already installed on this computer" message. Uninstall each; no add-in files remain.
 - [ ] **1.3 Clone script**: `./install.ps1 -Source Release` from a clone. Completes.
 - [ ] **1.4 Manifest present**: `%APPDATA%\Autodesk\Revit\Addins\<year>\RevitModelMcp.addin` exists and points to a `RevitModelMcp.dll` that exists.
 - [ ] **1.5 DLL version**: the installed `RevitModelMcp.dll` matches the release version.

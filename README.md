@@ -45,6 +45,9 @@ See the [bundle guide](bundle/README.md) for build details and prerequisites.
 ### On the Revit workstation
 
 Download `RevitModelMcp-<version>-SingleUser.msi` (current user) or `RevitModelMcp-<version>-MultiUser.msi` (all users) from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
+The two installers are alternatives: install only one.
+Each refuses to install while the other is present, so uninstall the other first (Apps > Installed apps), then install.
+Upgrade within the same scope works in place.
 Run it with Revit closed, then start Revit and open a model.
 The installer keeps a newer DLL it finds in an add-in folder, for example a developer build with a higher file version. Delete that year's `RevitModelMcp` folder, or run `msiexec /fvomus <msi>`, to replace it.
 See [automatic updates](docs/updates.md) for update behavior and opt-out settings.

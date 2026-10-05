@@ -159,6 +159,7 @@ Repository Actions settings must allow GitHub Actions to create pull requests.
 
 CI uploads installable R22, R26 and R27 folder layouts and an `installers` artifact.
 It extracts both MSIs, rejects Revit API assemblies, and checks installation and removal for each built year.
+CI also checks that each MSI refuses to install while the other scope is installed.
 The release-please workflow or a manually pushed `v<version>` tag triggers all six add-in builds and Core/server tests.
 The tag version must match `server/pyproject.toml`.
 The GitHub Release contains six per-year ZIPs, single-user and multi-user MSIs, the Python wheel and source distribution, and `SHA256SUMS.txt` covering every asset.
