@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Output;
 
 namespace RevitModelMcp.Control;
@@ -212,7 +213,7 @@ internal sealed class HttpChannel : IDisposable
                 }
                 else
                 {
-                    var serialized = HttpSettings.Serialize(payload);
+                    var serialized = ControlPayloadJsonSerializer.Serialize(payload);
                     job = await SubmitAsync(context, ControlJobParser.Parse(serialized), serialized).ConfigureAwait(false);
                 }
                 if (job is null) return;
@@ -344,7 +345,7 @@ internal sealed class HttpChannel : IDisposable
             ["position"] = status.Position,
             ["correlationId"] = correlationId ?? string.Empty
         };
-        var json = HttpSettings.Serialize(result);
+        var json = ControlPayloadJsonSerializer.Serialize(result);
         if (status.Result is not null)
             json = json.Substring(0, json.Length - 1) + ",\"result\":" + status.Result + "}";
         await BytesAsync(context, status.State is JobState.Done or JobState.Failed or JobState.Cancelled ? 200 : 202,
@@ -368,7 +369,7 @@ internal sealed class HttpChannel : IDisposable
     }
 
     private static Task JsonAsync(HttpListenerContext context, int status, Dictionary<string, object> payload) =>
-        BytesAsync(context, status, Encoding.UTF8.GetBytes(HttpSettings.Serialize(payload)), "application/json");
+        BytesAsync(context, status, Encoding.UTF8.GetBytes(ControlPayloadJsonSerializer.Serialize(payload)), "application/json");
 
     private static async Task BytesAsync(HttpListenerContext context, int status, byte[] bytes, string contentType)
     {
@@ -472,13 +473,5 @@ internal sealed record HttpSettings
         if (HttpPort is < 1 or > 65535) throw new InvalidDataException("httpPort must be between 1 and 65535.");
         if (string.IsNullOrWhiteSpace(Token) || Token.Any(char.IsControl))
             throw new InvalidDataException("The HTTP token must be nonempty and contain no control characters.");
-    }
-
-    internal static string Serialize(Dictionary<string, object> value)
-    {
-        using var stream = new MemoryStream();
-        new DataContractJsonSerializer(typeof(Dictionary<string, object>),
-            new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true }).WriteObject(stream, value);
-        return Encoding.UTF8.GetString(stream.ToArray());
     }
 }
