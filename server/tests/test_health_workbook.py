@@ -246,6 +246,38 @@ def test_capture_budget_and_errors_keep_health_response(tmp_path, health):
     assert "time budget exhausted" in result["workbook"]["warnings"][-1]
 
 
+def test_early_budget_timer_starts_one_capture(tmp_path, health):
+    captures = []
+
+    async def run():
+        async def execute(job, *_):
+            if job.command == "model-health":
+                return health
+            if job.command == "list-warnings":
+                return {"data": {"groups": groups()}}
+            captures.append(job)
+            await asyncio.Event().wait()
+
+        with (
+            patch.object(server.channel, "execute", side_effect=execute),
+            patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.2),
+        ):
+            return await server.revit_model_health(save_to=str(tmp_path / "health.xlsx"))
+
+    loop = asyncio.new_event_loop()
+    # asyncio fires timers up to this much early, as on Windows (15.6 ms).
+    loop._clock_resolution = 1.0
+    try:
+        result = loop.run_until_complete(run())
+    finally:
+        loop.close()
+    assert len(captures) == 1
+    warnings = result["workbook"]["warnings"]
+    assert len(warnings) == 5
+    assert warnings[0].endswith("Snapshot unavailable: capture time budget exhausted")
+    assert all(w.endswith("Snapshot skipped: capture time budget exhausted") for w in warnings[1:])
+
+
 def test_capture_failure_is_a_warning(tmp_path, health):
     async def execute(job, *_):
         if job.command == "model-health":

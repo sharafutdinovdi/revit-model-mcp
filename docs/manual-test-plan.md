@@ -167,6 +167,7 @@ Actions run by default; either `REVIT_MCP_READ_ONLY=1` **or** the workstation `r
 - [ ] **5.1 Local** (`REVIT_MCP_HOST=local`) on the workstation — all of §3 passes.
 - [ ] **5.2 SSH tunnel** (remote client → workstation loopback) — `revit_ping` + a read tool pass from M2.
 - [ ] **5.3 HTTP** (loopback + bearer token) — `/health` (no token) responds; an authenticated read works. ⚠️ **Re-verify issue #44**: the HTTP listener (port 53110) not binding. Confirm fixed or still open.
+- [ ] **5.3a HTTP health and tool call**: with HTTP enabled, `curl -i http://127.0.0.1:<port>/health` returns `200` and a JSON body whose `commands` is a non-empty list. Then run one tool (for example `revit_ping`) with `REVIT_MCP_HOST=http://127.0.0.1:<port>` and a valid `REVIT_MCP_TOKEN`; it succeeds instead of `Revit endpoint returned HTTP 500`.
 - [ ] **5.4 Concurrency / channel contention** ⚠️ **found 2026-09-15**: fire several tool calls in quick succession (as the agent does when reasoning). Earlier run showed *4 of 7* parallel calls failing (single file-channel "busy: trigger.txt exists"). Test rapid/parallel calls and record the failure rate; if the channel serializes poorly, file an issue.
 
 ---
