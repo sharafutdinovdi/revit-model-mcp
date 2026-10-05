@@ -2030,7 +2030,7 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
             "verification": {"warning": "Check exported files."},
         }
         host.fetch_job = AsyncMock(return_value=response)
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01):
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.1):
             result = await RevitReadChannel(host).execute(
                 ReadJob("process-models", {"command": "process-models"})
             )
@@ -2204,6 +2204,22 @@ def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
             assert host.response_timeout <= 10
         else:
             assert host.response_timeout == 120
+
+    asyncio.run(check())
+
+
+def test_background_wait_never_exceeds_budget_when_clock_is_frozen():
+    async def check():
+        loop = asyncio.get_running_loop()
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": "0.7.0", "commands": ["export", "jobs/persisted"]}
+        host.response_content = json.dumps({"command": "export", "success": True, "data": {}})
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10),
+            patch.object(loop, "time", return_value=4087.907388981937),
+        ):
+            await RevitReadChannel(host).execute(ReadJob("export", {"command": "export"}), 120)
+        assert host.response_timeout <= 10
 
     asyncio.run(check())
 
