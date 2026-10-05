@@ -384,7 +384,7 @@ async def _execute(
             pickup_timeout_seconds,
         )
         if job.command == "ping":
-            result.update(serverVersion=package_version(), **update_status())
+            result.update(serverVersion=package_version(), **update_status(package_version()))
         result.setdefault("skipped", [])
         result.setdefault("skippedCount", 0)
         return redact_model_paths(result)

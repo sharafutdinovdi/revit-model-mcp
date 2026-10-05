@@ -34,7 +34,9 @@ public static class UndoEligibility
         }
         if (!string.Equals(recordedUndoName, lastTransactionName, StringComparison.Ordinal))
         {
-            reason = $"the last change in Revit is not ours: {(string.IsNullOrEmpty(lastTransactionName) ? "(none)" : lastTransactionName)}";
+            reason = string.IsNullOrEmpty(lastTransactionName)
+                ? "Revit reports no undo entry that belongs to this MCP action; only the newest MCP action can be undone"
+                : $"the last change in Revit is not ours: {lastTransactionName}";
             return false;
         }
         reason = null;

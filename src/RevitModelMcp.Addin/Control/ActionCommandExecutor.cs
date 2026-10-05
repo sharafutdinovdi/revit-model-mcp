@@ -11,6 +11,7 @@ using RevitModelMcp.Activity;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
 
@@ -177,6 +178,12 @@ internal static class ActionCommandExecutor
             foreach (var path in paths) DocumentPathValidator.Validate(path);
             if (paths.Select(path => path.Replace('/', '\\')).Distinct(StringComparer.OrdinalIgnoreCase).Count() != paths.Count)
                 throw new ArgumentException("The source contains duplicate models.");
+            if (request.Save?.Mode == "output_dir" ||
+                request.Exports?.Any(export => export.Folder is null || export.Folder.Contains("{model}")) == true)
+            {
+                var collisions = ProcessOutputCollisions.Find(paths);
+                if (collisions.Count > 0) throw new ArgumentException(ProcessOutputCollisions.FormatError(collisions));
+            }
             var refused = new List<ProcessModelResult>();
             if (request.Save?.Mode == "in_place" && !request.DryRun)
             {
@@ -240,7 +247,6 @@ internal static class ActionCommandExecutor
                         "Command accepted and running.", stopwatch.ElapsedMilliseconds));
                 if (model.Status == "failed" && request.StopOnError) break;
             }
-            if (ResponseDelivery.CancellationRequested?.Invoke() == true) data.Cancelled = true;
             data.Done = data.Models.Count(model => model.Status == "done");
             data.Failed = data.Models.Count(model => model.Status == "failed");
             data.SkippedCount = data.Models.Count(model => model.Status == "skipped");
@@ -445,36 +451,50 @@ internal static class ActionCommandExecutor
         }
         finally
         {
-            group?.Dispose();
+            void Cleanup(string step, bool critical, Action action)
+            {
+                try { action(); }
+                catch (Exception exception)
+                {
+                    var sentence = $"Cleanup failed ({step}): {exception.Message}";
+                    if (critical)
+                    {
+                        result.Status = "failed";
+                        result.Error = result.Error is null ? sentence : result.Error + " " + sentence;
+                    }
+                    else
+                        (result.Warnings ??= []).Add(sentence);
+                }
+            }
+            Cleanup("transaction group", false, () => group?.Dispose());
             dismissedMessages.AddRange(failures.WarningsDismissed);
             if (document is not null)
             {
-                var activity = new ActionResultData
+                Cleanup("activity record", false, () =>
                 {
-                    Title = document.Title,
-                    DryRun = request.DryRun,
-                    UndoName = undoName,
-                    Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                    var activity = new ActionResultData
                     {
-                        Command = "process-models",
-                        DocumentTitle = document.Title,
-                        DryRun = request.DryRun
-                    })
-                };
-                var activityResponse = result.Status == "done"
-                    ? CommandResponse<ActionResultData>.Ok(job.Command, activity, stopwatch.ElapsedMilliseconds)
-                    : CommandResponse<ActionResultData>.Fail(job.Command, result.Error ?? "Model processing failed.", stopwatch.ElapsedMilliseconds);
-                ActivityRecorder.RecordAction(job, document, activity, activityResponse, changes);
-                changes?.Dispose();
-                try { DocumentActions.CloseForProcessing(application, document); }
-                catch (Exception exception)
-                {
-                    result.Status = "failed";
-                    result.Error = result.Error is null ? exception.Message : result.Error + " Close failed: " + exception.Message;
-                }
+                        Title = document.Title,
+                        DryRun = request.DryRun,
+                        UndoName = undoName,
+                        Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                        {
+                            Command = "process-models",
+                            DocumentTitle = document.Title,
+                            DryRun = request.DryRun
+                        })
+                    };
+                    var activityResponse = result.Status == "done"
+                        ? CommandResponse<ActionResultData>.Ok(job.Command, activity, stopwatch.ElapsedMilliseconds)
+                        : CommandResponse<ActionResultData>.Fail(job.Command, result.Error ?? "Model processing failed.", stopwatch.ElapsedMilliseconds);
+                    ActivityRecorder.RecordAction(job, document, activity, activityResponse, changes);
+                });
             }
-            application.DialogBoxShowing -= SuppressDialog;
-            application.Application.FailuresProcessing -= SuppressWarnings;
+            Cleanup("change capture", false, () => changes?.Dispose());
+            if (document is not null)
+                Cleanup("close", true, () => DocumentActions.CloseForProcessing(application, document));
+            Cleanup("dialog handler", true, () => application.DialogBoxShowing -= SuppressDialog);
+            Cleanup("warning handler", true, () => application.Application.FailuresProcessing -= SuppressWarnings);
             result.DialogsDismissed = ProcessDialogSummary.FromMessages(dismissedMessages);
             result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         }
@@ -1162,7 +1182,7 @@ internal static class ActionCommandExecutor
                 }
                 rollBack = true;
             }
-            Message = errors.Count > 0 ? string.Join("; ", errors) : null;
+            Message = errors.Count > 0 ? RepeatedMessages.Join(errors) : null;
             if (rollBack) return FailureProcessingResult.ProceedWithRollBack;
             return resolved ? FailureProcessingResult.ProceedWithCommit : FailureProcessingResult.Continue;
         }

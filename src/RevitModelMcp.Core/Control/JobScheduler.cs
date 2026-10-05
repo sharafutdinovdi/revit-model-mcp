@@ -37,14 +37,26 @@ public sealed class JobScheduler
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeSpan _retention;
     private readonly string? _resultDirectory;
+    private readonly Action<string> _log;
+    private readonly Action<string, string> _writeResult;
     private Entry? _running;
 
-    public JobScheduler(Func<DateTimeOffset>? clock = null, TimeSpan? retention = null, string? resultDirectory = null)
+    public JobScheduler(Func<DateTimeOffset>? clock = null, TimeSpan? retention = null, string? resultDirectory = null,
+        Action<string>? log = null, Action<string, string>? writeResult = null)
     {
+        _log = log ?? (_ => { });
+        _writeResult = writeResult ?? CommandResponseJsonFile.WriteContent;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _retention = retention ?? TimeSpan.FromMinutes(10);
         _resultDirectory = resultDirectory;
     }
+
+    public static string? SubmissionMessage(string? error) => error switch
+    {
+        "invalid_job_id" => "jobId must be a 32-character hexadecimal GUID without dashes.",
+        "persist_failed" => "The job could not be recorded; retry later.",
+        _ => null
+    };
 
     public bool HasPending
     {
@@ -57,27 +69,38 @@ public sealed class JobScheduler
         if (string.IsNullOrWhiteSpace(clientId)) throw new ArgumentException("Client id is required.", nameof(clientId));
         if (string.IsNullOrWhiteSpace(command)) throw new ArgumentException("Command is required.", nameof(command));
         if (payload is null) throw new ArgumentNullException(nameof(payload));
+        var persisted = ActionJobParser.IsAction(command) && _resultDirectory is not null;
+        if (persisted && !Guid.TryParseExact(jobId, "N", out _)) return new(null, "invalid_job_id", 0);
         lock (_sync)
         {
             EvictExpired();
             if (_jobs.ContainsKey(jobId)) return new(null, "duplicate_job_id", 0);
-            if (!_clients.TryGetValue(clientId, out var queue))
-            {
-                queue = new Queue<Entry>();
-                _clients.Add(clientId, queue);
-            }
-            if (queue.Count >= 16) return new(null, "queue_full", 1000);
+            _clients.TryGetValue(clientId, out var queue);
+            if (queue is not null && queue.Count >= 16) return new(null, "queue_full", 1000);
             var entry = new Entry(jobId, clientId, string.IsNullOrWhiteSpace(clientName) ? "unknown" : clientName,
                 command, payload, _clock());
-            if (queue.Count == 0) _rotation.Enqueue(clientId);
-            queue.Enqueue(entry);
-            _jobs.Add(jobId, entry);
             if (ActionJobParser.IsAction(command))
             {
                 var accepted = CommandResponse<string>.PartialResult(command, "accepted", "Command accepted and running.", 0);
                 accepted.JobId = jobId;
-                StoreResult(entry, CommandResponseJsonSerializer.Serialize(accepted));
+                try
+                {
+                    StoreResult(entry, CommandResponseJsonSerializer.Serialize(accepted));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _log($"Job {jobId} was not recorded: {ex.GetType().Name}.");
+                    return new(null, "persist_failed", 1000);
+                }
             }
+            if (queue is null)
+            {
+                queue = new Queue<Entry>();
+                _clients.Add(clientId, queue);
+            }
+            if (queue.Count == 0) _rotation.Enqueue(clientId);
+            queue.Enqueue(entry);
+            _jobs.Add(jobId, entry);
             return new(Snapshot(entry), null, 0);
         }
     }
@@ -123,9 +146,19 @@ public sealed class JobScheduler
         {
             if (_running?.JobId != jobId) throw new InvalidOperationException("The job is not running.");
             _running.State = _running.CancelRequested ? JobState.Cancelled : success ? JobState.Done : JobState.Failed;
-            StoreResult(_running, result);
-            _running.CompletedUtc = _clock();
-            _running = null;
+            try
+            {
+                StoreResult(_running, result);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log($"Job {jobId} result was not persisted: {ex.GetType().Name}.");
+            }
+            finally
+            {
+                _running.CompletedUtc = _clock();
+                _running = null;
+            }
         }
     }
 
@@ -174,7 +207,7 @@ public sealed class JobScheduler
         lock (_sync)
         {
             if (_jobs.TryGetValue(jobId, out var entry) && entry.State == JobState.Cancelled)
-                StoreResult(entry, result);
+                TryStoreResult(entry, result);
         }
     }
 
@@ -224,8 +257,18 @@ public sealed class JobScheduler
             _jobs.Remove(entry.JobId);
             if (_resultDirectory is not null && ActionJobParser.IsAction(entry.Command))
             {
-                File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.json"));
-                File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.cancel"));
+                if (!Guid.TryParseExact(entry.JobId, "N", out _)) continue;
+                foreach (var extension in new[] { "json", "cancel" })
+                {
+                    try
+                    {
+                        File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.{extension}"));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        _log($"Job {entry.JobId} .{extension} file was not deleted: {ex.GetType().Name}.");
+                    }
+                }
             }
         }
     }
@@ -234,7 +277,19 @@ public sealed class JobScheduler
     {
         lock (_sync)
         {
-            if (_running?.JobId == jobId) StoreResult(_running, response);
+            if (_running?.JobId == jobId) TryStoreResult(_running, response);
+        }
+    }
+
+    private void TryStoreResult(Entry entry, string result)
+    {
+        try
+        {
+            StoreResult(entry, result);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _log($"Job {entry.JobId} result was not persisted: {ex.GetType().Name}.");
         }
     }
 
@@ -244,9 +299,10 @@ public sealed class JobScheduler
             result = CommandResponseJsonSerializer.RedactPaths(result);
         entry.Result = result;
         if (_resultDirectory is null || !ActionJobParser.IsAction(entry.Command)) return;
+        // Submit validates the id first, so this guard is defense in depth.
         if (!Guid.TryParseExact(entry.JobId, "N", out _))
             throw new ArgumentException("A persisted job id must be a GUID.");
-        CommandResponseJsonFile.WriteContent(Path.Combine(_resultDirectory, $"{entry.JobId}.json"), result);
+        _writeResult(Path.Combine(_resultDirectory, $"{entry.JobId}.json"), result);
     }
 
     private sealed class Entry(string jobId, string clientId, string clientName, string command,

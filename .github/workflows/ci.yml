@@ -204,6 +204,53 @@ jobs:
               Write-Host "ASSERT: removed $root/$relative"
             }
           }
+      - name: Smoke test scope conflict
+        shell: pwsh
+        run: |
+          $single = (Get-ChildItem output/*-SingleUser.msi).FullName
+          $multi = (Get-ChildItem output/*-MultiUser.msi).FullName
+          $machineAddin = "$env:ProgramData/Autodesk/Revit/Addins/2022/RevitModelMcp.addin"
+          $userAddin = "$env:APPDATA/Autodesk/Revit/Addins/2022/RevitModelMcp.addin"
+          $installed = $false
+          try {
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$single`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-conflict-single-install.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "SingleUser install failed: $($process.ExitCode)" }
+            $installed = $true
+            Write-Host 'ASSERT: SingleUser install exit code 0'
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$multi`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-conflict-multi-refused.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 1603) { throw "MultiUser install next to SingleUser returned $($process.ExitCode), expected 1603" }
+            Write-Host 'ASSERT: MultiUser install refused with exit code 1603'
+            if (!(Select-String -Path "$env:RUNNER_TEMP/mcp-conflict-multi-refused.log" -SimpleMatch 'already installed for this user' -Quiet)) { throw 'MultiUser refusal text missing from log' }
+            Write-Host 'ASSERT: MultiUser refusal text logged'
+            if (Test-Path $machineAddin) { throw "Refused MultiUser install created $machineAddin" }
+            Write-Host "ASSERT: no $machineAddin"
+          } finally {
+            if ($installed) {
+              $process = Start-Process msiexec.exe -ArgumentList "/x `"$single`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-conflict-single-uninstall.log`"" -Wait -PassThru
+              if ($process.ExitCode -ne 0) { throw "SingleUser uninstall failed: $($process.ExitCode)" }
+              Write-Host 'ASSERT: SingleUser uninstall exit code 0'
+            }
+          }
+          $installed = $false
+          try {
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$multi`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-conflict-multi-install.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "MultiUser install failed: $($process.ExitCode)" }
+            $installed = $true
+            Write-Host 'ASSERT: MultiUser install exit code 0'
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$single`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-conflict-single-refused.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 1603) { throw "SingleUser install next to MultiUser returned $($process.ExitCode), expected 1603" }
+            Write-Host 'ASSERT: SingleUser install refused with exit code 1603'
+            if (!(Select-String -Path "$env:RUNNER_TEMP/mcp-conflict-single-refused.log" -SimpleMatch 'already installed on this computer' -Quiet)) { throw 'SingleUser refusal text missing from log' }
+            Write-Host 'ASSERT: SingleUser refusal text logged'
+            if (Test-Path $userAddin) { throw "Refused SingleUser install created $userAddin" }
+            Write-Host "ASSERT: no $userAddin"
+          } finally {
+            if ($installed) {
+              $process = Start-Process msiexec.exe -ArgumentList "/x `"$multi`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-conflict-multi-uninstall.log`"" -Wait -PassThru
+              if ($process.ExitCode -ne 0) { throw "MultiUser uninstall failed: $($process.ExitCode)" }
+              Write-Host 'ASSERT: MultiUser uninstall exit code 0'
+            }
+          }
       - name: Smoke test same-version MSI upgrade
         shell: pwsh
         env:

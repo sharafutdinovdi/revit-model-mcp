@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Output;
 
 namespace RevitModelMcp.Control;
@@ -212,7 +213,7 @@ internal sealed class HttpChannel : IDisposable
                 }
                 else
                 {
-                    var serialized = HttpSettings.Serialize(payload);
+                    var serialized = ControlPayloadJsonSerializer.Serialize(payload);
                     job = await SubmitAsync(context, ControlJobParser.Parse(serialized), serialized).ConfigureAwait(false);
                 }
                 if (job is null) return;
@@ -284,6 +285,7 @@ internal sealed class HttpChannel : IDisposable
 
     private async Task<HttpJob?> SubmitAsync(HttpListenerContext context, ControlJobParseResult command, string payload)
     {
+        RemoveExpiredResults();
         if (ActionJobParser.IsAction(command.Command) && ActionCommandExecutor.ReadOnlyMode)
         {
             await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
@@ -292,11 +294,13 @@ internal sealed class HttpChannel : IDisposable
         var submitted = _channel.SubmitHttp(command, payload, out var completion);
         if (submitted.Job is null)
         {
-            await JsonAsync(context, submitted.Error == "queue_full" ? 429 : 400, new()
+            var body = new Dictionary<string, object>
             {
                 ["error"] = submitted.Error ?? "submission_failed",
                 ["retryAfterMs"] = submitted.RetryAfterMs
-            }).ConfigureAwait(false);
+            };
+            if (JobScheduler.SubmissionMessage(submitted.Error) is { } message) body["message"] = message;
+            await JsonAsync(context, submitted.Error switch { "queue_full" => 429, "persist_failed" => 503, _ => 400 }, body).ConfigureAwait(false);
             return null;
         }
         var job = new HttpJob(submitted.Job.JobId, command, completion!);
@@ -344,7 +348,7 @@ internal sealed class HttpChannel : IDisposable
             ["position"] = status.Position,
             ["correlationId"] = correlationId ?? string.Empty
         };
-        var json = HttpSettings.Serialize(result);
+        var json = ControlPayloadJsonSerializer.Serialize(result);
         if (status.Result is not null)
             json = json.Substring(0, json.Length - 1) + ",\"result\":" + status.Result + "}";
         await BytesAsync(context, status.State is JobState.Done or JobState.Failed or JobState.Cancelled ? 200 : 202,
@@ -353,10 +357,13 @@ internal sealed class HttpChannel : IDisposable
 
     private void RemoveExpiredResults()
     {
-        var cutoff = DateTime.UtcNow.AddHours(-24).Ticks;
+        var now = DateTime.UtcNow;
+        var actionCutoff = now.AddHours(-24).Ticks;
+        var readCutoff = now.AddMinutes(-10).Ticks;
         foreach (var entry in _jobs)
         {
             var completed = Interlocked.Read(ref entry.Value.CompletedTicks);
+            var cutoff = ActionJobParser.IsAction(entry.Value.Command.Command) ? actionCutoff : readCutoff;
             if (completed == 0 || completed >= cutoff) continue;
             if (_jobs.TryRemove(entry.Key, out var removed) && removed.ImagePath is not null)
             {
@@ -368,7 +375,7 @@ internal sealed class HttpChannel : IDisposable
     }
 
     private static Task JsonAsync(HttpListenerContext context, int status, Dictionary<string, object> payload) =>
-        BytesAsync(context, status, Encoding.UTF8.GetBytes(HttpSettings.Serialize(payload)), "application/json");
+        BytesAsync(context, status, Encoding.UTF8.GetBytes(ControlPayloadJsonSerializer.Serialize(payload)), "application/json");
 
     private static async Task BytesAsync(HttpListenerContext context, int status, byte[] bytes, string contentType)
     {
@@ -472,13 +479,5 @@ internal sealed record HttpSettings
         if (HttpPort is < 1 or > 65535) throw new InvalidDataException("httpPort must be between 1 and 65535.");
         if (string.IsNullOrWhiteSpace(Token) || Token.Any(char.IsControl))
             throw new InvalidDataException("The HTTP token must be nonempty and contain no control characters.");
-    }
-
-    internal static string Serialize(Dictionary<string, object> value)
-    {
-        using var stream = new MemoryStream();
-        new DataContractJsonSerializer(typeof(Dictionary<string, object>),
-            new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true }).WriteObject(stream, value);
-        return Encoding.UTF8.GetString(stream.ToArray());
     }
 }

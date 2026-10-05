@@ -10,5 +10,6 @@ The check state and latest known stable version live in the user cache directory
 
 `revit_ping` reports `serverVersion`, `addinVersion`, `latestKnownVersion` and `updateCheck`.
 `updateCheck` is `disabled` or the last check time in UTC.
+`latestKnownVersion` is never older than the running server version.
 When a tool needs a newer add-in, the server returns the required and installed versions before sending the job.
 Install the current add-in from the [releases page](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).

@@ -260,13 +260,13 @@ def test_early_budget_timer_starts_one_capture(tmp_path, health):
 
         with (
             patch.object(server.channel, "execute", side_effect=execute),
-            patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.01),
+            patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.2),
         ):
             return await server.revit_model_health(save_to=str(tmp_path / "health.xlsx"))
 
     loop = asyncio.new_event_loop()
     # asyncio fires timers up to this much early, as on Windows (15.6 ms).
-    loop._clock_resolution = 0.5
+    loop._clock_resolution = 1.0
     try:
         result = loop.run_until_complete(run())
     finally:
