@@ -1692,6 +1692,9 @@ public sealed class ActionResultData
     [DataMember(Name = "extentsMm", EmitDefaultValue = false)] public List<List<double>>? ExtentsMm { get; set; }
     [DataMember(Name = "walls", EmitDefaultValue = false)] public List<CadWallResult>? Walls { get; set; }
     [DataMember(Name = "mergedSegments", EmitDefaultValue = false)] public int? MergedSegments { get; set; }
+    [DataMember(Name = "joinedEnds", EmitDefaultValue = false)] public int? JoinedEnds { get; set; }
+    [DataMember(Name = "unjoinedEnds", EmitDefaultValue = false)] public int? UnjoinedEnds { get; set; }
+    [DataMember(Name = "unjoinedReasons", EmitDefaultValue = false)] public Dictionary<string, int>? UnjoinedReasons { get; set; }
     [DataMember(Name = "unpairedLines", EmitDefaultValue = false)] public int? UnpairedLines { get; set; }
     [DataMember(Name = "skippedShortSegments", EmitDefaultValue = false)] public int? SkippedShortSegments { get; set; }
 }

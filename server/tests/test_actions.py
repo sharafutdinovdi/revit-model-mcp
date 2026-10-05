@@ -1836,3 +1836,22 @@ def test_process_progress_current_path_is_redacted():
         assert redact_model_paths({"progress": {"currentPath": r"C:\Private\Model.rvt"}}) == {
             "progress": {"currentPath": "Model.rvt"}
         }
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "expected_text"),
+    [
+        ("revit_update_parameters", ["skipped.inGroup", "dry_run", "groups"]),
+        ("revit_set_parameter", ["Group members", "clear message", "dry_run"]),
+        ("revit_walls_from_cad", ["unjoinedEnds", "unjoinedReasons", "dry_run"]),
+    ],
+)
+def test_preflight_tool_descriptions(tool_name, expected_text):
+    import asyncio
+
+    server = MCPServer("preflight-descriptions")
+    register_actions(server, AsyncMock(), lambda: AsyncMock())
+    tools = asyncio.run(server.list_tools())
+    description = next(tool.description for tool in tools if tool.name == tool_name)
+    for text in expected_text:
+        assert text in description
