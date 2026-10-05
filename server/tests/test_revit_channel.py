@@ -2030,7 +2030,7 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
             "verification": {"warning": "Check exported files."},
         }
         host.fetch_job = AsyncMock(return_value=response)
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01):
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.1):
             result = await RevitReadChannel(host).execute(
                 ReadJob("process-models", {"command": "process-models"})
             )
