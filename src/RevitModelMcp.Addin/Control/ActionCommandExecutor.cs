@@ -452,21 +452,26 @@ internal static class ActionCommandExecutor
         }
         finally
         {
-            void Cleanup(string step, Action action)
+            void Cleanup(string step, bool critical, Action action)
             {
                 try { action(); }
                 catch (Exception exception)
                 {
                     var sentence = $"Cleanup failed ({step}): {exception.Message}";
-                    result.Status = "failed";
-                    result.Error = result.Error is null ? sentence : result.Error + " " + sentence;
+                    if (critical)
+                    {
+                        result.Status = "failed";
+                        result.Error = result.Error is null ? sentence : result.Error + " " + sentence;
+                    }
+                    else
+                        (result.Warnings ??= []).Add(sentence);
                 }
             }
-            Cleanup("transaction group", () => group?.Dispose());
+            Cleanup("transaction group", false, () => group?.Dispose());
             dismissedMessages.AddRange(failures.WarningsDismissed);
             if (document is not null)
             {
-                Cleanup("activity record", () =>
+                Cleanup("activity record", false, () =>
                 {
                     var activity = new ActionResultData
                     {
@@ -486,11 +491,11 @@ internal static class ActionCommandExecutor
                     ActivityRecorder.RecordAction(job, document, activity, activityResponse, changes);
                 });
             }
-            Cleanup("change capture", () => changes?.Dispose());
+            Cleanup("change capture", false, () => changes?.Dispose());
             if (document is not null)
-                Cleanup("close", () => DocumentActions.CloseForProcessing(application, document));
-            Cleanup("dialog handler", () => application.DialogBoxShowing -= SuppressDialog);
-            Cleanup("warning handler", () => application.Application.FailuresProcessing -= SuppressWarnings);
+                Cleanup("close", true, () => DocumentActions.CloseForProcessing(application, document));
+            Cleanup("dialog handler", true, () => application.DialogBoxShowing -= SuppressDialog);
+            Cleanup("warning handler", true, () => application.Application.FailuresProcessing -= SuppressWarnings);
             result.DialogsDismissed = ProcessDialogSummary.FromMessages(dismissedMessages);
             result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         }
