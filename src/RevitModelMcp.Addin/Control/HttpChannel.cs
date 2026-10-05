@@ -285,6 +285,7 @@ internal sealed class HttpChannel : IDisposable
 
     private async Task<HttpJob?> SubmitAsync(HttpListenerContext context, ControlJobParseResult command, string payload)
     {
+        RemoveExpiredResults();
         if (ActionJobParser.IsAction(command.Command) && ActionCommandExecutor.ReadOnlyMode)
         {
             await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
@@ -293,11 +294,13 @@ internal sealed class HttpChannel : IDisposable
         var submitted = _channel.SubmitHttp(command, payload, out var completion);
         if (submitted.Job is null)
         {
-            await JsonAsync(context, submitted.Error == "queue_full" ? 429 : 400, new()
+            var body = new Dictionary<string, object>
             {
                 ["error"] = submitted.Error ?? "submission_failed",
                 ["retryAfterMs"] = submitted.RetryAfterMs
-            }).ConfigureAwait(false);
+            };
+            if (JobScheduler.SubmissionMessage(submitted.Error) is { } message) body["message"] = message;
+            await JsonAsync(context, submitted.Error switch { "queue_full" => 429, "persist_failed" => 503, _ => 400 }, body).ConfigureAwait(false);
             return null;
         }
         var job = new HttpJob(submitted.Job.JobId, command, completion!);
@@ -354,10 +357,13 @@ internal sealed class HttpChannel : IDisposable
 
     private void RemoveExpiredResults()
     {
-        var cutoff = DateTime.UtcNow.AddHours(-24).Ticks;
+        var now = DateTime.UtcNow;
+        var actionCutoff = now.AddHours(-24).Ticks;
+        var readCutoff = now.AddMinutes(-10).Ticks;
         foreach (var entry in _jobs)
         {
             var completed = Interlocked.Read(ref entry.Value.CompletedTicks);
+            var cutoff = ActionJobParser.IsAction(entry.Value.Command.Command) ? actionCutoff : readCutoff;
             if (completed == 0 || completed >= cutoff) continue;
             if (_jobs.TryRemove(entry.Key, out var removed) && removed.ImagePath is not null)
             {
