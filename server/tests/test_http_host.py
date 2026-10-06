@@ -700,3 +700,31 @@ def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
         )
 
     asyncio.run(check())
+
+
+def test_http_503_points_to_listener_diagnostics(endpoint):
+    host, state = endpoint
+    state["status"] = 503
+    with pytest.raises(RevitChannelError) as captured:
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    message = str(captured.value)
+    assert message.startswith("Revit endpoint returned HTTP 503:")
+    assert "HTTP.sys has no working listener for this URL" in message
+    assert "revit_ping over the local transport" in message
+    assert "httpListener" in message
+    assert "netsh http show urlacl" in message
+    assert "netsh http show servicestate" in message
+    assert "docs/transport.md" in message
+
+
+def test_unreachable_endpoint_points_to_heartbeat_listener_reason():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    port = server.server_port
+    server.server_close()
+    host = HttpHost(f"http://127.0.0.1:{port}", "test-token")
+    with pytest.raises(RevitChannelError) as captured:
+        asyncio.run(host.health())
+    assert "HTTP is disabled or failed" in str(captured.value)
+    assert "revit_ping over the local transport shows the reason in httpListener" in str(
+        captured.value
+    )

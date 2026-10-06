@@ -833,6 +833,8 @@ def _parse_instance_package(
                         "fileChannelVersion",
                         "startedUtc",
                         "httpPort",
+                        "httpState",
+                        "httpReason",
                         "discoveryVersion",
                         "instanceId",
                         "pipeName",
