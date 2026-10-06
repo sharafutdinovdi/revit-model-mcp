@@ -38,6 +38,9 @@ updates:
     groups:
       all:
         patterns: ["*"]
+    ignore:
+      # pydantic pins its exact pydantic-core build; bump it together with pydantic.
+      - dependency-name: pydantic-core
     labels: [dependencies, server]
     commit-message:
       prefix: chore(deps)

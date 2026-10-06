@@ -42,7 +42,7 @@ packages = ["revit_model_mcp"]
 testpaths = ["tests"]
 
 [tool.ruff]
-required-version = "==0.16.7"
+required-version = "==0.16.10"
 target-version = "py311"
 line-length = 100
 

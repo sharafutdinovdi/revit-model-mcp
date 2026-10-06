@@ -85,6 +85,6 @@ jobs:
           "Install documentation dependencies": "pip install --require-hashes -r docs/requirements.txt",
           "Build documentation": "mkdocs build --strict",
           "Install Ruff": "pip install --require-hashes -r .github/requirements/ruff.txt",
-          "Check Python": "cd server; uvx ruff==0.16.7 check .",
-          "Verify Python formatting": "cd server; uvx ruff==0.16.7 format --check ."
+          "Check Python": "cd server; uvx ruff==0.16.10 check .",
+          "Verify Python formatting": "cd server; uvx ruff==0.16.10 format --check ."
         }
