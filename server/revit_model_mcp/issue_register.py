@@ -11,6 +11,7 @@ from openpyxl.chart import BarChart, Reference
 from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
+from revit_model_mcp.atomic_write import write_new_file
 from revit_model_mcp.workbook_style import (
     ACCENT,
     BORDER,
@@ -356,12 +357,15 @@ def write_register(
         sheet.print_options.horizontalCentered = True
         sheet.print_area = sheet.dimensions
     summary.print_area = f"A1:R{max(summary.max_row, 20)}"
-    target.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with target.open("xb") as output:
-            workbook.save(output)
-    except FileExistsError as error:
-        raise ValueError(f"output_path already exists: {target}") from error
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_new_file(target, workbook.save)
+    except ValueError as error:
+        if target.exists() or target.is_symlink():
+            raise ValueError(f"output_path already exists: {target}") from error
+        raise
+    except OSError as error:
+        raise ValueError(f"Cannot save report: {error}") from error
     return {
         "path": str(target),
         "issueCount": len(issues),

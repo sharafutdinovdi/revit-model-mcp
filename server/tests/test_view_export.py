@@ -76,11 +76,13 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(local_path, str(target.resolve()))
             self.assertEqual(target.read_bytes(), image)
 
-        host._run.assert_awaited_once()
-        script = host._run.await_args.args[0]
-        self.assertIn("response.data.fileName", script)
-        self.assertIn("ReadAllBytes($artifactPath)", script)
-        self.assertIn("Remove-Item", script)
+        self.assertEqual(host._run.await_count, 2)
+        read_script = host._run.await_args_list[0].args[0]
+        self.assertIn("response.data.fileName", read_script)
+        self.assertIn("ReadAllBytes($artifactPath)", read_script)
+        self.assertNotIn("Remove-Item", read_script)
+        delete_script = host._run.await_args_list[1].args[0]
+        self.assertIn("Remove-Item", delete_script)
 
     async def test_finish_job_reports_destination_errors_plainly(self) -> None:
         host = SshPowerShellHost()

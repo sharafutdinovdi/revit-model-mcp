@@ -7,6 +7,7 @@ from openpyxl import Workbook
 from openpyxl.chart import BarChart, Reference
 from openpyxl.styles import Font, PatternFill
 
+from revit_model_mcp.atomic_write import write_new_file
 from revit_model_mcp.workbook_style import (
     ACCENT,
     _append,
@@ -211,8 +212,11 @@ def write_health_workbook(save_to, health, groups, snapshots=None, notes=None, w
             tab.print_title_rows = "1:1"
     warning_sheet.print_area = f"A1:U{max(30, warning_sheet.max_row)}"
     try:
-        with target.open("xb") as output:
-            workbook.save(output)
-    except FileExistsError as error:
-        raise ValueError(f"save_to already exists: {target}") from error
+        write_new_file(target, workbook.save)
+    except ValueError as error:
+        if target.exists() or target.is_symlink():
+            raise ValueError(f"save_to already exists: {target}") from error
+        raise
+    except OSError as error:
+        raise ValueError(f"Cannot save report: {error}") from error
     return {"path": str(target), "snapshotCount": snapshot_count, "warnings": warnings}

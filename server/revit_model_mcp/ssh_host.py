@@ -19,7 +19,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from revit_model_mcp.artifact_download import save_artifact
+from revit_model_mcp.artifact_download import preflight_artifact_target, save_artifact
 from revit_model_mcp.revit_channel import (
     ACTIVATION_TASK,
     CHANNEL_DIRECTORY,
@@ -591,11 +591,18 @@ class SshPowerShellHost:
     ) -> tuple[str, str | None]:
         if not RESPONSE_NAME.fullmatch(response_name):
             raise ResponseParseError("Remote response has an invalid file name. Update the add-in.")
+        if download_artifact:
+            try:
+                preflight_artifact_target(save_to)
+            except ValueError as error:
+                raise RevitChannelError(str(error)) from error
         paths = ",".join(f"'{_ps_quote(name)}'" for name in cleanup_names)
         output = await self._run(
             _ps_response_reader()
             + f"$directory = {self._directory}; $path = Join-Path $directory '{_ps_quote(response_name)}'; "
-            "$artifactName = $null; try { $responseBytes = Read-ResponseBytes $path; $artifact = $null; "
+            "$artifactName = $null; "
+            + ("" if download_artifact else "try { ")
+            + "$responseBytes = Read-ResponseBytes $path; $artifact = $null; "
             + (
                 "$response = [Text.Encoding]::UTF8.GetString($responseBytes) | ConvertFrom-Json; "
                 "$artifactName = [IO.Path]::GetFileName([string]$response.data.fileName); "
@@ -606,11 +613,16 @@ class SshPowerShellHost:
                 else ""
             )
             + "$result = [ordered]@{ response = [Convert]::ToBase64String($responseBytes); "
-            "artifactName = $artifactName; artifact = $artifact } } finally { "
-            f"@({paths}) + @($artifactName) | Where-Object {{ -not [string]::IsNullOrWhiteSpace($_) }} | "
-            "ForEach-Object { $cleanup = Join-Path $directory $_; "
-            "Remove-Item -LiteralPath $cleanup -Force -ErrorAction SilentlyContinue } }; "
-            "$result | ConvertTo-Json -Compress"
+            "artifactName = $artifactName; artifact = $artifact }"
+            + (
+                "; "
+                if download_artifact
+                else " } finally { "
+                f"@({paths}) + @($artifactName) | Where-Object {{ -not [string]::IsNullOrWhiteSpace($_) }} | "
+                "ForEach-Object { $cleanup = Join-Path $directory $_; "
+                "Remove-Item -LiteralPath $cleanup -Force -ErrorAction SilentlyContinue } }; "
+            )
+            + "$result | ConvertTo-Json -Compress"
         )
         try:
             result = json.loads(output)
@@ -638,6 +650,11 @@ class SshPowerShellHost:
             ) from error
         except ValueError as error:
             raise RevitChannelError(str(error)) from error
+        names = list(dict.fromkeys(item for item in cleanup_names + [name] if item))
+        try:
+            await self.delete_files(names)
+        except RevitChannelError:
+            LOGGER.warning("Image saved, but remote capture cleanup failed.")
         return content, local_path
 
     async def delete_files(self, names: list[str]) -> None:
