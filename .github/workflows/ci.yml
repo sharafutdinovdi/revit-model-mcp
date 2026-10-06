@@ -192,7 +192,7 @@ jobs:
           $root = "$env:APPDATA/Autodesk/Revit/Addins/2026"
           $folder = Join-Path $root 'RevitModelMcp'
           $source = Join-Path $env:RUNNER_TEMP 'DevBuild.cs'
-          Set-Content -LiteralPath $source -Value '[assembly: System.Reflection.AssemblyVersion("1.0.0.0")] [assembly: System.Reflection.AssemblyFileVersion("1.0.0.0")] public class DevBuild { }'
+          Set-Content -LiteralPath $source -Value '[assembly: System.Reflection.AssemblyVersion("9.0.0.0")] [assembly: System.Reflection.AssemblyFileVersion("9.0.0.0")] public class DevBuild { }'
           $devDll = Join-Path $env:RUNNER_TEMP 'DevBuild.dll'
           # Windows PowerShell can compile to a file; PowerShell 7 cannot.
           powershell.exe -NoProfile -Command "Add-Type -Path '$source' -OutputAssembly '$devDll'"
@@ -209,13 +209,11 @@ jobs:
             foreach ($name in $dlls) {
               $installed = Join-Path $folder $name
               $version = (Get-Item $installed).VersionInfo.FileVersion
-              if ($version -eq '1.0.0.0') { throw "$name was kept at developer version $version" }
-              Write-Host "ASSERT: $name replaced (version $version)"
+              if ($version -eq '9.0.0.0') { throw "$name was kept at developer version $version" }
+              $built = (Get-FileHash "src/RevitModelMcp.Addin/bin/Release.R26/$name" -Algorithm SHA256).Hash
+              if ($built -ne (Get-FileHash $installed -Algorithm SHA256).Hash) { throw "Installed $name does not match the release build" }
+              Write-Host "ASSERT: $name replaced by the release build (was 9.0.0.0, now $version)"
             }
-            $built = (Get-FileHash 'src/RevitModelMcp.Addin/bin/Release.R26/RevitModelMcp.dll' -Algorithm SHA256).Hash
-            $installedHash = (Get-FileHash (Join-Path $folder 'RevitModelMcp.dll') -Algorithm SHA256).Hash
-            if ($built -ne $installedHash) { throw 'Installed RevitModelMcp.dll does not match the release build' }
-            Write-Host 'ASSERT: installed RevitModelMcp.dll matches the release build'
             $manifestText = Get-Content -Raw (Join-Path $root 'RevitModelMcp.addin')
             if ($manifestText -match 'C:\\old\\dev' -or $manifestText -match 'Stale') { throw 'Stale manifest was kept' }
             Write-Host 'ASSERT: stale manifest replaced'
