@@ -531,6 +531,7 @@ async def revit_ping(
     """Check the RevitModelMcp connection without reading the model.
 
     Returns a response with data="pong", even when no document is active.
+    Includes httpListener state and reason when reported by the instance heartbeat.
     Connection failures and timeouts raise errors; no partial result is returned.
     """
     return await _execute(ReadJob.ping(), timeout_seconds, pickup_timeout_seconds, document)
@@ -1211,7 +1212,7 @@ async def revit_list_relations(
 async def revit_list_instances(document: Document = None) -> dict[str, Any]:
     """List Revit processes and their active documents.
 
-    Returns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.
+    Returns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.
     For file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.
     Busy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.
     Legacy heartbeat presence is only a pre-check. No matching instances return instances=[].
