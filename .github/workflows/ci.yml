@@ -185,6 +185,43 @@ jobs:
               Write-Host "ASSERT: removed $root/$relative"
             }
           }
+      - name: Smoke test MSI over developer build
+        shell: pwsh
+        run: |
+          $msi = (Get-ChildItem output/*-SingleUser.msi).FullName
+          $root = "$env:APPDATA/Autodesk/Revit/Addins/2026"
+          $folder = Join-Path $root 'RevitModelMcp'
+          $source = Join-Path $env:RUNNER_TEMP 'DevBuild.cs'
+          Set-Content -LiteralPath $source -Value '[assembly: System.Reflection.AssemblyVersion("9.0.0.0")] [assembly: System.Reflection.AssemblyFileVersion("9.0.0.0")] public class DevBuild { }'
+          $devDll = Join-Path $env:RUNNER_TEMP 'DevBuild.dll'
+          # Windows PowerShell can compile to a file; PowerShell 7 cannot.
+          powershell.exe -NoProfile -Command "Add-Type -Path '$source' -OutputAssembly '$devDll'"
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $devDll)) { throw 'Could not compile the fake developer assembly' }
+          New-Item -ItemType Directory -Force $folder | Out-Null
+          $dlls = 'RevitModelMcp.dll', 'RevitModelMcp.Core.dll'
+          foreach ($name in $dlls) { Copy-Item $devDll (Join-Path $folder $name) }
+          $stale = '<?xml version="1.0" encoding="utf-8"?><RevitAddIns><AddIn Type="Application"><Name>Stale</Name><Assembly>C:\old\dev\RevitModelMcp.dll</Assembly></AddIn></RevitAddIns>'
+          Set-Content -LiteralPath (Join-Path $root 'RevitModelMcp.addin') -Value $stale
+          try {
+            $log = "$env:RUNNER_TEMP/mcp-dev-over-install.log"
+            $process = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Install over developer build failed: $($process.ExitCode)" }
+            foreach ($name in $dlls) {
+              $installed = Join-Path $folder $name
+              $version = (Get-Item $installed).VersionInfo.FileVersion
+              if ($version -eq '9.0.0.0') { throw "$name was kept at developer version $version" }
+              $built = (Get-FileHash "src/RevitModelMcp.Addin/bin/Release.R26/$name" -Algorithm SHA256).Hash
+              if ($built -ne (Get-FileHash $installed -Algorithm SHA256).Hash) { throw "Installed $name does not match the release build" }
+              Write-Host "ASSERT: $name replaced by the release build (was 9.0.0.0, now $version)"
+            }
+            $manifestText = Get-Content -Raw (Join-Path $root 'RevitModelMcp.addin')
+            if ($manifestText -match 'C:\\old\\dev' -or $manifestText -match 'Stale') { throw 'Stale manifest was kept' }
+            Write-Host 'ASSERT: stale manifest replaced'
+          } finally {
+            $process = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart /l*v `"$env:RUNNER_TEMP/mcp-dev-over-uninstall.log`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "Uninstall after developer build test failed: $($process.ExitCode)" }
+            Write-Host 'ASSERT: uninstall after developer build test exit code 0'
+          }
       - name: Smoke test multi-user MSI
         shell: pwsh
         run: |
