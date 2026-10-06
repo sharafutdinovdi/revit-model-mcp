@@ -71,7 +71,9 @@ internal static class SnapshotFileWriter
         {
             EnsureDirectory(RootDirectory, currentUser, OverrideRootDirectory is null);
             EnsureDirectory(Path.Combine(RootDirectory, "instances"), currentUser, OverrideRootDirectory is null);
+            ReplaceStaleOwnDirectory(OutputDirectory, currentUser);
             EnsureDirectory(OutputDirectory, currentUser, OverrideRootDirectory is null);
+            PruneStaleInstanceDirectories(Path.Combine(RootDirectory, "instances"));
             return (true, null);
         }
         catch (Exception exception)
@@ -88,12 +90,14 @@ internal static class SnapshotFileWriter
                 {
                     EnsureDirectory(RootDirectory, currentUser, true);
                     EnsureDirectory(Path.Combine(RootDirectory, "instances"), currentUser, true);
+                    ReplaceStaleOwnDirectory(OutputDirectory, currentUser);
                     EnsureDirectory(OutputDirectory, currentUser, true);
                 }
                 catch (Exception fallbackException)
                 {
                     return (false, $"File channel disabled: {reason} Private default directory failed ({fallbackException.GetType().Name}).");
                 }
+                PruneStaleInstanceDirectories(Path.Combine(RootDirectory, "instances"));
                 return (true, $"File channel override refused: {reason} Using the private default directory.");
             }
             return (false, $"File channel disabled: {reason} Check the channel directory ownership and write permissions.");
@@ -130,15 +134,109 @@ internal static class SnapshotFileWriter
             }
         }
 
-        var entries = currentSecurity.GetAccessRules(true, true, typeof(SecurityIdentifier))
+        var reason = AclRefusalReason(currentSecurity, currentUser, out _);
+        if (reason is not null) throw new ChannelAclRefusedException(reason);
+    }
+
+    private static string? AclRefusalReason(DirectorySecurity security, SecurityIdentifier currentUser,
+        out SecurityIdentifier? owner)
+    {
+        owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+        var entries = security.GetAccessRules(true, true, typeof(SecurityIdentifier))
             .Cast<FileSystemAccessRule>()
             .Select(rule => new ChannelAclEntry(
                 rule.IdentityReference.Value,
                 (int)rule.FileSystemRights,
                 rule.AccessControlType == AccessControlType.Allow,
                 rule.IsInherited));
-        var reason = ChannelAclPolicy.RefusalReason(owner?.Value, currentUser.Value, entries);
-        if (reason is not null) throw new ChannelAclRefusedException(reason);
+        return ChannelAclPolicy.RefusalReason(owner?.Value, currentUser.Value, entries);
+    }
+
+    private static void ReplaceStaleOwnDirectory(string path, SecurityIdentifier currentUser)
+    {
+        if (!Directory.Exists(path)) return;
+
+        var isReparsePoint = (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+        var reason = "reparse-point";
+        using var process = Process.GetCurrentProcess();
+        if (!isReparsePoint)
+        {
+            var directoryCreatedUtc = Directory.GetCreationTimeUtc(path);
+            var processStartedUtc = process.StartTime.ToUniversalTime();
+            var security = new DirectoryInfo(path).GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+            var refusalReason = AclRefusalReason(security, currentUser, out var owner);
+            if (ChannelDirectoryPolicy.DecideOwnDirectory(refusalReason, directoryCreatedUtc, processStartedUtc)
+                == ChannelDirectoryAction.Keep) return;
+
+            var predatesProcess = ChannelDirectoryPolicy.DecideOwnDirectory(null, directoryCreatedUtc, processStartedUtc)
+                == ChannelDirectoryAction.Replace;
+            // Current-user ACL migration remains the responsibility of EnsureDirectory.
+            if (!predatesProcess && string.Equals(owner?.Value, currentUser.Value, StringComparison.OrdinalIgnoreCase)) return;
+            reason = predatesProcess ? "predates-process" : "acl";
+        }
+
+        var parent = Path.GetDirectoryName(path) ?? throw new InvalidOperationException("The channel directory parent is unavailable.");
+        var aside = Path.Combine(parent, ChannelDirectoryPolicy.AsideName(process.Id, Guid.NewGuid().ToString("N").Substring(0, 8)));
+        Directory.Move(path, aside);
+        PluginLog.Info($"Stale channel directory replaced. Reason='{reason}'.");
+        try
+        {
+            var asideIsReparsePoint = (File.GetAttributes(aside) & FileAttributes.ReparsePoint) != 0;
+            Directory.Delete(aside, !asideIsReparsePoint);
+        }
+        catch (Exception)
+        {
+            // Failed deletions remain eligible for retention pruning.
+        }
+    }
+
+    private static void PruneStaleInstanceDirectories(string instancesDirectory)
+    {
+        try
+        {
+            using var process = Process.GetCurrentProcess();
+            var nowUtc = DateTime.UtcNow;
+            var count = 0;
+            foreach (var path in Directory.EnumerateDirectories(instancesDirectory))
+            {
+                try
+                {
+                    if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) continue;
+                    var name = Path.GetFileName(path);
+                    if (!ChannelDirectoryPolicy.TryParseInstanceDirectoryName(name, out var processId, out _)) continue;
+                    if (!ChannelDirectoryPolicy.ShouldPrune(name, process.Id, IsProcessAlive(processId),
+                            Directory.GetLastWriteTimeUtc(path), nowUtc, ChannelDirectoryPolicy.DefaultRetention)) continue;
+                    Directory.Delete(path, true);
+                    count++;
+                }
+                catch (Exception)
+                {
+                    // A child directory failure does not interrupt pruning.
+                }
+            }
+            if (count > 0) PluginLog.Info($"Pruned stale channel directories. Count={count}.");
+        }
+        catch (Exception)
+        {
+            // Retention cleanup does not affect channel initialization.
+        }
+    }
+
+    private static bool IsProcessAlive(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (Exception)
+        {
+            return true;
+        }
     }
 
     private static DirectorySecurity PrivateDirectorySecurity(SecurityIdentifier currentUser)
