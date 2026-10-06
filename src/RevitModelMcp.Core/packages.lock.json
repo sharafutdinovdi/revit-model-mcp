@@ -13,9 +13,9 @@
       },
       "Polyfill": {
         "type": "Direct",
-        "requested": "[11.4.1, )",
-        "resolved": "11.4.1",
-        "contentHash": "HbyvI2RZLjW8zaJOiAtyTaCVEAAvhPp7kCkEgHne4igfAY3o7W0JAmurNrjdItUdRIXanYrWiet2ng/Jjd9+/w=="
+        "requested": "[11.4.3, )",
+        "resolved": "11.4.3",
+        "contentHash": "5wRvX7eIi9MYIfziPsSyxMVsV13LqKXT4REsp21SFHvH9HEaMOM8NjhDfxltjeXi8bleUX5t0Gcy0ZGywnlHtw=="
       },
       "Microsoft.NETFramework.ReferenceAssemblies.net48": {
         "type": "Transitive",

@@ -228,6 +228,7 @@ public sealed class ExternalEventRequestQueue
     private readonly object _sync = new();
     private readonly Func<bool> _raise;
     private readonly Action? _markWaiting;
+    private readonly Func<TimeSpan, Task> _delay;
     private bool _executing;
     private bool _requested; // A single flag preserves requests received during Execute.
     private bool _retryScheduled;
@@ -235,10 +236,11 @@ public sealed class ExternalEventRequestQueue
         : this(() => { raise(); return true; }, null)
     {
     }
-    public ExternalEventRequestQueue(Func<bool> raise, Action? markWaiting = null)
+    public ExternalEventRequestQueue(Func<bool> raise, Action? markWaiting = null, Func<TimeSpan, Task>? delay = null)
     {
         _raise = raise ?? throw new ArgumentNullException(nameof(raise));
         _markWaiting = markWaiting;
+        _delay = delay ?? (static interval => Task.Delay(interval));
     }
     public void Request()
     {
@@ -307,7 +309,7 @@ public sealed class ExternalEventRequestQueue
                     if (_retryScheduled) return;
                     _retryScheduled = true;
                 }
-                _ = Task.Delay(100).ContinueWith(_ =>
+                _ = _delay(TimeSpan.FromMilliseconds(100)).ContinueWith(_ =>
                 {
                     lock (_sync) _retryScheduled = false;
                     lock (_sync)
@@ -331,7 +333,7 @@ public sealed class ExternalEventRequestQueue
     private void MarkWaitingIfDelayed()
     {
         if (_markWaiting is null) return;
-        _ = Task.Delay(500).ContinueWith(_ =>
+        _ = _delay(TimeSpan.FromMilliseconds(500)).ContinueWith(_ =>
         {
             lock (_sync)
             {
