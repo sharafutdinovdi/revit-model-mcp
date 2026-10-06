@@ -5,10 +5,12 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
 
 jobs:
   auto-merge:
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
     uses: sharafutdinovdi/.github/.github/workflows/dependabot-auto-merge.yml@594da42c2b8e77e670d1d1846f89145b91bc0c73 # main

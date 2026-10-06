@@ -7,6 +7,34 @@ Usage and installation questions belong in [Discussions](https://github.com/shar
 
 Contributors follow the [code of conduct](https://github.com/sharafutdinovdi/.github/blob/main/CODE_OF_CONDUCT.md).
 
+## Start in 10 minutes
+
+Pick a [good first issue](https://github.com/sharafutdinovdi/revit-model-mcp/issues?q=is%3Aopen+label%3A%22good+first+issue%22), comment that you are taking it, and open a PR from a fork as described below.
+Issues labeled `help wanted` are open to anyone; larger ones are tracked as `epic` with child issues.
+
+### Contributing without Revit
+
+You do not need Revit or Windows for the Python server, the Core library, tests and documentation:
+
+```sh
+cd server && uv run --with pytest pytest -q
+dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
+uv tool install pre-commit && pre-commit install
+SKIP=dotnet-format pre-commit run --all-files
+```
+
+The first command runs the Python server tests, which use mocked transports and a fake HTTP server.
+The second runs the Core C# tests on Windows, macOS or Linux with the SDK from `global.json`.
+The `dotnet-format` hook needs Windows, so skip it elsewhere; the Windows PR checks verify C# formatting and build the add-in for every Revit year.
+Only changes under `src/RevitModelMcp.Addin` need Windows to build locally.
+
+### Labels and milestones
+
+- Type: `bug`, `enhancement`, `docs`, `tests`, `server` and similar labels group the work and the release notes.
+- Priority: `P0` crash, data safety or wrong result; `P1` real bug on a common path; `P2` edge case or robustness; `P3` polish or rare case.
+- `needs-design` means the approach must be agreed in the issue before code.
+- Milestones follow the weekly release: a milestone named by date, for example `2026-10-12`, holds what ships that Monday, and `Backlog` holds unscheduled work.
+
 ## Pull requests
 
 1. Open an issue before a large change and agree on the expected behavior.
@@ -36,6 +64,7 @@ Dependabot patch and minor updates enable squash auto-merge; required checks and
 Major updates receive a `needs-review` label and wait for a maintainer.
 NuGet manifests under `build/install/` and publishing workflow updates still require owner review.
 All merges use squash with the PR title and body, and history remains linear.
+
 ## Automated checks
 
 CI builds the Revit 2022, 2026 and 2027 add-ins, runs Core and Python tests, builds and smoke-tests both MSI scopes, and validates the Python package.
@@ -133,9 +162,14 @@ Automated tests do not validate live Revit behavior; see [validation evidence](d
 
 1. Merge PRs with Conventional Commit titles.
 2. release-please maintains a `chore(main): release X.Y.Z` PR with generated changelog entries and version updates.
-3. About once a week, the maintainer checks the release PR and merges it after required checks pass.
-4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`.
+3. Releases ship on Monday (Europe/Moscow). The maintainer merges the release PR on Monday after required checks pass.
+4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`. If a job fails with `The job was not acquired by Runner`, that is a GitHub infrastructure failure: rerun it with `gh run rerun <run id> --failed`.
 5. Check PyPI, MCP Registry and Smithery job results for stable releases. Check the weekly WinGet run separately; download its manifests if submission is not configured.
+
+The required `release-window` check keeps the release PR red outside Monday in Europe/Moscow time and passes at once for every other PR.
+A scheduled run refreshes it when Monday starts and when it ends.
+For an urgent fix, the maintainer adds the `hotfix-release` label to the release PR, which turns the check green and allows a release on another day.
+The size of the change, not the calendar, decides the version bump: `feat` bumps the minor version and `fix` the patch version, as described below.
 
 release-please owns [CHANGELOG.md](CHANGELOG.md), the version in `server/pyproject.toml` and both versions in `server/server.json`.
 The manifest starts at `0.3.0`; `server/pyproject.toml` remains the package version checked by the build.

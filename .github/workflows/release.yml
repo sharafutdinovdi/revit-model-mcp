@@ -17,6 +17,7 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -44,7 +45,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install uv
-        run: pip install uv==0.12.20
+        run: pip install --require-hashes -r .github/requirements/uv.txt
       - name: Validate release version
         shell: pwsh
         env:
@@ -227,6 +228,7 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -316,6 +318,7 @@ jobs:
     needs: build
     if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: pypi
     permissions:
       id-token: write
@@ -330,6 +333,7 @@ jobs:
   mcp-registry:
     needs: pypi
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     continue-on-error: true
     permissions:
       id-token: write
@@ -375,6 +379,7 @@ jobs:
     needs: [build, publish, pypi]
     if: ${{ !contains(inputs.tag || github.ref_name, '-') }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
     steps:
@@ -396,7 +401,7 @@ jobs:
           python-version: '3.12'
       - name: Install uv
         if: ${{ env.SMITHERY_API_KEY != '' }}
-        run: pip install uv==0.12.20
+        run: pip install --require-hashes -r .github/requirements/uv.txt
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:

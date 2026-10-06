@@ -26,6 +26,7 @@ jobs:
   manifests:
     if: github.repository == 'sharafutdinovdi/revit-model-mcp'
     runs-on: windows-latest
+    timeout-minutes: 30
     concurrency:
       group: winget-submission
       cancel-in-progress: false
