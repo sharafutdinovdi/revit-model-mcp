@@ -212,9 +212,13 @@ jobs:
             if ($count -ne $expected[$pattern]) { throw "Unexpected $pattern count: $count" }
             Write-Host "ASSERT: $pattern count = $count"
           }
-          Get-ChildItem artifacts/release -File | Sort-Object Name | ForEach-Object {
+          $lines = Get-ChildItem artifacts/release -File | Sort-Object Name | ForEach-Object {
             "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
-          } | Set-Content artifacts/release/SHA256SUMS.txt -Encoding utf8
+          }
+          # LF line endings and no BOM, so shasum -c works on macOS and Linux.
+          $sums = Join-Path $PWD 'artifacts/release/SHA256SUMS.txt'
+          [IO.File]::WriteAllText($sums, (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+          if ([IO.File]::ReadAllText($sums).Contains("`r")) { throw 'SHA256SUMS.txt contains CR characters.' }
       - name: Attest release assets
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

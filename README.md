@@ -49,7 +49,7 @@ The two installers are alternatives: install only one.
 Each refuses to install while the other is present, so uninstall the other first (Apps > Installed apps), then install.
 Upgrade within the same scope works in place.
 Run it with Revit closed, then start Revit and open a model.
-The installer keeps a newer DLL it finds in an add-in folder, for example a developer build with a higher file version. Delete that year's `RevitModelMcp` folder, or run `msiexec /fvomus <msi>`, to replace it.
+The installer replaces the add-in files and the `RevitModelMcp.addin` manifest it ships, even when an older developer build left a higher file version or a manifest with absolute paths. It leaves other add-ins in the same folder alone.
 See [automatic updates](docs/updates.md) for update behavior and opt-out settings.
 Alternatively, run from a clone in PowerShell:
 
