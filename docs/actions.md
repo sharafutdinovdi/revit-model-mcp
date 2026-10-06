@@ -428,6 +428,18 @@ instance, each with a "Cancel" link. The API `summary` stays in English.
 `Document` is always `Document.Title`, a file name, never a directory, so nothing in the log needs path
 redaction.
 
+## Unattended execution policy
+
+Unattended runs are read-only.
+The batch collector worker never writes: it opens models detached, never saves or synchronizes, and refuses every action command through its read-only allowlist.
+Writes happen only through explicit calls from an interactive client, for example `revit_process_models` in the user's Revit session.
+There is no opt-in for unattended writes.
+
+`revit_batch_start` and `revit_batch_cancel` start and stop Revit processes, so read-only mode refuses them like any action.
+The server returns `success:false` and `error:"read-only mode"` when `REVIT_MCP_READ_ONLY=1`.
+The add-in refuses `batch-supervisor-start` and the server host refuses cancellation while the workstation `read-only` file exists.
+`revit_batch_status` and `revit_batch_fetch` stay available.
+
 ## Supervised batch mode
 
 The [batch collector](batch.md) uses a separate worker with an add-in read-only allowlist. Every action command is refused in that worker. Document lifecycle tools accept `process_id` (alias `processId`) to select one running instance; an explicit PID and supplied document must agree.

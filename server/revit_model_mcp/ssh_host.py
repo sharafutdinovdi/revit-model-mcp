@@ -193,6 +193,8 @@ class SshPowerShellHost:
         if not re.fullmatch(r"[0-9a-f]{32}", run_id):
             raise RevitChannelError("Invalid batch run id.")
         await self._run(
+            "if (Test-Path -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA 'RevitModelMcp') 'read-only')) "
+            "{ throw 'read-only mode' }; "
             f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
             "if (!(Test-Path -LiteralPath (Join-Path $run 'run.json'))) { throw 'Batch run was not found.' }; "
             "$target = Join-Path $run 'cancel.json'; "

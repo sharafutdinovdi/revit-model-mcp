@@ -147,6 +147,8 @@ async def _wait_for_responsive_instance(host: object) -> list[dict[str, Any]]:
 
 
 def register_batch(mcp, host_provider, channel_provider) -> None:
+    read_only = env_flag("REVIT_MCP_READ_ONLY", False)
+
     @mcp.tool(
         title="Start batch collection",
         annotations=BATCH_TOOL.model_copy(update={"title": "Start batch collection"}),
@@ -163,6 +165,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
 
         open_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory).
         """
+        if read_only:
+            return {"success": False, "command": "batch-start", "error": "read-only mode"}
         if (paths is None) == (folder is None):
             raise ToolError("Supply exactly one of paths or folder.")
         if folder is not None and (not isinstance(folder, str) or not folder.strip()):
@@ -242,6 +246,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     )
     async def revit_batch_cancel(run_id: str) -> dict[str, Any]:
         """Persist cancellation and prevent unstarted models from running."""
+        if read_only:
+            return {"success": False, "command": "batch-cancel", "error": "read-only mode"}
         try:
             run_id = _run_id(run_id)
             file_host = _file_host(host_provider())
