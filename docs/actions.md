@@ -48,7 +48,7 @@ The add-in retains action results for 24 hours in the selected instance's `jobs/
 Local pipe, SSH file, and authenticated HTTP clients can fetch the result after an MCP server restart.
 Path redaction applies to stored responses when `REVIT_MCP_REDACT_PATHS=1` on the workstation, and to returned responses when enabled on the server.
 `revit_cancel_job(job_id)` requests cancellation.
-`revit_process_models` stops before the next model and returns `data.cancelled:true` with completed results.
+`revit_process_models` stops before the next model, lists every unstarted model in `data.models` with status `cancelled`, and returns `data.cancelled:true` with completed results.
 Cancellation does not undo completed models or interrupt an export, document open, family edit, or script already running in Revit.
 Cancellation is refused in server or workstation read-only mode.
 

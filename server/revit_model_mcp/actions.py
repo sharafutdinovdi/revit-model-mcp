@@ -1069,7 +1069,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Request cancellation of an action jobId.
 
-        Process-models stops before the next model and returns a cancelled result.
+        Process-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.
         A single running Revit operation finishes without interruption.
         Poll revit_jobs for the final result; completed changes remain committed.
         """
