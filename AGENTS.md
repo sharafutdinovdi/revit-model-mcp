@@ -53,13 +53,13 @@ For Python 3.11+ with uv, from the repository root:
 ```sh
 cd server
 uv run --with pytest pytest -q
-uvx ruff==0.16.7 check .
-uvx ruff==0.16.7 format --check .
+uvx ruff==0.16.10 check .
+uvx ruff==0.16.10 format --check .
 uv build
 uvx twine check dist/*
 ```
 
-Apply formatting with `uvx ruff==0.16.7 format .` in `server/`.
+Apply formatting with `uvx ruff==0.16.10 format .` in `server/`.
 Run `actionlint` 1.7.12 from the repository root after workflow changes and before pushing them.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 
