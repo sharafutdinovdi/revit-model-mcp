@@ -8,6 +8,7 @@ internal static class SharedCoordinatesReader
 {
     public static SharedCoordinatesData Read(Document document, ControlJobContract job)
     {
+        if (document.IsFamilyDocument) throw new ArgumentException("Shared coordinates are available only in project documents.");
         const int listLimit = 100;
         var location = document.ActiveProjectLocation;
         var basePoint = BasePoint.GetProjectBasePoint(document);

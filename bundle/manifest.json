@@ -59,7 +59,7 @@
     },
     {
       "name": "revit_ping",
-      "description": "Check the RevitModelMcp connection without reading the model.\n\nReturns a response with data=\"pong\", even when no document is active.\nConnection failures and timeouts raise errors; no partial result is returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Check the RevitModelMcp connection without reading the model.\n\nReturns a response with data=\"pong\", even when no document is active.\nIncludes httpListener state and reason when reported by the instance heartbeat.\nConnection failures and timeouts raise errors; no partial result is returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_nwc_settings_check",
@@ -155,7 +155,7 @@
     },
     {
       "name": "revit_list_instances",
-      "description": "List Revit processes and their active documents.\n\nReturns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc and httpPort when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nLegacy heartbeat presence is only a pre-check. No matching instances return instances=[].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools.\nEvery successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete."
+      "description": "List Revit processes and their active documents.\n\nReturns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nLegacy heartbeat presence is only a pre-check. No matching instances return instances=[].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools.\nEvery successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete."
     },
     {
       "name": "revit_family_audit",
@@ -215,7 +215,7 @@
     },
     {
       "name": "revit_cancel_job",
-      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model and returns a cancelled result.\nA single running Revit operation finishes without interruption.\nPoll revit_jobs for the final result; completed changes remain committed."
+      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.\nA single running Revit operation finishes without interruption.\nPoll revit_jobs for the final result; completed changes remain committed."
     },
     {
       "name": "revit_select",
@@ -231,7 +231,7 @@
     },
     {
       "name": "revit_move",
-      "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_override_graphics",
@@ -239,19 +239,19 @@
     },
     {
       "name": "revit_rotate",
-      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center."
+      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member."
     },
     {
       "name": "revit_copy",
-      "description": "Create 1 to 100 successive copies at multiples of the model-axis offset in mm."
+      "description": "Create 1 to 100 successive copies at multiples of the model-axis offset in mm.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member."
     },
     {
       "name": "revit_mirror",
-      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals."
+      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member."
     },
     {
       "name": "revit_change_type",
-      "description": "Change each element to one compatible type; family resolves duplicate type names."
+      "description": "Change each element to one compatible type; family resolves duplicate type names.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member."
     },
     {
       "name": "revit_update_parameters",

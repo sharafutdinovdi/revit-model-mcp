@@ -2339,6 +2339,83 @@ def test_image_read_commands_download_artifact(command, tmp_path):
     assert remote.finish_job.await_args.args[3] == target
 
 
+@pytest.mark.parametrize("command", ["export-view", "capture-elements"])
+@pytest.mark.parametrize("legacy_partial", [False, True])
+def test_slow_image_read_commands_download_artifact(command, legacy_partial, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
+    target = str(tmp_path / "image.png")
+    message = (
+        "The 60-second limit was reached; the result is marked as partial."
+        if legacy_partial
+        else "The command took more than two seconds; elapsedMs reports the duration."
+    )
+
+    async def finish(name, cleanup_names, download_artifact, save_to):
+        response = {
+            "command": command,
+            "success": not legacy_partial,
+            "data": {"fileName": "view.png"},
+            "elapsedMs": 70000,
+            "message": message,
+            "correlationId": json.loads(remote.written_content)["correlationId"],
+        }
+        if legacy_partial:
+            response["partial"] = True
+        return json.dumps(response), target if download_artifact else None
+
+    remote.finish_job = AsyncMock(side_effect=finish)
+    result = asyncio.run(
+        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
+    )
+    assert result["success"] is True
+    assert "partial" not in result
+    assert result["message"] == message
+    assert result["data"]["localPath"] == target
+    assert [call.args[2] for call in remote.finish_job.await_args_list] == [False, True]
+    assert remote.finish_job.await_args.args[2:] == (True, target)
+
+
+@pytest.mark.parametrize(
+    ("command", "data"),
+    [
+        ("export-view", {}),
+        ("export-view", {"fileName": ""}),
+        ("export-view", {"fileName": None}),
+        ("capture-elements", {}),
+        ("capture-elements", {"fileName": ""}),
+        ("capture-elements", {"fileName": None}),
+        ("document-info", {"fileName": "view.png"}),
+    ],
+)
+def test_partial_read_without_image_file_is_not_completed(command, data, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
+    target = str(tmp_path / "image.png")
+
+    async def finish(name, cleanup_names, download_artifact, save_to):
+        response = {
+            "command": command,
+            "success": False,
+            "partial": True,
+            "data": data,
+            "elapsedMs": 70000,
+            "message": "The 60-second limit was reached; the result is marked as partial.",
+            "correlationId": json.loads(remote.written_content)["correlationId"],
+        }
+        return json.dumps(response), None
+
+    remote.finish_job = AsyncMock(side_effect=finish)
+    result = asyncio.run(
+        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
+    )
+    assert result["success"] is False
+    assert result["partial"] is True
+    assert "localPath" not in result["data"]
+    remote.finish_job.assert_awaited_once()
+    assert remote.finish_job.await_args.args[2] is False
+
+
 def test_http_element_snapshots_fail_before_transport_call():
     from revit_model_mcp.http_host import HttpHost
 
@@ -2351,3 +2428,50 @@ def test_http_element_snapshots_fail_before_transport_call():
                 ReadJob("capture-elements", {"command": "capture-elements", "elementIds": [1]})
             )
         )
+
+
+@pytest.mark.parametrize(
+    ("instance_info", "expected"),
+    [
+        (
+            {"httpState": "failed", "httpReason": "Access denied."},
+            {"state": "failed", "reason": "Access denied."},
+        ),
+        (
+            {"httpState": "disabled", "httpReason": "HTTP is disabled in settings."},
+            {"state": "disabled", "reason": "HTTP is disabled in settings."},
+        ),
+        ({"httpState": "listening"}, {"state": "listening"}),
+        ({"httpState": "listening", "httpReason": None}, {"state": "listening", "reason": None}),
+        ({}, None),
+        ({"httpState": 503}, None),
+    ],
+)
+def test_ping_reports_http_listener_from_instance_info(instance_info, expected):
+    host = FakeRemoteHost()
+    host.instance_info = instance_info
+    host.response_content = json.dumps({"command": "ping", "success": True, "data": "pong"})
+    result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    assert result["data"] == "pong"
+    if expected is None:
+        assert "httpListener" not in result
+    else:
+        assert result["httpListener"] == expected
+
+
+def test_ssh_heartbeat_preserves_http_listener_status():
+    now = datetime.now(timezone.utc)
+    status = instance_status(
+        updatedUtc=now.isoformat(),
+        httpPort=53110,
+        httpState="failed",
+        httpReason="Access denied.",
+    )
+    package = {
+        "processes": [{"processId": 42, "revitVersion": "2024"}],
+        "files": [{"name": "instance_42.json", "content": json.dumps(status)}],
+    }
+    instance = _parse_instance_package(package, "", now)[0]
+    assert instance["httpPort"] == 53110
+    assert instance["httpState"] == "failed"
+    assert instance["httpReason"] == "Access denied."
