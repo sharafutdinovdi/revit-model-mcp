@@ -31,6 +31,7 @@ internal sealed class HttpChannel : IDisposable
     private readonly CancellationTokenSource _shutdown = new();
     private readonly DrainGate _gate = new();
     private int _disposed;
+    private volatile bool _closing;
     private Timer? _cleanup;
     private volatile string _documentName = string.Empty;
 
@@ -44,6 +45,8 @@ internal sealed class HttpChannel : IDisposable
     }
 
     public int? BoundPort { get; private set; }
+    public HttpListenerStatus Status { get; private set; } = HttpListenerStatus.DisabledBySettings();
+    public event Action<HttpListenerStatus>? StatusChanged;
 
     public void UpdateDocument(string? name) => _documentName = name ?? string.Empty;
 
@@ -60,18 +63,78 @@ internal sealed class HttpChannel : IDisposable
         {
             _listener.Start();
             BoundPort = _settings.HttpPort;
+            Status = HttpListenerStatus.Started();
+            StatusChanged?.Invoke(Status);
             _cleanup = new Timer(_ => RemoveExpiredResults(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
             _ = Task.Run(ListenAsync);
+            _ = Task.Run(ProbeAsync);
             PluginLog.Info($"HTTP listener started. Prefix='{prefix}'.");
         }
         catch (HttpListenerException exception) when (exception.NativeErrorCode == 5)
         {
+            Status = HttpListenerStatus.FromStartFailure(exception.NativeErrorCode, prefix);
+            StatusChanged?.Invoke(Status);
             using var identity = WindowsIdentity.GetCurrent();
             PluginLog.Warn($"HTTP listener NOT started: access denied for '{prefix}'. Run once from an elevated command prompt: netsh http add urlacl url={prefix} user=\"{identity.Name}\"");
         }
         catch (HttpListenerException exception)
         {
+            Status = HttpListenerStatus.FromStartFailure(exception.NativeErrorCode, prefix);
+            StatusChanged?.Invoke(Status);
             PluginLog.Error($"HTTP listener failed at {prefix}. Check the port and other Revit instances.", exception);
+        }
+    }
+
+    private async Task ProbeAsync()
+    {
+        try
+        {
+            int? statusCode = null;
+            string? exceptionTypeName = null;
+            var host = _settings.HttpBind == "0.0.0.0" ? "127.0.0.1" : _settings.HttpBind;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                if (_shutdown.IsCancellationRequested || _closing) return;
+                statusCode = null;
+                exceptionTypeName = null;
+                try
+                {
+                    var request = (HttpWebRequest)WebRequest.Create($"http://{host}:{_settings.HttpPort}/health");
+                    request.Method = "GET";
+                    request.Proxy = null;
+                    request.Timeout = 3000;
+                    using var cancellation = _shutdown.Token.Register(request.Abort);
+                    using var response = (HttpWebResponse)request.GetResponse();
+                    statusCode = (int)response.StatusCode;
+                }
+                catch (WebException exception) when (exception.Response is HttpWebResponse)
+                {
+                    using var response = (HttpWebResponse)exception.Response;
+                    statusCode = (int)response.StatusCode;
+                }
+                catch (Exception exception)
+                {
+                    exceptionTypeName = exception.GetType().Name;
+                }
+                if (statusCode == 200) break;
+                if (attempt < 2)
+                    await Task.Delay(1000, _shutdown.Token).ConfigureAwait(false);
+            }
+            if (_shutdown.IsCancellationRequested || _closing) return;
+            Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName);
+            StatusChanged?.Invoke(Status);
+            if (Status.IsFailed)
+                PluginLog.Warn($"HTTP self-probe failed. Reason='{Status.Reason}'.");
+            else
+                PluginLog.Info("HTTP self-probe succeeded.");
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (_shutdown.IsCancellationRequested) return;
+            PluginLog.Warn($"HTTP self-probe failed. Type='{exception.GetType().Name}'.");
         }
     }
 
@@ -82,6 +145,12 @@ internal sealed class HttpChannel : IDisposable
             try
             {
                 var context = await _listener.GetContextAsync().ConfigureAwait(false);
+                // Health requests (including the self-probe) are trivial and never counted as in-flight work.
+                if (context.Request.HttpMethod == "GET" && context.Request.Url?.AbsolutePath == "/health")
+                {
+                    _ = Task.Run(() => HandleAsync(context));
+                    continue;
+                }
                 var scope = _gate.TryEnter();
                 if (scope is null)
                 {
@@ -438,6 +507,7 @@ internal sealed class HttpChannel : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _closing = true;
         _gate.Close();
         try { if (_listener.IsListening) _listener.Stop(); }
         catch (ObjectDisposedException) { }

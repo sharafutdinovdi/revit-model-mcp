@@ -682,6 +682,10 @@ class RevitReadChannel:
             )
             if job.command == "ping":
                 result["addinVersion"] = instance.get("addinVersion") or "0.6.0 or earlier"
+                if isinstance(state := instance.get("httpState"), str):
+                    result["httpListener"] = {"state": state}
+                    if "httpReason" in instance:
+                        result["httpListener"]["reason"] = instance["httpReason"]
             return result
 
     async def _execute_serial(

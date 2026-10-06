@@ -2351,3 +2351,50 @@ def test_http_element_snapshots_fail_before_transport_call():
                 ReadJob("capture-elements", {"command": "capture-elements", "elementIds": [1]})
             )
         )
+
+
+@pytest.mark.parametrize(
+    ("instance_info", "expected"),
+    [
+        (
+            {"httpState": "failed", "httpReason": "Access denied."},
+            {"state": "failed", "reason": "Access denied."},
+        ),
+        (
+            {"httpState": "disabled", "httpReason": "HTTP is disabled in settings."},
+            {"state": "disabled", "reason": "HTTP is disabled in settings."},
+        ),
+        ({"httpState": "listening"}, {"state": "listening"}),
+        ({"httpState": "listening", "httpReason": None}, {"state": "listening", "reason": None}),
+        ({}, None),
+        ({"httpState": 503}, None),
+    ],
+)
+def test_ping_reports_http_listener_from_instance_info(instance_info, expected):
+    host = FakeRemoteHost()
+    host.instance_info = instance_info
+    host.response_content = json.dumps({"command": "ping", "success": True, "data": "pong"})
+    result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    assert result["data"] == "pong"
+    if expected is None:
+        assert "httpListener" not in result
+    else:
+        assert result["httpListener"] == expected
+
+
+def test_ssh_heartbeat_preserves_http_listener_status():
+    now = datetime.now(timezone.utc)
+    status = instance_status(
+        updatedUtc=now.isoformat(),
+        httpPort=53110,
+        httpState="failed",
+        httpReason="Access denied.",
+    )
+    package = {
+        "processes": [{"processId": 42, "revitVersion": "2024"}],
+        "files": [{"name": "instance_42.json", "content": json.dumps(status)}],
+    }
+    instance = _parse_instance_package(package, "", now)[0]
+    assert instance["httpPort"] == 53110
+    assert instance["httpState"] == "failed"
+    assert instance["httpReason"] == "Access denied."

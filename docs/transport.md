@@ -102,6 +102,23 @@ When a limit is exceeded, the add-in evicts the oldest completed results first.
 Queued and running jobs are never evicted, and the newest completed result is always kept, even if it alone exceeds `maxStoredBytes`.
 The limits apply to results of every transport, because all transports share one scheduler.
 
+### Listener status
+
+The heartbeat and `revit_ping` report the listener state: `httpState` is `disabled`, `listening` or `failed`, and `httpReason` explains `disabled` and `failed`.
+`revit_ping` returns them as `httpListener` with `state` and `reason`; `revit_list_instances` returns `httpState` and `httpReason` over the local and SSH transports.
+After the listener starts, the add-in probes its own `/health` endpoint. An HTTP.sys 503 or another failed probe sets the state to `failed`.
+A reservation or port problem shows `failed` with the reason, and an invalid `settings.json` shows `failed` with a configuration reason.
+
+When the state is `failed`, or a client gets HTTP 503, check the reservations and the HTTP service from an elevated prompt on the Revit machine:
+
+```powershell
+netsh http show urlacl
+netsh http show servicestate
+```
+
+`show urlacl` must list the exact prefix, for example `http://127.0.0.1:53110/`, for the Windows user that runs Revit.
+`show servicestate` lists the request queues and URL groups that already own a prefix; another process on the same URL causes a 503.
+
 ### Windows URL reservation
 
 Default script and MSI installs neither register a URL ACL nor require a `netsh` command.

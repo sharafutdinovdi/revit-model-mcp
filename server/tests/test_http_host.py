@@ -778,3 +778,45 @@ def test_addin_http_shutdown_and_response_limits():
     assert "_gate.WaitDrained" in dispose
     assert dispose.index("_gate.Close()") < dispose.index("_listener.Stop()")
     assert dispose.index("_channel.Shutdown()") < dispose.index("_gate.WaitDrained")
+
+
+def test_http_503_points_to_listener_diagnostics(endpoint):
+    host, state = endpoint
+    state["status"] = 503
+    with pytest.raises(RevitChannelError) as captured:
+        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    message = str(captured.value)
+    assert message.startswith("Revit endpoint returned HTTP 503:")
+    assert "HTTP.sys has no working listener for this URL" in message
+    assert "revit_ping over the local transport" in message
+    assert "httpListener" in message
+    assert "netsh http show urlacl" in message
+    assert "netsh http show servicestate" in message
+    assert "docs/transport.md" in message
+
+
+def test_unreachable_endpoint_points_to_heartbeat_listener_reason():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+    port = server.server_port
+    server.server_close()
+    host = HttpHost(f"http://127.0.0.1:{port}", "test-token")
+    with pytest.raises(RevitChannelError) as captured:
+        asyncio.run(host.health())
+    assert "HTTP is disabled or failed" in str(captured.value)
+    assert "revit_ping over the local transport shows the reason in httpListener" in str(
+        captured.value
+    )
+
+
+def test_addin_self_probe_is_independent_of_shutdown_drain():
+    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
+    listen = source.split("private async Task ListenAsync()", 1)[1].split(
+        "private async Task HandleAsync", 1
+    )[0]
+    assert listen.index('AbsolutePath == "/health"') < listen.index("_gate.TryEnter()")
+    probe = source.split("private async Task ProbeAsync()", 1)[1].split(
+        "private async Task ListenAsync()", 1
+    )[0]
+    assert probe.count("_closing") == 2
+    dispose = source.split("public void Dispose()", 1)[1]
+    assert dispose.index("_closing = true") < dispose.index("_gate.Close()")
