@@ -9,6 +9,32 @@ public static class GroupFailurePolicy
         var failingIds = groupFailureElementIds.SelectMany(ids => ids).ToHashSet();
         return matchedIds.Where(failingIds.Contains).Distinct().OrderBy(id => id).ToList();
     }
+
+    public static List<long> BlockedIds(IEnumerable<long> requestedIds, IEnumerable<IReadOnlyCollection<long>> groupFailureElementIds,
+        Func<long, long?> groupOf)
+    {
+        var failingIds = groupFailureElementIds.SelectMany(ids => ids).ToHashSet();
+        return requestedIds.Where(id => failingIds.Contains(id) || groupOf(id) is long groupId && failingIds.Contains(groupId))
+            .Distinct().OrderBy(id => id).ToList();
+    }
+}
+
+public static class GroupSkipPolicy
+{
+    public enum GroupSkipDecision { Proceed, SkipSome, RefuseAll }
+
+    public static bool Supports(string command) => command is "move" or "rotate" or "copy" or "mirror" or "change-type";
+
+    public static GroupSkipDecision Decide(int requested, int inGroup) => inGroup == 0
+        ? GroupSkipDecision.Proceed
+        : requested > 0 && inGroup >= requested ? GroupSkipDecision.RefuseAll : GroupSkipDecision.SkipSome;
+
+    public static string RefusalMessage(int requested) => requested == 1
+        ? "The element belongs to a group and Revit allows changes to group members only in group edit mode. Nothing was changed."
+        : $"All {requested} elements belong to groups and Revit allows changes to group members only in group edit mode. Nothing was changed.";
+
+    public static string SkipWarning(int count) =>
+        $"{count} {(count == 1 ? "element was" : "elements were")} skipped because they belong to groups; Revit allows changes to group members only in group edit mode.";
 }
 
 public readonly record struct JoinEnd(int Wall, int End);
