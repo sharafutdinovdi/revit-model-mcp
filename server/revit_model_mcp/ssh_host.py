@@ -666,7 +666,7 @@ class SshPowerShellHost:
             "$path = Join-Path $directory $_; Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }"
         )
 
-    def _build_command(self, script: str) -> list[str]:
+    def _build_command(self, script: str, *, takes_input: bool = False) -> list[str]:
         encoded_script = base64.b64encode(script.encode("utf-16le")).decode("ascii")
         powershell = [
             "powershell.exe",
@@ -684,6 +684,7 @@ class SshPowerShellHost:
             "-o",
             f"ConnectTimeout={self.connect_timeout_seconds}",
             "-T",
+            *([] if takes_input else ["-n"]),
             "-a",
             "-x",
             "-o",
@@ -714,20 +715,26 @@ class SshPowerShellHost:
     async def _run(
         self, script: str, timeout_seconds: float = 60, *, input: bytes | None = None
     ) -> str:
-        command = self._build_command(script)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_seconds
+        command = self._build_command(script, takes_input=input is not None)
         multiplexed = os.environ.get("REVIT_MCP_SSH_MUX") != "0" and "ControlMaster=auto" in command
         process: asyncio.subprocess.Process | None = None
         try:
             if not self.local:
-                await self._reserve_connection(multiplexed)
+                await asyncio.wait_for(
+                    self._reserve_connection(multiplexed), timeout=timeout_seconds
+                )
+            if deadline - loop.time() <= 0:
+                raise asyncio.TimeoutError
             process = await asyncio.create_subprocess_exec(
                 *command,
-                stdin=asyncio.subprocess.PIPE if input is not None else None,
+                stdin=asyncio.subprocess.PIPE if input is not None else asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await asyncio.wait_for(
-                process.communicate(input=input), timeout=timeout_seconds
+                process.communicate(input=input), timeout=deadline - loop.time()
             )
         except asyncio.CancelledError:
             if process is not None and process.returncode is None:
@@ -742,6 +749,12 @@ class SshPowerShellHost:
                 "Could not start the transport executable. Check that PowerShell (local mode) or ssh (SSH mode) is available in PATH."
             ) from error
         except asyncio.TimeoutError as error:
+            if process is None:
+                raise RemoteCommandTimeoutError(
+                    f"Command on {self.host} was not started: the SSH connection quota "
+                    f"({RELAY_CONNECTION_LIMIT} connections per {RELAY_WINDOW_SECONDS:g} s) "
+                    f"did not free up within {timeout_seconds:g} s. Nothing was sent to the host."
+                ) from error
             if process is not None and process.returncode is None:
                 process.kill()
                 await process.communicate()

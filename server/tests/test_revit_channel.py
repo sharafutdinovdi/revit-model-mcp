@@ -8,6 +8,7 @@ import os
 import shutil
 import stat
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -425,6 +426,124 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(list(host._connection_starts), [540.0])
 
+    async def test_connection_quota_timeout_does_not_start_command(self) -> None:
+        host = SshPowerShellHost()
+        host._connection_starts.extend([asyncio.get_running_loop().time()] * RELAY_CONNECTION_LIMIT)
+
+        with patch(
+            "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec", new=AsyncMock()
+        ) as start:
+            started = time.monotonic()
+            with self.assertRaisesRegex(RemoteCommandTimeoutError, "connection quota") as raised:
+                await host._run("'ok'", timeout_seconds=1)
+            elapsed = time.monotonic() - started
+
+        self.assertGreaterEqual(elapsed, 0.9)
+        self.assertLessEqual(elapsed, 2.0)
+        self.assertIn("Nothing was sent to the host.", str(raised.exception))
+        start.assert_not_called()
+        self.assertEqual(len(host._connection_starts), RELAY_CONNECTION_LIMIT)
+        self.assertFalse(host._connection_lock.locked())
+
+    async def test_connection_lock_wait_is_bounded_by_timeout(self) -> None:
+        host = SshPowerShellHost()
+        async with host._connection_lock:
+            with patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec", new=AsyncMock()
+            ) as start:
+                with self.assertRaisesRegex(RemoteCommandTimeoutError, "connection quota"):
+                    await host._run("'ok'", timeout_seconds=0.02)
+
+        start.assert_not_called()
+        self.assertEqual(len(host._connection_starts), 0)
+
+    async def test_quota_wait_leaves_remaining_budget_for_command(self) -> None:
+        host = SshPowerShellHost()
+        host._connection_starts.extend([asyncio.get_running_loop().time()] * RELAY_CONNECTION_LIMIT)
+        process = FakeSshProcess(0, stdout=b"ok")
+        with (
+            patch("revit_model_mcp.ssh_host.RELAY_WINDOW_SECONDS", 0.2),
+            patch("revit_model_mcp.ssh_host.asyncio.wait_for", wraps=asyncio.wait_for) as wait_for,
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=process),
+            ) as start,
+        ):
+            self.assertEqual(await host._run("'ok'", timeout_seconds=2), "ok")
+
+        start.assert_awaited_once()
+        self.assertEqual(wait_for.call_count, 2)
+        self.assertEqual(wait_for.call_args_list[0].kwargs["timeout"], 2)
+        remaining = wait_for.call_args_list[1].kwargs["timeout"]
+        self.assertGreater(remaining, 0)
+        self.assertLessEqual(remaining, 1.8)
+
+    async def test_expired_deadline_does_not_start_command(self) -> None:
+        host = SshPowerShellHost()
+        loop = SimpleNamespace(now=0.0, time=lambda: loop.now)
+
+        async def reserve(multiplexed: bool) -> None:
+            loop.now = 1.0
+
+        async def wait_for(awaitable, *, timeout):
+            return await awaitable
+
+        with (
+            patch("revit_model_mcp.ssh_host.asyncio.get_running_loop", return_value=loop),
+            patch("revit_model_mcp.ssh_host.asyncio.wait_for", side_effect=wait_for),
+            patch.object(host, "_reserve_connection", side_effect=reserve),
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec", new=AsyncMock()
+            ) as start,
+        ):
+            with self.assertRaisesRegex(RemoteCommandTimeoutError, "connection quota"):
+                await host._run("'ok'", timeout_seconds=1)
+
+        start.assert_not_called()
+
+    async def test_stdin_is_detached_unless_input_is_supplied(self) -> None:
+        for local in (False, True):
+            for input in (None, b"x"):
+                with self.subTest(local=local, input=input):
+                    host = SshPowerShellHost(local=local)
+                    process = FakeSshProcess(0, stdout=b"ok")
+                    with patch(
+                        "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                        new=AsyncMock(return_value=process),
+                    ) as start:
+                        self.assertEqual(await host._run("'ok'", input=input), "ok")
+                    start.assert_awaited_once()
+                    self.assertEqual(
+                        start.call_args.kwargs["stdin"],
+                        asyncio.subprocess.DEVNULL if input is None else asyncio.subprocess.PIPE,
+                    )
+                    self.assertEqual(process.input, input)
+                    self.assertEqual("-n" in start.call_args.args, not local and input is None)
+
+    async def test_cancelled_running_command_is_killed(self) -> None:
+        host = SshPowerShellHost()
+        process = FakeSshProcess(None, hang=True)
+        communicating = asyncio.Event()
+
+        async def communicate(input=None):
+            communicating.set()
+            return await FakeSshProcess.communicate(process, input=input)
+
+        with (
+            patch.object(process, "communicate", side_effect=communicate),
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=process),
+            ),
+        ):
+            task = asyncio.create_task(host._run("'ok'"))
+            await asyncio.wait_for(communicating.wait(), timeout=2)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertTrue(process.killed)
+
     async def test_reports_connection_not_established(self) -> None:
         process = FakeSshProcess(
             255,
@@ -457,6 +576,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
         message = str(raised.exception)
         self.assertIn("did not complete", message)
+        self.assertIn("within 0.001 s", message)
         self.assertIn("command execution timeout", message)
         self.assertIn("not evidence that SSH is unavailable", message)
         self.assertTrue(process.killed)
@@ -1189,6 +1309,7 @@ def test_ssh_command_reuses_private_runtime_directory(monkeypatch, tmp_path):
         "-o",
         "ConnectTimeout=45",
         "-T",
+        "-n",
         "-a",
         "-x",
         "-o",
@@ -1285,7 +1406,7 @@ def test_ssh_command_disables_forwarding_before_user_options(monkeypatch):
     assert command.index("ClearAllForwardings=yes") < command.index("ForwardAgent=yes")
     assert command.index("ForwardAgent=no") < command.index("ForwardAgent=yes")
     assert command.index("ForwardX11=no") < command.index("ForwardX11=yes")
-    assert command[5:8] == ["-T", "-a", "-x"]
+    assert command[5:9] == ["-T", "-n", "-a", "-x"]
 
 
 def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
@@ -1295,7 +1416,7 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
         command = SshPowerShellHost("revit-host")._build_command("'ok'")
     mkdir.assert_not_called()
     assert not any(option.startswith("Control") for option in command)
-    assert command[16:22] == [
+    assert command[17:23] == [
         "-p",
         "2222",
         "-o",
@@ -1324,7 +1445,7 @@ def test_ssh_extra_options_follow_mux_options(monkeypatch, tmp_path):
     monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
     monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
     command = SshPowerShellHost("revit-host")._build_command("'ok'")
-    assert command[21:25] == [
+    assert command[22:26] == [
         "ControlPersist=600",
         "-o",
         "ServerAliveInterval=30",
@@ -1338,6 +1459,21 @@ def test_local_command_ignores_ssh_settings(monkeypatch):
         command = SshPowerShellHost(local=True)._build_command("'ok'")
     mkdir.assert_not_called()
     assert command[:4] == ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand"]
+    assert "-n" not in command
+
+
+def test_ssh_command_detaches_stdin_only_without_input(monkeypatch):
+    monkeypatch.delenv("REVIT_MCP_SSH_OPTIONS", raising=False)
+    host = SshPowerShellHost("revit-host")
+    command = host._build_command("'ok'")
+    assert command[command.index("-T") + 1] == "-n"
+    assert command.index("-n") < command.index("revit-host")
+    assert host._build_command("'ok'", takes_input=True) == [
+        argument for argument in command if argument != "-n"
+    ]
+    assert SshPowerShellHost(local=True)._build_command("'ok'", takes_input=True) == (
+        SshPowerShellHost(local=True)._build_command("'ok'")
+    )
 
 
 if __name__ == "__main__":
