@@ -179,6 +179,49 @@ async def test_scheduled_task_fallback_then_persisted_status_and_cancel(boundary
 
 
 @pytest.mark.anyio
+async def test_read_only_start_is_refused_without_side_effects(monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_READ_ONLY", "1")
+    registry, host, channel = Registry(), Host(), Channel()
+    register_batch(registry, lambda: host, lambda: channel)
+    result = await registry.tools["revit_batch_start"](folder=r"C:\models")
+    assert result == {"success": False, "command": "batch-start", "error": "read-only mode"}
+    assert not host.runs and not host.discovery and not channel.jobs
+
+
+@pytest.mark.anyio
+async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch):
+    registry, host, channel = Registry(), Host(), Channel()
+    register_batch(registry, lambda: host, lambda: channel)
+    run_id = (await registry.tools["revit_batch_start"](paths=[r"C:\models\A.rvt"]))["runId"]
+    monkeypatch.setenv("REVIT_MCP_READ_ONLY", "1")
+    read_only_registry = Registry()
+    register_batch(read_only_registry, lambda: host, lambda: channel)
+    result = await read_only_registry.tools["revit_batch_cancel"](run_id)
+    assert result == {"success": False, "command": "batch-cancel", "error": "read-only mode"}
+    assert host.runs[run_id].get("cancelRequested") is not True
+    status = await read_only_registry.tools["revit_batch_status"](run_id)
+    assert status["runId"] == run_id
+
+
+@pytest.mark.anyio
+async def test_host_batch_cancel_script_checks_workstation_gate():
+    scripts = []
+
+    class CaptureHost(SshPowerShellHost):
+        def __init__(self):
+            super().__init__("test-host")
+
+        async def _run(self, script, **_kwargs):
+            scripts.append(script)
+            return ""
+
+    await CaptureHost().batch_cancel("a" * 32)
+    assert "'read-only'" in scripts[0]
+    assert "LOCALAPPDATA" in scripts[0]
+    assert scripts[0].index("read-only") < scripts[0].index("run.json")
+
+
+@pytest.mark.anyio
 async def test_status_and_fetch_expose_redacted_dialogs_without_mutating_state(
     boundary, tmp_path, monkeypatch
 ):

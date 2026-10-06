@@ -746,15 +746,33 @@ public sealed class ControlJobParserTests
     {
         var attempts = 0;
         var raisedAgain = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var queue = new ExternalEventRequestQueue(() =>
-        {
-            attempts++;
-            if (attempts == 2) raisedAgain.TrySetResult(true);
-            return attempts > 1;
-        });
+        var delayCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delays = new List<TimeSpan>();
+        var queue = new ExternalEventRequestQueue(
+            () =>
+            {
+                var attempt = Interlocked.Increment(ref attempts);
+                if (attempt == 2) raisedAgain.TrySetResult(true);
+                return attempt > 1;
+            },
+            delay: interval =>
+            {
+                lock (delays) delays.Add(interval);
+                return delayCompletion.Task;
+            });
         queue.Request();
-        await raisedAgain.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        await Assert.That(attempts).IsEqualTo(2);
+        await Assert.That(Volatile.Read(ref attempts)).IsEqualTo(1);
+        TimeSpan[] beforeCompletion;
+        lock (delays) beforeCompletion = delays.ToArray();
+        await Assert.That(beforeCompletion.Length).IsEqualTo(1);
+        await Assert.That(beforeCompletion[0]).IsEqualTo(TimeSpan.FromMilliseconds(100));
+        delayCompletion.SetResult(true);
+        await raisedAgain.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await Assert.That(Volatile.Read(ref attempts)).IsEqualTo(2);
+        TimeSpan[] requested;
+        lock (delays) requested = delays.ToArray();
+        await Assert.That(requested.Length).IsEqualTo(1);
+        await Assert.That(requested[0]).IsEqualTo(TimeSpan.FromMilliseconds(100));
     }
 
     [Test]

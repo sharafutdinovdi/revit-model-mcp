@@ -39,6 +39,7 @@ Its lifetime is independent of the MCP client.
 `revit_batch_status(run_id)` reads persisted progress and marks unfinished models failed when the recorded supervisor process has exited.
 Completed and failed models stay terminal on restart.
 An interrupted running model returns to pending when the supervisor restarts.
+`revit_batch_start` and `revit_batch_cancel` are refused in server and workstation read-only mode; see the [unattended execution policy](actions.md#unattended-execution-policy).
 `revit_batch_cancel(run_id)` writes a durable cancellation marker, stops new work, closes an opened model without saving when possible, and marks remaining models cancelled.
 `revit_batch_fetch(run_id, dest_dir)` accepts completed, failed, and cancelled runs.
 It downloads snapshots from completed models to new client files.

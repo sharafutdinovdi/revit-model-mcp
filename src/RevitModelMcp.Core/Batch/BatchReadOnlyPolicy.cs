@@ -8,4 +8,6 @@ public static class BatchReadOnlyPolicy
     };
 
     public static bool Allows(string? command) => command is not null && Allowed.Contains(command);
+
+    public static bool RefusedInReadOnlyMode(string? command) => command == "batch-supervisor-start";
 }
