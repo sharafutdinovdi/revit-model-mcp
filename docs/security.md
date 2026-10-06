@@ -73,6 +73,7 @@ gh attestation verify RevitModelMcp-<version>-SingleUser.msi \
 ```
 
 The same command accepts a per-year ZIP, wheel, source distribution, `.mcpb` or `SHA256SUMS.txt` in place of the MSI filename.
+In a non-interactive shell, add `--format json` or the command prints nothing.
 The attestation binds the downloaded file's digest to this repository's build workflow and a source commit.
 It does not certify that the program is safe or cover packages downloaded later by uv.
 The MSI and executable files are not Authenticode-signed; Windows may still show an unknown publisher warning.
