@@ -38,6 +38,7 @@ Project CreateProject(InstallScope scope)
             ProductIcon = @"build\install\Resources\Icons\ShellIcon.ico"
         }
     };
+    project.WixSourceGenerated += Replacement.AddInstallTimeFileRemoval;
     project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
     return project;
 }

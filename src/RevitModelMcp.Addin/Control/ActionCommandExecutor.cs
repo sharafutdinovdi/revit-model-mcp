@@ -807,6 +807,13 @@ internal static class ActionCommandExecutor
         }
 
         var preflight = ActionPreflight.Run(document, command, action, ids);
+        List<long>? skippedInGroup = null;
+        if (GroupSkipPolicy.Supports(command) && preflight is { InGroup.Count: > 0 })
+        {
+            skippedInGroup = preflight.InGroup.OrderBy(id => id).ToList();
+            ids = ids.Where(id => !preflight.InGroup.Contains(RevitValueReader.GetId(id))).ToList();
+            action.ElementIds = ids.Select(RevitValueReader.GetId).ToList();
+        }
         var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
         if (group is not null && group.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction group.");
@@ -821,6 +828,12 @@ internal static class ActionCommandExecutor
             {
                 var before = ActionVerifier.CaptureBefore(document, command, action, ids);
                 var data = Mutate(document, command, action, ids, preflight);
+                if (skippedInGroup is not null)
+                {
+                    data.Skipped = new SkippedByReason { InGroup = skippedInGroup };
+                    var warning = GroupSkipPolicy.SkipWarning(skippedInGroup.Count);
+                    data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
+                }
                 data.DryRun = action.DryRun;
                 data.Verification ??= new ActionVerification();
                 data.Verification.Before = before;
@@ -1058,8 +1071,7 @@ internal static class ActionCommandExecutor
             case "override-graphics":
                 return ActionMutations.OverrideGraphics(document, action, ids);
             case "move":
-                ElementTransformUtils.MoveElements(document, ids, new XYZ(Millimeters(action.DxMm), Millimeters(action.DyMm), Millimeters(action.DzMm)));
-                return new ActionResultData { Count = ids.Count };
+                return ActionMutations.Move(document, action, ids);
             case "rotate":
                 return ActionMutations.Rotate(document, action, ids);
             case "copy":

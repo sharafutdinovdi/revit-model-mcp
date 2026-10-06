@@ -21,6 +21,7 @@ from revit_model_mcp.revit_channel import (
     ReadJob,
     ResponseParseError,
     ResponseTimeoutError,
+    ResultExpiredError,
     RevitChannelError,
     matches_document,
     select_instance,
@@ -314,7 +315,15 @@ class HttpHost:
                 error.close()
                 if error.code == 401:
                     self._verified_token = None
+                if error.code == 410:
+                    raise ResultExpiredError(
+                        "The Revit result expired or was evicted and is no longer available. "
+                        "Do not retry polling this job. If it was an action, inspect the model before resubmitting."
+                    ) from None
                 messages = {
+                    408: "Revit timed out waiting for the request body; retry the request.",
+                    413: "The job is larger than the 1 MiB limit.",
+                    503: "Revit endpoint returned HTTP 503: HTTP.sys has no working listener for this URL. On the Revit machine run revit_ping over the local transport (it shows httpListener), and check netsh http show urlacl and netsh http show servicestate; see docs/transport.md.",
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
                     403: "Revit denied this request. Actions are refused while the workstation is in read-only mode.",
                     429: "Revit job queue is full for this client; retry after a short wait.",
@@ -342,6 +351,7 @@ class HttpHost:
                 raise RevitChannelError(
                     f"Revit endpoint not reachable at {self.host}: is Revit running with the add-in, "
                     "and is the port reachable from this machine?"
+                    " If the add-in log says HTTP is disabled or failed, revit_ping over the local transport shows the reason in httpListener."
                 ) from None
 
         return await asyncio.to_thread(send)

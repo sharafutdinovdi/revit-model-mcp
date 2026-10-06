@@ -1128,6 +1128,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
@@ -1177,7 +1178,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Rotate elements about a vertical axis through center_mm, or their combined bounding box center."""
+        """Rotate elements about a vertical axis through center_mm, or their combined bounding box center.
+        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        """
         return await send(
             "rotate",
             elementIds=element_ids,
@@ -1197,7 +1200,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Create 1 to 100 successive copies at multiples of the model-axis offset in mm."""
+        """Create 1 to 100 successive copies at multiples of the model-axis offset in mm.
+        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        """
         return await send(
             "copy",
             elementIds=element_ids,
@@ -1218,7 +1223,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Mirror across a model X or Y parallel line through point_mm; copy keeps originals."""
+        """Mirror across a model X or Y parallel line through point_mm; copy keeps originals.
+        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        """
         return await send(
             "mirror",
             elementIds=element_ids,
@@ -1237,7 +1244,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Change each element to one compatible type; family resolves duplicate type names."""
+        """Change each element to one compatible type; family resolves duplicate type names.
+        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        """
         return await send(
             "change-type",
             elementIds=element_ids,

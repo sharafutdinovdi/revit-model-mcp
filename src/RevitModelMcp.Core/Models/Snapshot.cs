@@ -120,6 +120,12 @@ public sealed class InstanceStatus
 
     [DataMember(Name = "commands", Order = 16)]
     public List<string> Commands { get; set; } = new();
+
+    [DataMember(Name = "httpState", Order = 17, EmitDefaultValue = false)]
+    public string? HttpState { get; set; }
+
+    [DataMember(Name = "httpReason", Order = 18, EmitDefaultValue = false)]
+    public string? HttpReason { get; set; }
 }
 
 [DataContract]

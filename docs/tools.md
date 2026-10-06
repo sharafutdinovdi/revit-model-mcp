@@ -41,7 +41,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_instances` | `document=null`; no timeout arguments | Return endpoint or heartbeat information in `instances`. |
 | `revit_model_health` | `save_to` (optional) | Read model quality counts and top warnings; save an Excel health report on the MCP server machine. |
 | `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
-| `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
+| `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. Refused for family documents. |
 | `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
@@ -91,6 +91,7 @@ Coordinator location and link lists are capped at 100 without pagination; locati
 `pinned` and `viewSpecific` are true when any instance of the reported type qualifies.
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
+Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `save_to` is honored; the client/response timeout still applies.
 
 Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.

@@ -328,6 +328,8 @@ class LocalPipeHost:
                             "fileChannelVersion",
                             "startedUtc",
                             "httpPort",
+                            "httpState",
+                            "httpReason",
                             "discoveryVersion",
                             "instanceId",
                             "pipeName",
