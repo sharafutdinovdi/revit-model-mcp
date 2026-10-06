@@ -150,6 +150,10 @@ class RevitChannelError(RuntimeError):
     """User-facing Revit read channel error."""
 
 
+class ResultExpiredError(RevitChannelError):
+    pass
+
+
 class SshUnavailableError(RevitChannelError):
     pass
 
@@ -764,6 +768,8 @@ class RevitReadChannel:
                     ),
                     remaining() if background else None,
                 )
+            except ResultExpiredError:
+                raise
             except (RevitChannelError, TimeoutError):
                 if not background:
                     raise
@@ -775,6 +781,8 @@ class RevitReadChannel:
                         self.remote.finish_job(response_name, [], False, None),
                         timeout=remaining(),
                     )
+                except ResultExpiredError:
+                    raise
                 except (RevitChannelError, TimeoutError):
                     if not background:
                         raise
@@ -814,6 +822,8 @@ class RevitReadChannel:
                     response_name = await self.remote.wait_for_new_response(
                         job.command, known_responses, remaining(), correlation_id
                     )
+                except ResultExpiredError:
+                    raise
                 except (RevitChannelError, TimeoutError):
                     if not background:
                         raise
@@ -823,6 +833,8 @@ class RevitReadChannel:
                 # Recheck at the boundary: a completed result wins over the budget.
                 try:
                     response = await asyncio.wait_for(self.remote.fetch_job(job_id), 1)
+                except ResultExpiredError:
+                    raise
                 except (RevitChannelError, TimeoutError):
                     return running_job(job_id)
                 if _is_intermediate_response(response):

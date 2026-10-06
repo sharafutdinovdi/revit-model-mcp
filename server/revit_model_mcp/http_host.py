@@ -21,6 +21,7 @@ from revit_model_mcp.revit_channel import (
     ReadJob,
     ResponseParseError,
     ResponseTimeoutError,
+    ResultExpiredError,
     RevitChannelError,
     matches_document,
     select_instance,
@@ -314,7 +315,14 @@ class HttpHost:
                 error.close()
                 if error.code == 401:
                     self._verified_token = None
+                if error.code == 410:
+                    raise ResultExpiredError(
+                        "The Revit result expired or was evicted and is no longer available. "
+                        "Do not retry polling this job. If it was an action, inspect the model before resubmitting."
+                    ) from None
                 messages = {
+                    408: "Revit timed out waiting for the request body; retry the request.",
+                    413: "The job is larger than the 1 MiB limit.",
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
                     403: "Revit denied this request. Actions are refused while the workstation is in read-only mode.",
                     429: "Revit job queue is full for this client; retry after a short wait.",

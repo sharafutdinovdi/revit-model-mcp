@@ -315,4 +315,130 @@ public sealed class JobSchedulerTests
             Directory.Delete(directory, true);
         }
     }
+    [Test]
+    public async Task CountBudgetEvictsOldestCompletedResult()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var logged = new List<string>();
+        var scheduler = new JobScheduler(() => now, log: logged.Add, maxStoredResponses: 1);
+        Submit(scheduler, "a", 1);
+        scheduler.TakeNext();
+        scheduler.Complete("a-1", "first", true);
+        now += TimeSpan.FromSeconds(1);
+        Submit(scheduler, "a", 2);
+        scheduler.TakeNext();
+        scheduler.Complete("a-2", "second", true);
+        await Assert.That(scheduler.Status("a-1")).IsNull();
+        await Assert.That(scheduler.WasExpired("a-1")).IsTrue();
+        await Assert.That(scheduler.Status("a-2")?.Result).IsEqualTo("second");
+        await Assert.That(string.Join(",", logged)).IsEqualTo("Stored response budget evicted 1 results.");
+    }
+
+    [Test]
+    public async Task ByteBudgetCountsUtf8AndKeepsNewestOversizedResult()
+    {
+        var scheduler = new JobScheduler(maxStoredBytes: 3);
+        Submit(scheduler, "a", 1);
+        scheduler.TakeNext();
+        scheduler.Complete("a-1", "é", true);
+        Submit(scheduler, "a", 2);
+        scheduler.TakeNext();
+        scheduler.Complete("a-2", "é", true);
+        await Assert.That(scheduler.Status("a-1")).IsNull();
+        await Assert.That(scheduler.WasExpired("a-1")).IsTrue();
+        Submit(scheduler, "a", 3);
+        scheduler.TakeNext();
+        scheduler.Complete("a-3", "oversized", true);
+        await Assert.That(scheduler.Status("a-3")?.Result).IsEqualTo("oversized");
+        await Assert.That(scheduler.Status("a-2")).IsNull();
+    }
+
+    [Test]
+    public async Task BudgetNeverEvictsQueuedWaitingOrRunningJobs()
+    {
+        var scheduler = new JobScheduler(maxStoredResponses: 1, maxStoredBytes: 1);
+        Submit(scheduler, "a", 1);
+        scheduler.TakeNext();
+        scheduler.Complete("a-1", "oversized", true);
+        Submit(scheduler, "a", 2);
+        Submit(scheduler, "a", 3);
+        scheduler.MarkWaiting();
+        scheduler.TakeNext();
+        Submit(scheduler, "b", 1);
+        await Assert.That(scheduler.Status("a-2")?.State).IsEqualTo(JobState.Running);
+        await Assert.That(scheduler.Status("a-3")?.State).IsEqualTo(JobState.WaitingRevit);
+        await Assert.That(scheduler.Status("b-1")?.State).IsEqualTo(JobState.Queued);
+        await Assert.That(scheduler.ActiveJobs().Count).IsEqualTo(3);
+    }
+
+    [Test]
+    public async Task TimeExpiryRecordsTombstoneAndUnknownIdsDoNot()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scheduler = new JobScheduler(() => now);
+        Submit(scheduler, "a", 1);
+        scheduler.TakeNext();
+        scheduler.Complete("a-1", "result", true);
+        now += TimeSpan.FromMinutes(11);
+        await Assert.That(scheduler.Status("a-1")).IsNull();
+        await Assert.That(scheduler.WasExpired("a-1")).IsTrue();
+        await Assert.That(scheduler.WasExpired("unknown")).IsFalse();
+        Submit(scheduler, "a", 1);
+        await Assert.That(scheduler.WasExpired("a-1")).IsFalse();
+    }
+
+    [Test]
+    public async Task SetBudgetImmediatelyEnforcesNewLimits()
+    {
+        var scheduler = new JobScheduler();
+        for (var number = 1; number <= 2; number++)
+        {
+            Submit(scheduler, "a", number);
+            scheduler.TakeNext();
+            scheduler.Complete($"a-{number}", "result", true);
+        }
+        scheduler.SetBudget(1, 100);
+        await Assert.That(scheduler.WasExpired("a-1")).IsTrue();
+        await Assert.That(scheduler.Status("a-2")).IsNotNull();
+    }
+
+    [Test]
+    public async Task ShutdownAbandonsRunningAndCancelsQueuedJobsIdempotently()
+    {
+        var scheduler = new JobScheduler();
+        Submit(scheduler, "a", 1);
+        scheduler.TakeNext();
+        Submit(scheduler, "a", 2);
+        Submit(scheduler, "a", 3);
+        var changed = scheduler.AbandonUnfinished("running result", "queued result");
+        await Assert.That(changed.Count).IsEqualTo(3);
+        await Assert.That(changed.Single(job => job.JobId == "a-1").State).IsEqualTo(JobState.Abandoned);
+        await Assert.That(changed.Single(job => job.JobId == "a-1").Result).IsEqualTo("running result");
+        foreach (var job in changed.Where(job => job.JobId != "a-1"))
+        {
+            await Assert.That(job.State).IsEqualTo(JobState.Cancelled);
+            await Assert.That(job.Result).IsEqualTo("queued result");
+        }
+        await Assert.That(scheduler.AbandonUnfinished("again", "again").Count).IsEqualTo(0);
+        await Assert.That(scheduler.ActiveJobs().Count).IsEqualTo(0);
+        await Assert.That(scheduler.HasPending).IsFalse();
+        await Assert.That(scheduler.Cancel("a-1", "a").Cancelled).IsFalse();
+        await Assert.That(scheduler.Cancel("a-1", "a").Message).IsEqualTo("Job has already finished.");
+        scheduler.Complete("a-1", "late result", true);
+        await Assert.That(scheduler.Status("a-1")?.State).IsEqualTo(JobState.Abandoned);
+        await Assert.That(scheduler.Status("a-1")?.Result).IsEqualTo("late result");
+        await Assert.That(scheduler.TakeNext()).IsNull();
+    }
+    [Test]
+    public async Task ShutdownCancelsJobsWaitingForRevit()
+    {
+        var scheduler = new JobScheduler();
+        Submit(scheduler, "a", 1);
+        scheduler.MarkWaiting();
+        var changed = scheduler.AbandonUnfinished("running", "queued");
+        await Assert.That(changed.Single().State).IsEqualTo(JobState.Cancelled);
+        await Assert.That(changed.Single().Result).IsEqualTo("queued");
+        await Assert.That(scheduler.HasPending).IsFalse();
+        await Assert.That(scheduler.TakeNext()).IsNull();
+    }
 }
