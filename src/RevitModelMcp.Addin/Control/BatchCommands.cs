@@ -61,6 +61,8 @@ internal static class BatchCommands
 
     private static BatchStartResult StartSupervisor(string? runId)
     {
+        if (BatchReadOnlyPolicy.RefusedInReadOnlyMode("batch-supervisor-start") && ActionCommandExecutor.ReadOnlyMode)
+            throw new InvalidOperationException("read-only mode");
         if (Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
             throw new InvalidOperationException("A batch worker cannot start a supervisor.");
         if (!Guid.TryParseExact(runId, "N", out _)) throw new ArgumentException("Invalid run id.");
