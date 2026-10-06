@@ -9,13 +9,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -40,6 +42,10 @@ jobs:
     needs: release
     if: needs.release.outputs.release_created == 'true' && needs.release.outputs.has_pat != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
     steps:
       - name: Run the release pipeline for the new tag
         env:

@@ -28,7 +28,10 @@ updates:
     commit-message:
       prefix: chore(deps)
   - package-ecosystem: pip
-    directory: /server
+    directories:
+      - /server
+      - /docs
+      - /.github/requirements
     schedule:
       interval: monthly
     open-pull-requests-limit: 3
@@ -36,5 +39,13 @@ updates:
       all:
         patterns: ["*"]
     labels: [dependencies, server]
+    commit-message:
+      prefix: chore(deps)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    labels: [dependencies, build]
     commit-message:
       prefix: chore(deps)

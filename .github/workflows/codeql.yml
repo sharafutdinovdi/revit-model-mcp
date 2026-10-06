@@ -11,12 +11,15 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   analyze:
     name: CodeQL (${{ matrix.language }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:

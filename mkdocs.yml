@@ -43,6 +43,7 @@ watch:
   - SECURITY.md
 exclude_docs: |
   requirements.txt
+  requirements.in
   hooks.py
   __pycache__/
 

@@ -19,6 +19,7 @@ jobs:
   quality:
     name: pr-checks
     runs-on: windows-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: read
@@ -54,11 +55,11 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install documentation dependencies
-        run: pip install -r docs/requirements.txt
+        run: pip install --require-hashes -r docs/requirements.txt
       - name: Build documentation
         run: mkdocs build --strict
       - name: Install Ruff
-        run: pip install ruff==0.16.7
+        run: pip install --require-hashes -r .github/requirements/ruff.txt
       - name: Check Python
         working-directory: server
         run: ruff check .
@@ -81,9 +82,9 @@ jobs:
           "Check Conventional Commit title": "use a Conventional Commit PR title, e.g. fix(server): ...",
           "Check workflows with actionlint": "actionlint",
           "Verify C# formatting": "$env:Configuration = 'Debug.R26'; $env:DeployAddin = 'false'; dotnet restore RevitModelMcp.sln --locked-mode; dotnet format RevitModelMcp.sln --no-restore --verify-no-changes --verbosity minimal",
-          "Install documentation dependencies": "pip install -r docs/requirements.txt",
+          "Install documentation dependencies": "pip install --require-hashes -r docs/requirements.txt",
           "Build documentation": "mkdocs build --strict",
-          "Install Ruff": "pip install ruff==0.16.7",
+          "Install Ruff": "pip install --require-hashes -r .github/requirements/ruff.txt",
           "Check Python": "cd server; uvx ruff==0.16.7 check .",
           "Verify Python formatting": "cd server; uvx ruff==0.16.7 format --check ."
         }

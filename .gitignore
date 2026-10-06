@@ -48,8 +48,7 @@ site/
 
 # Editor and local tool state
 .vscode/*
-__omp_shell(".vscode/settings.json")
-__omp_shell(".vscode/extensions.json")
+/work/
 .idea/
 .claude/
 .codex/

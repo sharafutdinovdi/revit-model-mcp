@@ -187,12 +187,12 @@ See [security details](https://sharafutdinovdi.github.io/revit-model-mcp/securit
 
 | Revit year | Add-in target framework | Validation status |
 | --- | --- | --- |
-| 2022 | .NET Framework 4.8 | Build evidence |
-| 2023 | .NET Framework 4.8 | Build evidence |
-| 2024 | .NET Framework 4.8 | Builds and install script |
-| 2025 | .NET 8 | Build evidence |
-| 2026 | .NET 8 | Builds, live reads/actions and install script |
-| 2027 | .NET 10 | Build evidence |
+| 2022 | .NET Framework 4.8 | Builds, live reads/actions and installers |
+| 2023 | .NET Framework 4.8 | Builds, live reads/actions and installers |
+| 2024 | .NET Framework 4.8 | Builds, live reads/actions and installers |
+| 2025 | .NET 8 | Builds, live reads/actions and installers |
+| 2026 | .NET 8 | Builds, live reads/actions and installers |
+| 2027 | .NET 10 | Builds, live reads/actions and installers |
 
 See [validation evidence](https://sharafutdinovdi.github.io/revit-model-mcp/validation/) for dates and limits, and [known gaps](https://sharafutdinovdi.github.io/revit-model-mcp/roadmap/#known-gaps).
 
