@@ -57,6 +57,21 @@ public sealed class ActionSummaryBuilderTests
     }
 
     [Test]
+    [Arguments(0, "Processed 1 of 4 models; 0 failed, 0 skipped.")]
+    [Arguments(3, "Processed 1 of 4 models; 0 failed, 0 skipped, 3 cancelled.")]
+    public async Task ProcessModels_ReportsCancelledCount(int cancelled, string expected)
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "process-models",
+            Count = 1,
+            ProcessTotal = 4,
+            ProcessCancelled = cancelled
+        });
+        await Assert.That(summary).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task ExecuteCode_UsesNamedUndoEntry()
     {
         await Assert.That(ActionSummaryBuilder.BuildGroupName("client", "Execute code"))
