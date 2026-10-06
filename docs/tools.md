@@ -41,7 +41,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_instances` | `document=null`; no timeout arguments | Return endpoint or heartbeat information in `instances`. |
 | `revit_model_health` | `save_to` (optional) | Read model quality counts and top warnings; save an Excel health report on the MCP server machine. |
 | `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
-| `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. |
+| `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. Refused for family documents. |
 | `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |

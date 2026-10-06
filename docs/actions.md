@@ -59,11 +59,11 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_show` | `element_ids`, `select=true` | Show nonempty IDs and zoom to fit when opening a new view; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
-| `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. |
-| `revit_rotate` | `element_ids`, `angle_deg`, `center_mm=null` | Rotate around a vertical axis through the given model XY point in mm or the combined bounding box center. Pinned elements are refused. |
-| `revit_copy` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0`, `count=1` | Create 1-100 copies at successive multiples of the offset. Return IDs per copy. |
-| `revit_mirror` | `element_ids`, `axis`, `point_mm`, `copy=true` | Mirror across an X or Y parallel line through the model XY point in mm. Copy keeps originals. |
-| `revit_change_type` | `element_ids`, `type_name`, `family=null` | Resolve each target among compatible types. Refuse ambiguous or incompatible targets with candidates. |
+| `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. Group members that Revit refuses to change are skipped; see [Group members](#group-members-in-dry-runs-and-real-runs). |
+| `revit_rotate` | `element_ids`, `angle_deg`, `center_mm=null` | Rotate around a vertical axis through the given model XY point in mm or the combined bounding box center. Pinned elements are refused. Group members that Revit refuses to change are skipped. |
+| `revit_copy` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0`, `count=1` | Create 1-100 copies at successive multiples of the offset. Return IDs per copy. Group members that Revit refuses to change are skipped. |
+| `revit_mirror` | `element_ids`, `axis`, `point_mm`, `copy=true` | Mirror across an X or Y parallel line through the model XY point in mm. Copy keeps originals. Group members that Revit refuses to change are skipped. |
+| `revit_change_type` | `element_ids`, `type_name`, `family=null` | Resolve each target among compatible types. Refuse ambiguous or incompatible targets with candidates. Group members that Revit refuses to change are skipped. |
 | `revit_update_parameters` | `filters`, `parameter`, `value`, `parameter_id=null`, `max_elements=5000`, `include_type_parameters=false` | Use query filters to update matching instance parameters. Refuse counts above the limit, at most 20000. Report missing, read-only and type-only parameters and preview up to 50 values. Members of groups that Revit refuses to change appear in `skipped.inGroup`, next to `skipped.missing`, `skipped.readOnly` and `skipped.typeParameter`; dry runs predict these skips. With `include_type_parameters=true`, update each distinct type once and report `affectedTypeIds` and `outsideFilterCount` for instances sharing those types outside the filter. |
 | `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
 | `revit_load_family` | `paths` (1-100), `overwrite=false`, `overwrite_parameter_values=false`, `dry_run=false`, `response_timeout_s=600` | Load workstation `.rfa` files in one undo entry. Existing families are `skipped` unless overwrite is true. With overwrite, changed families are `reloaded`; an already loaded family that Revit leaves unchanged is `unchanged`. |
@@ -189,8 +189,18 @@ A dry run executes the mutation, reads its prospective result, and rolls back it
 
 **Dry run preflight.**
 
-Parameter and CAD wall preflight commits inside a rolled-back transaction group predict group and join failures.
+Parameter, move, rotate, copy, mirror, change-type and CAD wall preflight commits inside a rolled-back transaction group predict group and join failures.
 Default and DetachElements resolutions are never used.
+
+#### Group members in dry runs and real runs
+
+Revit raises group errors only at commit. `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror` and `revit_change_type` probe the action first and skip the group members Revit refuses to change.
+The result lists them in `data.skipped.inGroup` (the same field `revit_update_parameters` uses) and adds a `warning`.
+The remaining elements are processed, and `count`, `verification` and the summary cover only those.
+`revit_rotate` without `center_mm` uses the bounding box center of the elements it rotates.
+If every requested element is a rejected group member, the action refuses with a clear message and changes nothing.
+A dry run and a real run take the same path, so they report the same skipped elements.
+Actions that only create elements or change views are not probed; their commit failures are reported by the real run.
 
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.

@@ -81,6 +81,7 @@ public sealed class Application : ExternalApplication
         _eventHandler.Attach(_requestQueue);
         NwcPathValidator.ConfigureTrustedNetworkRoots([]);
         HttpSettings? httpSettings = null;
+        string? httpSettingsError = null;
         var showActivityPaneOnAction = true;
         try
         {
@@ -97,6 +98,7 @@ public sealed class Application : ExternalApplication
         }
         catch (Exception exception)
         {
+            httpSettingsError = exception.GetType().Name;
             PluginLog.Warn($"Settings could not be loaded. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
         }
         if (_controlChannel.FileChannelEnabled)
@@ -144,6 +146,10 @@ public sealed class Application : ExternalApplication
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
         _instanceHeartbeat?.Start(_activeDocument, _documents);
+        var httpStatus = httpSettings is null
+            ? HttpListenerStatus.ConfigError(httpSettingsError!)
+            : HttpListenerStatus.DisabledBySettings();
+        var channelOwnsStatus = false;
         if (httpSettings is not null)
         {
             try
@@ -152,14 +158,19 @@ public sealed class Application : ExternalApplication
                 _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
                     Application.ControlledApplication.VersionNumber, httpSettings);
                 _httpChannel.UpdateDocument(_activeDocument?.Title);
+                _httpChannel.StatusChanged += status => _instanceHeartbeat?.UpdateHttpStatus(status);
                 _httpChannel.Start();
                 _instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);
+                // The channel pushes its own later status changes, including the self-probe result.
+                channelOwnsStatus = httpSettings.HttpEnabled;
             }
             catch (Exception exception)
             {
+                httpStatus = HttpListenerStatus.ConfigError(exception.GetType().Name);
                 PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
             }
         }
+        if (!channelOwnsStatus) _instanceHeartbeat?.UpdateHttpStatus(httpStatus);
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
         UpdateService.Start();
     }
@@ -314,6 +325,7 @@ internal sealed class InstanceHeartbeat : IDisposable
     private string _documentPath = string.Empty;
     private bool _disposed;
     private int? _httpPort;
+    private HttpListenerStatus? _httpStatus;
 
     public InstanceHeartbeat(string directory, int processId, string revitVersion, string instanceId, string? pipeName)
     {
@@ -358,6 +370,15 @@ internal sealed class InstanceHeartbeat : IDisposable
         }
     }
 
+    public void UpdateHttpStatus(HttpListenerStatus status)
+    {
+        lock (_sync)
+        {
+            _httpStatus = status;
+            if (!_disposed) WriteStatus();
+        }
+    }
+
     private void Tick()
     {
         lock (_sync)
@@ -385,6 +406,8 @@ internal sealed class InstanceHeartbeat : IDisposable
                 UpdatedUtc = DateTime.UtcNow.ToString("O"),
                 StartedUtc = Output.SnapshotFileWriter.StartedUtc,
                 HttpPort = _httpPort,
+                HttpState = _httpStatus?.State,
+                HttpReason = _httpStatus?.Reason,
                 InstanceId = _instanceId,
                 PipeName = _pipeName,
                 Protocols = Protocols(),
@@ -417,7 +440,7 @@ internal sealed class InstanceHeartbeat : IDisposable
         var protocols = new List<string>();
         if (_pipeName is not null) protocols.Add(PipeProtocol.Version);
         protocols.Add("file/2");
-        if (_httpPort is not null) protocols.Add("http/1");
+        if (_httpPort is not null && _httpStatus?.IsFailed != true) protocols.Add("http/1");
         return protocols;
     }
 

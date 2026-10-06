@@ -17,6 +17,61 @@ public sealed class PreflightPolicyTests
     }
 
     [Test]
+    public async Task BlockedIds_MatchesDirectIdsAndGroupIdsInAscendingOrder()
+    {
+        var groups = new Dictionary<long, long> { [5] = 50, [3] = 30, [1] = 10, [9] = 90 };
+        var blocked = GroupFailurePolicy.BlockedIds([5, 3, 3, 1, 9, 7],
+            [new long[] { 3, 50, 30, 7 }, new long[] { 50, 3 }],
+            id => groups.TryGetValue(id, out var groupId) ? groupId : null);
+        await Assert.That(string.Join(",", blocked)).IsEqualTo("3,5,7");
+        await Assert.That(GroupFailurePolicy.BlockedIds([1], [new long[] { 2 }], _ => null).Count).IsEqualTo(0);
+        await Assert.That(GroupFailurePolicy.BlockedIds([1], [], _ => 10).Count).IsEqualTo(0);
+        await Assert.That(GroupFailurePolicy.BlockedIds([], [new long[] { 10 }], _ => 10).Count).IsEqualTo(0);
+    }
+
+    [Test]
+    [Arguments("move", true)]
+    [Arguments("rotate", true)]
+    [Arguments("copy", true)]
+    [Arguments("mirror", true)]
+    [Arguments("change-type", true)]
+    [Arguments("update-parameters", false)]
+    [Arguments("set-parameter", false)]
+    [Arguments("delete", false)]
+    [Arguments("walls-from-cad", false)]
+    [Arguments("", false)]
+    public async Task GroupSkipPolicy_SupportsOnlyGroupActions(string command, bool expected)
+    {
+        await Assert.That(GroupSkipPolicy.Supports(command)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(3, 0, GroupSkipPolicy.GroupSkipDecision.Proceed)]
+    [Arguments(3, 1, GroupSkipPolicy.GroupSkipDecision.SkipSome)]
+    [Arguments(3, 3, GroupSkipPolicy.GroupSkipDecision.RefuseAll)]
+    [Arguments(1, 1, GroupSkipPolicy.GroupSkipDecision.RefuseAll)]
+    [Arguments(0, 0, GroupSkipPolicy.GroupSkipDecision.Proceed)]
+    [Arguments(3, 4, GroupSkipPolicy.GroupSkipDecision.RefuseAll)]
+    public async Task GroupSkipPolicy_DecidesFromRequestedAndGroupedCounts(int requested, int inGroup,
+        GroupSkipPolicy.GroupSkipDecision expected)
+    {
+        await Assert.That(GroupSkipPolicy.Decide(requested, inGroup)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task GroupSkipPolicy_UsesExactRefusalAndWarningText()
+    {
+        await Assert.That(GroupSkipPolicy.RefusalMessage(1)).IsEqualTo(
+            "The element belongs to a group and Revit allows changes to group members only in group edit mode. Nothing was changed.");
+        await Assert.That(GroupSkipPolicy.RefusalMessage(3)).IsEqualTo(
+            "All 3 elements belong to groups and Revit allows changes to group members only in group edit mode. Nothing was changed.");
+        await Assert.That(GroupSkipPolicy.SkipWarning(1)).IsEqualTo(
+            "1 element was skipped because they belong to groups; Revit allows changes to group members only in group edit mode.");
+        await Assert.That(GroupSkipPolicy.SkipWarning(2)).IsEqualTo(
+            "2 elements were skipped because they belong to groups; Revit allows changes to group members only in group edit mode.");
+    }
+
+    [Test]
     public async Task FindCandidates_SelectsTouchingTJunctionEnd()
     {
         var candidates = WallJoinPreflight.FindCandidates([

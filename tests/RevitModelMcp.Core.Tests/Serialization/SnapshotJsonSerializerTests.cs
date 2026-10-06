@@ -66,6 +66,23 @@ public sealed class SnapshotJsonSerializerTests
     }
 
     [Test]
+    [Arguments("failed", "Access denied.")]
+    [Arguments("listening", null)]
+    [Arguments(null, null)]
+    public async Task Serialize_InstanceStatus_HttpStatusRoundTripsAndOmitsNulls(string? state, string? reason)
+    {
+        var status = new InstanceStatus { HttpState = state, HttpReason = reason };
+        var serialized = InstanceStatusJsonSerializer.Serialize(status);
+        using var json = JsonDocument.Parse(serialized);
+        await Assert.That(json.RootElement.TryGetProperty("httpState", out _)).IsEqualTo(state is not null);
+        await Assert.That(json.RootElement.TryGetProperty("httpReason", out _)).IsEqualTo(reason is not null);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serialized));
+        var restored = (InstanceStatus)new DataContractJsonSerializer(typeof(InstanceStatus)).ReadObject(stream)!;
+        await Assert.That(restored.HttpState).IsEqualTo(state);
+        await Assert.That(restored.HttpReason).IsEqualTo(reason);
+    }
+
+    [Test]
     public async Task Serialize_SectionInventory_UsesExactJsonShape()
     {
         var snapshot = new Snapshot

@@ -65,6 +65,18 @@ public sealed class UpdatePolicyTests
     }
 
     [Test]
+    public async Task ParsesTargetChecksumFromMultipleLfOnlyLines()
+    {
+        const string fileName = "RevitModelMcp-0.5.0-SingleUser.msi";
+        const string checksum = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+        var checksumText = $"{new string('a', 64)}  RevitModelMcp-0.5.0-MultiUser.msi\n"
+                           + $"{checksum}  {fileName}\n"
+                           + $"{new string('b', 64)}  RevitModelMcp-0.5.0.zip\n";
+        var parsed = UpdatePolicy.ParseChecksum(checksumText, fileName);
+        await Assert.That(parsed).IsEqualTo(checksum);
+    }
+
+    [Test]
     public async Task SystemNoticeUsesMessageAsActivityTitle()
     {
         var entry = new ActivityEntry { Command = "system-notice", Summary = "Update available: 0.5.0" };
