@@ -1,4 +1,5 @@
 import errno
+import re
 from pathlib import Path
 
 import pytest
@@ -59,7 +60,7 @@ def test_existing_target_message_and_content(tmp_path, report_writer):
     write, message = report_writer
     target = tmp_path / "report.xlsx"
     target.write_bytes(b"original")
-    with pytest.raises(ValueError, match=f"{message}: {target}"):
+    with pytest.raises(ValueError, match=re.escape(f"{message}: {target}")):
         write(target)
     assert target.read_bytes() == b"original"
     assert list(tmp_path.iterdir()) == [target]
@@ -74,7 +75,7 @@ def test_destination_created_during_save_is_preserved(tmp_path, monkeypatch, rep
         target.write_bytes(b"original")
 
     monkeypatch.setattr(Workbook, "save", racing_save)
-    with pytest.raises(ValueError, match=f"{message}: {target}"):
+    with pytest.raises(ValueError, match=re.escape(f"{message}: {target}")):
         write(target)
     assert target.read_bytes() == b"original"
     assert list(tmp_path.iterdir()) == [target]

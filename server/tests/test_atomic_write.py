@@ -1,4 +1,5 @@
 import errno
+import re
 
 import pytest
 
@@ -16,7 +17,7 @@ def test_success(tmp_path):
 def test_existing_target(tmp_path):
     target = tmp_path / "capture.png"
     target.write_bytes(b"original")
-    with pytest.raises(ValueError, match=f"Local file already exists: {target}"):
+    with pytest.raises(ValueError, match=re.escape(f"Local file already exists: {target}")):
         write_new_file(target, lambda output: output.write(b"replacement"))
     assert target.read_bytes() == b"original"
     assert list(tmp_path.iterdir()) == [target]

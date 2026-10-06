@@ -3,6 +3,7 @@ import base64
 import errno
 import json
 import os
+import sys
 from unittest.mock import AsyncMock
 
 import pytest
@@ -47,7 +48,8 @@ def test_existing_target_prevents_remote_read(tmp_path, host):
 
 
 @pytest.mark.skipif(
-    hasattr(os, "geteuid") and os.geteuid() == 0, reason="Root bypasses permissions"
+    sys.platform == "win32" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="Directory permission bits are not enforced here",
 )
 def test_unwritable_directory_prevents_remote_read(tmp_path, host):
     tmp_path.chmod(0o555)
