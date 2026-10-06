@@ -388,8 +388,14 @@ internal sealed class ControlChannel
         _stopped = true;
         lock (_httpCompletions)
         {
-            foreach (var completion in _httpCompletions.Values)
-                completion.TrySetResult("{\"success\":false,\"error\":\"Revit is shutting down.\"}");
+            var abandoned = _scheduler.AbandonUnfinished(
+                "{\"success\":false,\"abandoned\":true,\"error\":\"Revit shut down while this job was running. The change may still have been applied; inspect the model before retrying.\"}",
+                "{\"success\":false,\"cancelled\":true,\"error\":\"Revit shut down before this job started.\"}");
+            foreach (var completion in _httpCompletions)
+            {
+                var job = abandoned.FirstOrDefault(item => item.JobId == completion.Key);
+                completion.Value.TrySetResult(job?.Result ?? "{\"success\":false,\"error\":\"Revit is shutting down.\"}");
+            }
             _httpCompletions.Clear();
         }
         if (_session is not null)
@@ -431,6 +437,7 @@ internal sealed class ControlChannel
     internal static string StateName(JobState state) => state switch
     {
         JobState.WaitingRevit => "waiting_revit",
+        JobState.Abandoned => "abandoned",
         _ => state.ToString().ToLowerInvariant()
     };
 }

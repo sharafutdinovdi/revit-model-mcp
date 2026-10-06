@@ -11,6 +11,8 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import IllegalCharacterError
 
+from revit_model_mcp.atomic_write import write_new_file
+
 HEADERS = {
     "Summary": [
         "Model",
@@ -284,11 +286,14 @@ def build_report(
     for sheet in sheets.values():
         _finish(sheet)
     target = Path(output_path).expanduser().absolute()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target = target.parent.resolve() / target.name
     try:
-        with target.open("xb") as output:
-            workbook.save(output)
-    except FileExistsError as error:
-        raise ValueError(f"Local file already exists: {target}") from error
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target = target.parent.resolve() / target.name
+        write_new_file(target, workbook.save)
+    except ValueError as error:
+        if target.exists() or target.is_symlink():
+            raise ValueError(f"Local file already exists: {target}") from error
+        raise
+    except OSError as error:
+        raise ValueError(f"Cannot save report: {error}") from error
     return {"outputPath": str(target), "snapshotCount": len(current), "sheets": names}

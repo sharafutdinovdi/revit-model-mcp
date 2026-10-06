@@ -422,7 +422,7 @@ internal sealed class PipeChannel : IDisposable
         }
     }
 
-    private static bool IsFinished(JobState state) => state is JobState.Done or JobState.Failed or JobState.Cancelled;
+    private static bool IsFinished(JobState state) => state is JobState.Done or JobState.Failed or JobState.Cancelled or JobState.Abandoned;
 
     private static PipeMessage Error(string? id, string error, string message) =>
         new() { Type = "error", Id = id, Error = error, Message = message };

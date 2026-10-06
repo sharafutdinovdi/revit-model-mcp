@@ -215,7 +215,7 @@
     },
     {
       "name": "revit_cancel_job",
-      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model and returns a cancelled result.\nA single running Revit operation finishes without interruption.\nPoll revit_jobs for the final result; completed changes remain committed."
+      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.\nA single running Revit operation finishes without interruption.\nPoll revit_jobs for the final result; completed changes remain committed."
     },
     {
       "name": "revit_select",
