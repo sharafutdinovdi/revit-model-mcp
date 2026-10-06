@@ -1,5 +1,6 @@
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
@@ -169,7 +170,7 @@ public static class ActionJobParser
                 action.Code = job.Code;
                 action.TransactionMode = job.Transaction ?? "auto";
                 Require(action.TransactionMode is "auto" or "none", "transaction must be auto or none.");
-                Require(action.TransactionMode != "none" || !action.DryRun, "dry_run requires transaction=auto.");
+                Require(action.TransactionMode != "none", CodeExecutionPolicy.TransactionNoneRefusal);
             }
             if (command == "update-parameters")
             {
@@ -776,10 +777,41 @@ public static class DocumentConfirmationBinding
             NormalizePath(pathName), isModified);
     }
 
+    public static string LinkRemovalArguments(IEnumerable<(string Kind, long Id, string Name)> links) =>
+        "links:" + string.Join("\n", links.OrderBy(link => link.Kind, StringComparer.Ordinal)
+            .ThenBy(link => link.Id).ThenBy(link => link.Name, StringComparer.Ordinal)
+            .Select(link => $"{link.Kind}:{link.Id}:{link.Name}"));
+
+    public static string CodeHash(string code)
+    {
+        using var sha256 = SHA256.Create();
+        return BitConverter.ToString(sha256.ComputeHash(Encoding.UTF8.GetBytes(code)))
+            .Replace("-", string.Empty).ToLowerInvariant();
+    }
+
+    public static string CodeArguments(string code, string transactionMode) =>
+        $"code:{CodeHash(code)}:{code.Length}:{transactionMode}";
+
+    public static string ExportArguments(string command, IEnumerable<string> existingTargets) =>
+        command + ":" + string.Join("\n", existingTargets.Select(NormalizePath)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+
+    public static string FileState(IEnumerable<string> paths) =>
+        string.Join("\n", paths.OrderBy(NormalizePath, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(path => path, StringComparer.Ordinal).Select(path =>
+            System.IO.File.Exists(path)
+                ? $"{new System.IO.FileInfo(path).Length}:{System.IO.File.GetLastWriteTimeUtc(path).Ticks}"
+                : "missing"));
+
     private static string NormalizePath(string? path) =>
         path is { Length: > 0 } ? path.Trim().TrimEnd('\\', '/').ToUpperInvariant() : string.Empty;
 }
 
+
+public static class CodeExecutionPolicy
+{
+    public const string TransactionNoneRefusal = "transaction=\"none\" is refused: scripts that own their transactions can change the model without a single undo entry. Use transaction=\"auto\". A workstation policy that can allow it is planned.";
+}
 
 public sealed class ActionJobContract
 {
@@ -816,6 +848,7 @@ public sealed class ActionJobContract
     public string? ConfirmToken { get; set; }
     public ViewVisibilityOptions? Visibility { get; set; }
     public LinkRemovalOptions? LinkRemoval { get; set; }
+    public bool ConfirmOverwrites { get; set; }
     public NwcExportJob Nwc { get; set; } = new();
     public FileExportJob Export { get; set; } = new();
     public LinkDatumJobOptions? DatumOptions { get; set; }

@@ -199,11 +199,11 @@
     },
     {
       "name": "revit_remove_links",
-      "description": "Delete selected link types and their instances; preview with dry_run."
+      "description": "Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. Show confirmationText and retry with the same arguments plus confirm_token only after explicit chat approval."
     },
     {
       "name": "revit_execute_code",
-      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. None mode allows document lifecycle\ncalls and user-owned transactions; dry_run is available only in auto mode.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. transaction=\"none\" is refused by\ndefault; use auto. Every call except dry_run first returns needsConfirmation,\nconfirmationText (code hash, length, mode, document) and confirmToken without running\nthe code. Show it and retry with identical arguments plus confirm_token only after\nexplicit chat approval. dry_run needs no token.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_undo_last",
@@ -315,11 +315,11 @@
     },
     {
       "name": "revit_export",
-      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when no target exists or with dry_run.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_export_nwc",
-      "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+      "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_batch",
@@ -327,7 +327,7 @@
     },
     {
       "name": "revit_process_models",
-      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code require a confirmation token from the preview response.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
       "name": "revit_edit_families",

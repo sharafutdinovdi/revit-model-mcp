@@ -17,6 +17,23 @@ internal static class ConfirmationStore
         _ => "Confirmation token is unknown, expired or already used. Repeat the call without confirm_token to get a new one."
     };
 
+    internal static ActionResultData? Gate(string command, string identity, string arguments, string state,
+        string? token, string text, string summary, string changedMessage)
+    {
+        if (token is null)
+            return new ActionResultData
+            {
+                NeedsConfirmation = true,
+                ConfirmationText = text,
+                ConfirmToken = Tokens.Issue(command, identity, arguments, state),
+                Summary = summary
+            };
+        var result = Tokens.Consume(token, command, identity, arguments, state);
+        if (result != DocumentConfirmationResult.Valid)
+            throw new InvalidOperationException(Rejection(result, changedMessage));
+        return null;
+    }
+
     internal static string State(Document document)
     {
         if (!Documents.TryGetValue(document, out var tracked))

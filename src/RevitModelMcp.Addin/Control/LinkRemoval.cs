@@ -11,7 +11,7 @@ internal static class LinkRemoval
     internal const string UndoWarning = "Removing links cannot be undone in Revit; Undo will not restore them.";
 
     public static ActionResultData Execute(Document document, LinkRemovalOptions options, bool dryRun,
-        ActionCommandExecutor.ActionFailures failures, string clientName)
+        ActionCommandExecutor.ActionFailures failures, string clientName, string? confirmToken)
     {
         var local = IsLocalCopy(document);
         if (document.IsWorkshared && !document.IsDetached && !local)
@@ -54,6 +54,24 @@ internal static class LinkRemoval
             if (!selected.Any(candidate => string.Equals(reference, candidate.Element.Name, StringComparison.OrdinalIgnoreCase)
                 || long.TryParse(reference, out var id) && id == RevitValueReader.GetId(candidate.Element.Id)))
                 throw new ArgumentException($"Link '{reference}' was not found among the selected kinds.");
+        if (!dryRun)
+        {
+            var text = "Remove these links: " + string.Join("\n", selected.Select(candidate =>
+                $"{candidate.Kind}: {candidate.Element.Name} (id {RevitValueReader.GetId(candidate.Element.Id)}, {candidate.InstanceCount} instances)")) +
+                "\n" + result.Warning;
+            var gate = ConfirmationStore.Gate("remove-links",
+                DocumentConfirmationBinding.Identity(document.PathName, document.Title),
+                DocumentConfirmationBinding.LinkRemovalArguments(selected.Select(candidate =>
+                    (candidate.Kind, RevitValueReader.GetId(candidate.Element.Id), candidate.Element.Name))),
+                ConfirmationStore.State(document), confirmToken, text,
+                $"Needs confirmation to remove {selected.Count} links from {document.Title}.",
+                "The document changed after the preview. The confirmation token is used up; repeat the call without confirm_token to get a new one.");
+            if (gate is not null)
+            {
+                gate.Warning = UndoWarning;
+                return gate;
+            }
+        }
         using var group = new TransactionGroup(document, "MCP action");
         if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the action transaction group.");
         using var transaction = new Transaction(document, "revit_remove_links");

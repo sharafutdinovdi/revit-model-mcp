@@ -54,6 +54,18 @@ internal static class NwcExporter
         var targetExists = File.Exists(job.Path);
         if (targetExists && !job.Overwrite) throw new ArgumentException("path already exists; set overwrite=true.");
 
+        if (job.Overwrite && targetExists && !action.DryRun && action.ConfirmOverwrites)
+        {
+            var gate = ConfirmationStore.Gate("export-nwc",
+                DocumentConfirmationBinding.Identity(document.PathName, document.Title),
+                DocumentConfirmationBinding.ExportArguments("export-nwc", [job.Path]),
+                DocumentConfirmationBinding.FileState([job.Path]), action.ConfirmToken,
+                "Exporting will overwrite these existing files: " + job.Path,
+                "Needs confirmation to overwrite the NWC export file.",
+                "The export targets changed on disk after the preview (size or modification time). The confirmation token is used up; repeat the call without confirm_token to get a new one.");
+            if (gate is not null) return gate;
+        }
+
         View3D? view = null;
         if (job.Scope == "view")
         {

@@ -264,8 +264,9 @@ public sealed class ActionJobParserTests
             .IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"steps":[{"command":"export","format":"ifc"}]}}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"code":{"code":"return 1;","transaction":"none"},"dryRun":true}}""").Kind)
-            .IsEqualTo(ControlJobKind.Invalid);
+        var refusedCode = ControlJobParser.Parse("""{"command":"process-models","process":{"paths":["C:\\A.rvt"],"code":{"code":"return 1;","transaction":"none"},"dryRun":true}}""");
+        await Assert.That(refusedCode.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(refusedCode.Error).IsEqualTo(CodeExecutionPolicy.TransactionNoneRefusal);
     }
 
     [Test]
@@ -321,12 +322,27 @@ public sealed class ActionJobParserTests
         await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Action);
         await Assert.That(parsed.Action!.Code).IsEqualTo("return 42;");
         await Assert.That(parsed.Action.TransactionMode).IsEqualTo("auto");
-        await Assert.That(ControlJobParser.Parse("""{"command":"execute-code","code":"x","transaction":"none","dryRun":true}""").Kind)
-            .IsEqualTo(ControlJobKind.Invalid);
+        var refusedCode = ControlJobParser.Parse("""{"command":"execute-code","code":"x","transaction":"none","dryRun":true}""");
+        await Assert.That(refusedCode.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(refusedCode.Error).IsEqualTo(CodeExecutionPolicy.TransactionNoneRefusal);
         await Assert.That(ControlJobParser.Parse("""{"command":"execute-code","code":""}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(ControlJobParser.Parse("""{"command":"batch","steps":[{"command":"execute-code","code":"return 42;"}]}""").Kind)
             .IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ExecuteCode_RefusesTransactionNone(bool processModels)
+    {
+        var json = processModels
+            ? """{"command":"process-models","process":{"paths":["C:\\A.rvt"],"code":{"code":"return 1;","transaction":"none"}}}"""
+            : """{"command":"execute-code","code":"return 1;","transaction":"none"}""";
+        var parsed = ControlJobParser.Parse(json);
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(parsed.Error).IsEqualTo(CodeExecutionPolicy.TransactionNoneRefusal);
+        await Assert.That(parsed.Error!.Contains("transaction")).IsTrue();
     }
 
     [Test]

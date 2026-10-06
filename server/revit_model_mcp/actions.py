@@ -968,15 +968,17 @@ def register_actions(mcp, execute, host_provider) -> None:
         kinds: list[Literal["revit", "cad", "point_cloud", "image"]] | None = None,
         include_imported_cad: bool = False,
         dry_run: bool = False,
+        confirm_token: str | None = None,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Delete selected link types and their instances; preview with dry_run."""
+        """Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. Show confirmationText and retry with the same arguments plus confirm_token only after explicit chat approval."""
         return await send(
             "remove-links",
             links=[str(value) for value in ([links] if isinstance(links, str) else links)],
             kinds=kinds,
             includeImportedCad=include_imported_cad,
             dryRun=dry_run,
+            confirmToken=confirm_token,
             document=document,
         )
 
@@ -986,13 +988,17 @@ def register_actions(mcp, execute, host_provider) -> None:
         transaction: Literal["auto", "none"] = "auto",
         document: Document = None,
         dry_run: bool = False,
+        confirm_token: str | None = None,
         response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
         """Compile and run C# against the live Revit API on the Revit thread.
 
         Use a method body or a public static Script class with Execute(ScriptContext ctx).
-        Auto mode owns one transaction and undo entry. None mode allows document lifecycle
-        calls and user-owned transactions; dry_run is available only in auto mode.
+        Auto mode owns one transaction and undo entry. transaction="none" is refused by
+        default; use auto. Every call except dry_run first returns needsConfirmation,
+        confirmationText (code hash, length, mode, document) and confirmToken without running
+        the code. Show it and retry with identical arguments plus confirm_token only after
+        explicit chat approval. dry_run needs no token.
         """
         if transaction == "none" and dry_run:
             raise ToolError("dry_run requires transaction='auto'.")
@@ -1002,6 +1008,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             transaction=transaction,
             document=document,
             dryRun=dry_run,
+            confirmToken=confirm_token,
             response_timeout_s=response_timeout_s,
         )
 
@@ -1663,9 +1670,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         overwrite: bool = False,
         document: Document = None,
         dry_run: bool = False,
+        confirm_token: str | None = None,
         response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names."""
+        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when no target exists or with dry_run."""
         return await send(
             "export",
             format=format,
@@ -1678,6 +1686,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             overwrite=overwrite,
             document=document,
             dryRun=dry_run,
+            confirmToken=confirm_token,
             response_timeout_s=response_timeout_s,
         )
 
@@ -1705,9 +1714,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         overwrite: bool = False,
         dry_run: bool = False,
         document: Document = None,
+        confirm_token: str | None = None,
         response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence."""
+        """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run."""
         if scope == "view" and not view:
             raise ToolError("view is required for scope=view.")
         if scope == "selection" and not element_ids:
@@ -1739,6 +1749,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             overwrite=overwrite,
             dryRun=dry_run,
             document=document,
+            confirmToken=confirm_token,
             response_timeout_s=response_timeout_s,
         )
 
@@ -1774,7 +1785,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         response_timeout_s: Annotated[int, Field(ge=30, le=14400)] = 14400,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves require a confirmation token from the preview response."""
+        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code require a confirmation token from the preview response."""
         if (paths is None) == (folder is None):
             raise ToolError("Provide paths or folder, but not both.")
         try:
