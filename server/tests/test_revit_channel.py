@@ -2339,6 +2339,83 @@ def test_image_read_commands_download_artifact(command, tmp_path):
     assert remote.finish_job.await_args.args[3] == target
 
 
+@pytest.mark.parametrize("command", ["export-view", "capture-elements"])
+@pytest.mark.parametrize("legacy_partial", [False, True])
+def test_slow_image_read_commands_download_artifact(command, legacy_partial, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
+    target = str(tmp_path / "image.png")
+    message = (
+        "The 60-second limit was reached; the result is marked as partial."
+        if legacy_partial
+        else "The command took more than two seconds; elapsedMs reports the duration."
+    )
+
+    async def finish(name, cleanup_names, download_artifact, save_to):
+        response = {
+            "command": command,
+            "success": not legacy_partial,
+            "data": {"fileName": "view.png"},
+            "elapsedMs": 70000,
+            "message": message,
+            "correlationId": json.loads(remote.written_content)["correlationId"],
+        }
+        if legacy_partial:
+            response["partial"] = True
+        return json.dumps(response), target if download_artifact else None
+
+    remote.finish_job = AsyncMock(side_effect=finish)
+    result = asyncio.run(
+        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
+    )
+    assert result["success"] is True
+    assert "partial" not in result
+    assert result["message"] == message
+    assert result["data"]["localPath"] == target
+    assert [call.args[2] for call in remote.finish_job.await_args_list] == [False, True]
+    assert remote.finish_job.await_args.args[2:] == (True, target)
+
+
+@pytest.mark.parametrize(
+    ("command", "data"),
+    [
+        ("export-view", {}),
+        ("export-view", {"fileName": ""}),
+        ("export-view", {"fileName": None}),
+        ("capture-elements", {}),
+        ("capture-elements", {"fileName": ""}),
+        ("capture-elements", {"fileName": None}),
+        ("document-info", {"fileName": "view.png"}),
+    ],
+)
+def test_partial_read_without_image_file_is_not_completed(command, data, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
+    target = str(tmp_path / "image.png")
+
+    async def finish(name, cleanup_names, download_artifact, save_to):
+        response = {
+            "command": command,
+            "success": False,
+            "partial": True,
+            "data": data,
+            "elapsedMs": 70000,
+            "message": "The 60-second limit was reached; the result is marked as partial.",
+            "correlationId": json.loads(remote.written_content)["correlationId"],
+        }
+        return json.dumps(response), None
+
+    remote.finish_job = AsyncMock(side_effect=finish)
+    result = asyncio.run(
+        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
+    )
+    assert result["success"] is False
+    assert result["partial"] is True
+    assert "localPath" not in result["data"]
+    remote.finish_job.assert_awaited_once()
+    assert remote.finish_job.await_args.args[2] is False
+
+
 def test_http_element_snapshots_fail_before_transport_call():
     from revit_model_mcp.http_host import HttpHost
 

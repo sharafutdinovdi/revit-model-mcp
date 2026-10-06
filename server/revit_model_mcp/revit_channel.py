@@ -791,7 +791,9 @@ class RevitReadChannel:
                     known_responses.add(response_name)
                     response_name = None
                 elif envelope is not None:
-                    result = parse_response(content, job.command)
+                    result = _complete_image_result(
+                        parse_response(content, job.command), job.command
+                    )
                     responder = result.get("responder")
                     if getattr(self.remote, "requires_identity", False) and (
                         result.get("correlationId") != correlation_id
@@ -847,7 +849,7 @@ class RevitReadChannel:
                     True,
                     job.save_to,
                 )
-                result = parse_response(content, job.command)
+                result = _complete_image_result(parse_response(content, job.command), job.command)
                 if local_path is not None:
                     result["data"]["localPath"] = local_path
         except (Exception, asyncio.CancelledError) as error:
@@ -887,6 +889,25 @@ class RevitReadChannel:
         if result is None:
             raise RevitChannelError("Channel completed without a response.")
         return result
+
+
+def _complete_image_result(result: dict[str, Any], command: str) -> dict[str, Any]:
+    data = result.get("data")
+    elapsed_ms = result.get("elapsedMs")
+    if (
+        command in ("export-view", "capture-elements")
+        and result.get("partial") is True
+        and result.get("success") is False
+        and isinstance(data, dict)
+        and isinstance(data.get("fileName"), str)
+        and data["fileName"]
+        and isinstance(elapsed_ms, (int, float))
+        and elapsed_ms > 0
+    ):
+        result = result.copy()
+        result["success"] = True
+        result.pop("partial")
+    return result
 
 
 def _is_intermediate_response(response: dict[str, Any]) -> bool:

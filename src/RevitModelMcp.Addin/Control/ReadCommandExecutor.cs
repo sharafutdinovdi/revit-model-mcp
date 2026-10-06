@@ -11,8 +11,6 @@ namespace RevitModelMcp.Control;
 
 internal static class ReadCommandExecutor
 {
-    private const long MaximumFastCommandDurationMs = 60_000;
-
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
         SkippedReadDiagnostics.Current = new SkippedReadDiagnostics();
@@ -328,7 +326,7 @@ internal static class ReadCommandExecutor
         string currentView,
         long elapsedMs)
     {
-        var timedOut = elapsedMs >= MaximumFastCommandDurationMs;
+        var timedOut = elapsedMs >= FastCommandBudget.MaximumDurationMs;
         var shouldReport = data.Processed == 0 || data.Processed >= data.Total || data.Processed % 25 == 0 || timedOut;
         if (!shouldReport)
         {
@@ -554,7 +552,7 @@ internal static class ReadCommandExecutor
         string? message = null)
     {
         stopwatch.Stop();
-        if (stopwatch.ElapsedMilliseconds >= MaximumFastCommandDurationMs)
+        if (FastCommandBudget.IsPartialAfterBudget(command, stopwatch.ElapsedMilliseconds))
         {
             var timeoutMessage = string.IsNullOrWhiteSpace(message)
                 ? "The 60-second limit was reached; the result is marked as partial."
