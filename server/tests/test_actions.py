@@ -512,6 +512,7 @@ def test_nwc_export_defaults_and_options_reach_channel():
         "path": "C:\\x\\a.nwc",
         "overwrite": False,
         "dryRun": False,
+        "confirmToken": None,
     }
 
 
@@ -619,6 +620,7 @@ def test_file_export_maps_targets_options_and_timeout():
         "options": {"combine": False},
         "overwrite": True,
         "dryRun": True,
+        "confirmToken": None,
     }
 
 
@@ -1884,3 +1886,62 @@ def test_actions_import_emits_no_user_warning():
         check=False,
     )
     assert result.returncode == 0
+
+
+CONFIRMED_TOOL_CALLS = {
+    "revit_remove_links": {"links": ["Link A"]},
+    "revit_execute_code": {"code": "return 42;"},
+    "revit_export": {"format": "pdf", "all_sheets": True, "overwrite": True},
+    "revit_export_nwc": {"path": "C:\\out\\model.nwc", "overwrite": True},
+}
+
+
+@pytest.mark.parametrize("tool", CONFIRMED_TOOL_CALLS)
+def test_confirmation_token_is_mapped_into_payload(tool):
+    import asyncio
+
+    server, execute, _ = action_server()
+    arguments = CONFIRMED_TOOL_CALLS[tool]
+    asyncio.run(server.call_tool(tool, arguments))
+    assert execute.await_args.args[0].payload["confirmToken"] is None
+    asyncio.run(server.call_tool(tool, {**arguments, "confirm_token": "tok-1"}))
+    assert execute.await_args.args[0].payload["confirmToken"] == "tok-1"
+
+
+@pytest.mark.parametrize("tool", ["revit_remove_links", "revit_execute_code"])
+def test_confirmation_two_step_flow_repeats_arguments(tool):
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.side_effect = [
+        {
+            "success": True,
+            "data": {
+                "needsConfirmation": True,
+                "confirmationText": "Confirm.",
+                "confirmToken": "tok-2",
+            },
+        },
+        {"success": True, "data": {}, "activeView": "Level 1"},
+    ]
+    arguments = CONFIRMED_TOOL_CALLS[tool]
+    asyncio.run(server.call_tool(tool, arguments))
+    asyncio.run(server.call_tool(tool, {**arguments, "confirm_token": "tok-2"}))
+    first = execute.await_args_list[0].args[0].payload
+    second = execute.await_args_list[1].args[0].payload
+    assert first["confirmToken"] is None
+    assert second["confirmToken"] == "tok-2"
+    assert {k: v for k, v in first.items() if k != "confirmToken"} == {
+        k: v for k, v in second.items() if k != "confirmToken"
+    }
+
+
+def test_confirmation_tools_describe_confirm_token():
+    import asyncio
+
+    server, _, _ = action_server()
+    tools = {tool.name: tool.description for tool in asyncio.run(server.list_tools())}
+    for name in CONFIRMED_TOOL_CALLS:
+        assert "confirm_token" in tools[name], name
+    assert "confirmation token" in tools["revit_process_models"]
+    assert 'transaction="none" is refused' in tools["revit_execute_code"]

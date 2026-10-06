@@ -88,8 +88,18 @@ internal static class ActionCommandExecutor
                              && activeUiDocument.Document.PathName == document.PathName
                 ? activeUiDocument : null;
             var action = job.Action ?? throw new ArgumentException("Missing action arguments.");
+            if (job.Command is "export" or "export-nwc") action.ConfirmOverwrites = true;
             if (job.Command == "execute-code")
-                data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
+            {
+                if (!action.DryRun)
+                    data = ConfirmationStore.Gate("execute-code",
+                        document is null ? "none" : DocumentConfirmationBinding.Identity(document.PathName, document.Title),
+                        DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode), "", action.ConfirmToken,
+                        $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(action.Code!)[..12]}, {action.Code!.Length} characters, transaction {action.TransactionMode}) on '{document?.Title ?? "no document"}'. The code has full Revit API access and the user's file and network rights. Review it before confirming.",
+                        "Needs confirmation to run C# code.",
+                        "The confirmation state changed. Repeat the call without confirm_token to get a new one.");
+                data ??= CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
+            }
             else if (job.Command == "batch")
                 data = BatchActionExecutor.Execute(document!, uiDocument, action, failures, job.ClientName);
             else
@@ -139,9 +149,10 @@ internal static class ActionCommandExecutor
         response.DialogsSuppressed = dialogsSuppressed;
         if (job.Command == "show") response.ViewOpened = viewOpened;
         response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
-        ActivityRecorder.RecordAction(job,
-            job.Command == "execute-code" && job.Action?.TransactionMode == "none" ? null : document,
-            data, response, changes);
+        if (data?.NeedsConfirmation != true)
+            ActivityRecorder.RecordAction(job,
+                job.Command == "execute-code" && job.Action?.TransactionMode == "none" ? null : document,
+                data, response, changes);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
@@ -201,10 +212,22 @@ internal static class ActionCommandExecutor
                     WriteProcessResponse(application, job, startedAt, response);
                     return;
                 }
+            }
+            if (!request.DryRun && (request.Save?.Mode == "in_place" || request.Code is not null))
+            {
                 var identity = string.Join("\n", paths);
                 var arguments = ProcessConfirmationArguments(request);
                 var state = string.Join("\n", paths.Select(path => File.Exists(path)
                     ? $"{new FileInfo(path).Length}:{File.GetLastWriteTimeUtc(path).Ticks}" : "missing"));
+                var confirmationText = request.Save?.Mode == "in_place"
+                    ? "Save in place will overwrite these source models: " + string.Join(", ", paths)
+                    : string.Empty;
+                if (request.Code is not null)
+                {
+                    var code = request.Code.Code!;
+                    if (confirmationText.Length > 0) confirmationText += "\n";
+                    confirmationText += $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(code)[..12]}, {code.Length} characters, transaction {request.Code.Transaction ?? "auto"}) in each of these models: " + string.Join(", ", paths);
+                }
                 if (request.ConfirmToken is null)
                 {
                     data = new ActionResultData
@@ -212,9 +235,11 @@ internal static class ActionCommandExecutor
                         NeedsConfirmation = true,
                         Models = refused,
                         Total = paths.Count + refused.Count,
-                        ConfirmationText = "Save in place will overwrite these source models: " + string.Join(", ", paths),
+                        ConfirmationText = confirmationText,
                         ConfirmToken = ConfirmationStore.Tokens.Issue("process-models", identity, arguments, state),
-                        Summary = $"Needs confirmation to save {paths.Count} models in place."
+                        Summary = request.Save?.Mode == "in_place"
+                            ? $"Needs confirmation to save {paths.Count} models in place{(request.Code is null ? "" : " and run code")}."
+                            : $"Needs confirmation to run code on {paths.Count} models."
                     };
                     response = CommandResponse<ActionResultData>.Ok(job.Command, data, stopwatch.ElapsedMilliseconds);
                     WriteProcessResponse(application, job, startedAt, response);
@@ -225,8 +250,8 @@ internal static class ActionCommandExecutor
                     throw new InvalidOperationException(ConfirmationStore.Rejection(confirmation,
                         "The source models changed on disk after the preview (size or modification time). The confirmation token is used up; run the call again without confirm_token to get a new one."));
             }
-            else if (request.ConfirmToken is not null)
-                throw new ArgumentException("confirm_token applies only to in_place saves.");
+            else if (request.ConfirmToken is not null && request.Save?.Mode != "in_place" && request.Code is null)
+                throw new ArgumentException("confirm_token applies only to in_place saves or C# code.");
             data = new ActionResultData { Models = refused, DryRun = request.DryRun, Total = paths.Count + refused.Count };
             for (var index = 0; index < paths.Count; index++)
             {
@@ -649,6 +674,21 @@ internal static class ActionCommandExecutor
             throw new ArgumentException("Export targets produce duplicate file names.");
         if (Directory.Exists(folder) && !request.Overwrite && planned.Any(name => File.Exists(Path.Combine(folder, name))))
             throw new ArgumentException("An export file already exists; set overwrite=true.");
+        if (request.Overwrite && !action.DryRun && action.ConfirmOverwrites)
+        {
+            var existing = planned.Select(name => Path.Combine(folder, name)).Where(File.Exists).ToList();
+            if (existing.Count > 0)
+            {
+                var gate = ConfirmationStore.Gate("export",
+                    DocumentConfirmationBinding.Identity(document.PathName, document.Title),
+                    DocumentConfirmationBinding.ExportArguments("export", existing),
+                    DocumentConfirmationBinding.FileState(existing), action.ConfirmToken,
+                    "Exporting will overwrite these existing files: " + string.Join(", ", existing),
+                    $"Needs confirmation to overwrite {existing.Count} export files.",
+                    "The export targets changed on disk after the preview (size or modification time). The confirmation token is used up; repeat the call without confirm_token to get a new one.");
+                if (gate is not null) return gate;
+            }
+        }
         var result = new ActionResultData
         {
             Folder = folder,
@@ -779,7 +819,8 @@ internal static class ActionCommandExecutor
         if (command == "export-nwc")
         {
             var exportResult = NwcExporter.Execute(document, action);
-            exportResult.Summary = BuildSummary(command, action, exportResult, document.Title, null);
+            if (exportResult.NeedsConfirmation != true)
+                exportResult.Summary = BuildSummary(command, action, exportResult, document.Title, null);
             return exportResult;
         }
         if (command == "export") return ExportFiles(document, action);
@@ -788,7 +829,7 @@ internal static class ActionCommandExecutor
         if (command == "set-view-visibility")
             return ViewVisibility.Execute(document, action.Visibility!, action.DryRun, failures, clientName);
         if (command == "remove-links")
-            return LinkRemoval.Execute(document, action.LinkRemoval!, action.DryRun, failures, clientName);
+            return LinkRemoval.Execute(document, action.LinkRemoval!, action.DryRun, failures, clientName, action.ConfirmToken);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
         var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
