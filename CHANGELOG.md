@@ -6,6 +6,25 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.9.0...v0.9.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **addin:** keep the job scheduler running when result persistence fails ([#181](https://github.com/sharafutdinovdi/revit-model-mcp/issues/181)) ([47f4b76](https://github.com/sharafutdinovdi/revit-model-mcp/commit/47f4b76723b6c3aece24df54b91a52ed266b84b6))
+* **addin:** make dry runs predict group and join failures ([#185](https://github.com/sharafutdinovdi/revit-model-mcp/issues/185)) ([89b30d7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/89b30d7f6e1d14d1c9ee61fe61e901f71623efa4))
+* **addin:** make multi-model processing cleanup and outputs safe ([#182](https://github.com/sharafutdinovdi/revit-model-mcp/issues/182)) ([53f002d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/53f002d8c3fc2f77ef4b7c2a3af495eea7b9e1c4))
+* **addin:** serialize the HTTP health payload ([#178](https://github.com/sharafutdinovdi/revit-model-mcp/issues/178)) ([3ad9969](https://github.com/sharafutdinovdi/revit-model-mcp/commit/3ad9969dca4a2f7f50610549696f8bb4ce4cc005))
+* **build:** refuse to install both installer scopes at once ([#183](https://github.com/sharafutdinovdi/revit-model-mcp/issues/183)) ([e154b6a](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e154b6a38d516ede680906d1e98098521865529f))
+* confirmation tokens and job polling papercuts ([#184](https://github.com/sharafutdinovdi/revit-model-mcp/issues/184)) ([59b7000](https://github.com/sharafutdinovdi/revit-model-mcp/commit/59b70009680ba4ac26637ac4efabc9bf3238871a))
+* papercuts from live validation of 0.9.0 ([#180](https://github.com/sharafutdinovdi/revit-model-mcp/issues/180)) ([e1b82a7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e1b82a7bd887a7c11c24a91b701db16937715c2c))
+* **server:** keep capture and tool budgets independent of clock resolution ([#179](https://github.com/sharafutdinovdi/revit-model-mcp/issues/179)) ([ba59335](https://github.com/sharafutdinovdi/revit-model-mcp/commit/ba593356e47132c9d21617cafafe7676370a4160)), closes [#177](https://github.com/sharafutdinovdi/revit-model-mcp/issues/177) [#96](https://github.com/sharafutdinovdi/revit-model-mcp/issues/96)
+
+
+### Documentation
+
+* record live validation of 0.9.0 ([#188](https://github.com/sharafutdinovdi/revit-model-mcp/issues/188)) ([6456b47](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6456b47434e3233f4bea84c7b78ae62b72815bb1))
+
 ## [0.9.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.8.0...v0.9.0) (2026-10-05)
 
 
