@@ -1844,6 +1844,16 @@ def test_process_progress_current_path_is_redacted():
         ("revit_update_parameters", ["skipped.inGroup", "dry_run", "groups"]),
         ("revit_set_parameter", ["Group members", "clear message", "dry_run"]),
         ("revit_walls_from_cad", ["unjoinedEnds", "unjoinedReasons", "dry_run"]),
+        *(
+            (name, ["skipped.inGroup", "dry_run", "every element"])
+            for name in (
+                "revit_move",
+                "revit_rotate",
+                "revit_copy",
+                "revit_mirror",
+                "revit_change_type",
+            )
+        ),
     ],
 )
 def test_preflight_tool_descriptions(tool_name, expected_text):

@@ -118,6 +118,12 @@ internal static class ActionMutations
         view.SetElementOverrides(id, settings);
     }
 
+    internal static ActionResultData Move(Document document, ActionJobContract action, List<ElementId> ids)
+    {
+        ElementTransformUtils.MoveElements(document, ids, new XYZ(Millimeters(action.DxMm), Millimeters(action.DyMm), Millimeters(action.DzMm)));
+        return new ActionResultData { Count = ids.Count };
+    }
+
     internal static ActionResultData Rotate(Document document, ActionJobContract action, List<ElementId> ids)
     {
         var pinned = ids.Where(id => document.GetElement(id)?.Pinned == true).Select(RevitValueReader.GetId).ToList();
@@ -274,7 +280,7 @@ internal static class ActionMutations
                 !matchedIds.Contains(RevitValueReader.GetId(element.Id)));
         }
         if (skipped.InGroup.Count > 0)
-            result.Warning = $"{skipped.InGroup.Count} {(skipped.InGroup.Count == 1 ? "element was" : "elements were")} skipped because they belong to groups; Revit allows changes to group members only in group edit mode.";
+            result.Warning = GroupSkipPolicy.SkipWarning(skipped.InGroup.Count);
         result.Verification = new ActionVerification { Changed = changedIds };
         result.Count = result.Verification.Changed.Count;
         return result;
