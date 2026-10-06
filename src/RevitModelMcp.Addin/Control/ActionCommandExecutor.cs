@@ -228,13 +228,15 @@ internal static class ActionCommandExecutor
             else if (request.ConfirmToken is not null)
                 throw new ArgumentException("confirm_token applies only to in_place saves.");
             data = new ActionResultData { Models = refused, DryRun = request.DryRun, Total = paths.Count + refused.Count };
-            foreach (var path in paths)
+            for (var index = 0; index < paths.Count; index++)
             {
                 if (ResponseDelivery.CancellationRequested?.Invoke() == true)
                 {
+                    ProcessModelsResultAssembler.AppendCancelled(data.Models, paths, index);
                     data.Cancelled = true;
                     break;
                 }
+                var path = paths[index];
                 data.CurrentIndex = data.Models.Count + 1;
                 data.CurrentPath = path;
                 WriteProcessResponse(application, job, startedAt,
@@ -257,6 +259,7 @@ internal static class ActionCommandExecutor
                 ProcessTotal = paths.Count,
                 ProcessFailed = (int)data.Failed!,
                 ProcessSkipped = data.SkippedCount.Value,
+                ProcessCancelled = data.Models.Count(model => model.Status == "cancelled"),
                 DryRun = request.DryRun
             });
             if (data.Cancelled == true) data.Summary += " Cancelled before the next model; completed changes remain committed.";

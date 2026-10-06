@@ -91,6 +91,7 @@ Coordinator location and link lists are capped at 100 without pagination; locati
 `pinned` and `viewSpecific` are true when any instance of the reported type qualifies.
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
+Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `save_to` is honored; the client/response timeout still applies.
 
 Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
