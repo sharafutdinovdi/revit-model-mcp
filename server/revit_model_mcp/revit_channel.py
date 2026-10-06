@@ -150,6 +150,10 @@ class RevitChannelError(RuntimeError):
     """User-facing Revit read channel error."""
 
 
+class ResultExpiredError(RevitChannelError):
+    pass
+
+
 class SshUnavailableError(RevitChannelError):
     pass
 
@@ -678,6 +682,10 @@ class RevitReadChannel:
             )
             if job.command == "ping":
                 result["addinVersion"] = instance.get("addinVersion") or "0.6.0 or earlier"
+                if isinstance(state := instance.get("httpState"), str):
+                    result["httpListener"] = {"state": state}
+                    if "httpReason" in instance:
+                        result["httpListener"]["reason"] = instance["httpReason"]
             return result
 
     async def _execute_serial(
@@ -764,6 +772,8 @@ class RevitReadChannel:
                     ),
                     remaining() if background else None,
                 )
+            except ResultExpiredError:
+                raise
             except (RevitChannelError, TimeoutError):
                 if not background:
                     raise
@@ -775,6 +785,8 @@ class RevitReadChannel:
                         self.remote.finish_job(response_name, [], False, None),
                         timeout=remaining(),
                     )
+                except ResultExpiredError:
+                    raise
                 except (RevitChannelError, TimeoutError):
                     if not background:
                         raise
@@ -791,7 +803,9 @@ class RevitReadChannel:
                     known_responses.add(response_name)
                     response_name = None
                 elif envelope is not None:
-                    result = parse_response(content, job.command)
+                    result = _complete_image_result(
+                        parse_response(content, job.command), job.command
+                    )
                     responder = result.get("responder")
                     if getattr(self.remote, "requires_identity", False) and (
                         result.get("correlationId") != correlation_id
@@ -814,6 +828,8 @@ class RevitReadChannel:
                     response_name = await self.remote.wait_for_new_response(
                         job.command, known_responses, remaining(), correlation_id
                     )
+                except ResultExpiredError:
+                    raise
                 except (RevitChannelError, TimeoutError):
                     if not background:
                         raise
@@ -823,6 +839,8 @@ class RevitReadChannel:
                 # Recheck at the boundary: a completed result wins over the budget.
                 try:
                     response = await asyncio.wait_for(self.remote.fetch_job(job_id), 1)
+                except ResultExpiredError:
+                    raise
                 except (RevitChannelError, TimeoutError):
                     return running_job(job_id)
                 if _is_intermediate_response(response):
@@ -847,7 +865,7 @@ class RevitReadChannel:
                     True,
                     job.save_to,
                 )
-                result = parse_response(content, job.command)
+                result = _complete_image_result(parse_response(content, job.command), job.command)
                 if local_path is not None:
                     result["data"]["localPath"] = local_path
         except (Exception, asyncio.CancelledError) as error:
@@ -887,6 +905,25 @@ class RevitReadChannel:
         if result is None:
             raise RevitChannelError("Channel completed without a response.")
         return result
+
+
+def _complete_image_result(result: dict[str, Any], command: str) -> dict[str, Any]:
+    data = result.get("data")
+    elapsed_ms = result.get("elapsedMs")
+    if (
+        command in ("export-view", "capture-elements")
+        and result.get("partial") is True
+        and result.get("success") is False
+        and isinstance(data, dict)
+        and isinstance(data.get("fileName"), str)
+        and data["fileName"]
+        and isinstance(elapsed_ms, (int, float))
+        and elapsed_ms > 0
+    ):
+        result = result.copy()
+        result["success"] = True
+        result.pop("partial")
+    return result
 
 
 def _is_intermediate_response(response: dict[str, Any]) -> bool:

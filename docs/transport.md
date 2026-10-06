@@ -85,6 +85,40 @@ To stop the listener, set it to `false` or set `REVIT_MCP_HTTP_ENABLED=0` before
 Restart Revit after changing listener settings.
 Invalid settings disable HTTP and leave the file channel available.
 
+### Limits
+
+These optional settings in `settings.json` bound memory and stalled clients.
+A missing key uses the default.
+A value outside its range disables HTTP, like any other invalid setting.
+
+| Setting | Default | Range | Meaning |
+| --- | --- | --- | --- |
+| `maxStoredResponses` | 256 | 1-10000 | Most completed results kept at once |
+| `maxStoredBytes` | 67108864 | 1048576-1073741824 | Most bytes of completed results kept at once |
+| `requestReadTimeoutSeconds` | 30 | 1-300 | Total time allowed to receive one request body |
+| `shutdownDrainSeconds` | 5 | 0-60 | Time to let in-flight requests finish when Revit shuts down |
+
+When a limit is exceeded, the add-in evicts the oldest completed results first.
+Queued and running jobs are never evicted, and the newest completed result is always kept, even if it alone exceeds `maxStoredBytes`.
+The limits apply to results of every transport, because all transports share one scheduler.
+
+### Listener status
+
+The heartbeat and `revit_ping` report the listener state: `httpState` is `disabled`, `listening` or `failed`, and `httpReason` explains `disabled` and `failed`.
+`revit_ping` returns them as `httpListener` with `state` and `reason`; `revit_list_instances` returns `httpState` and `httpReason` over the local and SSH transports.
+After the listener starts, the add-in probes its own `/health` endpoint. An HTTP.sys 503 or another failed probe sets the state to `failed`.
+A reservation or port problem shows `failed` with the reason, and an invalid `settings.json` shows `failed` with a configuration reason.
+
+When the state is `failed`, or a client gets HTTP 503, check the reservations and the HTTP service from an elevated prompt on the Revit machine:
+
+```powershell
+netsh http show urlacl
+netsh http show servicestate
+```
+
+`show urlacl` must list the exact prefix, for example `http://127.0.0.1:53110/`, for the Windows user that runs Revit.
+`show servicestate` lists the request queues and URL groups that already own a prefix; another process on the same URL causes a 503.
+
 ### Windows URL reservation
 
 Default script and MSI installs neither register a URL ACL nor require a `netsh` command.
@@ -151,7 +185,7 @@ All other routes require `Authorization: Bearer <token>`.
 | --- | --- |
 | `GET /health` | `ok`, `revitVersion`, `addinVersion`, `protocolVersion`, `commands`, `documentName`, `processId`, `startedUtc`, `readOnly` |
 | `POST /jobs?timeout=120` | Enqueue a job; return its state, position and ID |
-| `GET /jobs/{id}` | State and position with HTTP 202 while pending; state and result with HTTP 200; HTTP 404 after expiry |
+| `GET /jobs/{id}` | State and position with HTTP 202 while pending; state and result with HTTP 200; HTTP 410 after expiry or eviction; HTTP 404 for an unknown ID |
 | `POST /jobs/{id}/cancel` | JSON body `{"clientId":"<server GUID>"}` cancels that client's queued job; running actions finish |
 | `GET /views/{name}/image?pixel=1600` | PNG bytes from the same view exporter used by `revit_export_view` |
 
@@ -166,12 +200,23 @@ Proof verification uses the existing health requests for each job and adds no HT
 
 HTTP 401 means the token is missing or invalid.
 HTTP 429 with `error:queue_full` means this client already has 16 queued jobs; `retryAfterMs` gives a retry hint.
+HTTP 408 means the request body was not fully received within `requestReadTimeoutSeconds`; the add-in closes that connection.
+HTTP 410 with `"error":"expired"` and `"retryable":false` means the result expired or was evicted by the limits above.
+It is final: do not poll it again, and inspect the model before resubmitting an action.
+HTTP 404 means the ID was never known to this add-in, so check the ID.
+HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
 MCP action tools are refused with `read-only mode` when `REVIT_MCP_READ_ONLY=1` in the Python process.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
 Jobs are limited to 1 MiB. The add-in returns HTTP 413 before reading a body
 whose `Content-Length` exceeds that limit, and also enforces the limit while
 streaming bodies without a declared length.
+The same limits and the read deadline apply to the cancel request body.
+
+When Revit shuts down, the add-in stops accepting connections, then finishes in-flight requests for up to `shutdownDrainSeconds`.
+Queued jobs end as `cancelled`.
+A job that was already running ends as `abandoned`, not `failed`, because Revit cannot interrupt it and the change may still have been applied.
+The result of an abandoned job has `"abandoned":true`; inspect the model before retrying it.
 
 View names must be URL-encoded; `pixel` accepts 1-4000.
 Image requests can return HTTP 202 with `jobId` after 120 seconds.

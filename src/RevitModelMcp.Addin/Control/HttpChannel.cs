@@ -29,6 +29,9 @@ internal sealed class HttpChannel : IDisposable
     private readonly string _version;
     private readonly int _processId = Process.GetCurrentProcess().Id;
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly DrainGate _gate = new();
+    private int _disposed;
+    private volatile bool _closing;
     private Timer? _cleanup;
     private volatile string _documentName = string.Empty;
 
@@ -38,9 +41,12 @@ internal sealed class HttpChannel : IDisposable
         _requestExecution = requestExecution;
         _version = version;
         _settings = settings;
+        _channel.Scheduler.SetBudget(_settings.Limits.MaxStoredResponses, _settings.Limits.MaxStoredBytes);
     }
 
     public int? BoundPort { get; private set; }
+    public HttpListenerStatus Status { get; private set; } = HttpListenerStatus.DisabledBySettings();
+    public event Action<HttpListenerStatus>? StatusChanged;
 
     public void UpdateDocument(string? name) => _documentName = name ?? string.Empty;
 
@@ -57,18 +63,78 @@ internal sealed class HttpChannel : IDisposable
         {
             _listener.Start();
             BoundPort = _settings.HttpPort;
+            Status = HttpListenerStatus.Started();
+            StatusChanged?.Invoke(Status);
             _cleanup = new Timer(_ => RemoveExpiredResults(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
             _ = Task.Run(ListenAsync);
+            _ = Task.Run(ProbeAsync);
             PluginLog.Info($"HTTP listener started. Prefix='{prefix}'.");
         }
         catch (HttpListenerException exception) when (exception.NativeErrorCode == 5)
         {
+            Status = HttpListenerStatus.FromStartFailure(exception.NativeErrorCode, prefix);
+            StatusChanged?.Invoke(Status);
             using var identity = WindowsIdentity.GetCurrent();
             PluginLog.Warn($"HTTP listener NOT started: access denied for '{prefix}'. Run once from an elevated command prompt: netsh http add urlacl url={prefix} user=\"{identity.Name}\"");
         }
         catch (HttpListenerException exception)
         {
+            Status = HttpListenerStatus.FromStartFailure(exception.NativeErrorCode, prefix);
+            StatusChanged?.Invoke(Status);
             PluginLog.Error($"HTTP listener failed at {prefix}. Check the port and other Revit instances.", exception);
+        }
+    }
+
+    private async Task ProbeAsync()
+    {
+        try
+        {
+            int? statusCode = null;
+            string? exceptionTypeName = null;
+            var host = _settings.HttpBind == "0.0.0.0" ? "127.0.0.1" : _settings.HttpBind;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                if (_shutdown.IsCancellationRequested || _closing) return;
+                statusCode = null;
+                exceptionTypeName = null;
+                try
+                {
+                    var request = (HttpWebRequest)WebRequest.Create($"http://{host}:{_settings.HttpPort}/health");
+                    request.Method = "GET";
+                    request.Proxy = null;
+                    request.Timeout = 3000;
+                    using var cancellation = _shutdown.Token.Register(request.Abort);
+                    using var response = (HttpWebResponse)request.GetResponse();
+                    statusCode = (int)response.StatusCode;
+                }
+                catch (WebException exception) when (exception.Response is HttpWebResponse)
+                {
+                    using var response = (HttpWebResponse)exception.Response;
+                    statusCode = (int)response.StatusCode;
+                }
+                catch (Exception exception)
+                {
+                    exceptionTypeName = exception.GetType().Name;
+                }
+                if (statusCode == 200) break;
+                if (attempt < 2)
+                    await Task.Delay(1000, _shutdown.Token).ConfigureAwait(false);
+            }
+            if (_shutdown.IsCancellationRequested || _closing) return;
+            Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName);
+            StatusChanged?.Invoke(Status);
+            if (Status.IsFailed)
+                PluginLog.Warn($"HTTP self-probe failed. Reason='{Status.Reason}'.");
+            else
+                PluginLog.Info("HTTP self-probe succeeded.");
+        }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            if (_shutdown.IsCancellationRequested) return;
+            PluginLog.Warn($"HTTP self-probe failed. Type='{exception.GetType().Name}'.");
         }
     }
 
@@ -79,7 +145,27 @@ internal sealed class HttpChannel : IDisposable
             try
             {
                 var context = await _listener.GetContextAsync().ConfigureAwait(false);
-                _ = Task.Run(() => HandleAsync(context));
+                // Health requests (including the self-probe) are trivial and never counted as in-flight work.
+                if (context.Request.HttpMethod == "GET" && context.Request.Url?.AbsolutePath == "/health")
+                {
+                    _ = Task.Run(() => HandleAsync(context));
+                    continue;
+                }
+                var scope = _gate.TryEnter();
+                if (scope is null)
+                {
+                    try
+                    {
+                        await JsonAsync(context, 503, new() { ["error"] = "shutting_down" }).ConfigureAwait(false);
+                        context.Response.Close();
+                    }
+                    catch (Exception) { context.Response.Abort(); }
+                    return;
+                }
+                _ = Task.Run(async () =>
+                {
+                    using (scope) await HandleAsync(context).ConfigureAwait(false);
+                });
             }
             catch (Exception exception) when (exception is HttpListenerException or ObjectDisposedException)
             {
@@ -134,6 +220,8 @@ internal sealed class HttpChannel : IDisposable
                     var stored = _channel.Scheduler.Status(path.Substring(6));
                     if (stored is not null && ActionJobParser.IsAction(stored.Command))
                         await SendStatusAsync(context, stored.JobId, null).ConfigureAwait(false);
+                    else if (_channel.Scheduler.WasExpired(path.Substring(6)))
+                        await ExpiredAsync(context, path.Substring(6)).ConfigureAwait(false);
                     else
                         await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
                     return;
@@ -144,8 +232,9 @@ internal sealed class HttpChannel : IDisposable
             if (method == "POST" && path.StartsWith("/jobs/", StringComparison.Ordinal) && path.EndsWith("/cancel", StringComparison.Ordinal))
             {
                 var jobId = path.Substring(6, path.Length - 13);
-                using var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8);
-                var request = ControlJobParser.Parse(await reader.ReadToEndAsync().ConfigureAwait(false));
+                var payload = await ReadBodyAsync(context).ConfigureAwait(false);
+                if (payload is null) return;
+                var request = ControlJobParser.Parse(payload);
                 var cancellation = _channel.CancelJob(jobId, request.ClientId);
                 await JsonAsync(context, cancellation.State is null ? 404 : 200, new()
                 {
@@ -158,25 +247,8 @@ internal sealed class HttpChannel : IDisposable
             if (method == "POST" && path == "/jobs")
             {
                 if (!TryTimeout(context, out var timeout)) return;
-                if (context.Request.ContentLength64 > MaxJobBytes)
-                {
-                    await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
-                    return;
-                }
-                using var body = new MemoryStream();
-                var buffer = new byte[8192];
-                while (true)
-                {
-                    var read = await context.Request.InputStream.ReadAsync(buffer, 0, buffer.Length, _shutdown.Token).ConfigureAwait(false);
-                    if (read == 0) break;
-                    if (body.Length + read > MaxJobBytes)
-                    {
-                        await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
-                        return;
-                    }
-                    body.Write(buffer, 0, read);
-                }
-                var payload = Encoding.UTF8.GetString(body.ToArray());
+                var payload = await ReadBodyAsync(context).ConfigureAwait(false);
+                if (payload is null) return;
                 var job = await SubmitAsync(context, ControlJobParser.Parse(payload), payload).ConfigureAwait(false);
                 if (job is not null) await SendStatusAsync(context, job, timeout).ConfigureAwait(false);
                 return;
@@ -207,7 +279,10 @@ internal sealed class HttpChannel : IDisposable
                         job.Command.View != name || job.Command.PixelSize != pixel ||
                         job.Command.TargetDocument != context.Request.QueryString["document"])
                     {
-                        await JsonAsync(context, 404, new() { ["error"] = "Matching image job not found or expired." }).ConfigureAwait(false);
+                        if (_channel.Scheduler.WasExpired(jobId))
+                            await ExpiredAsync(context, jobId).ConfigureAwait(false);
+                        else
+                            await JsonAsync(context, 404, new() { ["error"] = "Matching image job not found or expired." }).ConfigureAwait(false);
                         return;
                     }
                 }
@@ -257,6 +332,45 @@ internal sealed class HttpChannel : IDisposable
         {
             context.Response.Close();
         }
+    }
+
+    private async Task<string?> ReadBodyAsync(HttpListenerContext context)
+    {
+        if (context.Request.ContentLength64 > MaxJobBytes)
+        {
+            await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
+            return null;
+        }
+        var result = await BoundedBodyReader.ReadAsync(context.Request.InputStream, MaxJobBytes,
+            TimeSpan.FromSeconds(_settings.RequestReadTimeoutSeconds), _shutdown.Token).ConfigureAwait(false);
+        if (result.Status == BodyReadStatus.TooLarge)
+        {
+            await JsonAsync(context, 413, new() { ["error"] = "Job exceeds 1 MiB." }).ConfigureAwait(false);
+            return null;
+        }
+        if (result.Status == BodyReadStatus.TimedOut)
+        {
+            context.Response.KeepAlive = false;
+            await JsonAsync(context, 408, new()
+            {
+                ["error"] = "request_timeout",
+                ["message"] = $"The request body was not received within {_settings.RequestReadTimeoutSeconds} seconds."
+            }).ConfigureAwait(false);
+            return null;
+        }
+        return Encoding.UTF8.GetString(result.Body);
+    }
+
+    private Task ExpiredAsync(HttpListenerContext context, string jobId)
+    {
+        context.Response.Headers["X-Revit-Job-Id"] = jobId;
+        return JsonAsync(context, 410, new()
+        {
+            ["error"] = "expired",
+            ["retryable"] = false,
+            ["jobId"] = jobId,
+            ["message"] = "The result expired or was evicted and cannot be fetched again. Do not retry polling this job; if it was an action, inspect the model before resubmitting."
+        });
     }
 
     private bool Authenticated(string? authorization)
@@ -338,7 +452,10 @@ internal sealed class HttpChannel : IDisposable
         var status = _channel.Scheduler.Status(jobId);
         if (status is null)
         {
-            await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
+            if (_channel.Scheduler.WasExpired(jobId))
+                await ExpiredAsync(context, jobId).ConfigureAwait(false);
+            else
+                await JsonAsync(context, 404, new() { ["error"] = "Job not found or expired." }).ConfigureAwait(false);
             return;
         }
         var result = new Dictionary<string, object>
@@ -351,12 +468,13 @@ internal sealed class HttpChannel : IDisposable
         var json = ControlPayloadJsonSerializer.Serialize(result);
         if (status.Result is not null)
             json = json.Substring(0, json.Length - 1) + ",\"result\":" + status.Result + "}";
-        await BytesAsync(context, status.State is JobState.Done or JobState.Failed or JobState.Cancelled ? 200 : 202,
+        await BytesAsync(context, status.State is JobState.Done or JobState.Failed or JobState.Cancelled or JobState.Abandoned ? 200 : 202,
             Encoding.UTF8.GetBytes(json), "application/json").ConfigureAwait(false);
     }
 
     private void RemoveExpiredResults()
     {
+        _channel.Scheduler.ActiveJobs();
         var now = DateTime.UtcNow;
         var actionCutoff = now.AddHours(-24).Ticks;
         var readCutoff = now.AddMinutes(-10).Ticks;
@@ -364,7 +482,7 @@ internal sealed class HttpChannel : IDisposable
         {
             var completed = Interlocked.Read(ref entry.Value.CompletedTicks);
             var cutoff = ActionJobParser.IsAction(entry.Value.Command.Command) ? actionCutoff : readCutoff;
-            if (completed == 0 || completed >= cutoff) continue;
+            if (!_channel.Scheduler.WasExpired(entry.Key) && (completed == 0 || completed >= cutoff)) continue;
             if (_jobs.TryRemove(entry.Key, out var removed) && removed.ImagePath is not null)
             {
                 try { File.Delete(removed.ImagePath); }
@@ -388,9 +506,18 @@ internal sealed class HttpChannel : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _closing = true;
+        _gate.Close();
+        try { if (_listener.IsListening) _listener.Stop(); }
+        catch (ObjectDisposedException) { }
+        _channel.Shutdown();
+        var drained = _gate.WaitDrained(TimeSpan.FromSeconds(_settings.ShutdownDrainSeconds));
+        if (!drained) PluginLog.Warn($"HTTP shutdown drain timed out with {_gate.Active} handlers remaining.");
         _shutdown.Cancel();
         _cleanup?.Dispose();
         _listener.Close();
+        if (drained) _shutdown.Dispose();
     }
 
     private sealed class HttpJob(string id, ControlJobParseResult command, Task<string> completion)
@@ -413,6 +540,12 @@ internal sealed record HttpSettings
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
     [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
     [DataMember(Name = "updateCheck", Order = 7)] public bool UpdateCheck { get; set; } = true;
+    [DataMember(Name = "maxStoredResponses", Order = 8)] public int MaxStoredResponses { get; set; } = HttpLimits.DefaultMaxStoredResponses;
+    [DataMember(Name = "maxStoredBytes", Order = 9)] public long MaxStoredBytes { get; set; } = HttpLimits.DefaultMaxStoredBytes;
+    [DataMember(Name = "requestReadTimeoutSeconds", Order = 10)] public int RequestReadTimeoutSeconds { get; set; } = HttpLimits.DefaultRequestReadTimeoutSeconds;
+    [DataMember(Name = "shutdownDrainSeconds", Order = 11)] public int ShutdownDrainSeconds { get; set; } = HttpLimits.DefaultShutdownDrainSeconds;
+
+    public HttpLimits Limits => new(MaxStoredResponses, MaxStoredBytes, RequestReadTimeoutSeconds, ShutdownDrainSeconds);
 
     [OnDeserializing]
     private void SetDefaults(StreamingContext context)
@@ -424,6 +557,10 @@ internal sealed record HttpSettings
         ShowActivityPaneOnAction = true;
         TrustedNetworkRoots = [];
         UpdateCheck = true;
+        MaxStoredResponses = HttpLimits.DefaultMaxStoredResponses;
+        MaxStoredBytes = HttpLimits.DefaultMaxStoredBytes;
+        RequestReadTimeoutSeconds = HttpLimits.DefaultRequestReadTimeoutSeconds;
+        ShutdownDrainSeconds = HttpLimits.DefaultShutdownDrainSeconds;
     }
 
     public static HttpSettings Load(string? directory = null)
@@ -479,5 +616,6 @@ internal sealed record HttpSettings
         if (HttpPort is < 1 or > 65535) throw new InvalidDataException("httpPort must be between 1 and 65535.");
         if (string.IsNullOrWhiteSpace(Token) || Token.Any(char.IsControl))
             throw new InvalidDataException("The HTTP token must be nonempty and contain no control characters.");
+        if (Limits.Validate() is { } limitError) throw new InvalidDataException(limitError);
     }
 }

@@ -49,6 +49,40 @@ internal static class ActionPreflight
             }
             throw new InvalidOperationException("Revit still rejects changes to groups after 4 preflight rounds; narrow the filter to elements outside groups.");
         }
+        if (GroupSkipPolicy.Supports(command))
+        {
+            using var groups = new FilteredElementCollector(document).OfClass(typeof(Group));
+            if (groups.GetElementCount() == 0) return null;
+            var state = new PreflightState();
+            var requested = ids.Select(RevitValueReader.GetId).ToList();
+            var converged = false;
+            for (var round = 0; round < 4; round++)
+            {
+                var remaining = ids.Where(id => !state.InGroup.Contains(RevitValueReader.GetId(id))).ToList();
+                var failures = new PreflightFailures();
+                Probe(document, failures, () => ApplyGroupAction(document, command, action, remaining));
+                var groupFailures = failures.Errors.Where(failure => failure.Guid == GroupFailurePolicy.FailureId)
+                    .Select(failure => (IReadOnlyCollection<long>)failure.Ids).ToList();
+                var blocked = GroupFailurePolicy.BlockedIds(remaining.Select(RevitValueReader.GetId), groupFailures, id =>
+                {
+                    var groupId = document.GetElement(ActionCommandExecutor.CreateId(id))?.GroupId;
+                    return groupId is not null && groupId != ElementId.InvalidElementId ? RevitValueReader.GetId(groupId) : (long?)null;
+                }).Where(id => !state.InGroup.Contains(id)).ToList();
+                if (blocked.Count == 0)
+                {
+                    converged = true;
+                    break;
+                }
+                state.InGroup.UnionWith(blocked);
+                if (GroupSkipPolicy.Decide(requested.Count, state.InGroup.Count) == GroupSkipPolicy.GroupSkipDecision.RefuseAll)
+                    break;
+            }
+            if (GroupSkipPolicy.Decide(requested.Count, state.InGroup.Count) == GroupSkipPolicy.GroupSkipDecision.RefuseAll)
+                throw new InvalidOperationException(GroupSkipPolicy.RefusalMessage(requested.Count));
+            if (!converged)
+                throw new InvalidOperationException("Revit still rejects changes to groups after 4 preflight rounds; narrow the element list to elements outside groups.");
+            return state;
+        }
         if (command != "walls-from-cad" || !action.Join) return null;
         var plan = ActionMutations.PlanWalls(document, action);
         if (plan.NoBasicTypes) return null;
@@ -113,6 +147,28 @@ internal static class ActionPreflight
         }
         joinState.NearbyExistingIds.Sort();
         return joinState;
+    }
+
+    private static void ApplyGroupAction(Document document, string command, ActionJobContract action, List<ElementId> ids)
+    {
+        var originalIds = action.ElementIds;
+        try
+        {
+            action.ElementIds = ids.Select(RevitValueReader.GetId).ToList();
+            _ = command switch
+            {
+                "move" => ActionMutations.Move(document, action, ids),
+                "rotate" => ActionMutations.Rotate(document, action, ids),
+                "copy" => ActionMutations.Copy(document, action, ids),
+                "mirror" => ActionMutations.Mirror(document, action, ids),
+                "change-type" => ActionMutations.ChangeType(document, action, ids),
+                _ => throw new ArgumentException($"Unsupported group preflight command '{command}'.")
+            };
+        }
+        finally
+        {
+            action.ElementIds = originalIds;
+        }
     }
 
     private static CadPlanPoint Point(XYZ point) => new(point.X.ToMillimeters(), point.Y.ToMillimeters());

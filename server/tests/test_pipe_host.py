@@ -416,3 +416,16 @@ def test_pipe_cancel_job_uses_existing_cancel_protocol():
         connection.request.assert_awaited_once_with({"type": "cancel", "jobId": "a" * 32})
 
     asyncio.run(scenario())
+
+
+def test_local_heartbeat_preserves_http_listener_status(tmp_path, monkeypatch):
+    write_heartbeat(tmp_path, [PIPE_PROTOCOL, "file/2"])
+    path = tmp_path / f"instance_{PID}.json"
+    status = json.loads(path.read_text(encoding="utf-8"))
+    status.update(httpPort=53110, httpState="failed", httpReason="Access denied.")
+    path.write_text(json.dumps(status), encoding="utf-8")
+    monkeypatch.setenv("REVIT_MCP_CHANNEL_DIR", str(tmp_path))
+    instance = LocalPipeHost().heartbeats()[0]
+    assert instance["httpPort"] == 53110
+    assert instance["httpState"] == "failed"
+    assert instance["httpReason"] == "Access denied."

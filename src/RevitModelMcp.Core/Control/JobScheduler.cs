@@ -1,3 +1,4 @@
+using System.Text;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -10,7 +11,8 @@ public enum JobState
     Running,
     Done,
     Failed,
-    Cancelled
+    Cancelled,
+    Abandoned
 }
 
 public sealed record ScheduledJob(
@@ -39,16 +41,22 @@ public sealed class JobScheduler
     private readonly string? _resultDirectory;
     private readonly Action<string> _log;
     private readonly Action<string, string> _writeResult;
+    private readonly BoundedLruCache<string, bool> _expired = new(4096);
+    private int _maxStoredResponses;
+    private long _maxStoredBytes;
     private Entry? _running;
 
     public JobScheduler(Func<DateTimeOffset>? clock = null, TimeSpan? retention = null, string? resultDirectory = null,
-        Action<string>? log = null, Action<string, string>? writeResult = null)
+        Action<string>? log = null, Action<string, string>? writeResult = null,
+        int maxStoredResponses = HttpLimits.DefaultMaxStoredResponses, long maxStoredBytes = HttpLimits.DefaultMaxStoredBytes)
     {
         _log = log ?? (_ => { });
         _writeResult = writeResult ?? CommandResponseJsonFile.WriteContent;
         _clock = clock ?? (() => DateTimeOffset.UtcNow);
         _retention = retention ?? TimeSpan.FromMinutes(10);
         _resultDirectory = resultDirectory;
+        _maxStoredResponses = maxStoredResponses;
+        _maxStoredBytes = maxStoredBytes;
     }
 
     public static string? SubmissionMessage(string? error) => error switch
@@ -145,7 +153,8 @@ public sealed class JobScheduler
         lock (_sync)
         {
             if (_running?.JobId != jobId) throw new InvalidOperationException("The job is not running.");
-            _running.State = _running.CancelRequested ? JobState.Cancelled : success ? JobState.Done : JobState.Failed;
+            if (_running.State != JobState.Abandoned)
+                _running.State = _running.CancelRequested ? JobState.Cancelled : success ? JobState.Done : JobState.Failed;
             try
             {
                 StoreResult(_running, result);
@@ -156,7 +165,7 @@ public sealed class JobScheduler
             }
             finally
             {
-                _running.CompletedUtc = _clock();
+                _running.CompletedUtc ??= _clock();
                 _running = null;
             }
         }
@@ -249,26 +258,70 @@ public sealed class JobScheduler
             entry.SubmittedUtc, entry.State, entry.Result, position);
     }
 
+    public void SetBudget(int maxStoredResponses, long maxStoredBytes)
+    {
+        lock (_sync)
+        {
+            _maxStoredResponses = maxStoredResponses;
+            _maxStoredBytes = maxStoredBytes;
+            EvictExpired();
+        }
+    }
+
+    public bool WasExpired(string jobId)
+    {
+        lock (_sync) return !_jobs.ContainsKey(jobId) && _expired.TryGet(jobId, out _);
+    }
+
+    public IReadOnlyList<ScheduledJob> AbandonUnfinished(string runningResult, string queuedResult)
+    {
+        lock (_sync)
+        {
+            var changed = new List<ScheduledJob>();
+            foreach (var entry in _jobs.Values)
+            {
+                if (entry.State is not (JobState.Queued or JobState.WaitingRevit or JobState.Running)) continue;
+                var running = entry.State == JobState.Running;
+                entry.State = running ? JobState.Abandoned : JobState.Cancelled;
+                TryStoreResult(entry, running ? runningResult : queuedResult);
+                entry.CompletedUtc = _clock();
+                changed.Add(Snapshot(entry));
+            }
+            _clients.Clear();
+            _rotation.Clear();
+            return changed;
+        }
+    }
+
     private void EvictExpired()
     {
         var cutoff = _clock() - _retention;
         foreach (var entry in _jobs.Values.Where(entry => entry.CompletedUtc < (ActionJobParser.IsAction(entry.Command) ? _clock() - TimeSpan.FromHours(24) : cutoff)).ToArray())
+            Remove(entry);
+        var completed = _jobs.Values.Where(entry => entry.CompletedUtc is not null)
+            .Select(entry => new StoredResponse(entry.JobId, entry.CompletedUtc!.Value,
+                entry.Result is null ? 0 : Encoding.UTF8.GetByteCount(entry.Result))).ToArray();
+        if (completed.Length == 0) return;
+        var evictions = ResponseBudget.SelectEvictions(completed, _maxStoredResponses, _maxStoredBytes);
+        foreach (var jobId in evictions) Remove(_jobs[jobId]);
+        if (evictions.Count > 0) _log($"Stored response budget evicted {evictions.Count} results.");
+    }
+
+    private void Remove(Entry entry)
+    {
+        _jobs.Remove(entry.JobId);
+        _expired.Set(entry.JobId, true);
+        if (_resultDirectory is null || !ActionJobParser.IsAction(entry.Command)) return;
+        if (!Guid.TryParseExact(entry.JobId, "N", out _)) return;
+        foreach (var extension in new[] { "json", "cancel" })
         {
-            _jobs.Remove(entry.JobId);
-            if (_resultDirectory is not null && ActionJobParser.IsAction(entry.Command))
+            try
             {
-                if (!Guid.TryParseExact(entry.JobId, "N", out _)) continue;
-                foreach (var extension in new[] { "json", "cancel" })
-                {
-                    try
-                    {
-                        File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.{extension}"));
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        _log($"Job {entry.JobId} .{extension} file was not deleted: {ex.GetType().Name}.");
-                    }
-                }
+                File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.{extension}"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log($"Job {entry.JobId} .{extension} file was not deleted: {ex.GetType().Name}.");
             }
         }
     }
