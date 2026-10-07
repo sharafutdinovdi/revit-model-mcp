@@ -89,6 +89,7 @@ plugins:
           - design/model-audit.md
         Reference:
           - tools.md
+          - stability.md
           - prompts.md
           - actions.md
           - validation.md
@@ -112,6 +113,7 @@ nav:
       - Model audit: design/model-audit.md
   - Reference:
       - Tools: tools.md
+      - Stability: stability.md
       - Tool manifest: tool-manifest.md
       - Prompts and coordinator guide: prompts.md
       - Actions: actions.md
