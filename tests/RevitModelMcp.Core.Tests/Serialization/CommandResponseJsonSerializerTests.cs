@@ -538,7 +538,7 @@ public sealed class CommandResponseJsonSerializerTests
             DryRun = false,
             Committed = false,
             FailedStep = 1,
-            UndoName = "revit_batch",
+            UndoName = "MCP (client): Ran a batch of 2 steps in A",
             RolledBack = true,
             Steps = [
                 new BatchStepResult { Index = 0, Command = "set-parameter", Success = true, RolledBack = true,

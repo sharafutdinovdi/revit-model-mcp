@@ -271,7 +271,7 @@ A batch job contains a nonempty `steps` array of at most 50 command objects:
 Steps use each command's normal channel fields.
 All steps are validated at parse time before execution; an invalid later step rejects the entire batch without executing any step and without `failedStep`.
 Allowed commands are `move`, `place-family`, `create-wall`, `set-parameter`, `delete`, `select` and `isolate`.
-Each model step uses its own transaction; the group is assimilated into the single undo entry `revit_batch`.
+Each model step uses its own transaction; the group is assimilated into the single undo entry `MCP (<clientName>): <short summary>`.
 A batch dry run retains each step's changes for subsequent steps and rolls back the group at the end.
 An individual channel step with `dryRun:true` (MCP `dry_run:true`) in a real batch is accepted and previews only that step.
 Selection is restored on batch rollback.
@@ -280,7 +280,7 @@ Selection is restored on batch rollback.
 Each successful mutation's `data` carries the single-action verification shape.
 The first failed step stops execution; all attempted steps, including the failing one, carry `rolledBack:true`, as does any retained step data.
 An `Assimilate` failure is reported on the last step with `failedStep` pointing at that step.
-`data.undoName` is `"revit_batch"`, `data.committed` reports group assimilation, and `data.failedStep` is the failed index or null.
+`data.undoName` is `"MCP (<clientName>): <short summary>"` (absent on a dry run), `data.committed` reports group assimilation, and `data.failedStep` is the failed index or null.
 Dry-run success has `committed:false`, `failedStep:null` and `rolledBack:true`.
 Verification records each step immediately; later steps can supersede those facts.
 

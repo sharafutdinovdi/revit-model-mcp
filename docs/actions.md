@@ -79,7 +79,7 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. Group members that Revit refuses to change fail with a clear message, including in dry runs. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
-| `revit_batch` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
+| `revit_run_actions` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_process_models` | `paths=null`, `folder=null`, `recursive=false`, `pattern="*.rvt"`, `open=null`, `steps=null`, `code=null`, `exports=null`, `save=null`, `stop_on_error=false`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=14400`, `process_id=null` | Open and process 1-500 models in the interactive Revit session, then close each model. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. Replacing an existing file needs a confirmation token. |
 | `revit_export` | `format`, `views=null`, `sheets=null`, `sheet_set=null`, `all_sheets=false`, `output_dir=null`, `options=null`, `overwrite=false`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=1800` | Export PDF, DWG, IFC or schedule CSV files to a workstation folder. Replacing existing files needs a confirmation token. Cannot be used in a batch. |
@@ -124,7 +124,7 @@ IFC exports the whole model or one view selected through `views`. Its options ar
 
 `revit_process_models` accepts either 1-500 absolute `.rvt` paths or a local or UNC `folder` with `recursive` and a `.rvt` file pattern. RSN model paths are accepted in `paths`; cloud paths are refused. `trustedNetworkRoots` applies to UNC paths. Already open models are skipped. Each model opens in the background with the `revit_open_document` `mode`, `worksets`, and `audit` options. The active document is left in place. The action uses the interactive Revit session, not the read-only batch collector worker.
 
-`steps` uses the same 1-50 step allowlist as `revit_batch`, and `code` uses `{"code":"...","transaction":"auto"}`; `"none"` is refused, as for `revit_execute_code`. A call that has `code` and is not a `dry_run` needs a confirmation token, like `in_place` saves; the token is bound to the whole request, including the code, and to the size and modification time of the source files. The script runs after the steps with `ScriptContext.Document` set to the processed model. `exports` is a list of `revit_export` requests without `document`; an export `output_dir` can contain `{model}`. Without an export `output_dir`, files go to `<save.output_dir>\<model>` when an output directory is set, or `%LOCALAPPDATA%\RevitModelMcp\exports\<model>` otherwise. The result reports each model's open settings, step summary, script return value and log, export files, saved path, `dialogsDismissed`, elapsed time, status, and error. `dialogsDismissed` is `{ "messages": [{ "message": "...", "count": 1 }], "truncated": false }`; it combines dismissed dialogs and warnings, retains up to 50 distinct messages, and counts repeats. `truncated=true` means further distinct messages were omitted. Sources with the same model name (file name without extension) are refused when `save.mode="output_dir"` is used or exports use the default or a `{model}` output directory, because their outputs would overwrite each other. The error lists the colliding sources; process them in separate calls. Failures to close the model or unsubscribe handlers mark the model failed with the reason in `error`; failures of other cleanup steps (activity record, change capture, transaction group) keep the status and are listed in the model's `warnings`. A failed model does not stop later models unless `stop_on_error=true`. `revit_jobs(job_id=jobId)` reports `currentIndex` (one-based), `total`, redacted `currentPath`, and completed per-model results while the action runs.
+`steps` uses the same 1-50 step allowlist as `revit_run_actions`, and `code` uses `{"code":"...","transaction":"auto"}`; `"none"` is refused, as for `revit_execute_code`. A call that has `code` and is not a `dry_run` needs a confirmation token, like `in_place` saves; the token is bound to the whole request, including the code, and to the size and modification time of the source files. The script runs after the steps with `ScriptContext.Document` set to the processed model. `exports` is a list of `revit_export` requests without `document`; an export `output_dir` can contain `{model}`. Without an export `output_dir`, files go to `<save.output_dir>\<model>` when an output directory is set, or `%LOCALAPPDATA%\RevitModelMcp\exports\<model>` otherwise. The result reports each model's open settings, step summary, script return value and log, export files, saved path, `dialogsDismissed`, elapsed time, status, and error. `dialogsDismissed` is `{ "messages": [{ "message": "...", "count": 1 }], "truncated": false }`; it combines dismissed dialogs and warnings, retains up to 50 distinct messages, and counts repeats. `truncated=true` means further distinct messages were omitted. Sources with the same model name (file name without extension) are refused when `save.mode="output_dir"` is used or exports use the default or a `{model}` output directory, because their outputs would overwrite each other. The error lists the colliding sources; process them in separate calls. Failures to close the model or unsubscribe handlers mark the model failed with the reason in `error`; failures of other cleanup steps (activity record, change capture, transaction group) keep the status and are listed in the model's `warnings`. A failed model does not stop later models unless `stop_on_error=true`. `revit_jobs(job_id=jobId)` reports `currentIndex` (one-based), `total`, redacted `currentPath`, and completed per-model results while the action runs.
 
 The final response has `partial=true` when at least one model fails and includes the results for all processed models.
 
@@ -132,7 +132,7 @@ The final response has `partial=true` when at least one model fails and includes
 
 ### NWC export options
 
-The API export uses explicit arguments, then values from `settings_xml`, then the existing API defaults. The XML file must be on the Revit workstation. The target must be a project document. The NWC file stays on the Revit workstation; no artifact is transferred to the client. This action cannot run inside `revit_batch`.
+The API export uses explicit arguments, then values from `settings_xml`, then the existing API defaults. The XML file must be on the Revit workstation. The target must be a project document. The NWC file stays on the Revit workstation; no artifact is transferred to the client. This action cannot run inside `revit_run_actions`.
 
 | Argument | Default | Revit API property |
 | --- | --- | --- |
@@ -165,7 +165,7 @@ The API export uses explicit arguments, then values from `settings_xml`, then th
 
 ### Family edits
 
-In an open `.rfa`, omit `families`. The add-in edits it in place and leaves saving to the user. In a project, pass 1-200 exact family names or `["*"]`; in-place, non-editable, missing and other-user-owned families are skipped with reasons. The add-in opens each family, applies operations in order inside one family transaction, then loads it into the project with one project undo entry. A dry run re-reads the prospective family and rolls back without loading. The command is excluded from `revit_batch`.
+In an open `.rfa`, omit `families`. The add-in edits it in place and leaves saving to the user. In a project, pass 1-200 exact family names or `["*"]`; in-place, non-editable, missing and other-user-owned families are skipped with reasons. The add-in opens each family, applies operations in order inside one family transaction, then loads it into the project with one project undo entry. A dry run re-reads the prospective family and rolls back without loading. The command is excluded from `revit_run_actions`.
 
 Operations use snake_case `op` values:
 
@@ -233,7 +233,9 @@ A missing offset is reported as null.
 Level-based placements set and verify the offset against `z_mm`; face-based placements use the host face.
 A dry run rolls back all changes. The `load` list uses the same workstation path checks as `revit_load_family`.
 
-`revit_batch` takes action names and their normal snake_case arguments:
+`revit_run_actions` runs up to 50 actions in one undo entry. It is unrelated to the `revit_batch_*` tools, which collect snapshots over many models; see [batch collection](batch.md). Its channel command is still named `batch`.
+
+`revit_run_actions` takes action names and their normal snake_case arguments:
 
 ```json
 {
@@ -268,7 +270,7 @@ During action execution, the handler attempts to dismiss TaskDialog prompts with
 Messages from successful overrides appear in `dialogsSuppressed`.
 The dialog handler is removed in `finally`, including on errors.
 For the single-action `revit_place_family` tool, missing families return up to five similar names with their family categories in `closestFamilies`; unrelated names are omitted.
-Inside `revit_batch`, a missing family surfaces only as `steps[].error` text; `closestFamilies` is unavailable.
+Inside `revit_run_actions`, a missing family surfaces only as `steps[].error` text; `closestFamilies` is unavailable.
 For `Family: Type`, `type_name=null` uses the embedded type; a conflicting `type_name` is rejected.
 For a family name alone, `type_name=null` selects the first loaded type.
 
@@ -372,7 +374,7 @@ Four more calls use the same two-step flow, with the same response fields (`need
 
 The token guards against mistakes and against instructions injected into model data or tool output. It does not stop an MCP client that confirms by itself: a client that gets the token can send it back. For unattended use, switch on read-only mode.
 
-These operations require no open transaction and cannot be included in `revit_batch`. Read-only mode applies. A committed open, close, save or sync carries a `summary` and appears in the MCP activity pane, but opens no undo entry: use Revit's own history for these document-level changes.
+These operations require no open transaction and cannot be included in `revit_run_actions`. Read-only mode applies. A committed open, close, save or sync carries a `summary` and appears in the MCP activity pane, but opens no undo entry: use Revit's own history for these document-level changes.
 
 ### Undo the last action
 
