@@ -782,6 +782,9 @@ public static class DocumentConfirmationBinding
             .ThenBy(link => link.Id).ThenBy(link => link.Name, StringComparer.Ordinal)
             .Select(link => $"{link.Kind}:{link.Id}:{link.Name}"));
 
+    public static string DeleteArguments(IEnumerable<long> requestedIds, int deletedCount) =>
+        "delete:" + deletedCount + ":" + string.Join(",", requestedIds.Distinct().OrderBy(id => id));
+
     public static string CodeHash(string code)
     {
         using var sha256 = SHA256.Create();
@@ -811,6 +814,16 @@ public static class DocumentConfirmationBinding
 public static class CodeExecutionPolicy
 {
     public const string TransactionNoneRefusal = "transaction=\"none\" is refused: scripts that own their transactions can change the model without a single undo entry. Use transaction=\"auto\". A workstation policy that can allow it is planned.";
+}
+
+public static class DeletionPolicy
+{
+    public const int ConfirmationThreshold = 500;
+
+    public static bool RequiresConfirmation(int deletedCount) => deletedCount > ConfirmationThreshold;
+
+    public static string BatchRefusal(int count) =>
+        $"Deleting {count} elements (dependents included) exceeds {ConfirmationThreshold} and needs confirmation. Use revit_delete on its own.";
 }
 
 public sealed class ActionJobContract

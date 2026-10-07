@@ -393,9 +393,13 @@ async def _execute(
 
 
 def addressed_tool(function):
+    if "document" in inspect.signature(function).parameters:
+        addressing = "If more than one Revit instance is running, document is required; "
+    else:
+        addressing = "If more than one Revit instance is running, use process_id to choose one; "
     function.__doc__ = (function.__doc__ or "") + (
-        "\n\nIf more than one Revit instance is running, document is required; "
-        "otherwise any instance may respond. Non-empty skipped means the answer is incomplete; "
+        "\n\n" + addressing + "otherwise any instance may respond. "
+        "Non-empty skipped means the answer is incomplete; "
         "skippedCount includes entries beyond the first 100."
     )
     title = {
