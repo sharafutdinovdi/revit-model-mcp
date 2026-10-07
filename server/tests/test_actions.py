@@ -895,7 +895,11 @@ def test_action_response_timeout_reaches_channel(timeout_seconds):
             {"element_id": 1, "parameter": "Area", "parameter_id": "123", "value": 2.5},
             {"elementId": 1, "parameter": "Area", "parameterId": "123", "value": 2.5},
         ),
-        ("revit_delete", {"element_ids": [1, 2]}, {"elementIds": [1, 2]}),
+        (
+            "revit_delete",
+            {"element_ids": [1, 2]},
+            {"elementIds": [1, 2], "confirmToken": None},
+        ),
     ],
 )
 @pytest.mark.parametrize("dry_run", [False, True])
@@ -1889,6 +1893,7 @@ def test_actions_import_emits_no_user_warning():
 
 
 CONFIRMED_TOOL_CALLS = {
+    "revit_delete": {"element_ids": [1, 2]},
     "revit_remove_links": {"links": ["Link A"]},
     "revit_execute_code": {"code": "return 42;"},
     "revit_export": {"format": "pdf", "all_sheets": True, "overwrite": True},
@@ -1908,7 +1913,7 @@ def test_confirmation_token_is_mapped_into_payload(tool):
     assert execute.await_args.args[0].payload["confirmToken"] == "tok-1"
 
 
-@pytest.mark.parametrize("tool", ["revit_remove_links", "revit_execute_code"])
+@pytest.mark.parametrize("tool", ["revit_remove_links", "revit_execute_code", "revit_delete"])
 def test_confirmation_two_step_flow_repeats_arguments(tool):
     import asyncio
 
