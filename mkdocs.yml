@@ -76,6 +76,7 @@ plugins:
       sections:
         Getting started:
           - index.md
+          - install.md
           - server.md
           - contributing.md
         Concepts:
@@ -99,6 +100,7 @@ plugins:
 nav:
   - Home: index.md
   - Guide:
+      - Requirements and install: install.md
       - Server: server.md
       - How it works: how-it-works.md
       - Transport: transport.md
