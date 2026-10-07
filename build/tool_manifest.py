@@ -266,7 +266,7 @@ def build_manifest(tools, resources, prompts) -> dict:
     }
 
 
-def export_alternative(manifest: dict) -> dict:
+def export_snake_case(manifest: dict) -> dict:
     return {
         "mcp_manifest_version": "1.0",
         "app_model": "A",
@@ -311,10 +311,10 @@ def main() -> None:
         "--check", action="store_true", help="Fail when the file differs; do not write"
     )
     parser.add_argument(
-        "--export-submission",
+        "--export-snake-case",
         type=Path,
         metavar="PATH",
-        help="Write an alternative export format to PATH; the file is local output only",
+        help="Write the manifest with snake_case keys to PATH",
     )
     args = parser.parse_args()
 
@@ -323,12 +323,12 @@ def main() -> None:
         asyncio.run(mcp.list_resources()),
         asyncio.run(mcp.list_prompts()),
     )
-    if args.export_submission:
-        args.export_submission.parent.mkdir(parents=True, exist_ok=True)
-        args.export_submission.write_text(
-            render(export_alternative(manifest)), encoding="utf-8"
+    if args.export_snake_case:
+        args.export_snake_case.parent.mkdir(parents=True, exist_ok=True)
+        args.export_snake_case.write_text(
+            render(export_snake_case(manifest)), encoding="utf-8"
         )
-        print(f"Wrote alternative export to {args.export_submission}")
+        print(f"Wrote snake_case export to {args.export_snake_case}")
         return
     text = render(manifest)
     if args.check:

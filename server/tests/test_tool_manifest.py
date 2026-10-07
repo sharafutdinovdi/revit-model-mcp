@@ -99,9 +99,9 @@ def test_committed_manifest_has_neutral_keys():
         assert old not in text, old
 
 
-def test_alternative_export(generator, built, tmp_path):
+def test_snake_case_export(generator, built, tmp_path):
     output = tmp_path / "nested" / "export.json"
-    with patch("sys.argv", ["tool_manifest.py", "--export-submission", str(output)]):
+    with patch("sys.argv", ["tool_manifest.py", "--export-snake-case", str(output)]):
         generator["main"]()
     exported = json.loads(output.read_text(encoding="utf-8"))
     assert exported["tools"] == [
