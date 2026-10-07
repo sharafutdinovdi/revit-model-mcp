@@ -1,19 +1,58 @@
 # Privacy policy
 
-Effective date: September 14, 2026.
+Effective date: October 7, 2026.
 Changes to this policy are recorded in the repository history.
+
+## Summary
+
+- Your model data stays on your machines. The project has no server that receives it.
+- There is no analytics, telemetry, crash reporting or advertising code in the add-in or the Python server.
+- Revit model data leaves the workstation only as responses to the MCP client you chose. That client may send it to an AI model service under its own policy.
+- The only automatic requests to the project's hosting are update checks to `api.github.com` (add-in) and `pypi.org` (server). They carry no model data and you can switch them off.
 
 ## Data collection
 
 Revit Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
 Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
-The project includes no analytics, telemetry or crash reporting.
-Unless disabled, the add-in contacts `api.github.com` at most once every 24 hours after Revit starts to check the latest stable release. Per-user installs download the SingleUser MSI and its SHA256 checksum from the release assets when an update is available. The request contains no model data.
+The maintainer collects no personal data, accounts or usage statistics.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
+
+## Update checks
+
+The add-in contacts `api.github.com` at most once every 24 hours after Revit starts to check the latest stable release.
+The request is a plain HTTPS `GET` for the latest release of this repository, sent through the system proxy with the user agent `RevitModelMcp updater`.
+It contains no model data, document names, user names or license information.
+GitHub sees the network address of the request, as it does for any web request, and handles it under [its own privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
+The `REVIT_MCP_UPDATE_FEED` environment variable redirects the check to another HTTPS (or loopback HTTP) release feed, for example an internal mirror.
+Per-user installs download the SingleUser MSI and its SHA256 checksum from the release assets when an update is available. Per-machine installs only show a notice.
+
+The Python server checks for a newer package once every 24 hours.
+It looks up the package page on `pypi.org` and refreshes the cached package with `uvx`, which downloads from PyPI and its package hosting service.
+These requests contain no model data.
 The bundle launcher uses uvx to download the package and dependencies from PyPI and its package hosting service during installation or updates.
 Prerelease bundles download the package wheel from GitHub Releases.
-These package downloads do not send Revit model data.
+
+To turn the checks off:
+
+| Check | How to disable |
+| --- | --- |
+| Add-in, one machine | Install the MSI with `UPDATECHECK=0`, or set `{"updateCheck":false}` in `%ProgramData%\RevitModelMcp\settings.json` (all users) or `%LOCALAPPDATA%\RevitModelMcp\settings.json` (current user). |
+| Add-in, environment | Set `REVIT_MCP_NO_UPDATE_CHECK=1` in the environment of the Revit process. |
+| Add-in, store build | A build made with the MSBuild property `StoreBuild=true` never checks for updates. The store delivers updates instead. |
+| Server | Set `REVIT_MCP_NO_UPDATE_CHECK=1` in the MCP client's server settings. |
+
+Any one of these is enough. Without them the default behavior stays on.
+See [automatic updates](updates.md) for details.
+
+## AI client data flow
+
+The add-in and the server do not send model data to the maintainer, to GitHub or to any AI provider.
+The MCP client you choose (for example Claude Desktop or Claude Code) starts the server and receives its responses.
+What that client does next is outside this project: it may pass the responses to a language model service in the cloud or to a local model, depending on its configuration.
+Review the client's privacy policy and your project's confidentiality rules before you connect a client to a confidential model.
+Use read-only mode and `REVIT_MCP_REDACT_PATHS=1` to reduce what a client can change or see.
+No AI service is contacted by this project itself, and it ships no API key for one.
 
 ## Usage and storage
 
@@ -52,6 +91,7 @@ Add-in logs are stored in the Windows Documents folder under `RevitModelMcp\Logs
 Logs rotate at 10 MiB, and startup cleanup keeps the 14 most recently modified log files.
 This is a file-count limit, not a retention period in days.
 Logs can contain model names, paths and exception details even when Python response redaction is enabled.
+Logs stay on the workstation. The project never uploads them; they leave the machine only if you attach them to a support request, so review and sanitize them first.
 Python diagnostics go to the MCP client's logging stream; client retention is controlled by that client.
 
 To remove project data, close Revit and the MCP server, uninstall the add-in and desktop extension, and remove `%LOCALAPPDATA%\RevitModelMcp`.

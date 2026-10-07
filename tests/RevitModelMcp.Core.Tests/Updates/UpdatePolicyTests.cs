@@ -50,6 +50,22 @@ public sealed class UpdatePolicyTests
     }
 
     [Test]
+    public async Task StoreBuildPreventsChecks()
+    {
+        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, storeBuild: true)).IsFalse();
+        await Assert.That(UpdatePolicy.IsEnabled(null, true, true, storeBuild: false)).IsTrue();
+    }
+
+    [Test]
+    public async Task EnvironmentOptOutPreventsChecksOnlyForOne()
+    {
+        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, environmentOptOut: "1")).IsFalse();
+        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, environmentOptOut: "0")).IsTrue();
+        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, environmentOptOut: null)).IsTrue();
+        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, environmentOptOut: "true")).IsTrue();
+    }
+
+    [Test]
     public async Task SelectsExactAssetAndVerifiesPublishedChecksum()
     {
         const string fileName = "RevitModelMcp-0.5.0-SingleUser.msi";

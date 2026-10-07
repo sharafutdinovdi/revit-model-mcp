@@ -5,6 +5,7 @@
     <RootNamespace>RevitModelMcp</RootNamespace>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
+    <StoreBuild Condition="'$(StoreBuild)' == ''">false</StoreBuild>
     <DeployAddin>true</DeployAddin>
     <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
@@ -52,6 +53,10 @@
     <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0"/>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="StoreBuild" Value="$(StoreBuild)"/>
   </ItemGroup>
 
   <ItemGroup>
