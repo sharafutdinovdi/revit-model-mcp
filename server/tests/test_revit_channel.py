@@ -138,7 +138,7 @@ class FakeRemoteHost:
         self.response_timeout = timeout_seconds
         return self.response_name
 
-    async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+    async def finish_job(self, response_name, cleanup_names, download_artifact, output_path):
         self.events.append("finish")
         self.deleted_names.extend(cleanup_names)
         return self.response_content, None
@@ -724,7 +724,9 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                             "elapsedMs": 100,
                         }
 
-                        async def read_response(name, cleanup_names, download_artifact, save_to):
+                        async def read_response(
+                            name, cleanup_names, download_artifact, output_path
+                        ):
                             nonlocal reads
                             reads += 1
                             self.assertEqual(cleanup_names, [])
@@ -779,7 +781,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             "elapsedMs": 5,
         }
 
-        async def read_response(name, cleanup_names, download_artifact, save_to):
+        async def read_response(name, cleanup_names, download_artifact, output_path):
             partial["correlationId"] = json.loads(remote.written_content)["correlationId"]
             return json.dumps(partial), None
 
@@ -804,7 +806,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                     "data": {"views": [{"name": "Level 1"}]},
                 }
 
-                async def read_response(name, cleanup_names, download_artifact, save_to):
+                async def read_response(name, cleanup_names, download_artifact, output_path):
                     nonlocal reads
                     reads += 1
                     self.assertEqual(cleanup_names, [])
@@ -847,7 +849,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             "data": {"views": [{"name": "Level 1"}]},
         }
 
-        async def read_response(name, cleanup_names, download_artifact, save_to):
+        async def read_response(name, cleanup_names, download_artifact, output_path):
             self.assertEqual(cleanup_names, [])
             partial["correlationId"] = json.loads(remote.written_content)["correlationId"]
             return json.dumps(partial), None
@@ -981,7 +983,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote.wait_for_new_response = AsyncMock(side_effect=[other_name, own_name, own_name])
         reads = 0
 
-        async def read_response(name, cleanup_names, download_artifact, save_to):
+        async def read_response(name, cleanup_names, download_artifact, output_path):
             nonlocal reads
             reads += 1
             identity = json.loads(remote.written_content)["correlationId"]
@@ -2103,7 +2105,7 @@ class SimulatedHost:
         name = "response_" + self.job_id + ".json"
         while not root.joinpath(name).exists(): await asyncio.sleep(.01)
         return name
-    async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+    async def finish_job(self, response_name, cleanup_names, download_artifact, output_path):
         return root.joinpath(response_name).read_text(), None
     async def delete_files(self, names): pass
 asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
@@ -2448,7 +2450,7 @@ def test_image_read_commands_download_artifact(command, tmp_path):
     downloads = []
     target = str(tmp_path / "image.png")
 
-    async def finish(name, cleanup_names, download_artifact, save_to):
+    async def finish(name, cleanup_names, download_artifact, output_path):
         downloads.append(download_artifact)
         response = {
             "command": command,
@@ -2477,7 +2479,7 @@ def test_slow_image_read_commands_download_artifact(command, legacy_partial, tmp
         else "The command took more than two seconds; elapsedMs reports the duration."
     )
 
-    async def finish(name, cleanup_names, download_artifact, save_to):
+    async def finish(name, cleanup_names, download_artifact, output_path):
         response = {
             "command": command,
             "success": not legacy_partial,
@@ -2517,7 +2519,7 @@ def test_partial_read_without_image_file_is_not_completed(command, data, tmp_pat
     remote.instance_info = {"addinVersion": "0.7.0", "commands": [command]}
     target = str(tmp_path / "image.png")
 
-    async def finish(name, cleanup_names, download_artifact, save_to):
+    async def finish(name, cleanup_names, download_artifact, output_path):
         response = {
             "command": command,
             "success": False,

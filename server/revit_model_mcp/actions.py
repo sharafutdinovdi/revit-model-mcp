@@ -421,14 +421,14 @@ class ProcessExport(BaseModel):
     sheets: list[str | ElementId] | None = None
     sheet_set: str | None = None
     all_sheets: bool = False
-    folder: str | None = None
+    output_dir: str | None = None
     options: dict[str, Any] | None = None
     overwrite: bool = False
 
     @model_validator(mode="after")
     def validate_request(self):
-        if self.folder is not None:
-            _validate_workstation_path(self.folder.replace("{model}", "model"), folder=True)
+        if self.output_dir is not None:
+            _validate_workstation_path(self.output_dir.replace("{model}", "model"), folder=True)
         if self.format in {"pdf", "dwg"} and not (
             self.views or self.sheets or self.sheet_set or self.all_sheets
         ):
@@ -448,7 +448,7 @@ class ProcessExport(BaseModel):
             "sheets": [str(sheet) for sheet in self.sheets] if self.sheets is not None else None,
             "sheetSet": self.sheet_set,
             "allSheets": self.all_sheets,
-            "folder": self.folder,
+            "folder": self.output_dir,
             "options": self.options or {},
             "overwrite": self.overwrite,
         }
@@ -641,7 +641,7 @@ async def _send_action(
     *,
     document: str | None = None,
     process_id: int | None = None,
-    response_timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
+    timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
     **payload,
 ) -> dict[str, Any]:
     try:
@@ -667,7 +667,7 @@ async def _send_action(
         },
     )
     return redact_model_paths(
-        await execute(job, response_timeout_s, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
+        await execute(job, timeout_seconds, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
     )
 
 
@@ -679,7 +679,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         *,
         document: str | None = None,
         process_id: int | None = None,
-        response_timeout_s: int = DEFAULT_TIMEOUT_SECONDS,
+        timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         **payload,
     ) -> dict[str, Any]:
         if read_only:
@@ -690,7 +690,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             command,
             document=document,
             process_id=process_id,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
             **payload,
         )
 
@@ -792,7 +792,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             activate=activate,
             audit=audit,
             process_id=process_id,
-            response_timeout_s=1800 if audit else DEFAULT_TIMEOUT_SECONDS,
+            timeout_seconds=1800 if audit else DEFAULT_TIMEOUT_SECONDS,
         )
 
     @action
@@ -854,7 +854,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             saveAs=save_as,
             name=name,
             process_id=process_id,
-            response_timeout_s=600,
+            timeout_seconds=600,
         )
 
     @action
@@ -989,7 +989,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         dry_run: bool = False,
         confirm_token: str | None = None,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
         """Compile and run C# against the live Revit API on the Revit thread.
 
@@ -1009,7 +1009,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             document=document,
             dryRun=dry_run,
             confirmToken=confirm_token,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1040,7 +1040,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         create_plan_views: bool = False,
         plan_view_type: str | None = None,
         dry_run: bool = False,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
         document: Document = None,
     ) -> dict[str, Any]:
         """Align host grids and levels to a loaded link, with optional creation and rollback preview.
@@ -1064,7 +1064,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             createPlanViews=create_plan_views,
             planViewType=plan_view_type,
             dryRun=dry_run,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
             document=document,
         )
 
@@ -1330,7 +1330,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         overwrite_parameter_values: bool = False,
         dry_run: bool = False,
         document: Document = None,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
         """Load workstation .rfa files in one undo entry. Existing families are skipped unless overwrite is true."""
         return await send(
@@ -1340,7 +1340,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             overwriteParameterValues=overwrite_parameter_values,
             dryRun=dry_run,
             document=document,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1351,7 +1351,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         load: Annotated[list[Name], Field(min_length=1, max_length=100)] | None = None,
         dry_run: bool = False,
         stop_on_error: bool = True,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
         document: Document = None,
     ) -> dict[str, Any]:
         """Load optional families and place instances in one transaction and undo entry."""
@@ -1377,7 +1377,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             dryRun=dry_run,
             stopOnError=stop_on_error,
             document=document,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1461,7 +1461,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         layers: Annotated[list[Name], Field(min_length=1)] | None = None,
         document: Document = None,
         dry_run: bool = False,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
         """Link or import a DWG into a plan view on the Revit workstation. Return CAD layers and extents in mm."""
         return await send(
@@ -1475,7 +1475,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             layers=layers,
             document=document,
             dryRun=dry_run,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1492,7 +1492,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         join: bool = True,
         document: Document = None,
         dry_run: bool = False,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
         """Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm.
         With join=true joins Revit would reject are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers.
@@ -1513,7 +1513,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             join=join,
             document=document,
             dryRun=dry_run,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1665,13 +1665,13 @@ def register_actions(mcp, execute, host_provider) -> None:
         sheets: list[str | ElementId] | None = None,
         sheet_set: str | None = None,
         all_sheets: bool = False,
-        folder: str | None = None,
+        output_dir: str | None = None,
         options: dict[str, Any] | None = None,
         overwrite: bool = False,
         document: Document = None,
         dry_run: bool = False,
         confirm_token: str | None = None,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
         """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when no target exists or with dry_run."""
         return await send(
@@ -1681,13 +1681,13 @@ def register_actions(mcp, execute, host_provider) -> None:
             sheets=[str(sheet) for sheet in sheets] if sheets is not None else None,
             sheetSet=sheet_set,
             allSheets=all_sheets,
-            folder=folder,
+            folder=output_dir,
             options=options or {},
             overwrite=overwrite,
             document=document,
             dryRun=dry_run,
             confirmToken=confirm_token,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1715,7 +1715,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
         confirm_token: str | None = None,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
         """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run."""
         if scope == "view" and not view:
@@ -1750,7 +1750,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             dryRun=dry_run,
             document=document,
             confirmToken=confirm_token,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1782,7 +1782,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         stop_on_error: bool = False,
         dry_run: bool = False,
         confirm_token: str | None = None,
-        response_timeout_s: Annotated[int, Field(ge=30, le=14400)] = 14400,
+        timeout_seconds: Annotated[int, Field(ge=30, le=14400)] = 14400,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code require a confirmation token from the preview response."""
@@ -1854,7 +1854,7 @@ def register_actions(mcp, execute, host_provider) -> None:
                 "confirmToken": confirm_token,
             },
             process_id=process_id,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
         )
 
     @action
@@ -1864,7 +1864,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         overwrite_parameter_values: bool = False,
         stop_on_error: bool = True,
         dry_run: bool = False,
-        response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 1800,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
         document: Document = None,
     ) -> dict[str, Any]:
         """Edit an open family in place or named project families in one load cycle each.
@@ -1881,6 +1881,6 @@ def register_actions(mcp, execute, host_provider) -> None:
             overwriteParameterValues=overwrite_parameter_values,
             stopOnError=stop_on_error,
             dryRun=dry_run,
-            response_timeout_s=response_timeout_s,
+            timeout_seconds=timeout_seconds,
             document=document,
         )

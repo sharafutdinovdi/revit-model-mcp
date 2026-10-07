@@ -288,7 +288,7 @@ def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metada
 ):
     host, state = endpoint
     target = tmp_path / "image.png"
-    job = Job.export_view("Plan 東京 Δ / A #1", save_to=str(target)).for_document("Model")
+    job = Job.export_view("Plan 東京 Δ / A #1", output_path=str(target)).for_document("Model")
     result = asyncio.run(RevitChannel(host).execute(job))
     assert target.read_bytes() == PNG
     assert result["data"]["width"] == 1600

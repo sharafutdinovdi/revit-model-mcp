@@ -587,13 +587,13 @@ class SshPowerShellHost:
         response_name: str,
         cleanup_names: list[str],
         download_artifact: bool,
-        save_to: str | None,
+        output_path: str | None,
     ) -> tuple[str, str | None]:
         if not RESPONSE_NAME.fullmatch(response_name):
             raise ResponseParseError("Remote response has an invalid file name. Update the add-in.")
         if download_artifact:
             try:
-                preflight_artifact_target(save_to)
+                preflight_artifact_target(output_path)
             except ValueError as error:
                 raise RevitChannelError(str(error)) from error
         paths = ",".join(f"'{_ps_quote(name)}'" for name in cleanup_names)
@@ -643,7 +643,7 @@ class SshPowerShellHost:
         if not download_artifact:
             return content, None
         try:
-            local_path = save_artifact(result, save_to)
+            local_path = save_artifact(result, output_path)
         except binascii.Error as error:
             raise ResponseParseError(
                 f"Could not parse response and image after remote read: {error}"

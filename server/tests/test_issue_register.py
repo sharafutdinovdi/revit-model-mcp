@@ -138,8 +138,8 @@ def test_tool_captures_sequentially_with_addressing_and_continues_on_error(tmp_p
         calls.append(job)
         if job.payload["elementIds"] == [2]:
             raise server.ToolError("capture failed")
-        Image.new("RGB", (40, 20), "red").save(job.save_to)
-        return {"success": True, "data": {"localPath": job.save_to}}
+        Image.new("RGB", (40, 20), "red").save(job.output_path)
+        return {"success": True, "data": {"localPath": job.output_path}}
 
     issues = [
         issue(element_ids=[1]),
@@ -179,7 +179,7 @@ def test_tool_captures_sequentially_with_addressing_and_continues_on_error(tmp_p
     register = load_workbook(tmp_path / "out.xlsx")["Register"]
     assert len(register._images) == 1
     assert register["B3"].value == "Snapshot unavailable: capture failed"
-    assert not Path(calls[0].save_to).exists()
+    assert not Path(calls[0].output_path).exists()
 
 
 def test_tool_validates_all_issues_before_contacting_revit(tmp_path):
@@ -229,7 +229,7 @@ def test_capture_tool_returns_png_content(tmp_path):
         result = asyncio.run(
             server.mcp.call_tool(
                 "revit_capture_elements",
-                {"element_ids": [1], "mode": "plan", "padding_mm": 0, "save_to": str(png)},
+                {"element_ids": [1], "mode": "plan", "padding_mm": 0, "output_path": str(png)},
             )
         )
     assert not result.is_error

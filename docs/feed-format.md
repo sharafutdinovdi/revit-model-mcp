@@ -62,7 +62,7 @@ The new command names are `view-info`, `set-view-visibility` and `remove-links`.
 
 `compare-link-datums` is a read job; `align-link-datums` is an action job. Their `data.items` use `aligned`, `differs` or `moved`, `missing_in_host` or `created`, `host_only`, `unsupported`, and action-only `skipped`. Distances are rounded to 0.1 mm and angles to 0.001 degrees. `data.summary` counts aligned, moved, created, host-only, unsupported and skipped items.
 
-`save_to` and timeouts are client options, not job fields.
+`output_path` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
 A parameter filter matches the Revit parameter of that name, even when the name matches a built-in output field such as `Level` or `Name`.
 Output `fields` with those names return the built-in field value.
@@ -286,7 +286,7 @@ Verification records each step immediately; later steps can supersede those fact
 
 ## Geometry and image exports
 
-`export-nwc` is a gated action job and is excluded from `batch`. It accepts `path`, `scope`, `view`, `elementIds`, `coordinates`, `parameters`, all exporter Boolean options, `facetingFactor`, `overwrite` and `dryRun`. The add-in assigns every `NavisworksExportOptions` property explicitly. The response `data` includes `path`, `bytes`, `sha256`, `elapsedMs`, `scope`, `view`, `elementCount`, `options` with snake_case keys, `dryRun` and `overwritten`. A dry run also reports `exporterAvailable` and `pathChecks` without writing a file. NWC bytes remain on the workstation.
+`export-nwc` is a gated action job and is excluded from `batch`. It accepts `path`, `scope`, `view`, `elementIds`, `coordinates`, `parameters`, all exporter Boolean options, `facetingFactor`, `overwrite` and `dryRun`. The add-in assigns every `NavisworksExportOptions` property explicitly. The response `data` includes `path`, `bytes`, `sha256`, `elapsedMs`, `scope`, `view`, `elementCount`, `options` with camelCase keys such as `exportElementIds` and `facetingFactor`, `dryRun` and `overwritten`. A dry run also reports `exporterAvailable` and `pathChecks` without writing a file. NWC bytes remain on the workstation.
 
 `revit_element_details` returns `location`, `boundingBox` and `roomCenterMm` directly under `data` when available.
 `revit_query_elements(include_geometry=true)` includes them on each returned element.

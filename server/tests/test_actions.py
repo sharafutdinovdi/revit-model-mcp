@@ -89,7 +89,7 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
         assert ACTION_TOOLS.issubset(tools)
         for name in ACTION_TOOLS:
             tool = tools[name]
-            assert ("response_timeout_s" in tool.input_schema["properties"]) is (
+            assert ("timeout_seconds" in tool.input_schema["properties"]) is (
                 name
                 in {
                     "revit_export_nwc",
@@ -239,7 +239,7 @@ def test_process_models_maps_steps_code_exports_and_save():
                     }
                 ],
                 "code": {"code": "return 1;"},
-                "exports": [{"format": "ifc", "folder": r"C:\Out\{model}"}],
+                "exports": [{"format": "ifc", "output_dir": r"C:\Out\{model}"}],
                 "save": {"mode": "output_dir", "output_dir": r"C:\Saved"},
             },
         )
@@ -599,11 +599,11 @@ def test_file_export_maps_targets_options_and_timeout():
                 "format": "pdf",
                 "sheets": ["A1"],
                 "all_sheets": True,
-                "folder": r"C:\Exports",
+                "output_dir": r"C:\Exports",
                 "options": {"combine": False},
                 "overwrite": True,
                 "dry_run": True,
-                "response_timeout_s": 600,
+                "timeout_seconds": 600,
             },
         )
     )
@@ -671,7 +671,7 @@ def test_nwc_export_overrides_reach_channel():
                 "faceting_factor": 5,
                 "overwrite": True,
                 "dry_run": True,
-                "response_timeout_s": 900,
+                "timeout_seconds": 900,
             },
         )
     )
@@ -710,7 +710,7 @@ def test_align_link_datums_payload_and_timeout():
                 "name_map": {"A": "A1"},
                 "level_offset_mm": 150,
                 "dry_run": True,
-                "response_timeout_s": 600,
+                "timeout_seconds": 600,
             },
         )
     )
@@ -748,7 +748,7 @@ def test_align_link_datums_rejects_invalid_timeout():
     server, execute, _ = action_server()
     with pytest.raises(Exception):
         asyncio.run(
-            server.call_tool("revit_align_link_datums", {"link": "AR.rvt", "response_timeout_s": 0})
+            server.call_tool("revit_align_link_datums", {"link": "AR.rvt", "timeout_seconds": 0})
         )
     execute.assert_not_awaited()
 
@@ -767,15 +767,15 @@ def test_compare_link_datums_is_read_only():
     assert job.payload["nameMap"] == {"A": "A1"}
 
 
-@pytest.mark.parametrize("response_timeout_s", [None, 900])
-def test_action_response_timeout_reaches_channel(response_timeout_s):
+@pytest.mark.parametrize("timeout_seconds", [None, 900])
+def test_action_response_timeout_reaches_channel(timeout_seconds):
     import asyncio
 
     _, execute, host = action_server()
-    timeout = {} if response_timeout_s is None else {"response_timeout_s": response_timeout_s}
+    timeout = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
     asyncio.run(_send_action(execute, lambda: host, "select", elementIds=[1], **timeout))
     execute.assert_awaited_once()
-    assert execute.await_args.args[1:] == (response_timeout_s or 120, 300, None)
+    assert execute.await_args.args[1:] == (timeout_seconds or 120, 300, None)
 
 
 @pytest.mark.parametrize(
@@ -1006,7 +1006,7 @@ def test_bulk_placement_options_reach_channel():
                 ],
                 "load": [r"C:\Families\Chair.rfa"],
                 "stop_on_error": False,
-                "response_timeout_s": 600,
+                "timeout_seconds": 600,
             },
         )
     )

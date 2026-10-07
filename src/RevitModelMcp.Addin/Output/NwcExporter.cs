@@ -13,6 +13,12 @@ namespace RevitModelMcp.Output;
 
 internal static class NwcExporter
 {
+    private static string ToCamelCase(string snake)
+    {
+        var parts = snake.Split('_');
+        return parts[0] + string.Concat(parts.Skip(1).Select(part => char.ToUpperInvariant(part[0]) + part.Substring(1)));
+    }
+
     internal static ActionResultData Execute(Document document, ActionJobContract action)
     {
         if (document.IsFamilyDocument) throw new ArgumentException("NWC export requires a project document.");
@@ -122,7 +128,7 @@ internal static class NwcExporter
                     "convert_element_properties", "export_parts", "export_room_as_attribute", "export_room_geometry",
                     "convert_lights", "convert_linked_cad_formats", "export_links", "export_urls",
                     "divide_file_into_levels", "find_missing_materials", "faceting_factor" }
-                    .ToDictionary(key => key, key => key == "view" ? (job.View is null ? "default" : "argument")
+                    .ToDictionary(key => ToCamelCase(key), key => key == "view" ? (job.View is null ? "default" : "argument")
                         : key == "element_ids" ? (action.ElementIds.Count == 0 ? "default" : "argument")
                         : job.ExplicitOptions.Contains(key) ? "argument" : xmlValues.ContainsKey(key) ? "xml" : "default")
             },

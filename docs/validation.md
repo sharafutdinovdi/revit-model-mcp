@@ -132,7 +132,7 @@ The validation found these problems. All of them are fixed on `main` and ship in
 | `GET /health` returned HTTP 500 on the HTTP transport, so no tool call worked over it | [#178](https://github.com/sharafutdinovdi/revit-model-mcp/pull/178) |
 | `revit_update_parameters` on doors inside model groups and `revit_walls_from_cad` with `join=true` passed the dry run but failed the real run | [#185](https://github.com/sharafutdinovdi/revit-model-mcp/pull/185) |
 | Installing both installer scopes together left files that neither product removed | [#183](https://github.com/sharafutdinovdi/revit-model-mcp/pull/183) |
-| A failed in-place confirmation gave a misleading message. `revit_execute_code` with a short `response_timeout_s` reported an error while the job ran. The `revit_jobs` limit of 50 seconds was not documented | [#184](https://github.com/sharafutdinovdi/revit-model-mcp/pull/184) |
+| A failed in-place confirmation gave a misleading message. `revit_execute_code` with a short `timeout_seconds` reported an error while the job ran. The `revit_jobs` limit of 50 seconds was not documented | [#184](https://github.com/sharafutdinovdi/revit-model-mcp/pull/184) |
 | Cancelling during the last model reported `success: false` although every model finished. Several smaller response and wording problems | [#180](https://github.com/sharafutdinovdi/revit-model-mcp/pull/180) |
 
 Related hardening from the same cycle is in [#179](https://github.com/sharafutdinovdi/revit-model-mcp/pull/179), [#181](https://github.com/sharafutdinovdi/revit-model-mcp/pull/181), [#182](https://github.com/sharafutdinovdi/revit-model-mcp/pull/182) and [#186](https://github.com/sharafutdinovdi/revit-model-mcp/pull/186).

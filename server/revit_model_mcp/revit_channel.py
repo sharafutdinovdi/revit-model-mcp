@@ -186,7 +186,7 @@ class ResponseParseError(RevitChannelError):
 class Job:
     command: str
     payload: dict[str, Any]
-    save_to: str | None = None
+    output_path: str | None = None
 
     @classmethod
     def ping(cls) -> Job:
@@ -238,7 +238,7 @@ class Job:
         )
 
     @classmethod
-    def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> Job:
+    def export_view(cls, view: str, pixel_size: int = 1600, output_path: str | None = None) -> Job:
         if pixel_size < 1 or pixel_size > 4000:
             raise RevitChannelError("pixel_size must be between 1 and 4000.")
         payload = {
@@ -247,7 +247,7 @@ class Job:
             "pixelSize": pixel_size,
             "zoomToFit": True,
         }
-        return cls("export-view", payload, save_to)
+        return cls("export-view", payload, output_path)
 
     @classmethod
     def view_elements(
@@ -536,7 +536,7 @@ class RemoteHost(Protocol):
         response_name: str,
         cleanup_names: list[str],
         download_artifact: bool,
-        save_to: str | None,
+        output_path: str | None,
     ) -> tuple[str, str | None]: ...
 
     async def delete_files(self, names: list[str]) -> None: ...
@@ -653,13 +653,13 @@ class RevitChannel:
             job_id = job.payload["fetchJobId"]
             if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
                 raise RevitChannelError("job_id must be a job id returned by an action.")
-            wait_s = job.payload.get("waitSeconds", 40)
-            if not isinstance(wait_s, (int, float)) or not 0 <= wait_s <= 50:
-                raise RevitChannelError("wait_s must be between 0 and 50.")
+            wait_seconds = job.payload.get("waitSeconds", 40)
+            if not isinstance(wait_seconds, (int, float)) or not 0 <= wait_seconds <= 50:
+                raise RevitChannelError("wait_seconds must be between 0 and 50.")
             remote, job = await self.remote.select_job(job)
             if job.payload.get("requestCancellation"):
                 return await remote.cancel_job(job_id)
-            deadline = asyncio.get_running_loop().time() + wait_s
+            deadline = asyncio.get_running_loop().time() + wait_seconds
             while True:
                 response = await remote.fetch_job(job_id)
                 if not _is_intermediate_response(response):
@@ -861,7 +861,7 @@ class RevitChannel:
                     response_name,
                     [temporary_name, response_name],
                     True,
-                    job.save_to,
+                    job.output_path,
                 )
                 result = _complete_image_result(parse_response(content, job.command), job.command)
                 if local_path is not None:

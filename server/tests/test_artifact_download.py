@@ -109,9 +109,9 @@ def test_delete_failure_returns_saved_image(tmp_path, host, caplog):
     assert "remote capture cleanup failed" in caplog.text
 
 
-@pytest.mark.parametrize("save_to", [None, ""])
-def test_no_destination_preflight(save_to):
-    preflight_artifact_target(save_to)
+@pytest.mark.parametrize("output_path", [None, ""])
+def test_no_destination_preflight(output_path):
+    preflight_artifact_target(output_path)
 
 
 def test_invalid_extension_prevents_remote_read(tmp_path, host):

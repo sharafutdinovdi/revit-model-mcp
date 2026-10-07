@@ -149,6 +149,23 @@ def test_bundle_manifest_matches_tool_registry():
     )
 
 
+def test_parameter_names_follow_the_contract():
+    import asyncio
+
+    tools = asyncio.run(revit_server.mcp.list_tools())
+    retired = {"response_timeout_s", "wait_s", "save_to", "saveTo", "dest_dir"}
+    for tool in tools:
+        properties = set(tool.input_schema.get("properties", {}))
+        assert not properties & retired, f"{tool.name} uses a retired parameter name"
+    by_name = {tool.name: set(tool.input_schema["properties"]) for tool in tools}
+    assert "wait_seconds" in by_name["revit_jobs"]
+    assert "output_dir" in by_name["revit_batch_fetch"]
+    assert "output_dir" in by_name["revit_export"]
+    assert "output_path" in by_name["revit_export_view"]
+    assert "timeout_seconds" in by_name["revit_family_audit"]
+    assert "timeout_seconds" in by_name["revit_execute_code"]
+
+
 def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
     import asyncio
 
@@ -185,7 +202,7 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
-    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "save_to"],
+    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "output_path"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
         "parameter_rules",
@@ -198,7 +215,7 @@ EXPECTED_PARAMETERS = {
     "revit_jobs": [
         "cancel_job_id",
         "job_id",
-        "wait_s",
+        "wait_seconds",
         "timeout_seconds",
         "pickup_timeout_seconds",
         "document",
@@ -258,10 +275,10 @@ EXPECTED_PARAMETERS = {
         "pixel_size",
         "padding_mm",
         "mode",
-        "save_to",
+        "output_path",
         "document",
     ],
-    "revit_export_view": ["view", "pixel_size", "save_to", "document"],
+    "revit_export_view": ["view", "pixel_size", "output_path", "document"],
     "revit_schedule_data": ["schedule", "max_rows", "offset", "document"],
     "revit_view_elements": [
         "view",
@@ -295,7 +312,7 @@ EXPECTED_PARAMETERS = {
         "document",
     ],
     "revit_list_instances": ["document"],
-    "revit_family_audit": ["families", "response_timeout_s", "document"],
+    "revit_family_audit": ["families", "timeout_seconds", "document"],
     "revit_nwc_settings_check": [
         "settings_xml",
         "timeout_seconds",
@@ -393,7 +410,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(revit_server, "channel", channel):
             await revit_server.mcp.call_tool(
                 "revit_family_audit",
-                {"families": ["Door"], "response_timeout_s": 600, "document": "Model"},
+                {"families": ["Door"], "timeout_seconds": 600, "document": "Model"},
             )
         job, response_timeout, pickup_timeout = channel.calls[0]
         self.assertEqual(job.command, "family-audit")
@@ -525,7 +542,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             )
             await revit_server.mcp.call_tool(
                 "revit_export_view",
-                {"view": "Level 1 Plan", "pixelSize": 2400, "saveTo": "/tmp/plan.png"},
+                {"view": "Level 1 Plan", "pixelSize": 2400, "outputPath": "/tmp/plan.png"},
             )
             await revit_server.mcp.call_tool(
                 "revit_list_relations", {"relation": "level-rooms", "sourceName": "Level 1"}
@@ -547,7 +564,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(view_summary.payload["view"], "Level 1 Plan")
         self.assertEqual(view_summary.payload["targetDocument"], "Sample Model")
         self.assertEqual(export_view.payload["pixelSize"], 2400)
-        self.assertEqual(export_view.save_to, "/tmp/plan.png")
+        self.assertEqual(export_view.output_path, "/tmp/plan.png")
         self.assertEqual(camel_relation.payload, snake_relation.payload)
         self.assertEqual(camel_relation.payload["sourceName"], "Level 1")
 
@@ -902,7 +919,7 @@ def test_client_name_comes_from_initialize_context():
         ):
             return "response_ping.json"
 
-        async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+        async def finish_job(self, response_name, cleanup_names, download_artifact, output_path):
             return json.dumps({"command": "ping", "success": True, "data": "pong"}), None
 
         async def delete_files(self, names):

@@ -567,7 +567,7 @@ class PipeJobHost:
         response_name: str,
         cleanup_names: list[str],
         download_artifact: bool,
-        save_to: str | None,
+        output_path: str | None,
     ) -> tuple[str, str | None]:
         if self._result is None:
             raise ResponseParseError("The pipe job has no completed response.")
@@ -575,10 +575,10 @@ class PipeJobHost:
         if download_artifact:
             response = json.loads(self._result)
             if response.get("success") is True:
-                local_path = self._move_artifact(response, save_to)
+                local_path = self._move_artifact(response, output_path)
         return self._result, local_path
 
-    def _move_artifact(self, response: dict[str, Any], save_to: str | None) -> str:
+    def _move_artifact(self, response: dict[str, Any], output_path: str | None) -> str:
         data = response.get("data")
         name = data.get("fileName") if isinstance(data, dict) else None
         if not isinstance(name, str) or not name or Path(name).name != name or "\\" in name:
@@ -588,8 +588,8 @@ class PipeJobHost:
             raise RevitChannelError("The local channel directory is unknown; set LOCALAPPDATA.")
         source = root / "instances" / str(self._instance["processId"]) / name
         target = (
-            Path(save_to).expanduser().resolve()
-            if save_to
+            Path(output_path).expanduser().resolve()
+            if output_path
             else Path(tempfile.mkdtemp(prefix="revit-view-")) / name
         )
         target.parent.mkdir(parents=True, exist_ok=True)

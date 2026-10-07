@@ -48,7 +48,7 @@ A client that reconnects with the same `clientId` can send `status` for its unfi
 Results expire ten minutes after completion.
 `capture-elements` downloads one PNG through the same `data.fileName` artifact mechanism as `export-view` over local, pipe and SSH transports.
 It is unavailable over HTTP and returns `element snapshots need the local or SSH transport`; `/views/{name}/image` is unchanged.
-`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `save_to` or a new temporary directory.
+`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `output_path` or a new temporary directory.
 
 ## HTTP configuration
 
@@ -467,8 +467,8 @@ Host aliases are validated. PowerShell string literals escape ASCII and Unicode 
 SSH credentials and routing belong to the user's SSH configuration.
 
 Responses and exported PNG files are transferred as base64 in the PowerShell result.
-The server checks the PNG signature and decodes the image into `save_to` or a new temporary directory.
-`save_to` must end in `.png`.
+The server checks the PNG signature and decodes the image into `output_path` or a new temporary directory.
+`output_path` must end in `.png`.
 An existing destination file produces an error.
 The MCP result contains the image path and metadata without base64.
 

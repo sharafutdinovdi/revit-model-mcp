@@ -167,7 +167,7 @@ PixelSize = Annotated[
 SaveTo = Annotated[
     str | None,
     Field(
-        validation_alias=AliasChoices("save_to", "saveTo"),
+        validation_alias=AliasChoices("output_path", "outputPath"),
         description="New PNG file path on the MCP client machine, not the Revit host; an existing destination causes an error. Default null downloads to a local temporary directory and returns localPath.",
     ),
 ]
@@ -464,14 +464,16 @@ def addressed_tool(function):
 async def revit_jobs(
     cancel_job_id: str | None = None,
     job_id: str | None = None,
-    wait_s: Annotated[int, Field(ge=0, le=50, description="Seconds to wait, 0 through 50.")] = 40,
+    wait_seconds: Annotated[
+        int, Field(ge=0, le=50, description="Seconds to wait, 0 through 50.")
+    ] = 40,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """List recent jobs, or poll an action jobId for up to wait_s seconds.
+    """List recent jobs, or poll an action jobId for up to wait_seconds seconds.
 
-    wait_s accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends; call again while the job is still running.
+    wait_seconds accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends; call again while the job is still running.
     A running job returns progress and partial per-model results.
     A finished job returns the original action response, including verification warnings.
     Results remain on the workstation for 24 hours, across MCP server restarts.
@@ -479,7 +481,7 @@ async def revit_jobs(
     """
     job = Job.jobs(cancel_job_id)
     if job_id is not None:
-        job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_s})
+        job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_seconds})
     return await _execute(job, timeout_seconds, pickup_timeout_seconds, document)
 
 
@@ -632,10 +634,10 @@ async def revit_model_health(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
-    save_to: Annotated[
+    output_path: Annotated[
         str | None,
         Field(
-            validation_alias=AliasChoices("save_to", "saveTo"),
+            validation_alias=AliasChoices("output_path", "outputPath"),
             description="New .xlsx health report path on the MCP server machine; parent must exist and existing files are refused.",
         ),
     ] = None,
@@ -644,14 +646,14 @@ async def revit_model_health(
 
     Returns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.
     Absent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.
-    Use save_to when the user requests a saved or Excel health report.
+    Use output_path when the user requests a saved or Excel health report.
     The workbook includes health checks, all warning groups, counts and up to five snapshots
     within a 60-second capture budget. Failed or skipped snapshots become workbook warnings.
-    Without save_to, use revit_list_warnings to inspect affected elements.
+    Without output_path, use revit_list_warnings to inspect affected elements.
     A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
     """
     try:
-        target = validate_health_path(save_to) if save_to is not None else None
+        target = validate_health_path(output_path) if output_path is not None else None
     except (OSError, ValueError) as error:
         raise ToolError(str(error)) from error
     health = await _execute(
@@ -1025,7 +1027,7 @@ async def revit_capture_elements(
     pixel_size: PixelSize = 1600,
     padding_mm: float = 1500,
     mode: str = "3d",
-    save_to: SaveTo = None,
+    output_path: SaveTo = None,
     document: Document = None,
 ) -> CallToolResult:
     """Show where specific elements are in a highlighted PNG for issue evidence.
@@ -1046,7 +1048,7 @@ async def revit_capture_elements(
                     "paddingMm": padding_mm,
                     "mode": mode,
                 },
-                save_to,
+                output_path,
             ),
             DEFAULT_TIMEOUT_SECONDS,
             DEFAULT_PICKUP_TIMEOUT_SECONDS,
@@ -1068,7 +1070,7 @@ async def revit_capture_elements(
 async def revit_export_view(
     view: ViewName,
     pixel_size: PixelSize = 1600,
-    save_to: SaveTo = None,
+    output_path: SaveTo = None,
     document: Document = None,
 ) -> dict[str, Any]:
     """Export a selected view to PNG when numbers do not explain geometry.
@@ -1079,7 +1081,7 @@ async def revit_export_view(
     Uses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.
     """
     return await _execute(
-        Job.export_view(view, pixel_size, save_to),
+        Job.export_view(view, pixel_size, output_path),
         DEFAULT_TIMEOUT_SECONDS,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
@@ -1228,7 +1230,7 @@ async def revit_list_instances(document: Document = None) -> dict[str, Any]:
 @addressed_tool
 async def revit_family_audit(
     families: Annotated[list[str] | None, Field(min_length=1, max_length=200)] = None,
-    response_timeout_s: Annotated[int, Field(ge=30, le=3600)] = 600,
+    timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     document: Document = None,
 ) -> dict[str, Any]:
     """Audit an open family or named project families without saving or loading changes.
@@ -1242,7 +1244,7 @@ async def revit_family_audit(
         raise ToolError("The '*' family selector must be alone.")
     return await _execute(
         Job("family-audit", {"command": "family-audit", "families": families}),
-        response_timeout_s,
+        timeout_seconds,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
     )

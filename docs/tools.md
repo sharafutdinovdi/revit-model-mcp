@@ -9,8 +9,10 @@ Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` 
 
 Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. `revit_ui_state` accepts only `process_id`. Family audit accepts `response_timeout_s=600` and `document=null`.
+Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
+Every timeout argument is named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
+Arguments named `output_path` (a file) and `output_dir` (a directory) write on the machine that runs the MCP client, unless the description says the path is on the workstation. `revit_export`, `revit_process_models` exports and `save.output_dir` write on the workstation. `save_as` is a Revit Save As path on the workstation.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
 
@@ -19,7 +21,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
 | `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
-| `revit_jobs` | `job_id=null`, `wait_s=40`, `cancel_job_id=null` | List jobs, or wait up to 50 seconds for an action job (0 through 50, default 40; poll again for longer jobs). Returns progress or the original final action response. |
+| `revit_jobs` | `job_id=null`, `wait_seconds=40`, `cancel_job_id=null` | List jobs, or wait up to 50 seconds for an action job (0 through 50, default 40; poll again for longer jobs). Returns progress or the original final action response. |
 | `revit_nwc_settings_check` | `settings_xml` | Parse exporter XML on the Revit workstation without exporting; return values, mapping, notApplied and ignored. |
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
@@ -30,8 +32,8 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
-| `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `save_to=null`, `document=null`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Local/SSH only. |
-| `revit_export_view` | `view`, `pixel_size=1600`, `save_to=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
+| `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `output_path=null`, `document=null`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Local/SSH only. |
+| `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
 | `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID. |
@@ -39,16 +41,16 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
 | `revit_list_instances` | `document=null`; no timeout arguments | Return endpoint or heartbeat information in `instances`. |
-| `revit_model_health` | `save_to` (optional) | Read model quality counts and top warnings; save an Excel health report on the MCP server machine. |
+| `revit_model_health` | `output_path` (optional) | Read model quality counts and top warnings; save an Excel health report on the MCP server machine. |
 | `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. Refused for family documents. |
-| `revit_family_audit` | `families=null`, `response_timeout_s=600` | Inspect family parameters, use, shared status and purge candidates. |
+| `revit_family_audit` | `families=null`, `timeout_seconds=600` | Inspect family parameters, use, shared status and purge candidates. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null`, `open_timeout_minutes=null` | Start persistent read-only collection; see [batch collection](batch.md). |
 | `revit_batch_status` | `run_id` | Read persisted run and model status. |
 | `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
-| `revit_batch_fetch` | `run_id`, `dest_dir` | Copy completed JSON snapshots to new local files. |
+| `revit_batch_fetch` | `run_id`, `output_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 | `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. |
 | `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
@@ -91,14 +93,14 @@ Coordinator location and link lists are capped at 100 without pagination; locati
 `pinned` and `viewSpecific` are true when any instance of the reported type qualifies.
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
-Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `save_to` is honored; the client/response timeout still applies.
+Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `output_path` is honored; the client/response timeout still applies.
 
 Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
 Other numeric filter values follow document display units; returned query values carry a `unit` field when available.
 See the [feed format](feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.
 Parameter names come from the model's language; use `revit_list_catalog(section="parameters")` before filtering.
-`save_to` is a new file path on the MCP client's machine and never overwrites an existing file.
+`output_path` is a new file path on the MCP client's machine and never overwrites an existing file.
 The path is resolved on the machine that runs the MCP server, which is the client's machine for local and SSH setups; a path from another machine is not translated.
 
 `revit_element_details` returns geometry alongside parameters in `data`.
@@ -117,7 +119,7 @@ Unavailable geometry is omitted.
 ### Action job polling
 
 Long actions may return `status:"running"`, `jobId`, progress, and partial per-model results.
-Call `revit_jobs(job_id=jobId, wait_s=40)` until the original final action response is returned.
+Call `revit_jobs(job_id=jobId, wait_seconds=40)` until the original final action response is returned.
 The action may already have changed the model; do not resubmit it while it runs.
 Results remain available for 24 hours across MCP server restarts.
 See [long action jobs](actions.md#long-action-jobs) for cancellation and retention.
@@ -141,11 +143,11 @@ Result fields are `path`, `issueCount`, `snapshotCount`, `bySeverity` and `warni
 
 ## Saved health report
 
-`revit_model_health(save_to="C:\\Reports\\health.xlsx")` writes a new workbook on the machine running the MCP server.
-`saveTo` is an alias for `save_to`.
+`revit_model_health(output_path="C:\\Reports\\health.xlsx")` writes a new workbook on the machine running the MCP server.
+`outputPath` is an alias for `output_path`.
 The path must end in `.xlsx`, its parent directory must exist, and an existing file is refused.
-Without `save_to`, the response is unchanged.
-With `save_to`, the response adds `workbook` with `path`, `snapshotCount` and `warnings`.
+Without `output_path`, the response is unchanged.
+With `output_path`, the response adds `workbook` with `path`, `snapshotCount` and `warnings`.
 The workbook contains Health, Warnings and Counts sheets.
 All warning groups include affected element IDs; snapshots cover up to five groups with the highest counts, with at most 50 elements per capture.
 The total capture budget is 60 seconds; failed or skipped captures become warnings.
