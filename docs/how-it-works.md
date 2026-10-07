@@ -46,7 +46,7 @@ See [transport configuration](transport.md) for LAN and Tailscale routes.
 Local and SSH modes run Windows PowerShell under the Revit account.
 They locate responses by command and filename; they have no request correlation ID.
 Use one server process per file channel directory and a distinctive `document` filter for multiple Revit instances.
-HTTP polls by job ID and retains completed results for ten minutes.
+HTTP polls by job ID. Completed read results are retained for ten minutes and action results for 24 hours; see [result retention](transport.md#result-retention).
 Timeouts do not cancel accepted jobs, especially actions.
 
 The [architecture](architecture.md) describes scheduling and failure behavior.

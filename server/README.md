@@ -58,16 +58,30 @@ mcp-name: io.github.sharafutdinovdi/revit-model-mcp
 
 ## Configuration
 
-| Variable | Default | Behavior |
-|---|---|---|
-| `REVIT_MCP_HOST` | `local` | Local PowerShell, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_READ_ONLY` | Unset | `1` refuses action calls, including `revit_run_actions`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation `read-only` file is checked independently. |
-| `REVIT_MCP_TOKEN` | Unset | HTTP bearer token from workstation settings. `--token` overrides it. |
-| `REVIT_MCP_SSH_MUX` | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
-| `REVIT_MCP_SSH_OPTIONS` | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
-| `REVIT_MCP_ACTIVATE_TASK` | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
-| `REVIT_MCP_CHANNEL_DIR` | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the Python server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. |
-| `REVIT_MCP_REDACT_PATHS` | Unset | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior. |
+Set server variables in the MCP client's `env` block. Set add-in variables in the environment of the Revit process before it starts, and restart Revit after a change.
+Boolean server variables accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`, `off`; any other value is an error. Add-in variables that say `1` accept only `1`.
+
+| Variable | Read by | Default | Behavior |
+|---|---|---|---|
+| `REVIT_MCP_HOST` | Server | `local` | Local PowerShell or pipe, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
+| `REVIT_MCP_READ_ONLY` | Server | Off | `1` refuses action calls, including `revit_run_actions`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation `read-only` file is checked independently. |
+| `REVIT_MCP_REDACT_PATHS` | Server and add-in | Off | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior in the server. In the add-in it also redacts paths in the activity pane, stored code and logs. |
+| `REVIT_MCP_TOKEN` | Server and add-in | Unset | HTTP bearer token. The server sends it; `--token` overrides it. In Revit it overrides the `token` in `settings.json`. |
+| `REVIT_MCP_CHANNEL_DIR` | Server and add-in | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. `settings.json` and the `read-only` file stay in the default directory. |
+| `REVIT_MCP_SSH_MUX` | Server | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
+| `REVIT_MCP_SSH_OPTIONS` | Server | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
+| `REVIT_MCP_ACTIVATE_TASK` | Server | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
+| `REVIT_MCP_TOOL_BUDGET_S` | Server | `40` | Seconds the first response of a long action waits before it returns `status:"running"`. Accepts 10 through 200. |
+| `REVIT_MCP_NO_UPDATE_CHECK` | Server | Off | `1` disables the background package refresh and the PyPI version lookup. |
+| `REVIT_MCP_HTTP_ENABLED` | Add-in | `httpEnabled` from `settings.json` | `0` or `1` turns the HTTP listener off or on. Other values disable HTTP. |
+| `REVIT_MCP_HTTP_BIND` | Add-in | `httpBind` from `settings.json` | IPv4 interface address for the listener. |
+| `REVIT_MCP_HTTP_PORT` | Add-in | `httpPort` from `settings.json` | Listener port, 1-65535. Give each HTTP-enabled Revit process its own port. |
+| `REVIT_MCP_UPDATE_FEED` | Add-in | GitHub API | Release feed base URL for update checks. Must be HTTPS, or HTTP on loopback. |
+| `REVIT_MCP_REVIT_EXE_<year>` | Add-in | `Program Files\Autodesk\Revit <year>\Revit.exe` | Path to `Revit.exe` for the batch collector, for each year from 2022 to 2027. |
+| `REVIT_MCP_RSN_REST_BASE` | Add-in (batch supervisor) | Unset | `AdminRESTService.svc/` URL of the Revit Server host. Required to read RSN model metadata before a batch run. |
+
+The add-in also reads `REVIT_MCP_BATCH_WORKER`; the batch supervisor sets it on worker processes, so do not set it yourself.
+See the [settings reference](../docs/transport.md#settings-reference) for the `settings.json` keys.
 
 `revit_family_audit` is a read tool. It inspects an open family when `families` is omitted, or exact family names / `["*"]` in a project. `revit_edit_families` applies ordered shared-parameter, removal, purge and shared-flag operations. Project edits use one family load per family and one undo entry; `dry_run=true` rolls back. The edit tool is refused in read-only mode. Family audit defaults to a 600-second response budget; family edits default to 1800 seconds.
 

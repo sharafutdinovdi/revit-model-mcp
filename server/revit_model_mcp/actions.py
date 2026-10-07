@@ -1650,13 +1650,23 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_delete(
-        element_ids: NonEmptyIds, dry_run: bool = False, document: Document = None
+        element_ids: NonEmptyIds,
+        dry_run: bool = False,
+        confirm_token: str | None = None,
+        document: Document = None,
     ) -> dict[str, Any]:
         """Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.
         dry_run executes and rolls back, returning the same verification block without changing the model.
+        Deletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
-        return await send("delete", elementIds=element_ids, dryRun=dry_run, document=document)
+        return await send(
+            "delete",
+            elementIds=element_ids,
+            dryRun=dry_run,
+            confirmToken=confirm_token,
+            document=document,
+        )
 
     @action
     async def revit_export(
