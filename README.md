@@ -145,7 +145,7 @@ See the [full tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/
 | Revit session | `revit_open_document`, `revit_new_document`, `revit_activate_document`, `revit_activate_view`, `revit_close_views`, `revit_save_document`, `revit_sync_document`, `revit_close_document` |
 | Many models | `revit_process_models` |
 | Scripts | `revit_execute_code` |
-| Elements | `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_set_parameter`, `revit_update_parameters`, `revit_delete`, `revit_create_wall`, `revit_batch`, `revit_undo_last` |
+| Elements | `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_set_parameter`, `revit_update_parameters`, `revit_delete`, `revit_create_wall`, `revit_run_actions`, `revit_undo_last` |
 | Families | `revit_load_family`, `revit_place_family`, `revit_place_families`, `revit_edit_families` |
 | Views and sheets | `revit_select`, `revit_show`, `revit_isolate`, `revit_set_view_visibility`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet` |
 | Export and links | `revit_export`, `revit_export_nwc`, `revit_align_link_datums`, `revit_remove_links` |

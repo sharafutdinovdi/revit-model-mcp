@@ -89,7 +89,7 @@ ACTION_TOOL_NAMES = {
     "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
-    "revit_batch",
+    "revit_run_actions",
     "revit_export_nwc",
     "revit_export",
     "revit_edit_families",
@@ -158,6 +158,25 @@ def test_bundle_manifest_matches_tool_registry():
     )
 
 
+def test_parameter_names_follow_the_contract():
+    import asyncio
+
+    tools = asyncio.run(revit_server.mcp.list_tools())
+    retired = {"response_timeout_s", "wait_s", "save_to", "saveTo", "dest_dir"}
+    for tool in tools:
+        properties = set(tool.input_schema.get("properties", {}))
+        assert not properties & retired, f"{tool.name} uses a retired parameter name"
+    by_name = {tool.name: set(tool.input_schema["properties"]) for tool in tools}
+    assert "wait_seconds" in by_name["revit_jobs"]
+    assert "output_dir" in by_name["revit_batch_fetch"]
+    assert "output_dir" in by_name["revit_export"]
+    assert "output_path" in by_name["revit_export_view"]
+    assert "timeout_seconds" in by_name["revit_family_audit"]
+    assert "timeout_seconds" in by_name["revit_execute_code"]
+    assert "revit_run_actions" in by_name
+    assert "revit_batch" not in by_name
+
+
 def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
     import asyncio
 
@@ -194,7 +213,7 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
-    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "save_to"],
+    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "output_path"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
         "parameter_rules",
@@ -205,9 +224,8 @@ EXPECTED_PARAMETERS = {
     "revit_build_report": ["snapshots_dir", "output_path", "previous_dir", "findings"],
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_jobs": [
-        "cancel_job_id",
         "job_id",
-        "wait_s",
+        "wait_seconds",
         "timeout_seconds",
         "pickup_timeout_seconds",
         "document",
@@ -267,10 +285,10 @@ EXPECTED_PARAMETERS = {
         "pixel_size",
         "padding_mm",
         "mode",
-        "save_to",
+        "output_path",
         "document",
     ],
-    "revit_export_view": ["view", "pixel_size", "save_to", "document"],
+    "revit_export_view": ["view", "pixel_size", "output_path", "document"],
     "revit_schedule_data": ["schedule", "max_rows", "offset", "document"],
     "revit_view_elements": [
         "view",
@@ -304,7 +322,7 @@ EXPECTED_PARAMETERS = {
         "document",
     ],
     "revit_list_instances": ["document"],
-    "revit_family_audit": ["families", "response_timeout_s", "document"],
+    "revit_family_audit": ["families", "timeout_seconds", "document"],
     "revit_nwc_settings_check": [
         "settings_xml",
         "timeout_seconds",
@@ -352,13 +370,15 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["latestKnownVersion"], "0.7.0")
         self.assertEqual(result["updateCheck"], "disabled")
 
-    async def test_jobs_tool_passes_cancellation_without_write_gate(self) -> None:
+    async def test_jobs_tool_lists_without_cancellation(self) -> None:
         channel = RecordingChannel()
         with patch.object(revit_server, "channel", channel):
-            await revit_server.mcp.call_tool("revit_jobs", {"cancel_job_id": "job-1"})
+            await revit_server.mcp.call_tool("revit_jobs", {})
+        tools = {tool.name: tool for tool in await revit_server.mcp.list_tools()}
+        self.assertNotIn("cancel_job_id", tools["revit_jobs"].input_schema["properties"])
         job, _, _ = channel.calls[0]
         self.assertEqual(job.command, "jobs")
-        self.assertEqual(job.payload["cancelJobId"], "job-1")
+        self.assertEqual(job.payload, {"command": "jobs"})
 
     async def test_documents_lists_background_models_as_read(self) -> None:
         channel = RecordingChannel()
@@ -402,7 +422,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(revit_server, "channel", channel):
             await revit_server.mcp.call_tool(
                 "revit_family_audit",
-                {"families": ["Door"], "response_timeout_s": 600, "document": "Model"},
+                {"families": ["Door"], "timeout_seconds": 600, "document": "Model"},
             )
         job, response_timeout, pickup_timeout = channel.calls[0]
         self.assertEqual(job.command, "family-audit")
@@ -534,7 +554,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             )
             await revit_server.mcp.call_tool(
                 "revit_export_view",
-                {"view": "Level 1 Plan", "pixelSize": 2400, "saveTo": "/tmp/plan.png"},
+                {"view": "Level 1 Plan", "pixelSize": 2400, "outputPath": "/tmp/plan.png"},
             )
             await revit_server.mcp.call_tool(
                 "revit_list_relations", {"relation": "level-rooms", "sourceName": "Level 1"}
@@ -556,7 +576,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(view_summary.payload["view"], "Level 1 Plan")
         self.assertEqual(view_summary.payload["targetDocument"], "Sample Model")
         self.assertEqual(export_view.payload["pixelSize"], 2400)
-        self.assertEqual(export_view.save_to, "/tmp/plan.png")
+        self.assertEqual(export_view.output_path, "/tmp/plan.png")
         self.assertEqual(camel_relation.payload, snake_relation.payload)
         self.assertEqual(camel_relation.payload["sourceName"], "Level 1")
 
@@ -644,7 +664,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         result = await host.list_revit_instances("Sample")
 
         self.assertEqual(result[0]["documentName"], "SampleModel")
-        self.assertTrue(result[0]["pluginResponding"])
+        self.assertFalse(result[0]["pluginResponding"])
         script = host._run.await_args.args[0]
         self.assertIn("instance_*.json", script)
         self.assertNotIn("MainWindowTitle", script)
@@ -893,9 +913,12 @@ def test_client_name_comes_from_initialize_context():
 
     from mcp.server.mcpserver import Context
 
+    from revit_model_mcp import package_version
     from revit_model_mcp.revit_channel import JobPickupStatus, RevitChannel
 
     class Host:
+        instance_info = {"addinVersion": package_version(), "commands": ["ping"]}
+
         async def select_job(self, job):
             return self, job
 
@@ -911,7 +934,7 @@ def test_client_name_comes_from_initialize_context():
         ):
             return "response_ping.json"
 
-        async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+        async def finish_job(self, response_name, cleanup_names, download_artifact, output_path):
             return json.dumps({"command": "ping", "success": True, "data": "pong"}), None
 
         async def delete_files(self, names):

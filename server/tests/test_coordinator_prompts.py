@@ -52,7 +52,7 @@ ACTION_TOOLS = {
     "revit_create_wall",
     "revit_set_parameter",
     "revit_delete",
-    "revit_batch",
+    "revit_run_actions",
     "revit_export_nwc",
     "revit_edit_families",
     "revit_align_link_datums",

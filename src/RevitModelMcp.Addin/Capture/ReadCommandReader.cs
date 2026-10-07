@@ -260,10 +260,10 @@ internal static class ReadCommandReader
         return null;
     }
 
-    public static ViewDumpHeader ReadHeader(Document document, View view, int elementCount)
+    public static ViewHeader ReadHeader(Document document, View view, int elementCount)
     {
         var filterIds = view.GetFilters();
-        return new ViewDumpHeader
+        return new ViewHeader
         {
             Name = view.Name,
             Type = view.ViewType.ToString(),

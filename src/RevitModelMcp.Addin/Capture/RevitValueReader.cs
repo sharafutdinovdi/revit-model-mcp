@@ -35,57 +35,6 @@ internal static class RevitValueReader
         };
     }
 
-    public static CropBoxSnapshot ToCropBox(BoundingBoxXYZ box)
-    {
-        return new CropBoxSnapshot
-        {
-            MinXmm = ToMillimeters(box.Min.X),
-            MinYmm = ToMillimeters(box.Min.Y),
-            MinZmm = ToMillimeters(box.Min.Z),
-            MaxXmm = ToMillimeters(box.Max.X),
-            MaxYmm = ToMillimeters(box.Max.Y),
-            MaxZmm = ToMillimeters(box.Max.Z)
-        };
-    }
-
-    public static SectionCropBoundingBoxSnapshot ToSectionCropBoundingBox(BoundingBoxXYZ box)
-    {
-        return new SectionCropBoundingBoxSnapshot
-        {
-            MinX = ToMillimeters(box.Min.X),
-            MinY = ToMillimeters(box.Min.Y),
-            MinZ = ToMillimeters(box.Min.Z),
-            MaxX = ToMillimeters(box.Max.X),
-            MaxY = ToMillimeters(box.Max.Y),
-            MaxZ = ToMillimeters(box.Max.Z)
-        };
-    }
-
-    public static BoundingBoxOnViewSnapshot? GetBoundingBoxOnView(Element element, View view)
-    {
-        try
-        {
-            var box = element.get_BoundingBox(view);
-            if (box is null)
-            {
-                return null;
-            }
-
-            return new BoundingBoxOnViewSnapshot
-            {
-                YMin = ToMillimeters(box.Min.Y),
-                YMax = ToMillimeters(box.Max.Y),
-                XMin = ToMillimeters(box.Min.X),
-                XMax = ToMillimeters(box.Max.X)
-            };
-        }
-        catch (Exception exception)
-        {
-            PluginLog.Skipped($"element {GetId(element.Id)} bounding box on view {GetId(view.Id)}", exception);
-            return null;
-        }
-    }
-
     public static string? GetFamilyName(Element element)
     {
         var familyName = GetParameterText(element.get_Parameter(BuiltInParameter.ALL_MODEL_FAMILY_NAME));
@@ -106,40 +55,6 @@ internal static class RevitValueReader
         }
 
         return document.GetElement(element.GetTypeId())?.Name;
-    }
-
-    public static string? GetMark(Element element)
-    {
-        return GetParameterText(element.get_Parameter(BuiltInParameter.ALL_MODEL_MARK));
-    }
-
-    public static string? GetNamedParameter(Element element, string name)
-    {
-        try
-        {
-            return GetParameterText(element.LookupParameter(name));
-        }
-        catch (Exception exception)
-        {
-            PluginLog.Skipped($"element {GetId(element.Id)} parameter {name}", exception);
-            return null;
-        }
-    }
-
-    public static double? GetLengthParameterMm(Element element, BuiltInParameter parameterId)
-    {
-        try
-        {
-            var parameter = element.get_Parameter(parameterId);
-            return parameter is null || !parameter.HasValue
-                ? null
-                : ToMillimeters(parameter.AsDouble());
-        }
-        catch (Exception exception)
-        {
-            PluginLog.Skipped($"element {GetId(element.Id)} parameter {parameterId}", exception);
-            return null;
-        }
     }
 
     public static string? GetParameterText(Parameter? parameter)

@@ -48,7 +48,7 @@ A client that reconnects with the same `clientId` can send `status` for its unfi
 Completed read results expire ten minutes after completion, action results after 24 hours; see [result retention](#result-retention).
 `capture-elements` downloads one PNG through the same `data.fileName` artifact mechanism as `export-view` over local, pipe and SSH transports.
 It is unavailable over HTTP and returns `element snapshots need the local or SSH transport`; `/views/{name}/image` is unchanged.
-`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `save_to` or a new temporary directory.
+`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `output_path` or a new temporary directory.
 
 ## HTTP configuration
 
@@ -415,14 +415,11 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 | --- | --- |
 | `ROOT\instance_<pid>.json` | Shared discovery heartbeat |
 | `ROOT\instances\<pid>\mcp_<uuid>.tmp` | Job before atomic publication |
-| `ROOT\instances\<pid>\job_<jobId>.json` | Published job awaiting pickup; legacy `trigger.txt` is also accepted |
+| `ROOT\instances\<pid>\job_<jobId>.json` | Published job awaiting pickup |
 | `ROOT\instances\<pid>\response_<timestamp>_<command>_<correlationId>.json` | Atomic correlated response |
 | `ROOT\instances\<pid>\view_*.png` | Exported view before download |
-| `ROOT\instances\<pid>\latest.json`, `latest.txt`, `snapshot_*.json`, `views_dump_*` | Legacy snapshot and view-dump output in the same instance directory |
 
 Response temporary files also remain in the selected instance directory.
-On startup the add-in moves any previous `trigger.txt` to a uniquely named `stale_*.tmp` before starting its watcher.
-It does not execute that pending job after PID reuse or watch a trigger in ROOT.
 
 The server resolves a target before publishing any job.
 Actions and undirected reads require exactly one running Revit process.
@@ -466,18 +463,16 @@ Discovery version 3 keeps the v2 fields and adds the pipe and the open documents
 | `addinVersion`, `protocolVersion`, `commands` | Assembly informational version, protocol integer `1`, and supported command names |
 
 The server reads these fields from the selected heartbeat, pipe hello or HTTP health response.
-An older add-in without `addinVersion` is treated as version 0.6.0 or earlier.
+The server accepts an add-in only when `addinVersion` has the same major version as the server; see [Versions](feed-format.md#versions).
 
 `revit_list_instances` returns these fields in local pipe mode; path redaction also covers `documents[].path`.
 
 ### File protocol compatibility
 
-Update the server **before** updating the add-in.
-A heartbeat without `fileChannelVersion` selects the legacy shared ROOT layout only when exactly one Revit process is running.
-The legacy heartbeat indicates presence only; it does not prove a v2 handshake or resolve the old shared-trigger race.
-A v2 add-in remains discoverable by old servers, but their ROOT file commands are incompatible.
-Unknown protocol versions are rejected explicitly before publication.
-Mixed installations allow directed reads to a uniquely matched v2 instance; legacy execution remains restricted to a single process.
+The file channel version is `2`.
+The server refuses a heartbeat without `fileChannelVersion`, or with any other value, before publishing a job, and asks for an add-in of the same major version as the server.
+There is no fallback to a shared ROOT layout and no single-process exception.
+Update the server and the add-in together; see [Versions](feed-format.md#versions).
 
 The file transport operates independently of the optional HTTP listener.
 Revit API work runs through ExternalEvent.
@@ -505,8 +500,8 @@ Host aliases are validated. PowerShell string literals escape ASCII and Unicode 
 SSH credentials and routing belong to the user's SSH configuration.
 
 Responses and exported PNG files are transferred as base64 in the PowerShell result.
-The server checks the PNG signature and decodes the image into `save_to` or a new temporary directory.
-`save_to` must end in `.png`.
+The server checks the PNG signature and decodes the image into `output_path` or a new temporary directory.
+`output_path` must end in `.png`.
 An existing destination file produces an error.
 The MCP result contains the image path and metadata without base64.
 

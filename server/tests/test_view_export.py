@@ -50,7 +50,7 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 "zoomToFit": True,
             },
         )
-        self.assertEqual(job.save_to, "/tmp/plan.png")
+        self.assertEqual(job.output_path, "/tmp/plan.png")
 
     async def test_downloads_image_in_same_remote_read_and_saves_path(self) -> None:
         image = PNG
@@ -191,7 +191,11 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
     async def test_channel_returns_local_path_with_plugin_metadata(self) -> None:
         events: list[str] = []
 
+        from revit_model_mcp import package_version
+
         class Remote:
+            instance_info = {"addinVersion": package_version(), "commands": ["export-view"]}
+
             async def select_job(self, job):
                 return self, job
 
@@ -209,7 +213,9 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 events.append("response")
                 return "response_export-view.json"
 
-            async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+            async def finish_job(
+                self, response_name, cleanup_names, download_artifact, output_path
+            ):
                 events.append("finish")
                 return EXPORT_RESPONSE, "/tmp/view.png"
 

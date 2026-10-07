@@ -10,12 +10,12 @@ from revit_model_mcp.actions import redact_model_paths
 from revit_model_mcp.atomic_write import write_new_file
 
 
-def preflight_artifact_target(save_to: str | None) -> None:
-    if not save_to:
+def preflight_artifact_target(output_path: str | None) -> None:
+    if not output_path:
         return
-    if Path(save_to).suffix.lower() != ".png":
+    if Path(output_path).suffix.lower() != ".png":
         raise ValueError("The image destination must have a .png extension.")
-    target = Path(save_to).expanduser().absolute()
+    target = Path(output_path).expanduser().absolute()
     if target.exists() or target.is_symlink():
         raise ValueError(f"Local file already exists: {target}")
     try:
@@ -29,20 +29,20 @@ def preflight_artifact_target(save_to: str | None) -> None:
         raise ValueError(f"Cannot save image: {error}") from error
 
 
-def save_artifact(result: dict[str, object], save_to: str | None) -> str:
+def save_artifact(result: dict[str, object], output_path: str | None) -> str:
     name = result.get("artifactName")
     encoded = result.get("artifact")
     if not isinstance(name, str) or Path(name).name != name or not isinstance(encoded, str):
         raise ValueError("Remote response does not contain a safe image artifact.")
-    if save_to and Path(save_to).suffix.lower() != ".png":
+    if output_path and Path(output_path).suffix.lower() != ".png":
         raise ValueError("The image destination must have a .png extension.")
     image = base64.b64decode(encoded, validate=True)
     if not image.startswith(b"\x89PNG\r\n\x1a\n"):
         raise ValueError("The Revit endpoint did not return a PNG image.")
     try:
         target = (
-            Path(save_to).expanduser().absolute()
-            if save_to
+            Path(output_path).expanduser().absolute()
+            if output_path
             else Path(tempfile.mkdtemp(prefix="revit-view-")) / name
         )
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -53,7 +53,7 @@ def save_artifact(result: dict[str, object], save_to: str | None) -> str:
     return str(target)
 
 
-def save_batch_artifact(result: dict[str, object], dest_dir: str) -> str:
+def save_batch_artifact(result: dict[str, object], output_dir: str) -> str:
     name = result.get("artifactName")
     encoded = result.get("artifact")
     if (
@@ -68,7 +68,7 @@ def save_batch_artifact(result: dict[str, object], dest_dir: str) -> str:
     snapshot = redact_model_paths(json.loads(content))
     content = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
     try:
-        directory = Path(dest_dir).expanduser().absolute()
+        directory = Path(output_dir).expanduser().absolute()
         directory.mkdir(parents=True, exist_ok=True)
         target = directory.resolve() / name
         write_new_file(target, lambda output: output.write(content))

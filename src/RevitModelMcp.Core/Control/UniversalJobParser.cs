@@ -344,17 +344,17 @@ public sealed class ExternalEventRequestQueue
     }
 }
 
-public sealed class TriggerFileWatcher : IDisposable
+public sealed class JobFileWatcher : IDisposable
 {
     private static readonly TimeSpan MinimumFallbackInterval = TimeSpan.FromSeconds(10);
-    private readonly string _triggerFilePath;
+    private readonly string _directory;
     private readonly Action _request;
     private readonly Action<Exception> _reportError;
     private readonly TimeSpan _fallbackInterval;
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _timer;
-    public TriggerFileWatcher(
-        string triggerFilePath,
+    public JobFileWatcher(
+        string directory,
         Action request,
         Action<Exception> reportError,
         TimeSpan fallbackInterval)
@@ -363,9 +363,9 @@ public sealed class TriggerFileWatcher : IDisposable
         {
             throw new ArgumentOutOfRangeException(
                 nameof(fallbackInterval),
-                "The fallback check for trigger.txt must not run more than once every 10 seconds.");
+                "The fallback check for job files must not run more than once every 10 seconds.");
         }
-        _triggerFilePath = Path.GetFullPath(triggerFilePath);
+        _directory = Path.GetFullPath(directory);
         _request = request ?? throw new ArgumentNullException(nameof(request));
         _reportError = reportError ?? throw new ArgumentNullException(nameof(reportError));
         _fallbackInterval = fallbackInterval;
@@ -376,22 +376,21 @@ public sealed class TriggerFileWatcher : IDisposable
         {
             return;
         }
-        var directory = Path.GetDirectoryName(_triggerFilePath)
-                        ?? throw new InvalidOperationException("The trigger.txt file has no parent directory.");
+        var directory = _directory;
         Directory.CreateDirectory(directory);
         _watcher = new FileSystemWatcher(directory, "*")
         {
             NotifyFilter = NotifyFilters.FileName
         };
-        _watcher.Created += OnTriggerAppeared;
-        _watcher.Renamed += OnTriggerRenamed;
+        _watcher.Created += OnJobAppeared;
+        _watcher.Renamed += OnJobRenamed;
         _watcher.EnableRaisingEvents = true;
         _timer = new System.Threading.Timer(
-            _ => RequestIfTriggerExists(),
+            _ => RequestIfJobsExist(),
             null,
             _fallbackInterval,
             _fallbackInterval);
-        RequestIfTriggerExists();
+        RequestIfJobsExist();
     }
 
     public void Dispose()
@@ -401,27 +400,26 @@ public sealed class TriggerFileWatcher : IDisposable
         if (_watcher is not null)
         {
             _watcher.EnableRaisingEvents = false;
-            _watcher.Created -= OnTriggerAppeared;
-            _watcher.Renamed -= OnTriggerRenamed;
+            _watcher.Created -= OnJobAppeared;
+            _watcher.Renamed -= OnJobRenamed;
             _watcher.Dispose();
             _watcher = null;
         }
     }
-    private void OnTriggerAppeared(object sender, FileSystemEventArgs args)
+    private void OnJobAppeared(object sender, FileSystemEventArgs args)
     {
         if (IsJobFile(args.Name)) RequestSafely();
     }
-    private void OnTriggerRenamed(object sender, RenamedEventArgs args)
+    private void OnJobRenamed(object sender, RenamedEventArgs args)
     {
         if (IsJobFile(args.Name)) RequestSafely();
     }
-    private bool IsJobFile(string? name) => name == Path.GetFileName(_triggerFilePath) ||
-        name is not null && name.StartsWith("job_", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal);
-    private void RequestIfTriggerExists()
+    private static bool IsJobFile(string? name) => name is not null && name.StartsWith("job_", StringComparison.Ordinal) && name.EndsWith(".json", StringComparison.Ordinal);
+    private void RequestIfJobsExist()
     {
         try
         {
-            if (File.Exists(_triggerFilePath) || Directory.GetFiles(Path.GetDirectoryName(_triggerFilePath)!, "job_*.json").Length > 0)
+            if (Directory.GetFiles(_directory, "job_*.json").Length > 0)
             {
                 _request();
             }

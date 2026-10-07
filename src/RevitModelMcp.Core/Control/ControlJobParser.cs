@@ -9,8 +9,6 @@ namespace RevitModelMcp.Core.Control;
 
 public enum ControlJobKind
 {
-    LegacySnapshot,
-    ViewsDump,
     Ping,
     DocumentInfo,
     Documents,
@@ -63,8 +61,6 @@ public sealed class ControlJobParseResult
     public string? JobId { get; internal set; }
     public string ClientId { get; internal set; } = "unknown";
     public string ClientName { get; internal set; } = "unknown";
-    public string? CancelJobId { get; internal set; }
-    public IReadOnlyList<string> Views { get; internal set; } = Array.Empty<string>();
     public string? View { get; internal set; }
     public string? ViewType { get; internal set; }
     public string? NameContains { get; internal set; }
@@ -96,10 +92,6 @@ public sealed class ControlJobParseResult
     public ActionJobContract? Action { get; internal set; }
     public string? Error { get; }
     public Exception? Cause { get; }
-    public static ControlJobParseResult LegacySnapshot()
-    {
-        return new ControlJobParseResult(ControlJobKind.LegacySnapshot, "legacy-snapshot", null);
-    }
     public static ControlJobParseResult Invalid(string command, string error, Exception? cause = null)
     {
         return new ControlJobParseResult(ControlJobKind.Invalid, command, error, cause);
@@ -108,13 +100,6 @@ public sealed class ControlJobParseResult
     internal static ControlJobParseResult Create(ControlJobKind kind, string command)
     {
         return new ControlJobParseResult(kind, command, null);
-    }
-
-    private static ControlJobParseResult ViewsDump(IReadOnlyList<string> views)
-    {
-        var result = Create(ControlJobKind.ViewsDump, "views-dump");
-        result.Views = views;
-        return result;
     }
 
     private static ControlJobParseResult ViewCommand(ControlJobKind kind, string command, string view)
@@ -184,13 +169,10 @@ public sealed class ControlJobParseResult
             };
         }
 
-        var views = NormalizeMany(job.Views);
         var view = Normalize(job.View);
         var categories = NormalizeMany(job.Categories);
         var result = command switch
         {
-            "views-dump" when views.Count == 0 => Invalid(command, "The views-dump command requires a non-empty views list."),
-            "views-dump" => ViewsDump(views),
             "ping" => Create(ControlJobKind.Ping, command),
             "batch-supervisor-start" => Create(ControlJobKind.BatchSupervisorStart, command),
             "batch-prepass" => Create(ControlJobKind.BatchPrePass, command),
@@ -230,7 +212,6 @@ public sealed class ControlJobParseResult
         result.JobId = job.JobId;
         result.ClientId = string.IsNullOrWhiteSpace(job.ClientId) ? "unknown" : job.ClientId!;
         result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
-        result.CancelJobId = job.CancelJobId;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
         if (command is "family-audit" or "nwc-settings-check" or "batch-supervisor-start" or "batch-prepass" or "batch-open" or "batch-snapshot" or "batch-close" or "model-snapshot") result.CoordinatorJob = job;
         result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
@@ -427,7 +408,7 @@ public static class ControlJobParser
     {
         if (string.IsNullOrWhiteSpace(content))
         {
-            return ControlJobParseResult.LegacySnapshot();
+            return ControlJobParseResult.Invalid("invalid", "The job JSON is empty.");
         }
 
         var isNwcExport = Regex.IsMatch(content, "\"command\"\\s*:\\s*\"export-nwc\"");
@@ -491,8 +472,6 @@ public sealed partial class ControlJobContract
     public string? ClientId { get; set; }
     [DataMember(Name = "clientName", EmitDefaultValue = false)]
     public string? ClientName { get; set; }
-    [DataMember(Name = "cancelJobId", EmitDefaultValue = false)]
-    public string? CancelJobId { get; set; }
     [DataMember(Name = "correlationId", EmitDefaultValue = false)]
     public string? CorrelationId { get; set; }
     [DataMember(Name = "parameters", EmitDefaultValue = false)]

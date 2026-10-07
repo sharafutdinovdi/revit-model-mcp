@@ -151,7 +151,6 @@ public sealed record JobResponseMetadata(ClientIdentity Client, string JobId, lo
 public sealed record JobListData
 {
     [DataMember(Name = "jobs")] public List<JobSummary> Jobs { get; init; } = [];
-    [DataMember(Name = "cancellation", EmitDefaultValue = false)] public JobCancellationInfo? Cancellation { get; init; }
 }
 
 [DataContract]
@@ -163,14 +162,6 @@ public sealed record JobSummary
     [DataMember(Name = "state")] public string State { get; init; } = string.Empty;
     [DataMember(Name = "position")] public int Position { get; init; }
     [DataMember(Name = "ageMs")] public long AgeMs { get; init; }
-}
-
-[DataContract]
-public sealed record JobCancellationInfo
-{
-    [DataMember(Name = "cancelled")] public bool Cancelled { get; init; }
-    [DataMember(Name = "state", EmitDefaultValue = false)] public string? State { get; init; }
-    [DataMember(Name = "message")] public string Message { get; init; } = string.Empty;
 }
 
 [DataContract]
@@ -326,7 +317,7 @@ public sealed class ViewExportData
 public sealed class ViewSummaryData
 {
     [DataMember(Name = "header")]
-    public ViewDumpHeader Header { get; set; } = new();
+    public ViewHeader Header { get; set; } = new();
 
     [DataMember(Name = "categories")]
     public List<ViewCategorySummary> Categories { get; set; } = new();
@@ -587,4 +578,94 @@ public sealed class ElementCaptureData
 
     [DataMember(Name = "mode")]
     public string Mode { get; set; } = "3d";
+}
+
+[DataContract]
+public sealed class ViewHeader
+{
+    [DataMember(Name = "name")]
+    public string? Name { get; set; }
+
+    [DataMember(Name = "type")]
+    public string? Type { get; set; }
+
+    [DataMember(Name = "level", EmitDefaultValue = false)]
+    public string? Level { get; set; }
+
+    [DataMember(Name = "scale")]
+    public int Scale { get; set; }
+
+    [DataMember(Name = "template", EmitDefaultValue = false)]
+    public string? Template { get; set; }
+
+    [DataMember(Name = "discipline", EmitDefaultValue = false)]
+    public string? Discipline { get; set; }
+
+    [DataMember(Name = "filterCount")]
+    public int FilterCount { get; set; }
+
+    [DataMember(Name = "graphicOverrideCount")]
+    public int GraphicOverrideCount { get; set; }
+
+    [DataMember(Name = "elementCount")]
+    public int ElementCount { get; set; }
+}
+
+[DataContract]
+public sealed class ViewCategorySummary
+{
+    [DataMember(Name = "category")]
+    public string Category { get; set; } = string.Empty;
+
+    [DataMember(Name = "count")]
+    public int Count { get; set; }
+
+    [DataMember(Name = "differentTypes")]
+    public int DifferentTypes { get; set; }
+}
+
+[DataContract]
+public sealed class ViewElementDump
+{
+    [DataMember(Name = "id", Order = 1)]
+    public long Id { get; set; }
+
+    [DataMember(Name = "category", Order = 2, EmitDefaultValue = false)]
+    public string? Category { get; set; }
+
+    [DataMember(Name = "family", Order = 3, EmitDefaultValue = false)]
+    public string? Family { get; set; }
+
+    [DataMember(Name = "type", Order = 4, EmitDefaultValue = false)]
+    public string? Type { get; set; }
+
+    [DataMember(Name = "name", Order = 5, EmitDefaultValue = false)]
+    public string? Name { get; set; }
+
+    [DataMember(Name = "level", Order = 6, EmitDefaultValue = false)]
+    public string? Level { get; set; }
+
+    [DataMember(Name = "workset", Order = 7, EmitDefaultValue = false)]
+    public string? Workset { get; set; }
+
+    [DataMember(Name = "phase", Order = 8, EmitDefaultValue = false)]
+    public string? Phase { get; set; }
+
+    [DataMember(Name = "lengthMm", Order = 9, EmitDefaultValue = false)]
+    public double? LengthMm { get; set; }
+
+    [DataMember(Name = "thicknessMm", Order = 10, EmitDefaultValue = false)]
+    public double? ThicknessMm { get; set; }
+
+    [DataMember(Name = "areaM2", Order = 11, EmitDefaultValue = false)]
+    public double? AreaM2 { get; set; }
+
+    [DataMember(Name = "volumeM3", Order = 12, EmitDefaultValue = false)]
+    public double? VolumeM3 { get; set; }
+
+    [DataMember(Name = "profileParameters", Order = 13)]
+    public Dictionary<string, string> ProfileParameters { get; set; } = new();
+
+    [DataMember(Name = "hasWarnings", Order = 14)]
+    public bool HasWarnings { get; set; }
 }

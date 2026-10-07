@@ -260,10 +260,10 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         title="Fetch batch snapshots",
         annotations=BATCH_TOOL.model_copy(update={"title": "Fetch batch snapshots"}),
     )
-    async def revit_batch_fetch(run_id: str, dest_dir: str) -> dict[str, Any]:
+    async def revit_batch_fetch(run_id: str, output_dir: str) -> dict[str, Any]:
         """Download completed snapshots to new local files without overwriting."""
-        if not isinstance(dest_dir, str) or not dest_dir.strip():
-            raise ToolError("dest_dir must be a nonblank local directory.")
+        if not isinstance(output_dir, str) or not output_dir.strip():
+            raise ToolError("output_dir must be a nonblank local directory.")
         try:
             run_id = _run_id(run_id)
             file_host = _file_host(host_provider())
@@ -288,12 +288,12 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                     names.append(name)
             from pathlib import Path
 
-            destination = Path(dest_dir).expanduser().absolute()
+            destination = Path(output_dir).expanduser().absolute()
             collisions = [name for name in names if (destination / name).exists()]
             if collisions:
                 raise ToolError(f"Local batch snapshot already exists: {collisions[0]}")
             artifacts = [await file_host.batch_fetch_artifact(run_id, name) for name in names]
-            local_paths = [save_batch_artifact(artifact, dest_dir) for artifact in artifacts]
+            local_paths = [save_batch_artifact(artifact, output_dir) for artifact in artifacts]
             paths_by_name = dict(zip(names, local_paths, strict=True))
             public_models = _public(state)["models"]
             outcomes = []

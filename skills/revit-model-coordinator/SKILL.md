@@ -208,7 +208,7 @@ Do not infer that the model was unchanged from such a response alone.
 
 Long actions may return `status:"running"` and `jobId` after the server wait budget expires.
 The action may already have changed the model.
-Call `revit_jobs(job_id=jobId, wait_s=40)` repeatedly until the original action response is returned.
+Call `revit_jobs(job_id=jobId, wait_seconds=40)` repeatedly until the original action response is returned.
 Do not resubmit the action while it runs.
 Process-models progress includes `currentIndex`, `total`, redacted `currentPath`, and per-model results in `partial`.
 Use the final model results to build the completion table and preserve verification warnings.
