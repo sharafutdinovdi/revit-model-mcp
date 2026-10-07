@@ -1,0 +1,1532 @@
+{
+  "schemaVersion": "1.0",
+  "mcpSpecVersion": "2025-11-25",
+  "server": {
+    "name": "revit-model-mcp",
+    "transport": "stdio",
+    "location": "local"
+  },
+  "tools": [
+    {
+      "name": "revit_jobs",
+      "description": "List recent jobs, or poll an action jobId for up to wait_s seconds.\n\nwait_s accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends; call again while the job is still running.\nA running job returns progress and partial per-model results.\nA finished job returns the original action response, including verification warnings.\nResults remain on the workstation for 24 hours, across MCP server restarts.\nSupply cancel_job_id for legacy cancellation of this server's own queued jobs.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_compare_link_datums",
+      "description": "Compare host grids and levels with one loaded Revit link. No model change is made.\n\nA geometric match does not create a monitor relationship or later Coordination Review warnings.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_ping",
+      "description": "Check the RevitModelMcp connection without reading the model.\n\nReturns a response with data=\"pong\", even when no document is active.\nIncludes httpListener state and reason when reported by the instance heartbeat.\nConnection failures and timeouts raise errors; no partial result is returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_nwc_settings_check",
+      "description": "Parse a Navisworks exporter XML file on the Revit workstation without exporting.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "read",
+        "scope": "Navisworks exporter XML on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_document_info",
+      "description": "Read general information about the active Revit model.\n\nReturns data with file name, Revit version, levels (elevations in mm), area schemes, worksets and view count.\nAbsent collections are empty; non-workshared models have no worksets.\nCall revit_list_views next for view analysis.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_documents",
+      "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_ui_state",
+      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, use process_id to choose one; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_model_snapshot",
+      "description": "Read a schema version 1 project snapshot for batch audits.\n\nEach parameter rule pairs one category with one parameter. Warning groups include\nat most 200 affected element IDs. Closed worksets can make the result incomplete.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_model_health",
+      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\nUse save_to when the user requests a saved or Excel health report.\nThe workbook includes health checks, all warning groups, counts and up to five snapshots\nwithin a 60-second capture budget. Failed or skipped snapshots become workbook warnings.\nWithout save_to, use revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "Optional workbook at save_to on the client."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_links_status",
+      "description": "Read RVT, CAD and image link status before an export or hand-over.\n\nReturns data with summary counts and rvtLinks, cadLinks and images lists containing status, paths and instance counts.\nEach list is capped at 100 entries by ID without pagination; summary counts cover all entries.\nNo links produce empty lists; per-entry failures appear in error with status Other.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_shared_coordinates",
+      "description": "Read project and survey coordinates before an export or hand-over.\n\nReturns data with base/survey points, the active site, project locations and link offsets in mm and rotations in degrees, rounded to one decimal.\nLocation and link lists are capped at 100 without pagination, with total counts; no links produce an empty sharedSiteFromLinks list.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_parameter_fill_check",
+      "description": "Count filled, empty and missing parameters before an export or hand-over.\n\nReturns data with scope, per-parameter and per-category counts, instance/type ownership, storage types and empty/missing element ID samples.\nNo matching elements produce zero counts and empty samples; absent parameters count as missing, and numeric zero counts as filled.\nA missing document, invalid scope or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_list_catalog",
+      "description": "Discover valid model names before filtering.\n\nReturns data with section and items containing names and section-specific IDs, categories, types or counts; an empty catalog returns items=[].\nsection is required: categories, family-types, levels, area-schemes, views, worksets, phases or parameters.\nThe parameters section reports localized names, categories and value types.\nStart universal queries here, then prefer revit_aggregate_elements for counts and breakdowns; use revit_query_elements only for individual rows.\nAn unknown section, missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_aggregate_elements",
+      "description": "Summarize matching elements by one or two fields after revit_list_catalog.\n\nReturns data with matchedElements and groups containing keys, count and optional numericCount, sum, average and unit.\nLengths use mm, areas m2 and volumes m3; groups without numeric values have null sum and average.\nNo matches return groups=[]; invalid field or filter names raise errors even for empty results.\nCall revit_list_catalog first; prefer this tool for counts and breakdowns, and revit_query_elements only for individual rows.\nFor area totals, group by level and select the area scheme.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_query_elements",
+      "description": "Read a page of matching element rows after revit_list_catalog.\n\nReturns data with elements (id and values), fields, total, offset, limit and hasMore; values include availability, source and units when available.\nLengths use mm, areas m2 and volumes m3; optional geometry uses model mm rounded to one decimal, and unavailable geometry is omitted.\nUse roomCenterMm for placement inside rooms; a bounding-box centre can lie outside the room.\nNo matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.\nCall revit_list_catalog first and prefer revit_aggregate_elements for counts and breakdowns.\nInvalid fields or filters, a missing document, read failure or timeout raise errors; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_list_views",
+      "description": "Find non-template views before analyzing a view.\n\nReturns data with views containing id, name, type, level, scale and template, plus total and processed counts for scanned non-template views.\nNo filter matches return views=[].\nUse a returned name with revit_view_summary before requesting element pages.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_view_info",
+      "description": "Inspect one view's template, display, categories, worksets, filters and links.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_view_summary",
+      "description": "Read element categories and counts for a selected view.\n\nReturns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].\nPrefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_schedule_data",
+      "description": "Read displayed schedule header and body cell text, with paging.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_capture_elements",
+      "description": "Show where specific elements are in a highlighted PNG for issue evidence.\n\nReturns PNG image content and data.localPath on the server machine.\nSupports 1 to 500 element IDs, 3d or plan mode, and local or SSH transport.\nThe temporary view is rolled back without changing the active view or model.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "PNG at save_to or a temporary directory on the client."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_export_view",
+      "description": "Export a selected view to PNG when numbers do not explain geometry.\n\nReturns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.\nThe export does not change the active view or write to the model; use it to inspect outlines, zones and room boundaries.\nA missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.\nUses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "PNG at save_to or a temporary directory on the client."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_view_elements",
+      "description": "Read one page of elements in a selected view.\n\nReturns data with elements, total, offset, limit and hasMore; rows include IDs, category, family, type, level and available measurements in mm, m2 and m3.\nNo matches or an offset beyond the result return elements=[]; advance offset while hasMore=true.\nPrefer revit_view_summary for counts and category discovery; use this tool for individual rows and revit_element_details for all parameters.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_element_details",
+      "description": "Read parameters and geometry of an element by Revit ID.\n\nReturns data with element, instance parameters, available typeElement parameters and related warnings; no warnings return an empty list.\nRooms include level, area in m2, volume in m3 and boundaries in mm; parameter values include display/internal values and metric units when available.\nLocation and boundingBox use model mm rounded to one decimal; unavailable geometry is omitted.\nUse roomCenterMm for placement inside rooms; boundingBox.centerMm may lie outside a nonrectangular room.\nAn absent element or document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_view_warnings",
+      "description": "Read warnings involving elements present in a selected view.\n\nReturns data with view and warnings containing text, severity and element IDs with presentOnView flags; no related warnings return warnings=[].\nA warning may also involve elements outside the view.\nUse revit_view_summary to inspect view contents, or revit_list_warnings for model-wide warning groups.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_list_warnings",
+      "description": "Group model warnings by description text.\n\nReturns data with totalWarnings and groups containing text, severity, count, affectedElementCount and optional element rows.\nStart without filters, then repeat with a returned warning_text and include_elements=true to inspect one group.\nNo model warnings return groups=[]; an unmatched warning_text raises an error.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_list_relations",
+      "description": "Read model object membership or dependencies.\n\nReturns data with relation, source and elements containing IDs, names, categories, families and types; no related objects return elements=[].\nrelation is required: level-rooms, area-scheme-elements or view-template-dependents with source_name, or group-elements or nested-family with source_id.\nObtain source names from revit_list_catalog and IDs from element queries.\nAn invalid relation, missing or wrong source, missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_list_instances",
+      "description": "List Revit processes and their active documents.\n\nReturns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nLegacy heartbeat presence is only a pre-check. No matching instances return instances=[].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools.\nEvery successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_family_audit",
+      "description": "Audit an open family or named project families without saving or loading changes.\n\nIn project mode, pass exact names or [\"*\"]. In family mode, omit families.\nUnused shared parameters may still carry schedule or tag data in the project.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_open_document",
+      "description": "Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "read",
+        "scope": "Model file on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_activate_document",
+      "description": "Activate an already open document by title or path reference.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_activate_view",
+      "description": "Activate a non-template view. Zoom to fit, preserve zoom, or frame element IDs.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_close_views",
+      "description": "Close open UI views in the active document.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_new_document",
+      "description": "Create a project or family from a template on the Revit workstation.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "Optional save_as path on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_close_document",
+      "description": "Close a background document. Show confirmationText and retry with the token only after explicit chat approval.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "Closing with save=true, or closing a modified document without saving."
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_save_document",
+      "description": "Save only after showing confirmationText and receiving explicit chat approval for the token retry.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "always",
+        "mechanism": "confirm_token",
+        "condition": "Every call."
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "Model path on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_sync_document",
+      "description": "Synchronize only after showing confirmationText and receiving explicit chat approval for the token retry.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "always",
+        "mechanism": "confirm_token",
+        "condition": "Every call; a non-empty comment is required."
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "Local copy and central model on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_set_view_visibility",
+      "description": "Change category, workset and filter visibility in one view; preview with dry_run.\nCategories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_remove_links",
+      "description": "Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. Show confirmationText and retry with the same arguments plus confirm_token only after explicit chat approval.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "always",
+        "mechanism": "confirm_token",
+        "condition": "Every call except dry_run; removal cannot be undone in Revit."
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_execute_code",
+      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nUse a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. transaction=\"none\" is refused by\ndefault; use auto. Every call except dry_run first returns needsConfirmation,\nconfirmationText (code hash, length, mode, document) and confirmToken without running\nthe code. Show it and retry with identical arguments plus confirm_token only after\nexplicit chat approval. dry_run needs no token.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "always",
+        "mechanism": "confirm_token",
+        "condition": "Every call except dry_run."
+      },
+      "fileSystem": {
+        "access": "read_write",
+        "scope": "Not restricted by the server; confirmed C# runs with the user's rights."
+      },
+      "networkAccess": "unrestricted_by_confirmed_code"
+    },
+    {
+      "name": "revit_undo_last",
+      "description": "Undo the last MCP action in Revit, through Revit's own undo command.\n\nAllowed only when the target document is active, no command is pending in Revit, and\nRevit's last undo entry is still the one this session recorded. Otherwise the action\nresult carries a clear refusal reason instead of running.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_align_link_datums",
+      "description": "Align host grids and levels to a loaded link, with optional creation and rollback preview.\n\nGeometric alignment does not create a monitor relationship or later Coordination Review warnings.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_cancel_job",
+      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.\nA single running Revit operation finishes without interruption.\nPoll revit_jobs for the final result; completed changes remain committed.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_select",
+      "description": "Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_show",
+      "description": "Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_isolate",
+      "description": "Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_move",
+      "description": "Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_override_graphics",
+      "description": "Colour elements in selected model views; reset restores overrides saved in this Revit session.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_rotate",
+      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_copy",
+      "description": "Create 1 to 100 successive copies at multiples of the model-axis offset in mm.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_mirror",
+      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_change_type",
+      "description": "Change each element to one compatible type; family resolves duplicate type names.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_update_parameters",
+      "description": "Update a parameter on elements matching the same filters as revit_query_elements.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup instead of failing the call; dry_run predicts this.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_place_family",
+      "description": "Place a loaded unhosted family on a named level for layout.\n\nfamily accepts a family name or Family: Type, case-insensitively.\nnull type_name uses the embedded type or the first type. Conflicting types\nare rejected. Missing families return similar names with categories.\nModel XY is in millimetres and Z rotation in degrees.\nUse roomCenterMm when placing something inside a room.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_load_family",
+      "description": "Load workstation .rfa files in one undo entry. Existing families are skipped unless overwrite is true.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "read",
+        "scope": "Family files (.rfa) on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_place_families",
+      "description": "Load optional families and place instances in one transaction and undo entry.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_create_wall",
+      "description": "Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_create_mep_run",
+      "description": "Create connected duct, pipe, cable tray or conduit segments from model millimetre points. Missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_link_cad",
+      "description": "Link or import a DWG into a plan view on the Revit workstation. Return CAD layers and extents in mm.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "read",
+        "scope": "DWG file on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_walls_from_cad",
+      "description": "Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm.\nWith join=true joins Revit would reject are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_create_view",
+      "description": "Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model with shaded, fine defaults. Box coordinates use model millimetres.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_duplicate_view",
+      "description": "Duplicate a view, optionally including detailing or creating a dependent view.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_apply_view_template",
+      "description": "Apply a matching view template to one or more views.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_create_sheet",
+      "description": "Create a sheet with the first loaded or a named title block.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_place_views_on_sheet",
+      "description": "Place views and schedules on a sheet. Coordinates use sheet millimetres.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_set_parameter",
+      "description": "Set exactly one instance or type parameter. Supply parameter_id to select by BuiltInParameter name, shared GUID or positive ParameterElement ID.\nWithout parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.\nUse a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nGroup members that Revit refuses to change fail with a clear message, including in dry_run.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_delete",
+      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nDeletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_batch, a deletion above 500 elements is refused.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "A real deletion of more than 500 elements, dependents included."
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_export",
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when no target exists or with dry_run.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "overwrite=true and at least one target file already exists."
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "Export folder on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_export_nwc",
+      "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "overwrite=true and the target file already exists."
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "NWC file path on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_batch",
+      "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_process_models",
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code require a confirmation token from the preview response.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": true,
+      "confirmation": {
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "In-place saves, and code without dry_run."
+      },
+      "fileSystem": {
+        "access": "read_write",
+        "scope": "Model files, export folders and saved copies on the Revit workstation."
+      },
+      "networkAccess": "unrestricted_by_confirmed_code"
+    },
+    {
+      "name": "revit_edit_families",
+      "description": "Edit an open family in place or named project families in one load cycle each.\n\nIn project mode, pass exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it.",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_batch_start",
+      "description": "Start a persistent, read-only run over local, UNC, or RSN models.\n\nopen_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory).",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "read",
+        "scope": "Model files on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_batch_status",
+      "description": "Read durable run and model status after the initiating client exits.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_batch_cancel",
+      "description": "Persist cancellation and prevent unstarted models from running.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_batch_fetch",
+      "description": "Download completed snapshots to new local files without overwriting.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "New snapshot files on the client; existing files are not overwritten."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_build_report",
+      "description": "Build a local Excel report from snapshots without contacting Revit.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "read_write",
+        "scope": "Reads snapshot directories and writes an .xlsx report on the client."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_issue_register",
+      "description": "Write a new local .xlsx issue register with element snapshots and review documents.\n\nSupply 1 to 60 issues with title, category, finding and severity (critical, major, minor, info).\nOptional issue fields: id, requirement_source, requirement, recommendation, status, responsible,\ndue, element_ids, snapshot (3d, plan, none). Project fields: name, model, reviewer, client,\nstage, date, documents (title, reference, revision). Existing output files are refused.\nCaptures at most 25 snapshots, ordered by severity then input order, within a 210-second\ncapture budget. Failed or skipped snapshots become cell notes and result warnings.\nSnapshot capture requires local or SSH transport; workbook creation needs no model changes.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "New .xlsx file at output_path on the client."
+      },
+      "networkAccess": "none"
+    }
+  ],
+  "resources": [
+    {
+      "uri": "revit://guides/coordinator",
+      "name": "coordinator_guide",
+      "description": "Guide for reviewing a Revit model: tool order, result fields and reporting conventions."
+    }
+  ],
+  "prompts": [
+    {
+      "name": "model_overview",
+      "description": "Review one open model: health, warnings, links, coordinates and families, as a findings table."
+    },
+    {
+      "name": "pre_issue_check",
+      "description": "Check an open model before issuing it: health, warnings, links, coordinates, parameter fill and families."
+    },
+    {
+      "name": "warnings_triage",
+      "description": "Group and prioritize model warnings with affected element IDs."
+    },
+    {
+      "name": "parameter_fill_report",
+      "description": "Report how completely the requested parameters are filled for the requested categories."
+    },
+    {
+      "name": "batch_audit",
+      "description": "Collect snapshots from many models in the background and build a comparison report."
+    }
+  ],
+  "externalEndpoints": [
+    {
+      "domain": "api.github.com",
+      "protocol": "https",
+      "component": "Revit add-in",
+      "purpose": "Check for the latest stable release at most once every 24 hours after Revit starts.",
+      "dataSent": "None beyond a standard HTTPS request; no model data.",
+      "optional": true,
+      "disable": "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+    },
+    {
+      "domain": "github.com",
+      "protocol": "https",
+      "component": "Revit add-in",
+      "purpose": "Download the release MSI and its SHA256 checksum when an update is available; the checksum is verified before install.",
+      "dataSent": "None beyond a standard HTTPS request.",
+      "optional": true,
+      "disable": "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+    },
+    {
+      "domain": "release-assets.githubusercontent.com",
+      "protocol": "https",
+      "component": "Revit add-in",
+      "purpose": "Download the release MSI and its SHA256 checksum when an update is available; the checksum is verified before install.",
+      "dataSent": "None beyond a standard HTTPS request.",
+      "optional": true,
+      "disable": "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+    },
+    {
+      "domain": "pypi.org",
+      "protocol": "https",
+      "component": "Python server",
+      "purpose": "Best-effort check for a newer revit-model-mcp release.",
+      "dataSent": "None beyond a standard HTTPS request.",
+      "optional": true,
+      "disable": "Set REVIT_MCP_NO_UPDATE_CHECK=1."
+    },
+    {
+      "domain": "pypi.org",
+      "protocol": "https",
+      "component": "Claude Desktop bundle launcher (uvx)",
+      "purpose": "Download the revit-model-mcp package and its dependencies when the launcher starts.",
+      "dataSent": "None.",
+      "optional": true,
+      "disable": "Run the server with a preinstalled package instead of the launcher."
+    },
+    {
+      "domain": "files.pythonhosted.org",
+      "protocol": "https",
+      "component": "Claude Desktop bundle launcher (uvx)",
+      "purpose": "Download the revit-model-mcp package and its dependencies when the launcher starts.",
+      "dataSent": "None.",
+      "optional": true,
+      "disable": "Run the server with a preinstalled package instead of the launcher."
+    }
+  ],
+  "apisUsed": [
+    "Revit API (read access to the open document through ExternalEvent)",
+    "Revit API (element, view, sheet, link and family changes, each in one named transaction)",
+    "Revit API (document open, save, synchronize and close)",
+    "Revit API (PDF, DWG, IFC and schedule CSV export)",
+    "Navisworks NWC Export Utility (optional, only for revit_export_nwc)"
+  ],
+  "aiServices": [],
+  "dataHandling": {
+    "aiClients": "The server does not call any AI service. Tool results go to the MCP client the user chose; that client may send them to its own model provider under the user's own agreement.",
+    "readOnlyMode": "Actions are refused when REVIT_MCP_READ_ONLY=1 or the workstation read-only file exists.",
+    "localChannels": "Named pipe (current Windows user only), a file channel under %LOCALAPPDATA%\\RevitModelMcp, and an HTTP listener bound to 127.0.0.1 with a bearer token. A remote workstation is reached only through a user-configured SSH or HTTP(S) host.",
+    "telemetry": "None."
+  }
+}
