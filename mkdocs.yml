@@ -76,6 +76,7 @@ plugins:
       sections:
         Getting started:
           - index.md
+          - install.md
           - server.md
           - contributing.md
         Concepts:
@@ -99,6 +100,7 @@ plugins:
 nav:
   - Home: index.md
   - Guide:
+      - Requirements and install: install.md
       - Server: server.md
       - How it works: how-it-works.md
       - Transport: transport.md
@@ -110,6 +112,7 @@ nav:
       - Model audit: design/model-audit.md
   - Reference:
       - Tools: tools.md
+      - Tool manifest: tool-manifest.md
       - Prompts and coordinator guide: prompts.md
       - Actions: actions.md
       - Validation: validation.md
