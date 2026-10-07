@@ -16,7 +16,7 @@ internal static class ViewImageExporter
         DateTime localTime)
     {
         EnsureSupported(view);
-        var directory = SnapshotFileWriter.OutputDirectory;
+        var directory = ChannelDirectory.OutputDirectory;
         Directory.CreateDirectory(directory);
         var id = RevitValueReader.GetId(view.Id);
         var stamp = localTime.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture);

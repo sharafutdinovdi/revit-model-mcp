@@ -990,7 +990,7 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
-    public async Task Serialize_NwcResponse_UsesSnakeCaseOptions()
+    public async Task Serialize_NwcResponse_UsesCamelCaseOptions()
     {
         var data = new ActionResultData
         {
@@ -1001,8 +1001,9 @@ public sealed class ActionJobParserTests
             Options = new NwcOptionsResult { Scope = "model", Coordinates = "shared", Parameters = "all", FacetingFactor = 1 }
         };
         var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("export-nwc", data, 1));
-        await Assert.That(json).Contains("\"export_element_ids\":false");
-        await Assert.That(json).Contains("\"faceting_factor\":1");
+        await Assert.That(json).Contains("\"exportElementIds\":false");
+        await Assert.That(json).Contains("\"facetingFactor\":1");
+        await Assert.That(json).DoesNotContain("export_element_ids");
         await Assert.That(json).Contains("\"view\":null");
     }
 

@@ -39,14 +39,14 @@ public sealed class Application : ExternalApplication
         "set-parameter", "delete", "batch", "process-models", "export-nwc", "export", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "activate-document", "activate-view", "close-views", "new-document",
-        "set-view-visibility", "remove-links", "execute-code", "undo-last", "views-dump",
+        "set-view-visibility", "remove-links", "execute-code", "undo-last",
         "batch-supervisor-start", "batch-prepass", "batch-open", "batch-close", "model-snapshot"
     ];
     private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
     private ExternalEventRequestQueue? _requestQueue;
-    private TriggerFileWatcher? _triggerWatcher;
+    private JobFileWatcher? _jobWatcher;
     private InstanceHeartbeat? _instanceHeartbeat;
     private Document? _activeDocument;
     private HttpChannel? _httpChannel;
@@ -61,11 +61,10 @@ public sealed class Application : ExternalApplication
 #endif
         PluginLog.Start();
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
-        var (fileChannelEnabled, fileChannelWarning) = Output.SnapshotFileWriter.InitializeChannel();
+        var (fileChannelEnabled, fileChannelWarning) = Output.ChannelDirectory.InitializeChannel();
         if (fileChannelWarning is not null)
             PluginLog.Warn(fileChannelWarning);
-        var triggerFilePath = Path.Combine(Output.SnapshotFileWriter.OutputDirectory, "trigger.txt");
-        _controlChannel = new ControlChannel(triggerFilePath)
+        _controlChannel = new ControlChannel(Output.ChannelDirectory.OutputDirectory)
         {
             FileChannelEnabled = fileChannelEnabled
         };
@@ -103,14 +102,12 @@ public sealed class Application : ExternalApplication
         }
         if (_controlChannel.FileChannelEnabled)
         {
-            if (File.Exists(triggerFilePath))
-                File.Move(triggerFilePath, Path.Combine(Output.SnapshotFileWriter.OutputDirectory, $"stale_{Guid.NewGuid():N}.tmp"));
-            _triggerWatcher = new TriggerFileWatcher(
-                triggerFilePath,
+            _jobWatcher = new JobFileWatcher(
+                Output.ChannelDirectory.OutputDirectory,
                 RequestExecution,
-                exception => PluginLog.Error("Trigger watcher failed.", exception),
+                exception => PluginLog.Error("Job file watcher failed.", exception),
                 TimeSpan.FromSeconds(10));
-            _triggerWatcher.Start();
+            _jobWatcher.Start();
         }
         Application.ViewActivated += OnViewActivated;
         Application.ControlledApplication.DocumentClosing += OnDocumentClosing;
@@ -135,7 +132,7 @@ public sealed class Application : ExternalApplication
         {
             // The first heartbeat is written after the pipe listens, so discovery never advertises a dead pipe.
             _instanceHeartbeat = new InstanceHeartbeat(
-                Output.SnapshotFileWriter.RootDirectory,
+                Output.ChannelDirectory.RootDirectory,
                 Process.GetCurrentProcess().Id,
                 Application.ControlledApplication.VersionNumber,
                 _instanceId,
@@ -192,8 +189,8 @@ public sealed class Application : ExternalApplication
         _activeDocument = null;
         _instanceHeartbeat?.Dispose();
         _instanceHeartbeat = null;
-        _triggerWatcher?.Dispose();
-        _triggerWatcher = null;
+        _jobWatcher?.Dispose();
+        _jobWatcher = null;
         _pipeChannel?.Dispose();
         _pipeChannel = null;
         _httpChannel?.Dispose();
@@ -404,7 +401,7 @@ internal sealed class InstanceHeartbeat : IDisposable
                 DocumentTitle = _documentTitle,
                 DocumentPath = _documentPath,
                 UpdatedUtc = DateTime.UtcNow.ToString("O"),
-                StartedUtc = Output.SnapshotFileWriter.StartedUtc,
+                StartedUtc = Output.ChannelDirectory.StartedUtc,
                 HttpPort = _httpPort,
                 HttpState = _httpStatus?.State,
                 HttpReason = _httpStatus?.Reason,

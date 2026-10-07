@@ -37,15 +37,15 @@ CHECKS = (
 )
 
 
-def validate_health_path(save_to):
+def validate_health_path(output_path):
     """Validate the destination before contacting Revit and again before writing."""
-    if not isinstance(save_to, str) or Path(save_to).suffix.lower() != ".xlsx":
-        raise ValueError("save_to must have a .xlsx extension.")
-    target = Path(save_to).expanduser().absolute()
+    if not isinstance(output_path, str) or Path(output_path).suffix.lower() != ".xlsx":
+        raise ValueError("output_path must have a .xlsx extension.")
+    target = Path(output_path).expanduser().absolute()
     if target.exists() or target.is_symlink():
-        raise ValueError(f"save_to already exists: {target}")
+        raise ValueError(f"output_path already exists: {target}")
     if not target.parent.is_dir():
-        raise ValueError("save_to parent directory must exist.")
+        raise ValueError("output_path parent directory must exist.")
     return target
 
 
@@ -53,9 +53,9 @@ def warning_ids(group):
     return list(dict.fromkeys(element["id"] for element in group.get("elements", [])))
 
 
-def write_health_workbook(save_to, health, groups, snapshots=None, notes=None, warnings=None):
+def write_health_workbook(output_path, health, groups, snapshots=None, notes=None, warnings=None):
     """Keep capture failures as warnings and refuse replacement of an existing file."""
-    target = validate_health_path(save_to)
+    target = validate_health_path(output_path)
     snapshots = snapshots or {}
     notes = notes or {}
     warnings = list(warnings or [])
@@ -215,7 +215,7 @@ def write_health_workbook(save_to, health, groups, snapshots=None, notes=None, w
         write_new_file(target, workbook.save)
     except ValueError as error:
         if target.exists() or target.is_symlink():
-            raise ValueError(f"save_to already exists: {target}") from error
+            raise ValueError(f"output_path already exists: {target}") from error
         raise
     except OSError as error:
         raise ValueError(f"Cannot save report: {error}") from error

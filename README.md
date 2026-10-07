@@ -20,7 +20,9 @@ For people reviewing or automating Revit projects with an MCP client: read and a
 
 Revit Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
-The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
+The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
+The project has no telemetry.
+See [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/) for Revit, Python and MCP client requirements and the bundle install steps.
 
 ## Code signing
 
@@ -34,9 +36,9 @@ Verify downloads with `SHA256SUMS.txt` and the build provenance attestation; see
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on the client's PATH, download `revit-model-mcp-<version>.mcpb` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest), and open it in Claude Desktop.
 The bundle starts from the local uv cache. The server checks for a newer stable release in the background once per day.
 The next client start uses the refreshed version. Set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
-The settings form configures the workstation host, path redaction, optional actions and the HTTP bearer token without editing JSON.
+The settings form configures the workstation host, path redaction, read-only mode and the HTTP bearer token without editing JSON.
 Use `local` on the Windows Revit workstation, or [configure a remote workstation](#remote-workstations) for macOS and Linux clients.
-Path redaction starts enabled and actions start disabled.
+Path redaction starts enabled and actions start enabled. Check "Read-only mode" to refuse actions.
 The Windows workstation still needs the add-in below.
 See the [bundle guide](bundle/README.md) for build details and prerequisites.
 
@@ -143,7 +145,7 @@ See the [full tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/
 | Revit session | `revit_open_document`, `revit_new_document`, `revit_activate_document`, `revit_activate_view`, `revit_close_views`, `revit_save_document`, `revit_sync_document`, `revit_close_document` |
 | Many models | `revit_process_models` |
 | Scripts | `revit_execute_code` |
-| Elements | `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_set_parameter`, `revit_update_parameters`, `revit_delete`, `revit_create_wall`, `revit_batch`, `revit_undo_last` |
+| Elements | `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_set_parameter`, `revit_update_parameters`, `revit_delete`, `revit_create_wall`, `revit_run_actions`, `revit_undo_last` |
 | Families | `revit_load_family`, `revit_place_family`, `revit_place_families`, `revit_edit_families` |
 | Views and sheets | `revit_select`, `revit_show`, `revit_isolate`, `revit_set_view_visibility`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet` |
 | Export and links | `revit_export`, `revit_export_nwc`, `revit_align_link_datums`, `revit_remove_links` |

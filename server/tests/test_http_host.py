@@ -13,14 +13,14 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 
+from revit_model_mcp import package_version
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
-    MIN_ADDIN_VERSION,
-    ReadJob,
+    Job,
     ResponseTimeoutError,
     ResultExpiredError,
+    RevitChannel,
     RevitChannelError,
-    RevitReadChannel,
 )
 from revit_model_mcp.server import create_host
 
@@ -90,9 +90,9 @@ def endpoint():
                         "processId": state.get("processId", 42),
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": True,
-                        "addinVersion": "0.6.0",
+                        "addinVersion": package_version(),
                         "protocolVersion": 1,
-                        "commands": list(MIN_ADDIN_VERSION),
+                        "commands": ["ping", "select", "export", "export-view"],
                     },
                     proof=proof,
                 )
@@ -158,7 +158,7 @@ def test_health_and_instance_discovery(endpoint):
     host, state = endpoint
     health = asyncio.run(host.health())
     assert health["readOnly"] is True
-    assert health["addinVersion"] == "0.6.0"
+    assert health["addinVersion"] == package_version()
     assert health["protocolVersion"] == 1
     assert "ping" in health["commands"]
     assert health["startedUtc"] == "2026-09-16T00:00:00Z"
@@ -172,9 +172,9 @@ def test_health_and_instance_discovery(endpoint):
 
 def test_job_round_trip(endpoint):
     host, state = endpoint
-    result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    result = asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert result["data"] == "pong"
-    assert result["addinVersion"] == "0.6.0"
+    assert result["addinVersion"] == package_version()
     assert state["payload"]["command"] == "ping"
     assert len(state["payload"]["correlationId"]) == 32
     assert len(state["payload"]["jobId"]) == 32
@@ -197,7 +197,7 @@ def test_http_errors(endpoint, status, message):
     host, state = endpoint
     state["status"] = status
     with pytest.raises(RevitChannelError, match=message):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert len(state["requests"]) == 3
 
 
@@ -205,7 +205,7 @@ def test_wrong_token(endpoint):
     host, _ = endpoint
     host.token = "wrong"
     with pytest.raises(RevitChannelError, match="REVIT_MCP_TOKEN") as error:
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert "did not prove the add-in token" in str(error.value)
 
 
@@ -216,7 +216,7 @@ def test_unproved_endpoint_never_receives_authorization(endpoint, proof):
 
     for _ in range(2):
         with pytest.raises(RevitChannelError, match="Update the add-in, or another process"):
-            asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+            asyncio.run(RevitChannel(host).execute(Job.ping()))
 
     assert state["requests"] == [("GET", "/health", None)] * 2
     assert state["nonces"][0] != state["nonces"][1]
@@ -233,13 +233,13 @@ def test_health_proof_known_answer(endpoint, monkeypatch):
 
 def test_later_job_rejects_endpoint_without_proof(endpoint):
     host, state = endpoint
-    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert asyncio.run(RevitChannel(host).execute(Job.ping()))["data"] == "pong"
     previous_nonces = set(state["nonces"])
     previous_requests = len(state["requests"])
     state["proof"] = "missing"
 
     with pytest.raises(RevitChannelError, match="did not prove the add-in token"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
 
     assert state["requests"][previous_requests:] == [("GET", "/health", None)]
     assert state["nonces"][-1] not in previous_nonces
@@ -249,10 +249,10 @@ def test_http_401_requires_fresh_proof(endpoint):
     host, state = endpoint
     state["status"] = 401
     with pytest.raises(RevitChannelError, match="bearer token"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
 
     state["status"] = 200
-    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert asyncio.run(RevitChannel(host).execute(Job.ping()))["data"] == "pong"
     assert len(set(state["nonces"])) == 4
 
 
@@ -260,16 +260,16 @@ def test_connection_error_requires_fresh_proof(endpoint):
     host, state = endpoint
     state["drop_once"] = True
     with pytest.raises(RevitChannelError, match="not reachable"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
 
-    assert asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))["data"] == "pong"
+    assert asyncio.run(RevitChannel(host).execute(Job.ping()))["data"] == "pong"
     assert len(set(state["nonces"])) == 4
 
 
 def test_pending_job_polls_without_resubmitting(endpoint):
     host, state = endpoint
     state["status"] = 202
-    result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    result = asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert result["data"] == "pong"
     assert state["polls"] == 2
     assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
@@ -279,7 +279,7 @@ def test_timeout_keeps_late_job_id(endpoint):
     host, state = endpoint
     state.update(status=202, forever=True)
     with pytest.raises(ResponseTimeoutError, match="/jobs/job-1"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping(), timeout_seconds=0.1))
+        asyncio.run(RevitChannel(host).execute(Job.ping(), timeout_seconds=0.1))
     assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
 
 
@@ -288,14 +288,14 @@ def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metada
 ):
     host, state = endpoint
     target = tmp_path / "image.png"
-    job = ReadJob.export_view("Plan 東京 Δ / A #1", save_to=str(target)).for_document("Model")
-    result = asyncio.run(RevitReadChannel(host).execute(job))
+    job = Job.export_view("Plan 東京 Δ / A #1", output_path=str(target)).for_document("Model")
+    result = asyncio.run(RevitChannel(host).execute(job))
     assert target.read_bytes() == PNG
     assert result["data"]["width"] == 1600
     assert result["data"]["localPath"] == str(target)
     assert len(state["requests"]) == 4
     with pytest.raises(RevitChannelError, match="already exists"):
-        asyncio.run(RevitReadChannel(host).execute(job))
+        asyncio.run(RevitChannel(host).execute(job))
     assert target.read_bytes() == PNG
 
 
@@ -330,7 +330,7 @@ def test_missing_token_does_not_submit(endpoint):
     host, state = endpoint
     host.token = ""
     with pytest.raises(RevitChannelError, match="Set REVIT_MCP_TOKEN"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert state["requests"] == [("GET", "/health", None), ("GET", "/health", None)]
 
 
@@ -338,7 +338,7 @@ def test_redirect_does_not_forward_token(endpoint):
     host, state = endpoint
     state.update(status=302, redirect=host.host + "/health")
     with pytest.raises(RevitChannelError, match="HTTP 302"):
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert len(state["requests"]) == 3
 
 
@@ -362,8 +362,8 @@ def test_addin_advertises_bound_http_endpoint_identity():
     )
     assert "HttpPort = _httpPort" in application
     health = source.split('path == "/health"', 1)[1].split("return;", 1)[0]
-    assert '["startedUtc"] = SnapshotFileWriter.StartedUtc' in health
-    assert "StartedUtc = Output.SnapshotFileWriter.StartedUtc" in application
+    assert '["startedUtc"] = ChannelDirectory.StartedUtc' in health
+    assert "StartedUtc = Output.ChannelDirectory.StartedUtc" in application
 
 
 def test_addin_rejects_oversized_declared_job_before_reading():
@@ -683,7 +683,7 @@ def test_endpoint_identity_change_rejected_before_post(endpoint, changed):
     host, state = endpoint
 
     async def submit():
-        selected, job = await host.select_job(ReadJob.ping())
+        selected, job = await host.select_job(Job.ping())
         state.update(changed)
         await selected.prepare_job("unused.tmp", job.to_json(), job.command)
 
@@ -694,8 +694,8 @@ def test_endpoint_identity_change_rejected_before_post(endpoint, changed):
 
 def test_http_action_keeps_inactive_document_address(endpoint):
     host, state = endpoint
-    job = ReadJob("select", {"command": "select", "targetDocument": "Inactive", "elementIds": [1]})
-    asyncio.run(RevitReadChannel(host).execute(job))
+    job = Job("select", {"command": "select", "targetDocument": "Inactive", "elementIds": [1]})
+    asyncio.run(RevitChannel(host).execute(job))
     assert state["payload"]["targetDocument"] == "Inactive"
     assert state["payload"]["targetProcessId"] == 42
 
@@ -727,9 +727,9 @@ def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
 def test_expired_poll_is_not_retried(endpoint, command):
     host, state = endpoint
     state.update(status=202, poll_status=410)
-    job = ReadJob.ping() if command == "ping" else ReadJob(command, {"command": command})
+    job = Job.ping() if command == "ping" else Job(command, {"command": command})
     with pytest.raises(ResultExpiredError, match="Do not retry"):
-        asyncio.run(RevitReadChannel(host).execute(job))
+        asyncio.run(RevitChannel(host).execute(job))
     polls = [
         request
         for request in state["requests"]
@@ -756,7 +756,7 @@ def test_request_body_errors(endpoint, status, message):
     host, state = endpoint
     state["status"] = status
     with pytest.raises(RevitChannelError) as error:
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert str(error.value) == message
     assert state["requests"][-1][0] == "POST"
     assert state["requests"][-1][1].startswith("/jobs?")
@@ -784,7 +784,7 @@ def test_http_503_points_to_listener_diagnostics(endpoint):
     host, state = endpoint
     state["status"] = 503
     with pytest.raises(RevitChannelError) as captured:
-        asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
     message = str(captured.value)
     assert message.startswith("Revit endpoint returned HTTP 503:")
     assert "HTTP.sys has no working listener for this URL" in message

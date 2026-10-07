@@ -17,7 +17,7 @@ def report_writer(request):
     if request.param == "health":
         return (
             lambda target: write_health_workbook(str(target), {"data": {"counts": {}}}, []),
-            "save_to already exists",
+            "output_path already exists",
         )
     if request.param == "register":
         return (

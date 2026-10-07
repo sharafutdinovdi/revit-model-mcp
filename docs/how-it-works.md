@@ -12,11 +12,11 @@ The add-in targets the lowest stable Revit API build of each supported year for 
 
 1. Revit loads `RevitModelMcp.addin` and starts a file watcher, heartbeat and optional HTTP listener.
 2. The MCP client calls `revit_ping`; the server constructs `{"command":"ping"}`.
-3. HTTP queues the job in memory; local or SSH mode publishes it as `trigger.txt` in the Windows channel directory.
+3. HTTP queues the job in memory; local or SSH mode publishes it as `job_<jobId>.json` in the per-process directory of the Windows channel directory.
 4. An ExternalEvent invokes the shared command handler on Revit's API thread.
 5. The handler returns `success:true` with `data:"pong"`; the server delivers the JSON result over MCP.
 
-The channel directory defaults to `%LOCALAPPDATA%\RevitModelMcp`, not `%LOCALAPPDATA%\RevitDevLoader`.
+The channel directory defaults to `%LOCALAPPDATA%\RevitModelMcp`.
 The add-in loads directly through its manifest and does not require a separate loader.
 The [feed format](feed-format.md) documents paths and response fields.
 
@@ -31,7 +31,7 @@ Either read-only setting is checked independently; direct HTTP callers require t
 
 Selection and navigation use UI calls.
 Model changes and temporary isolation run in individual transactions.
-`revit_batch` groups the per-step transactions in a `TransactionGroup` with one undo entry on success and one rollback of the group on failure or a batch dry run.
+`revit_run_actions` groups the per-step transactions in a `TransactionGroup` with one undo entry on success and one rollback of the group on failure or a batch dry run.
 Warnings are dismissed and reported on success; unresolved errors roll back the action.
 Action handling attempts TaskDialog overrides and reports their messages.
 The tools do not save the model.
@@ -46,7 +46,7 @@ See [transport configuration](transport.md) for LAN and Tailscale routes.
 Local and SSH modes run Windows PowerShell under the Revit account.
 They locate responses by command and filename; they have no request correlation ID.
 Use one server process per file channel directory and a distinctive `document` filter for multiple Revit instances.
-HTTP polls by job ID and retains completed results for ten minutes.
+HTTP polls by job ID. Completed read results are retained for ten minutes and action results for 24 hours; see [result retention](transport.md#result-retention).
 Timeouts do not cancel accepted jobs, especially actions.
 
 The [architecture](architecture.md) describes scheduling and failure behavior.

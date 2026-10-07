@@ -1,17 +1,37 @@
 # Feed format
 
-The v0.2.0 protocol uses UTF-8 JSON and case-sensitive field names.
-It has no `schemaVersion` field; the package version identifies the documented contract.
-The standalone add-in does not write a feed under `%LOCALAPPDATA%\RevitDevLoader`.
-Its default channel is `%LOCALAPPDATA%\RevitModelMcp`.
+This page is the normative description of the channel between the server and the add-in: the JSON job and response format, the file channel and the version numbers of each contract.
+All JSON is UTF-8 with case-sensitive field names.
+The default channel directory is `%LOCALAPPDATA%\RevitModelMcp`.
+
+## Versions
+
+Each contract has its own version number. A number changes only for an incompatible change; a new optional field never changes it.
+
+| Version | Current value | Carried by | Meaning |
+|---|---|---|---|
+| `addinVersion` | the add-in's informational version | heartbeat, `pipe/1` hello reply, HTTP `/health` | The release of the add-in. The server accepts an add-in of the same major version only |
+| `protocolVersion` | `1` (integer) | heartbeat, `pipe/1` hello reply, HTTP `/health` | The job and response contract described on this page |
+| `fileChannelVersion` | `2` | heartbeat | The layout and publication rules of the channel directory, described in [File channel](transport.md#file-channel) |
+| `discoveryVersion` | `3` | heartbeat | The set of heartbeat fields. Readers ignore unknown fields |
+| `protocols` | `pipe/1`, `file/2`, `http/1` | heartbeat | The transports the instance offers |
+| `schemaVersion` | `1` | batch collection snapshot files | The layout of [model snapshots](batch.md) |
+
+The server refuses an instance that does not meet all of these rules, before it publishes a job:
+
+- The add-in reports an `addinVersion` with the same major version as the server. An add-in of another major version, or one that reports no version, is refused with an error that names the major version it needs.
+- A file channel heartbeat reports `fileChannelVersion` `2`. A heartbeat without that field, or with another value, is refused.
+- The heartbeat `commands` list contains the command of the requested tool.
+
+There is no fallback layout for older add-ins. Update the server and the add-in together.
+Clients must ignore unknown response fields and unknown enum values.
+Channel commands that no MCP tool exposes are not part of the contract.
 
 ## Files and directories
 
 | Location | Contents |
 |---|---|
-| Channel directory | `job_<jobId>.json`, legacy `trigger.txt`, `mcp_<uuid>.tmp`, `response_<timestamp>_<command>.json`, `view_<timestamp>_<id>.png`, `instance_<processId>.json` and heartbeat `.tmp` files |
-| Channel directory, legacy snapshots | `latest.json`, `latest.txt`, `snapshot_yyyyMMdd_HHmmss.json` |
-| Channel directory, legacy view dumps | `views_dump_yyyyMMdd_HHmmss_fff.json` and matching `.txt`; a numeric suffix avoids existing names |
+| Channel directory | `job_<jobId>.json`, `mcp_<uuid>.tmp`, `response_<timestamp>_<command>.json`, `view_<timestamp>_<id>.png`, `instance_<processId>.json` and heartbeat `.tmp` files |
 | `%LOCALAPPDATA%\RevitModelMcp\settings.json` | HTTP listener settings and persistent bearer token |
 | `%LOCALAPPDATA%\RevitModelMcp\read-only` | Workstation action gate; file existence switches actions to read-only mode |
 | Windows Documents folder, `RevitModelMcp\Logs` | `RevitModelMcp-yyyyMMdd.log`, with numbered size rotations |
@@ -38,7 +58,6 @@ An HTTP endpoint also rejects jobs addressed to another process.
 | MCP arguments | JSON fields |
 |---|---|
 | `document` | `targetDocument` |
-| `cancel_job_id` | `cancelJobId` for the `jobs` read command |
 | `element_id` | `id` for `element-details`; `elementId` for `set-parameter` |
 | `parameter_id` | `parameterId` for `set-parameter` |
 | `element_ids` | `elementIds` |
@@ -62,7 +81,7 @@ The new command names are `view-info`, `set-view-visibility` and `remove-links`.
 
 `compare-link-datums` is a read job; `align-link-datums` is an action job. Their `data.items` use `aligned`, `differs` or `moved`, `missing_in_host` or `created`, `host_only`, `unsupported`, and action-only `skipped`. Distances are rounded to 0.1 mm and angles to 0.001 degrees. `data.summary` counts aligned, moved, created, host-only, unsupported and skipped items.
 
-`save_to` and timeouts are client options, not job fields.
+`output_path` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
 A parameter filter matches the Revit parameter of that name, even when the name matches a built-in output field such as `Level` or `Name`.
 Output `fields` with those names return the built-in field value.
@@ -271,7 +290,7 @@ A batch job contains a nonempty `steps` array of at most 50 command objects:
 Steps use each command's normal channel fields.
 All steps are validated at parse time before execution; an invalid later step rejects the entire batch without executing any step and without `failedStep`.
 Allowed commands are `move`, `place-family`, `create-wall`, `set-parameter`, `delete`, `select` and `isolate`.
-Each model step uses its own transaction; the group is assimilated into the single undo entry `revit_batch`.
+Each model step uses its own transaction; the group is assimilated into the single undo entry `MCP (<clientName>): <short summary>`.
 A batch dry run retains each step's changes for subsequent steps and rolls back the group at the end.
 An individual channel step with `dryRun:true` (MCP `dry_run:true`) in a real batch is accepted and previews only that step.
 Selection is restored on batch rollback.
@@ -280,13 +299,13 @@ Selection is restored on batch rollback.
 Each successful mutation's `data` carries the single-action verification shape.
 The first failed step stops execution; all attempted steps, including the failing one, carry `rolledBack:true`, as does any retained step data.
 An `Assimilate` failure is reported on the last step with `failedStep` pointing at that step.
-`data.undoName` is `"revit_batch"`, `data.committed` reports group assimilation, and `data.failedStep` is the failed index or null.
+`data.undoName` is `"MCP (<clientName>): <short summary>"` (absent on a dry run), `data.committed` reports group assimilation, and `data.failedStep` is the failed index or null.
 Dry-run success has `committed:false`, `failedStep:null` and `rolledBack:true`.
 Verification records each step immediately; later steps can supersede those facts.
 
 ## Geometry and image exports
 
-`export-nwc` is a gated action job and is excluded from `batch`. It accepts `path`, `scope`, `view`, `elementIds`, `coordinates`, `parameters`, all exporter Boolean options, `facetingFactor`, `overwrite` and `dryRun`. The add-in assigns every `NavisworksExportOptions` property explicitly. The response `data` includes `path`, `bytes`, `sha256`, `elapsedMs`, `scope`, `view`, `elementCount`, `options` with snake_case keys, `dryRun` and `overwritten`. A dry run also reports `exporterAvailable` and `pathChecks` without writing a file. NWC bytes remain on the workstation.
+`export-nwc` is a gated action job and is excluded from `batch`. It accepts `path`, `scope`, `view`, `elementIds`, `coordinates`, `parameters`, all exporter Boolean options, `facetingFactor`, `overwrite` and `dryRun`. The add-in assigns every `NavisworksExportOptions` property explicitly. The response `data` includes `path`, `bytes`, `sha256`, `elapsedMs`, `scope`, `view`, `elementCount`, `options` with camelCase keys such as `exportElementIds` and `facetingFactor`, `dryRun` and `overwritten`. A dry run also reports `exporterAvailable` and `pathChecks` without writing a file. NWC bytes remain on the workstation.
 
 `revit_element_details` returns `location`, `boundingBox` and `roomCenterMm` directly under `data` when available.
 `revit_query_elements(include_geometry=true)` includes them on each returned element.
@@ -301,18 +320,13 @@ The Python server adds `localPath` after downloading the PNG.
 `width` and `height` are pixels; `sizeBytes` is the PNG size in bytes.
 See [HTTP endpoints](transport.md#http-configuration) for direct image retrieval.
 
-## Heartbeats and legacy reports
+## Heartbeats
 
 Heartbeat JSON contains `processId`, `revitVersion`, `documentTitle`, `documentPath` and `updatedUtc`.
 `updatedUtc` is an ISO 8601 UTC timestamp.
 The add-in writes every five seconds and the file client ignores records older than 60 seconds.
+The other fields are listed in [Discovery heartbeat](transport.md#discovery-heartbeat).
 HTTP instance discovery uses `/health` instead of heartbeat files.
-
-Legacy snapshots and `views-dump` jobs are accepted by the add-in but are not MCP tools.
-Snapshots use the [Snapshot contract](../src/RevitModelMcp.Core/Models/Snapshot.cs), without the command response envelope.
-View dumps use `command:"views-dump"`, `status`, timestamps, `responder`, progress counts and a `views` list from [ViewDumpReport](../src/RevitModelMcp.Core/Models/ViewDumpReport.cs).
-They track opened/closed views and restoration of the original view.
-Legacy formats have no schema version and should not be treated as a stable external API.
 
 ## Document action responses
 

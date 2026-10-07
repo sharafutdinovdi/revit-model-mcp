@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from revit_model_mcp.revit_channel import (
+    Job,
     JobPickupStatus,
-    ReadJob,
     ResponseParseError,
     ResponseTimeoutError,
     ResultExpiredError,
@@ -107,7 +107,7 @@ class HttpHost:
             }
         ]
 
-    async def select_job(self, job: ReadJob) -> tuple[HttpHost, ReadJob]:
+    async def select_job(self, job: Job) -> tuple[HttpHost, Job]:
         instance = select_instance(await self.list_revit_instances(), job)
         selected = copy.copy(self)
         selected._verified_token = None
@@ -207,7 +207,7 @@ class HttpHost:
         response_name: str,
         cleanup_names: list[str],
         download_artifact: bool,
-        save_to: str | None,
+        output_path: str | None,
     ) -> tuple[str, str | None]:
         if self._response is None:
             raise ResponseParseError("The HTTP job has no completed response.")
@@ -233,8 +233,8 @@ class HttpHost:
             if not isinstance(name, str) or not name or Path(name).name != name or "\\" in name:
                 raise ResponseParseError("The image response contains an unsafe file name.")
             target = (
-                Path(save_to).expanduser().resolve()
-                if save_to
+                Path(output_path).expanduser().resolve()
+                if output_path
                 else Path(tempfile.mkdtemp(prefix="revit-view-")) / name
             )
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -327,7 +327,7 @@ class HttpHost:
                     401: "Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.",
                     403: "Revit denied this request. Actions are refused while the workstation is in read-only mode.",
                     429: "Revit job queue is full for this client; retry after a short wait.",
-                    404: "Revit job or endpoint not found; completed results expire after ten minutes.",
+                    404: "Revit job or endpoint not found; check the job ID.",
                 }
                 raise RevitChannelError(
                     messages.get(error.code, f"Revit endpoint returned HTTP {error.code}.")

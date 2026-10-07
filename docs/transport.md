@@ -45,22 +45,29 @@ Codes include `client_id_changed`, `client_id_required`, `client_mismatch`, `dup
 Pipe, HTTP and file jobs share one per-Revit scheduler.
 A disconnect cancels that connection's queued jobs; a running job, and above all a running action, always finishes.
 A client that reconnects with the same `clientId` can send `status` for its unfinished job to get the result and resume its pushes.
-Results expire ten minutes after completion.
+Completed read results expire ten minutes after completion, action results after 24 hours; see [result retention](#result-retention).
 `capture-elements` downloads one PNG through the same `data.fileName` artifact mechanism as `export-view` over local, pipe and SSH transports.
 It is unavailable over HTTP and returns `element snapshots need the local or SSH transport`; `/views/{name}/image` is unchanged.
-`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `save_to` or a new temporary directory.
+`revit_export_view` over the pipe moves the PNG from `ROOT\instances\<pid>\` to `output_path` or a new temporary directory.
 
 ## HTTP configuration
 
 HTTP is opt-in and off by default; a default deployment uses only the named pipe and the local file channel.
-On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json`:
+On first startup the add-in creates `%LOCALAPPDATA%\RevitModelMcp\settings.json` with these values:
 
 ```json
 {
   "httpEnabled": false,
   "httpBind": "127.0.0.1",
   "httpPort": 53110,
-  "token": "<generated 32-byte base64url token>"
+  "token": "<generated 32-byte base64url token>",
+  "showActivityPaneOnAction": true,
+  "trustedNetworkRoots": [],
+  "updateCheck": true,
+  "maxStoredResponses": 256,
+  "maxStoredBytes": 67108864,
+  "requestReadTimeoutSeconds": 30,
+  "shutdownDrainSeconds": 5
 }
 ```
 
@@ -90,6 +97,7 @@ Invalid settings disable HTTP and leave the file channel available.
 These optional settings in `settings.json` bound memory and stalled clients.
 A missing key uses the default.
 A value outside its range disables HTTP, like any other invalid setting.
+The [settings reference](#settings-reference) lists every key.
 
 | Setting | Default | Range | Meaning |
 | --- | --- | --- | --- |
@@ -101,6 +109,36 @@ A value outside its range disables HTTP, like any other invalid setting.
 When a limit is exceeded, the add-in evicts the oldest completed results first.
 Queued and running jobs are never evicted, and the newest completed result is always kept, even if it alone exceeds `maxStoredBytes`.
 The limits apply to results of every transport, because all transports share one scheduler.
+
+### Result retention
+
+Two different stores hold results, so two different times apply.
+The scheduler keeps completed read results in memory for ten minutes after completion; they also disappear when Revit exits.
+Action results stay in memory for 24 hours and are also written to `jobs/<jobId>.json` in the instance directory, so `revit_jobs` can fetch them after an MCP server restart.
+The limits above can evict a result earlier.
+Over HTTP, a result that is no longer available returns status 410 with `"error":"expired"`; status 404 means the ID was never known.
+
+### Settings reference
+
+`%LOCALAPPDATA%\RevitModelMcp\settings.json` accepts these keys.
+An unknown key is ignored.
+Restart Revit after a change.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `httpEnabled` | boolean | `false` | Turns the HTTP listener on. `REVIT_MCP_HTTP_ENABLED` overrides it. |
+| `httpBind` | string | `"127.0.0.1"` | IPv4 interface address to bind; `0.0.0.0` must be explicit. `REVIT_MCP_HTTP_BIND` overrides it. |
+| `httpPort` | integer | `53110` | Listener port, 1-65535. `REVIT_MCP_HTTP_PORT` overrides it. |
+| `token` | string | generated | Bearer token: nonempty, no control characters. The add-in writes a random 32-byte token on first start. `REVIT_MCP_TOKEN` overrides it. |
+| `showActivityPaneOnAction` | boolean | `true` | Shows the MCP activity pane when an action runs. |
+| `trustedNetworkRoots` | array of strings | `[]` | UNC share roots such as `\\server\share` that file actions may use. See [security](security.md). |
+| `updateCheck` | boolean | `true` | `false` stops the add-in from checking for updates. A `false` in `%ProgramData%\RevitModelMcp\settings.json` applies to every user. See [automatic updates](updates.md). |
+| `maxStoredResponses` | integer | `256` | See [Limits](#limits). |
+| `maxStoredBytes` | integer | `67108864` | See [Limits](#limits). |
+| `requestReadTimeoutSeconds` | integer | `30` | See [Limits](#limits). |
+| `shutdownDrainSeconds` | integer | `5` | See [Limits](#limits). |
+
+The workstation `read-only` gate is a file next to `settings.json`, not a key.
 
 ### Listener status
 
@@ -192,7 +230,7 @@ All other routes require `Authorization: Bearer <token>`.
 POST waits default to 120 seconds and accept 0-600 seconds.
 HTTP 202 contains `jobId`, `state` and `position`; it means the accepted job is still queued or executing.
 A timeout or client disconnect does not cancel a job.
-Results expire ten minutes after completion.
+Completed read results expire ten minutes after completion, action results after 24 hours; see [result retention](#result-retention).
 Do not resubmit an action after a timeout without checking its result and the model.
 The Python client submits once with `timeout=0`, then polls within `timeout_seconds`.
 Proof verification uses the existing health requests for each job and adds no HTTP request per job or poll.
@@ -377,14 +415,11 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 | --- | --- |
 | `ROOT\instance_<pid>.json` | Shared discovery heartbeat |
 | `ROOT\instances\<pid>\mcp_<uuid>.tmp` | Job before atomic publication |
-| `ROOT\instances\<pid>\job_<jobId>.json` | Published job awaiting pickup; legacy `trigger.txt` is also accepted |
+| `ROOT\instances\<pid>\job_<jobId>.json` | Published job awaiting pickup |
 | `ROOT\instances\<pid>\response_<timestamp>_<command>_<correlationId>.json` | Atomic correlated response |
 | `ROOT\instances\<pid>\view_*.png` | Exported view before download |
-| `ROOT\instances\<pid>\latest.json`, `latest.txt`, `snapshot_*.json`, `views_dump_*` | Legacy snapshot and view-dump output in the same instance directory |
 
 Response temporary files also remain in the selected instance directory.
-On startup the add-in moves any previous `trigger.txt` to a uniquely named `stale_*.tmp` before starting its watcher.
-It does not execute that pending job after PID reuse or watch a trigger in ROOT.
 
 The server resolves a target before publishing any job.
 Actions and undirected reads require exactly one running Revit process.
@@ -428,18 +463,16 @@ Discovery version 3 keeps the v2 fields and adds the pipe and the open documents
 | `addinVersion`, `protocolVersion`, `commands` | Assembly informational version, protocol integer `1`, and supported command names |
 
 The server reads these fields from the selected heartbeat, pipe hello or HTTP health response.
-An older add-in without `addinVersion` is treated as version 0.6.0 or earlier.
+The server accepts an add-in only when `addinVersion` has the same major version as the server; see [Versions](feed-format.md#versions).
 
 `revit_list_instances` returns these fields in local pipe mode; path redaction also covers `documents[].path`.
 
 ### File protocol compatibility
 
-Update the server **before** updating the add-in.
-A heartbeat without `fileChannelVersion` selects the legacy shared ROOT layout only when exactly one Revit process is running.
-The legacy heartbeat indicates presence only; it does not prove a v2 handshake or resolve the old shared-trigger race.
-A v2 add-in remains discoverable by old servers, but their ROOT file commands are incompatible.
-Unknown protocol versions are rejected explicitly before publication.
-Mixed installations allow directed reads to a uniquely matched v2 instance; legacy execution remains restricted to a single process.
+The file channel version is `2`.
+The server refuses a heartbeat without `fileChannelVersion`, or with any other value, before publishing a job, and asks for an add-in of the same major version as the server.
+There is no fallback to a shared ROOT layout and no single-process exception.
+Update the server and the add-in together; see [Versions](feed-format.md#versions).
 
 The file transport operates independently of the optional HTTP listener.
 Revit API work runs through ExternalEvent.
@@ -467,8 +500,8 @@ Host aliases are validated. PowerShell string literals escape ASCII and Unicode 
 SSH credentials and routing belong to the user's SSH configuration.
 
 Responses and exported PNG files are transferred as base64 in the PowerShell result.
-The server checks the PNG signature and decodes the image into `save_to` or a new temporary directory.
-`save_to` must end in `.png`.
+The server checks the PNG signature and decodes the image into `output_path` or a new temporary directory.
+`output_path` must end in `.png`.
 An existing destination file produces an error.
 The MCP result contains the image path and metadata without base64.
 

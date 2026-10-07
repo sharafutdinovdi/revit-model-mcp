@@ -3,7 +3,7 @@
 ## Components
 
 The [Python server](../server/revit_model_mcp/server.py) registers read tools and optional action tools, then constructs jobs.
-[RevitReadChannel](../server/revit_model_mcp/revit_channel.py) serializes calls with an asyncio lock.
+[RevitChannel](../server/revit_model_mcp/revit_channel.py) serializes calls with an asyncio lock.
 The [pipe host](../server/revit_model_mcp/pipe_host.py) serves `REVIT_MCP_HOST=local`: it reads heartbeats, talks pipe/1 to the selected add-in and falls back to the file channel.
 The [HTTP host](../server/revit_model_mcp/http_host.py) submits jobs and polls results by ID.
 The [PowerShell host](../server/revit_model_mcp/ssh_host.py) publishes jobs and reads responses locally or through SSH.
@@ -51,7 +51,7 @@ Responses also carry timing, responder and client metadata, `jobId` and `queuedM
 See the [response contracts](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs).
 The server gives each job a fresh `correlationId`; v2 responses must echo it.
 Late responses from other jobs are ignored.
-The server assigns a `jobId` and a process-wide `clientId`; `clientName` comes from MCP initialize. HTTP polls `/jobs/{id}`. Completed results expire after ten minutes.
+The server assigns a `jobId` and a process-wide `clientId`; `clientName` comes from MCP initialize. HTTP polls `/jobs/{id}`. Completed read results expire after ten minutes and action results after 24 hours; see [result retention](transport.md#result-retention).
 The asyncio lock serializes calls within one server process only.
 Clients targeting different PIDs use separate directories.
 Clients targeting the same PID have separate FIFO queues. The scheduler rotates between clients and executes one job or read-session slice per ExternalEvent.
@@ -66,8 +66,6 @@ The server setting and workstation file can independently refuse them.
 See [action behavior](actions.md) for transactions, warning resolution and dialog suppression.
 Image export uses `Document.ExportImage` with a selected view set.
 It does not change the active view.
-The channel also accepts legacy snapshot and view dump jobs that are not exposed as MCP tools.
-The legacy view dump session can open and close UI views.
 File output, logs and optional window activation are observable side effects.
 
 ## Instances and heartbeat
@@ -84,22 +82,19 @@ Missing, malformed or expired heartbeats leave the process visible with `pluginR
 For v2, a fresh heartbeat is a pre-check; `pluginResponding=true` requires a bounded ping confirming correlation, responder PID and unchanged startup identity.
 Busy or timed-out handshakes never remove a process from discovery.
 
-Each instance watches `job_*.json` and legacy `trigger.txt` in its own `ROOT\instances\<pid>` directory.
-Responses, atomic temporary files, PNGs, `latest.json`, `latest.txt`, `snapshot_*.json` and `views_dump_*` share that per-PID directory.
-Startup moves any stale working trigger aside before the watcher starts.
+Each instance watches `job_*.json` in its own `ROOT\instances\<pid>` directory.
+Responses, atomic temporary files and PNGs share that per-PID directory.
 Cleanup never targets another instance's directory, and later discovery cannot redirect an outstanding job.
 
 `document` maps to `targetDocument` in a job.
 Directed reads match active document titles or file names case-insensitively and require exactly one matching instance before publication.
 Actions and undirected reads require exactly one running instance, including processes without confirmed channels in that count.
 The PID guard remains in the add-in.
-After claiming a directed read, the add-in rejects an active document that no longer matches; the correlated error consumes the trigger.
+After claiming a directed read, the add-in rejects an active document that no longer matches; the correlated error consumes the job file.
 Actions retain their existing open-document resolution.
 
-Update the server before the add-in.
-Heartbeats without `fileChannelVersion` use the legacy ROOT channel only with a single Revit process; the old claim race remains a legacy limitation.
-New add-ins remain discoverable by old servers, but ROOT file commands are incompatible.
-The add-in does not watch a legacy ROOT trigger, and the server rejects unknown protocol versions before publication.
+Update the server and the add-in together: the server accepts an add-in of the same major version and `fileChannelVersion=2` only, and refuses a heartbeat without that field before publication.
+There is no legacy ROOT channel.
 HTTP remains one configured endpoint with PID and startup identity checked through `/health`; no port scanning occurs.
 See [transport compatibility](transport.md#file-protocol-compatibility).
 

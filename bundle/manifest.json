@@ -3,8 +3,8 @@
   "name": "revit-model-mcp",
   "display_name": "Revit Model MCP",
   "version": "0.0.0",
-  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP; actions that change the model run by default, gated by workstation confirmation. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
-  "long_description": "Actions run by default and assimilate into one named, undoable Revit change; check Read-only mode to disable them without hiding the tools. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
+  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, and change it with undoable actions. Actions run by default. Saving, syncing, closing, removing links, overwriting exports and running C# code need a confirmation token that you approve in chat. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
+  "long_description": "Actions run by default, and each committed change is one named, undoable Revit change. Check Read-only mode to refuse actions without hiding the tools. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
   "author": {
     "name": "Dinar Sharafutdinov"
   },
@@ -51,7 +51,7 @@
   "tools": [
     {
       "name": "revit_jobs",
-      "description": "List recent jobs, or poll an action jobId for up to wait_s seconds.\n\nwait_s accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends; call again while the job is still running.\nA running job returns progress and partial per-model results.\nA finished job returns the original action response, including verification warnings.\nResults remain on the workstation for 24 hours, across MCP server restarts.\nSupply cancel_job_id for legacy cancellation of this server's own queued jobs.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "List recent jobs, or poll an action jobId for up to wait_seconds seconds.\n\nwait_seconds accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends; call again while the job is still running.\nA running job returns progress and partial per-model results.\nA finished job returns the original action response, including verification warnings.\nResults remain on the workstation for 24 hours, across MCP server restarts.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_compare_link_datums",
@@ -75,7 +75,7 @@
     },
     {
       "name": "revit_ui_state",
-      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, use process_id to choose one; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_model_snapshot",
@@ -83,7 +83,7 @@
     },
     {
       "name": "revit_model_health",
-      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\nUse save_to when the user requests a saved or Excel health report.\nThe workbook includes health checks, all warning groups, counts and up to five snapshots\nwithin a 60-second capture budget. Failed or skipped snapshots become workbook warnings.\nWithout save_to, use revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read model quality counts before an export or hand-over.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\nUse output_path when the user requests a saved or Excel health report.\nThe workbook includes health checks, all warning groups, counts and up to five snapshots\nwithin a 60-second capture budget. Failed or skipped snapshots become workbook warnings.\nWithout output_path, use revit_list_warnings to inspect affected elements.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_links_status",
@@ -155,7 +155,7 @@
     },
     {
       "name": "revit_list_instances",
-      "description": "List Revit processes and their active documents.\n\nReturns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nLegacy heartbeat presence is only a pre-check. No matching instances return instances=[].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools.\nEvery successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete."
+      "description": "List Revit processes and their active documents.\n\nReturns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nFile channel version 2 heartbeat presence is only a pre-check. No matching instances return instances=[].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nUse this tool before choosing a unique document substring for other tools.\nEvery successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete."
     },
     {
       "name": "revit_family_audit",
@@ -311,7 +311,7 @@
     },
     {
       "name": "revit_delete",
-      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nDeletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_export",
@@ -322,7 +322,7 @@
       "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
-      "name": "revit_batch",
+      "name": "revit_run_actions",
       "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {

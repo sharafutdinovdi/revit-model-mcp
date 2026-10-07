@@ -25,7 +25,7 @@ internal sealed class CommandResponseFileWriter
         string? correlationId = null)
     {
         var path = CommandResponseJsonFile.CreatePath(
-            SnapshotFileWriter.OutputDirectory, localTime, command, correlationId);
+            ChannelDirectory.OutputDirectory, localTime, command, correlationId);
         return new CommandResponseFileWriter(path, responder, correlationId);
     }
 

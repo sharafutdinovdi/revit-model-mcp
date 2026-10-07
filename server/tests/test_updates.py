@@ -5,9 +5,8 @@ from unittest.mock import patch
 
 import pytest
 
-from revit_model_mcp import updates
+from revit_model_mcp import package_version, updates
 from revit_model_mcp.revit_channel import (
-    MIN_ADDIN_VERSION,
     RevitChannelError,
     check_addin_compatibility,
 )
@@ -98,39 +97,46 @@ def test_pypi_lookup_records_latest_stable_even_when_prerelease_is_newest(tmp_pa
     assert updates.read_state(path)["latestKnown"] == "0.7.0"
 
 
-def test_compatibility_gate_uses_version_and_command_list():
-    MIN_ADDIN_VERSION["future-command"] = "0.7.0"
-    try:
-        check_addin_compatibility("ping", {})
-        check_addin_compatibility("ping", {"commands": []})
-        check_addin_compatibility("ping", {"addinVersion": "0.6.0", "commands": ["ping"]})
-        for instance in (
-            {"addinVersion": "0.6.0", "commands": ["future-command"]},
-            {},
-        ):
-            with pytest.raises(RevitChannelError, match="needs add-in 0.7.0 or later") as error:
-                check_addin_compatibility("future-command", instance)
-            assert "Install the latest add-in from the releases page" in str(error.value)
-        with pytest.raises(RevitChannelError, match="workstation has 0.7.0"):
-            check_addin_compatibility("ping", {"addinVersion": "0.7.0", "commands": []})
-        with pytest.raises(RevitChannelError, match="workstation has 0.7.0"):
-            check_addin_compatibility("ping", {"addinVersion": "0.7.0"})
-    finally:
-        del MIN_ADDIN_VERSION["future-command"]
+def test_compatibility_gate_accepts_same_major():
+    major = int(package_version().split(".")[0])
+    for suffix in (".0.0", ".99.0", ".1.0-rc.1", ".1.0-rc.1+sha", ".1.0+sha"):
+        check_addin_compatibility(
+            "ping", {"addinVersion": f"{major}{suffix}", "commands": ["ping"]}
+        )
 
 
-@pytest.mark.parametrize("version", ["0.7.0-rc.1", "0.7.0-rc.1+sha", "0.7.0+sha"])
-def test_compatibility_gate_uses_release_segment_for_addin_versions(version):
-    check_addin_compatibility("ping", {"addinVersion": version, "commands": ["ping"]})
-    check_addin_compatibility(
-        "future-command", {"addinVersion": version, "commands": ["future-command"]}
+@pytest.mark.parametrize("reported", [None, "", "unknown", 2, "other-major"])
+def test_compatibility_gate_rejects_missing_invalid_or_different_major(reported):
+    major = int(package_version().split(".")[0])
+    if reported == "other-major":
+        reported = f"{major - 1 if major > 0 else major + 1}.1.0"
+    instance = {"commands": ["ping"]}
+    if reported is not None:
+        instance["addinVersion"] = reported
+    with pytest.raises(
+        RevitChannelError, match=f"needs a Revit Model MCP add-in of major version {major}"
+    ) as error:
+        check_addin_compatibility("ping", instance)
+    assert "Install the matching add-in from the releases page" in str(error.value)
+    assert (reported if isinstance(reported, str) and reported else "no add-in version") in str(
+        error.value
     )
 
 
-def test_compatibility_gate_falls_back_to_commands_for_unparseable_version():
-    check_addin_compatibility("ping", {"addinVersion": "unknown", "commands": ["ping"]})
-    with pytest.raises(RevitChannelError, match="needs add-in 0.6.0 or later"):
-        check_addin_compatibility("ping", {"addinVersion": "unknown", "commands": []})
+def test_compatibility_gate_rejects_older_major():
+    major = max(1, int(package_version().split(".")[0]))
+    with patch("revit_model_mcp.package_version", return_value=f"{major}.0.0"):
+        with pytest.raises(RevitChannelError, match=f"major version {major}"):
+            check_addin_compatibility(
+                "ping", {"addinVersion": f"{major - 1}.1.0", "commands": ["ping"]}
+            )
+
+
+@pytest.mark.parametrize("commands", [None, [], "ping", ["other-command"]])
+def test_compatibility_gate_rejects_missing_command(commands):
+    version = f"{package_version().split('.')[0]}.1.0"
+    with pytest.raises(RevitChannelError, match=f"add-in {version} does not support ping"):
+        check_addin_compatibility("ping", {"addinVersion": version, "commands": commands})
 
 
 @pytest.mark.parametrize(

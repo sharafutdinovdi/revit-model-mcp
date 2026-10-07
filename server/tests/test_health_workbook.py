@@ -163,7 +163,7 @@ def test_destination_validation_before_revit(tmp_path, destination, health):
     (tmp_path / "existing.xlsx").write_bytes(b"original")
     with patch.object(server.channel, "execute", new=AsyncMock()) as execute:
         with pytest.raises(server.ToolError):
-            asyncio.run(server.revit_model_health(save_to=str(path)))
+            asyncio.run(server.revit_model_health(output_path=str(path)))
     execute.assert_not_awaited()
     with pytest.raises(ValueError):
         write_health_workbook(str(path), health, [])
@@ -188,15 +188,15 @@ def test_tool_alias_top_five_captures_and_target(tmp_path, health):
         if job.command == "list-warnings":
             return {"data": {"groups": groups()}}
         assert job.command == "capture-elements"
-        Image.new("RGB", (20, 20), "red").save(job.save_to)
-        return {"data": {"localPath": job.save_to}}
+        Image.new("RGB", (20, 20), "red").save(job.output_path)
+        return {"data": {"localPath": job.output_path}}
 
     with patch.object(server.channel, "execute", side_effect=execute):
         result = asyncio.run(
             server.mcp.call_tool(
                 "revit_model_health",
                 {
-                    "saveTo": str(tmp_path / "health.xlsx"),
+                    "outputPath": str(tmp_path / "health.xlsx"),
                     "document": "Demo",
                     "process_id": 42,
                 },
@@ -212,13 +212,13 @@ def test_tool_alias_top_five_captures_and_target(tmp_path, health):
     for job in calls:
         assert job.payload["targetDocument"] == "Demo"
         assert job.payload["targetProcessId"] == 42
-    assert [Path(job.save_to).stem for job in calls[2:]] == [
+    assert [Path(job.output_path).stem for job in calls[2:]] == [
         f"snapshot_{i}" for i in (6, 5, 4, 3, 2)
     ]
     for job in calls[2:]:
         assert job.payload["elementIds"] == list(range(1, 51))
         assert job.payload["mode"] == "3d"
-        assert not Path(job.save_to).exists()
+        assert not Path(job.output_path).exists()
     book = load_workbook(tmp_path / "health.xlsx")
     assert len(book["Warnings"]._images) == 5
 
@@ -238,7 +238,7 @@ def test_capture_budget_and_errors_keep_health_response(tmp_path, health):
         patch.object(server.channel, "execute", side_effect=execute),
         patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.01),
     ):
-        result = asyncio.run(server.revit_model_health(save_to=str(tmp_path / "health.xlsx")))
+        result = asyncio.run(server.revit_model_health(output_path=str(tmp_path / "health.xlsx")))
     assert len(captures) == 1
     assert result["data"] == health["data"]
     assert result["workbook"]["snapshotCount"] == 0
@@ -262,7 +262,7 @@ def test_early_budget_timer_starts_one_capture(tmp_path, health):
             patch.object(server.channel, "execute", side_effect=execute),
             patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.2),
         ):
-            return await server.revit_model_health(save_to=str(tmp_path / "health.xlsx"))
+            return await server.revit_model_health(output_path=str(tmp_path / "health.xlsx"))
 
     loop = asyncio.new_event_loop()
     # asyncio fires timers up to this much early, as on Windows (15.6 ms).
@@ -287,7 +287,7 @@ def test_capture_failure_is_a_warning(tmp_path, health):
         raise server.ToolError("capture failed")
 
     with patch.object(server.channel, "execute", side_effect=execute):
-        result = asyncio.run(server.revit_model_health(save_to=str(tmp_path / "health.xlsx")))
+        result = asyncio.run(server.revit_model_health(output_path=str(tmp_path / "health.xlsx")))
     assert result["workbook"]["snapshotCount"] == 0
     assert result["workbook"]["warnings"] == [
         "Warning group 1: Snapshot unavailable: capture failed"

@@ -20,9 +20,9 @@ from revit_model_mcp.actions import (
     register_actions,
 )
 from revit_model_mcp.revit_channel import (
+    Job,
     JobPickupStatus,
-    ReadJob,
-    RevitReadChannel,
+    RevitChannel,
     parse_response,
 )
 
@@ -54,7 +54,7 @@ ACTION_TOOLS = {
     "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
-    "revit_batch",
+    "revit_run_actions",
     "revit_export_nwc",
     "revit_export",
     "revit_edit_families",
@@ -89,7 +89,7 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
         assert ACTION_TOOLS.issubset(tools)
         for name in ACTION_TOOLS:
             tool = tools[name]
-            assert ("response_timeout_s" in tool.input_schema["properties"]) is (
+            assert ("timeout_seconds" in tool.input_schema["properties"]) is (
                 name
                 in {
                     "revit_export_nwc",
@@ -239,7 +239,7 @@ def test_process_models_maps_steps_code_exports_and_save():
                     }
                 ],
                 "code": {"code": "return 1;"},
-                "exports": [{"format": "ifc", "folder": r"C:\Out\{model}"}],
+                "exports": [{"format": "ifc", "output_dir": r"C:\Out\{model}"}],
                 "save": {"mode": "output_dir", "output_dir": r"C:\Saved"},
             },
         )
@@ -599,11 +599,11 @@ def test_file_export_maps_targets_options_and_timeout():
                 "format": "pdf",
                 "sheets": ["A1"],
                 "all_sheets": True,
-                "folder": r"C:\Exports",
+                "output_dir": r"C:\Exports",
                 "options": {"combine": False},
                 "overwrite": True,
                 "dry_run": True,
-                "response_timeout_s": 600,
+                "timeout_seconds": 600,
             },
         )
     )
@@ -671,7 +671,7 @@ def test_nwc_export_overrides_reach_channel():
                 "faceting_factor": 5,
                 "overwrite": True,
                 "dry_run": True,
-                "response_timeout_s": 900,
+                "timeout_seconds": 900,
             },
         )
     )
@@ -710,7 +710,7 @@ def test_align_link_datums_payload_and_timeout():
                 "name_map": {"A": "A1"},
                 "level_offset_mm": 150,
                 "dry_run": True,
-                "response_timeout_s": 600,
+                "timeout_seconds": 600,
             },
         )
     )
@@ -748,7 +748,7 @@ def test_align_link_datums_rejects_invalid_timeout():
     server, execute, _ = action_server()
     with pytest.raises(Exception):
         asyncio.run(
-            server.call_tool("revit_align_link_datums", {"link": "AR.rvt", "response_timeout_s": 0})
+            server.call_tool("revit_align_link_datums", {"link": "AR.rvt", "timeout_seconds": 0})
         )
     execute.assert_not_awaited()
 
@@ -767,15 +767,15 @@ def test_compare_link_datums_is_read_only():
     assert job.payload["nameMap"] == {"A": "A1"}
 
 
-@pytest.mark.parametrize("response_timeout_s", [None, 900])
-def test_action_response_timeout_reaches_channel(response_timeout_s):
+@pytest.mark.parametrize("timeout_seconds", [None, 900])
+def test_action_response_timeout_reaches_channel(timeout_seconds):
     import asyncio
 
     _, execute, host = action_server()
-    timeout = {} if response_timeout_s is None else {"response_timeout_s": response_timeout_s}
+    timeout = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
     asyncio.run(_send_action(execute, lambda: host, "select", elementIds=[1], **timeout))
     execute.assert_awaited_once()
-    assert execute.await_args.args[1:] == (response_timeout_s or 120, 300, None)
+    assert execute.await_args.args[1:] == (timeout_seconds or 120, 300, None)
 
 
 @pytest.mark.parametrize(
@@ -895,7 +895,11 @@ def test_action_response_timeout_reaches_channel(response_timeout_s):
             {"element_id": 1, "parameter": "Area", "parameter_id": "123", "value": 2.5},
             {"elementId": 1, "parameter": "Area", "parameterId": "123", "value": 2.5},
         ),
-        ("revit_delete", {"element_ids": [1, 2]}, {"elementIds": [1, 2]}),
+        (
+            "revit_delete",
+            {"element_ids": [1, 2]},
+            {"elementIds": [1, 2], "confirmToken": None},
+        ),
     ],
 )
 @pytest.mark.parametrize("dry_run", [False, True])
@@ -1006,7 +1010,7 @@ def test_bulk_placement_options_reach_channel():
                 ],
                 "load": [r"C:\Families\Chair.rfa"],
                 "stop_on_error": False,
-                "response_timeout_s": 600,
+                "timeout_seconds": 600,
             },
         )
     )
@@ -1025,7 +1029,7 @@ def test_batch_accepts_load_family_step():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {"steps": [{"action": "load_family", "args": {"paths": [r"C:\Families\Chair.rfa"]}}]},
         )
     )
@@ -1041,7 +1045,7 @@ def test_batch_accepts_override_graphics_step():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {"action": "override_graphics", "args": {"element_ids": [42], "views": [17]}}
@@ -1211,7 +1215,7 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
     import asyncio
 
     command = payload["command"]
-    job = ReadJob(command, {**payload, "targetProcessId": 42}).for_document(document)
+    job = Job(command, {**payload, "targetProcessId": 42}).for_document(document)
     response = {"command": command, "success": error is None, "activeView": "Model B Plan"}
     if error is None:
         response["data"] = {}
@@ -1219,13 +1223,16 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
         response["error"] = error
     host = AsyncMock()
     host.requires_identity = False
+    from revit_model_mcp import package_version
+
+    host.instance_info = {"addinVersion": package_version(), "commands": [command]}
     host.select_job.return_value = (host, job)
     host.prepare_job.return_value = set()
     host.wait_until_trigger_is_gone.return_value = JobPickupStatus(True, 0, False, 0)
     host.wait_for_new_response.return_value = "response_action.json"
     host.finish_job.return_value = (json.dumps(response), None)
 
-    result = asyncio.run(RevitReadChannel(host).execute(job))
+    result = asyncio.run(RevitChannel(host).execute(job))
 
     sent = json.loads(host.prepare_job.await_args.args[1])
     correlation_id = sent.pop("correlationId")
@@ -1320,7 +1327,7 @@ def test_batch_invalid_steps_never_reach_channel(steps):
 
     server, execute, host = action_server()
     with pytest.raises(Exception):
-        asyncio.run(server.call_tool("revit_batch", {"steps": steps}))
+        asyncio.run(server.call_tool("revit_run_actions", {"steps": steps}))
     execute.assert_not_awaited()
     host.list_revit_instances.assert_not_awaited()
 
@@ -1336,7 +1343,7 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {"action": "move", "args": {"element_ids": [1], "dx_mm": 10, "dy_mm": 0}},
@@ -1386,7 +1393,7 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
         ],
     }
     tools = asyncio.run(server.list_tools())
-    tool = next(tool for tool in tools if tool.name == "revit_batch")
+    tool = next(tool for tool in tools if tool.name == "revit_run_actions")
     assert tool.annotations.read_only_hint is False
     assert tool.annotations.destructive_hint is True
     assert tool.annotations.idempotent_hint is False
@@ -1398,7 +1405,7 @@ def test_update_parameters_batch_uses_query_filter_names():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {
@@ -1598,7 +1605,7 @@ def test_create_view_batch_mapping_and_validation():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {"action": "create_view", "args": {"kind": "floor_plan", "level": "Level 1"}}
@@ -1617,7 +1624,7 @@ def test_create_view_batch_mapping_and_validation():
 def test_create_view_3d_defaults_and_optional_bounds(bounds):
     import asyncio
 
-    from revit_model_mcp.actions import BatchStep
+    from revit_model_mcp.actions import ActionStep
 
     server, execute, _ = action_server()
     asyncio.run(server.call_tool("revit_create_view", {"kind": "3d", **bounds}))
@@ -1626,7 +1633,7 @@ def test_create_view_3d_defaults_and_optional_bounds(bounds):
     assert payload["detailLevel"] == "fine"
     assert payload["elementIds"] == bounds.get("element_ids")
     assert (payload["box"] is None) == ("box" not in bounds)
-    step = BatchStep(action="create_view", args={"kind": "3d", **bounds})
+    step = ActionStep(action="create_view", args={"kind": "3d", **bounds})
     assert step.payload()["displayStyle"] == "shaded"
     assert step.payload()["detailLevel"] == "fine"
 
@@ -1699,7 +1706,7 @@ def test_create_mep_run_maps_points_sizes_and_batch():
 
     asyncio.run(
         server.call_tool(
-            "revit_batch", {"steps": [{"action": "create_mep_run", "args": arguments}]}
+            "revit_run_actions", {"steps": [{"action": "create_mep_run", "args": arguments}]}
         )
     )
     assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-mep-run"
@@ -1765,7 +1772,7 @@ def test_addin_change_type_empty_candidates_has_specific_error():
 def test_batch_allowlists_and_process_models_schema_match():
     import asyncio
 
-    from revit_model_mcp.actions import _BATCH_FIELDS, BatchStep
+    from revit_model_mcp.actions import _BATCH_FIELDS, ActionStep
 
     parser = (
         Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Core/Control/ActionJobParser.cs"
@@ -1774,13 +1781,13 @@ def test_batch_allowlists_and_process_models_schema_match():
     commands = set(re.findall(r'"([a-z-]+)"', allowlist))
     actions = set(_BATCH_FIELDS)
     assert commands == {action.replace("_", "-") for action in actions}
-    assert set(BatchStep.model_json_schema()["properties"]["action"]["enum"]) == actions
+    assert set(ActionStep.model_json_schema()["properties"]["action"]["enum"]) == actions
     assert {"override_graphics", "create_mep_run"} <= actions
     server, _, _ = action_server()
     tools = asyncio.run(server.list_tools())
-    for name in ("revit_batch", "revit_process_models"):
+    for name in ("revit_run_actions", "revit_process_models"):
         schema = next(tool.input_schema for tool in tools if tool.name == name)
-        assert set(schema["$defs"]["BatchStep"]["properties"]["action"]["enum"]) == actions
+        assert set(schema["$defs"]["ActionStep"]["properties"]["action"]["enum"]) == actions
 
 
 @pytest.mark.parametrize(
@@ -1870,11 +1877,11 @@ def test_preflight_tool_descriptions(tool_name, expected_text):
 
 
 def test_mirror_batch_step_keeps_copy_arg():
-    from revit_model_mcp.actions import BatchStep
+    from revit_model_mcp.actions import ActionStep
 
     base = {"element_ids": [1], "axis": "x", "point_mm": [0, 0]}
-    assert BatchStep(action="mirror", args=base).args["copy"] is True
-    assert BatchStep(action="mirror", args={**base, "copy": False}).args["copy"] is False
+    assert ActionStep(action="mirror", args=base).args["copy"] is True
+    assert ActionStep(action="mirror", args={**base, "copy": False}).args["copy"] is False
 
 
 def test_actions_import_emits_no_user_warning():
@@ -1889,6 +1896,7 @@ def test_actions_import_emits_no_user_warning():
 
 
 CONFIRMED_TOOL_CALLS = {
+    "revit_delete": {"element_ids": [1, 2]},
     "revit_remove_links": {"links": ["Link A"]},
     "revit_execute_code": {"code": "return 42;"},
     "revit_export": {"format": "pdf", "all_sheets": True, "overwrite": True},
@@ -1908,7 +1916,7 @@ def test_confirmation_token_is_mapped_into_payload(tool):
     assert execute.await_args.args[0].payload["confirmToken"] == "tok-1"
 
 
-@pytest.mark.parametrize("tool", ["revit_remove_links", "revit_execute_code"])
+@pytest.mark.parametrize("tool", ["revit_remove_links", "revit_execute_code", "revit_delete"])
 def test_confirmation_two_step_flow_repeats_arguments(tool):
     import asyncio
 

@@ -10,11 +10,11 @@ from unittest.mock import AsyncMock
 
 from revit_model_mcp.artifact_download import save_artifact
 from revit_model_mcp.revit_channel import (
+    Job,
     JobPickupStatus,
-    ReadJob,
     ResponseParseError,
+    RevitChannel,
     RevitChannelError,
-    RevitReadChannel,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
@@ -39,7 +39,7 @@ PNG = b"\x89PNG\r\n\x1a\n" + b"image-content"
 
 class ViewExportTests(unittest.IsolatedAsyncioTestCase):
     def test_forms_export_job(self) -> None:
-        job = ReadJob.export_view(" 42 ", 2400, "/tmp/plan.png")
+        job = Job.export_view(" 42 ", 2400, "/tmp/plan.png")
 
         self.assertEqual(
             job.payload,
@@ -50,7 +50,7 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 "zoomToFit": True,
             },
         )
-        self.assertEqual(job.save_to, "/tmp/plan.png")
+        self.assertEqual(job.output_path, "/tmp/plan.png")
 
     async def test_downloads_image_in_same_remote_read_and_saves_path(self) -> None:
         image = PNG
@@ -191,7 +191,11 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
     async def test_channel_returns_local_path_with_plugin_metadata(self) -> None:
         events: list[str] = []
 
+        from revit_model_mcp import package_version
+
         class Remote:
+            instance_info = {"addinVersion": package_version(), "commands": ["export-view"]}
+
             async def select_job(self, job):
                 return self, job
 
@@ -209,7 +213,9 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 events.append("response")
                 return "response_export-view.json"
 
-            async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
+            async def finish_job(
+                self, response_name, cleanup_names, download_artifact, output_path
+            ):
                 events.append("finish")
                 return EXPORT_RESPONSE, "/tmp/view.png"
 
@@ -217,7 +223,7 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                 events.append("delete")
                 return None
 
-        response = await RevitReadChannel(Remote()).execute(ReadJob.export_view("Level 1 Plan"))
+        response = await RevitChannel(Remote()).execute(Job.export_view("Level 1 Plan"))
 
         self.assertEqual(response["data"]["localPath"], "/tmp/view.png")
         self.assertEqual(response["data"]["width"], 1600)

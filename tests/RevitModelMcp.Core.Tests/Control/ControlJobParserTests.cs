@@ -1,5 +1,4 @@
 using RevitModelMcp.Core.Control;
-using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Tests.Control;
@@ -127,18 +126,18 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
-    public async Task PinnedRead_ClaimsTriggerButDocumentMustStillMatchBeforeReading()
+    public async Task PinnedRead_ClaimsJobFileButDocumentMustStillMatchBeforeReading()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
-        var trigger = Path.Combine(directory, "trigger.txt");
+        var jobPath = Path.Combine(directory, "job_test.json");
         const string content = """{"command":"document-info","targetProcessId":42,"targetDocument":"Structural","correlationId":"read-50"}""";
-        File.WriteAllText(trigger, content);
+        File.WriteAllText(jobPath, content);
         try
         {
             var job = ControlJobParser.Parse(content);
-            await Assert.That(JobTargetMatcher.TryClaim(trigger, job, "Architectural", "/Models/Architectural.rvt", 42)).IsTrue();
-            await Assert.That(File.Exists(trigger)).IsFalse();
+            await Assert.That(JobTargetMatcher.TryClaim(jobPath, job, "Architectural", "/Models/Architectural.rvt", 42)).IsTrue();
+            await Assert.That(File.Exists(jobPath)).IsFalse();
             await Assert.That(JobTargetMatcher.MatchesDocument("Architectural", "/Models/Architectural.rvt", job.TargetDocument!)).IsFalse();
             await Assert.That(job.CorrelationId).IsEqualTo("read-50");
         }
@@ -249,32 +248,43 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
-    public async Task Parse_EmptyTrigger_ReturnsLegacySnapshot()
+    [Arguments(null)]
+    [Arguments("")]
+    [Arguments(" \t\r\n")]
+    public async Task Parse_EmptyJob_ReturnsReadableError(string? content)
     {
-        var result = ControlJobParser.Parse(string.Empty);
+        var result = ControlJobParser.Parse(content);
 
-        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.LegacySnapshot);
-        await Assert.That(result.Error).IsNull();
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(result.Error).IsEqualTo("The job JSON is empty.");
     }
 
     [Test]
-    public async Task Parse_ViewsDump_ReturnsTrimmedViewNames()
+    [Arguments("{\"command\":\"views-dump\",\"views\":[\"Level 1 Plan\"]}")]
+    [Arguments("{\"command\":\"views-dump\",\"views\":[]}")]
+    public async Task Parse_ViewsDump_ReturnsUnknownCommand(string content)
     {
-        const string json = """
-                            {
-                              "command": "views-dump",
-                              "views": ["Level 1 Plan", "  Level 2 Plan  "]
-                            }
-                            """;
+        var result = ControlJobParser.Parse(content);
 
-        var result = ControlJobParser.Parse(json);
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(result.Command).IsEqualTo("views-dump");
+        await Assert.That(result.Error).IsEqualTo("Unknown command: views-dump.");
+    }
 
-        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.ViewsDump);
-        await Assert.That(result.Views).IsEquivalentTo(new[]
-        {
-            "Level 1 Plan",
-            "Level 2 Plan"
-        });
+    [Test]
+    public async Task Parse_Jobs_IgnoresLegacyCancellationField()
+    {
+        var result = ControlJobParser.Parse("""
+            {"command":"jobs","cancelJobId":"another-job","jobId":"list-job","clientId":"client"}
+            """);
+
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Jobs);
+        await Assert.That(result.Command).IsEqualTo("jobs");
+        await Assert.That(result.JobId).IsEqualTo("list-job");
+        await Assert.That(result.ClientId).IsEqualTo("client");
+        await Assert.That(result.Error).IsNull();
+        await Assert.That(typeof(ControlJobParseResult).GetProperty("CancelJobId")).IsNull();
+        await Assert.That(typeof(ControlJobContract).GetProperty("CancelJobId")).IsNull();
     }
 
     [Test]
@@ -284,24 +294,6 @@ public sealed class ControlJobParserTests
 
         await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(result.Error).Contains("Unknown command: explode");
-
-        var response = ViewDumpTextFormatter.Format(new ViewDumpReport
-        {
-            Command = "invalid",
-            Status = "error",
-            Message = result.Error
-        });
-        await Assert.That(response).Contains("status: error");
-        await Assert.That(response).Contains("Unknown command: explode");
-    }
-
-    [Test]
-    public async Task Parse_ViewsDumpWithoutViews_ReturnsReadableError()
-    {
-        var result = ControlJobParser.Parse("{\"command\":\"views-dump\",\"views\":[]}");
-
-        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(result.Error).Contains("non-empty views list");
     }
 
     [Test]
@@ -388,21 +380,21 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
-    public async Task JobTargetMatcher_ForeignDocument_DoesNotClaimTriggerFile()
+    public async Task JobTargetMatcher_ForeignDocument_DoesNotClaimJobFile()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-{Guid.NewGuid():N}");
-        var triggerPath = Path.Combine(directory, "trigger.txt");
+        var jobPath = Path.Combine(directory, "job_test.json");
         Directory.CreateDirectory(directory);
         try
         {
-            File.WriteAllText(triggerPath, "{\"command\":\"document-info\",\"targetDocument\":\"Sample Model\"}");
-            var job = ControlJobParser.Parse(File.ReadAllText(triggerPath));
+            File.WriteAllText(jobPath, "{\"command\":\"document-info\",\"targetDocument\":\"Sample Model\"}");
+            var job = ControlJobParser.Parse(File.ReadAllText(jobPath));
 
             var claimed = JobTargetMatcher.TryClaim(
-                triggerPath, job, "Test Model", @"C:\\Models\\Test Model.rvt", 42);
+                jobPath, job, "Test Model", @"C:\\Models\\Test Model.rvt", 42);
 
             await Assert.That(claimed).IsFalse();
-            await Assert.That(File.Exists(triggerPath)).IsTrue();
+            await Assert.That(File.Exists(jobPath)).IsTrue();
         }
         finally
         {
@@ -666,23 +658,32 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
-    public async Task TriggerWatcher_FileAppears_RequestsExternalEvent()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task JobWatcher_FileAppears_RequestsExternalEvent(bool rename)
     {
         var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-{Guid.NewGuid():N}");
-        var triggerPath = Path.Combine(directory, "trigger.txt");
+        var jobPath = Path.Combine(directory, "job_test.json");
         var temporaryPath = Path.Combine(directory, "mcp.tmp");
         using var requested = new ManualResetEventSlim();
         try
         {
-            using (var watcher = new TriggerFileWatcher(
-                       triggerPath,
+            using (var watcher = new JobFileWatcher(
+                       directory,
                        requested.Set,
                        _ => { },
                        TimeSpan.FromSeconds(10)))
             {
                 watcher.Start();
-                File.WriteAllText(temporaryPath, "{\"command\":\"ping\"}");
-                File.Move(temporaryPath, triggerPath);
+                if (rename)
+                {
+                    File.WriteAllText(temporaryPath, "{\"command\":\"ping\"}");
+                    File.Move(temporaryPath, jobPath);
+                }
+                else
+                {
+                    File.WriteAllText(jobPath, "{\"command\":\"ping\"}");
+                }
 
                 await Assert.That(requested.Wait(TimeSpan.FromSeconds(5))).IsTrue();
             }
@@ -693,6 +694,30 @@ public sealed class ControlJobParserTests
             {
                 Directory.Delete(directory, true);
             }
+        }
+    }
+
+    [Test]
+    [Arguments("job_test.json", 1)]
+    [Arguments("job_test.tmp", 0)]
+    [Arguments("notes.json", 0)]
+    public async Task JobWatcher_Start_RequestsOnlyExistingJobFiles(string fileName, int expectedRequests)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"RevitModelMcp-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var requests = 0;
+        try
+        {
+            File.WriteAllText(Path.Combine(directory, fileName), "{\"command\":\"ping\"}");
+            using var watcher = new JobFileWatcher(directory, () => requests++, _ => { }, TimeSpan.FromSeconds(10));
+            watcher.Start();
+            watcher.Start();
+
+            await Assert.That(requests).IsEqualTo(expectedRequests);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
         }
     }
 
