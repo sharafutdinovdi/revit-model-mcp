@@ -13,9 +13,9 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 
+from revit_model_mcp import package_version
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
-    MIN_ADDIN_VERSION,
     Job,
     ResponseTimeoutError,
     ResultExpiredError,
@@ -90,9 +90,9 @@ def endpoint():
                         "processId": state.get("processId", 42),
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": True,
-                        "addinVersion": "0.6.0",
+                        "addinVersion": package_version(),
                         "protocolVersion": 1,
-                        "commands": list(MIN_ADDIN_VERSION),
+                        "commands": ["ping", "select", "export", "export-view"],
                     },
                     proof=proof,
                 )
@@ -158,7 +158,7 @@ def test_health_and_instance_discovery(endpoint):
     host, state = endpoint
     health = asyncio.run(host.health())
     assert health["readOnly"] is True
-    assert health["addinVersion"] == "0.6.0"
+    assert health["addinVersion"] == package_version()
     assert health["protocolVersion"] == 1
     assert "ping" in health["commands"]
     assert health["startedUtc"] == "2026-09-16T00:00:00Z"
@@ -174,7 +174,7 @@ def test_job_round_trip(endpoint):
     host, state = endpoint
     result = asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert result["data"] == "pong"
-    assert result["addinVersion"] == "0.6.0"
+    assert result["addinVersion"] == package_version()
     assert state["payload"]["command"] == "ping"
     assert len(state["payload"]["correlationId"]) == 32
     assert len(state["payload"]["jobId"]) == 32
@@ -362,8 +362,8 @@ def test_addin_advertises_bound_http_endpoint_identity():
     )
     assert "HttpPort = _httpPort" in application
     health = source.split('path == "/health"', 1)[1].split("return;", 1)[0]
-    assert '["startedUtc"] = SnapshotFileWriter.StartedUtc' in health
-    assert "StartedUtc = Output.SnapshotFileWriter.StartedUtc" in application
+    assert '["startedUtc"] = ChannelDirectory.StartedUtc' in health
+    assert "StartedUtc = Output.ChannelDirectory.StartedUtc" in application
 
 
 def test_addin_rejects_oversized_declared_job_before_reading():

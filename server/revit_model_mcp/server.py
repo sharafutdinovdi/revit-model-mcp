@@ -478,7 +478,6 @@ def addressed_tool(function):
 
 @addressed_tool
 async def revit_jobs(
-    cancel_job_id: str | None = None,
     job_id: str | None = None,
     wait_seconds: Annotated[
         int, Field(ge=0, le=50, description="Seconds to wait, 0 through 50.")
@@ -493,9 +492,8 @@ async def revit_jobs(
     A running job returns progress and partial per-model results.
     A finished job returns the original action response, including verification warnings.
     Results remain on the workstation for 24 hours, across MCP server restarts.
-    Supply cancel_job_id for legacy cancellation of this server's own queued jobs.
     """
-    job = Job.jobs(cancel_job_id)
+    job = Job.jobs()
     if job_id is not None:
         job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_seconds})
     return await _execute(job, timeout_seconds, pickup_timeout_seconds, document)
@@ -1225,7 +1223,7 @@ async def revit_list_instances(document: Document = None) -> dict[str, Any]:
     Returns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.
     For file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.
     Busy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.
-    Legacy heartbeat presence is only a pre-check. No matching instances return instances=[].
+    File channel version 2 heartbeat presence is only a pre-check. No matching instances return instances=[].
     Local and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.
     HTTP mode reports only its connected process; transport failures raise errors.
     Use this tool before choosing a unique document substring for other tools.

@@ -659,7 +659,7 @@ public sealed class CommandResponseJsonSerializerTests
             "view-summary",
             new ViewSummaryData
             {
-                Header = new ViewDumpHeader { Name = "Level 1 Plan", Type = "FloorPlan", Scale = 100, ElementCount = 21 },
+                Header = new ViewHeader { Name = "Level 1 Plan", Type = "FloorPlan", Scale = 100, ElementCount = 21 },
                 Categories = { new ViewCategorySummary { Category = "Walls", Count = 12, DifferentTypes = 3 } }
             },
             120);
@@ -1063,6 +1063,40 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(missing.RootElement.GetProperty("data").TryGetProperty("location", out _)).IsFalse();
         await Assert.That(missing.RootElement.GetProperty("data").TryGetProperty("boundingBox", out _)).IsFalse();
         await Assert.That(missing.RootElement.TryGetProperty("viewOpened", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task Serialize_Jobs_PreservesListWithoutCancellation()
+    {
+        var response = CommandResponse<JobListData>.Ok("jobs", new JobListData
+        {
+            Jobs =
+            [
+                new JobSummary
+                {
+                    JobId = "read-job",
+                    ClientName = "reader",
+                    Command = "view-elements",
+                    State = "running",
+                    Position = 0,
+                    AgeMs = 250
+                }
+            ]
+        }, 0);
+
+        using var json = Parse(response);
+        await AssertSuccess(json.RootElement, "jobs");
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.TryGetProperty("cancellation", out _)).IsFalse();
+        var jobs = data.GetProperty("jobs");
+        await Assert.That(jobs.GetArrayLength()).IsEqualTo(1);
+        var job = jobs[0];
+        await Assert.That(job.GetProperty("jobId").GetString()).IsEqualTo("read-job");
+        await Assert.That(job.GetProperty("clientName").GetString()).IsEqualTo("reader");
+        await Assert.That(job.GetProperty("command").GetString()).IsEqualTo("view-elements");
+        await Assert.That(job.GetProperty("state").GetString()).IsEqualTo("running");
+        await Assert.That(job.GetProperty("position").GetInt32()).IsEqualTo(0);
+        await Assert.That(job.GetProperty("ageMs").GetInt64()).IsEqualTo(250);
     }
 
     private static JsonDocument Parse<T>(CommandResponse<T> response)

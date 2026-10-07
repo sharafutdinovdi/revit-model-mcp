@@ -48,7 +48,6 @@ Each finding names the rule, the elements and the view it was evaluated on, so a
 
 ## Known gaps
 
-- Public-source cleanup: legacy snapshot readers, contracts and fixtures still contain organization-specific family and parameter identifiers; removing those fields changes the legacy feed contract.
-- Revit resources: reader and legacy snapshot paths still need a collector/filter disposal audit under live Revit.
+- Revit resources: reader paths still need a collector/filter disposal audit under live Revit.
 - Compatibility: NWC export needs the Navisworks exporter, which Revit 2023 and 2025 builds on the validation workstation did not have; the server refuses with a clear message there. Importing the `.mcpb` bundle into Claude Desktop is not validated yet.
 - Batch undo: the Revit undo menu label (`MCP (<clientName>): <short summary>`) cannot be verified through the API.

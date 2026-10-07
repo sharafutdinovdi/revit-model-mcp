@@ -23,7 +23,6 @@ from revit_model_mcp.artifact_download import preflight_artifact_target, save_ar
 from revit_model_mcp.revit_channel import (
     ACTIVATION_TASK,
     CHANNEL_DIRECTORY,
-    TRIGGER_FILE,
     ActivationError,
     Job,
     JobPickupStatus,
@@ -101,7 +100,7 @@ class SshPowerShellHost:
 
     @property
     def requires_identity(self) -> bool:
-        return self._instance is not None and self._instance.get("fileChannelVersion") == 2
+        return self._instance is not None
 
     async def batch_discover(self, folder: str, recursive: bool) -> list[str]:
         recurse = "-Recurse" if recursive else ""
@@ -252,32 +251,29 @@ class SshPowerShellHost:
 
     def _for_instance(self, instance: dict[str, object]) -> SshPowerShellHost:
         version = instance.get("fileChannelVersion")
-        if "fileChannelVersion" in instance and (type(version) is not int or version != 2):
+        if type(version) is not int or version != 2:
             raise RevitChannelError(
-                f"Unsupported file channel version: {version!r}. Update the server and add-in."
+                f"Unsupported file channel version: {version!r}. Update the add-in to the same major version as the server."
             )
         if not instance.get("updatedUtc"):
             raise RevitChannelError(
                 "The selected Revit instance has no fresh heartbeat; its file channel is unconfirmed."
             )
-        if version == 2 and not instance.get("startedUtc"):
+        if not instance.get("startedUtc"):
             raise RevitChannelError(
                 "The selected Revit instance has no startup identity; its file channel is unconfirmed."
             )
-        if version == 2:
-            try:
-                started_utc = _validated_started_utc(instance["startedUtc"])
-            except ValueError as error:
-                raise RevitChannelError(
-                    "The selected Revit instance has an invalid startup identity. Update the add-in."
-                ) from error
-            instance = {**instance, "startedUtc": started_utc}
+        try:
+            started_utc = _validated_started_utc(instance["startedUtc"])
+        except ValueError as error:
+            raise RevitChannelError(
+                "The selected Revit instance has an invalid startup identity. Update the add-in."
+            ) from error
+        instance = {**instance, "startedUtc": started_utc}
         selected = copy.copy(self)
         selected._instance = dict(instance)
         selected._directory = (
             f"(Join-Path ({self._root_directory}) 'instances\\{instance['processId']}')"
-            if version == 2
-            else self._root_directory
         )
         return selected
 
@@ -302,12 +298,7 @@ class SshPowerShellHost:
         instances = await self._discover_instances()
         instance = select_instance(instances, job)
         selected = self._for_instance(instance)
-        if instance.get("fileChannelVersion") is None:
-            if len(instances) != 1:
-                raise RevitChannelError(
-                    "Legacy file channels require exactly one running Revit instance. Update the add-in for per-PID routing."
-                )
-        elif not job.payload.get("fetchJobId"):
+        if not job.payload.get("fetchJobId"):
             await selected._handshake()
         return selected, replace(
             job, payload={**job.payload, "targetProcessId": instance["processId"]}
@@ -392,14 +383,12 @@ class SshPowerShellHost:
         if self._instance is None:
             raise RevitChannelError("Select a Revit instance before publishing a job.")
         process_id = self._instance["processId"]
-        identity_check = ""
-        if self._instance.get("fileChannelVersion") == 2:
-            identity = _ps_quote(str(self._instance["startedUtc"]))
-            identity_check = (
-                f"$heartbeat = Get-Content -LiteralPath (Join-Path ({self._root_directory}) 'instance_{process_id}.json') -Raw -ErrorAction Stop | ConvertFrom-Json; "
-                f"if ($heartbeat.processId -ne {process_id} -or ([DateTime]$heartbeat.startedUtc).ToUniversalTime() -ne [DateTime]::Parse('{identity}').ToUniversalTime() -or $heartbeat.fileChannelVersion -ne 2 "
-                "-or ([DateTime]$heartbeat.updatedUtc).ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds(-60)) { throw 'Selected Revit identity changed or heartbeat expired.' }; "
-            )
+        identity = _ps_quote(str(self._instance["startedUtc"]))
+        identity_check = (
+            f"$heartbeat = Get-Content -LiteralPath (Join-Path ({self._root_directory}) 'instance_{process_id}.json') -Raw -ErrorAction Stop | ConvertFrom-Json; "
+            f"if ($heartbeat.processId -ne {process_id} -or ([DateTime]$heartbeat.startedUtc).ToUniversalTime() -ne [DateTime]::Parse('{identity}').ToUniversalTime() -or $heartbeat.fileChannelVersion -ne 2 "
+            "-or ([DateTime]$heartbeat.updatedUtc).ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds(-60)) { throw 'Selected Revit identity changed or heartbeat expired.' }; "
+        )
         encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
         pattern = f"response_*_{_ps_quote(command)}*.json"
         job_id = json.loads(content).get("jobId")
@@ -443,7 +432,11 @@ class SshPowerShellHost:
         return {name for name in responses if RESPONSE_NAME.fullmatch(name)}
 
     async def wait_until_trigger_is_gone(self, timeout_seconds: float) -> JobPickupStatus:
-        trigger_assignment = f"$trigger = Join-Path ({self._directory}) '{self._published_job_file or TRIGGER_FILE}'; "
+        if self._published_job_file is None:
+            raise RevitChannelError("No job file was published before waiting for pickup.")
+        trigger_assignment = (
+            f"$trigger = Join-Path ({self._directory}) '{self._published_job_file}'; "
+        )
         trigger_check = "if (Test-Path -LiteralPath $trigger) { 'present' } else { 'gone' }"
         check_script = trigger_assignment + trigger_check
         activation_attempts = 0
@@ -506,7 +499,6 @@ class SshPowerShellHost:
         selection = "Select-Object -Last 1"
         if correlation_id is not None:
             identity = _ps_quote(correlation_id)
-            fallback = "$null" if self.requires_identity else "$legacy"
             selection = (
                 "ForEach-Object { "
                 "$file = $_; $response = $null; "
@@ -514,17 +506,15 @@ class SshPowerShellHost:
                 f"if ($response.correlationId -eq '{identity}' -or "
                 f"($file.Name.EndsWith('_{identity}.json') -and -not $response.correlationId)) {{ "
                 "$matched = $file } "
-                "elseif ($null -ne $response -and -not $response.correlationId "
-                f"-and $response.command -eq '{_ps_quote(command)}' "
-                f"-and $file.Name -match '_{_ps_quote(command)}(?:_[0-9]{{2,}})?\\.json$') {{ $legacy = $file }} "
-                f"}}; $candidate = if ($null -ne $matched) {{ $matched }} else {{ {fallback} }}"
+                "}"
             )
         script = (
             _ps_response_reader()
-            + f"$directory = {self._directory}; $known = @({known}); $matched = $null; $legacy = $null; "
+            + f"$directory = {self._directory}; $known = @({known}); $matched = $null; "
             f"$candidate = Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue | "
             f"Where-Object {{ $_.Name -cmatch '{RESPONSE_NAME.pattern}' -and $known -notcontains $_.Name }} | Sort-Object LastWriteTimeUtc | "
             + selection
+            + ("; $candidate = $matched" if correlation_id is not None else "")
             + "; if ($null -ne $candidate) { $candidate.Name }"
         )
         result, _, _ = await self._poll_for_change(script, "", timeout_seconds)
@@ -855,7 +845,7 @@ def _parse_instance_package(
                 "documentTitle": title,
                 "documentPath": path,
                 "windowTitle": "",
-                "pluginResponding": "fileChannelVersion" not in status,
+                "pluginResponding": False,
                 "updatedUtc": status["updatedUtc"],
                 **{
                     key: status[key]

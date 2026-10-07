@@ -15,7 +15,6 @@ from typing import Any, Protocol, get_type_hints
 from mcp.server.mcpserver import Context
 
 from revit_model_mcp.universal_jobs import aggregate_payload, query_payload
-from revit_model_mcp.updates import newer_stable
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_HOST = "local"
@@ -23,7 +22,6 @@ DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_PICKUP_TIMEOUT_SECONDS = 300
 ACTIVATION_TASK = os.environ.get("REVIT_MCP_ACTIVATE_TASK", "")
 CHANNEL_DIRECTORY = "RevitModelMcp"
-TRIGGER_FILE = "trigger.txt"
 CLIENT_ID = uuid.uuid4().hex
 _client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
     "revit_client_name", default="unknown"
@@ -193,11 +191,8 @@ class Job:
         return cls("ping", {"command": "ping"})
 
     @classmethod
-    def jobs(cls, cancel_job_id: str | None = None) -> Job:
-        payload = {"command": "jobs"}
-        if cancel_job_id is not None:
-            payload["cancelJobId"] = _required_text(cancel_job_id, "cancel_job_id")
-        return cls("jobs", payload)
+    def jobs(cls) -> Job:
+        return cls("jobs", {"command": "jobs"})
 
     @classmethod
     def document_info(cls) -> Job:
@@ -542,63 +537,6 @@ class RemoteHost(Protocol):
     async def delete_files(self, names: list[str]) -> None: ...
 
 
-MIN_ADDIN_VERSION = dict.fromkeys(
-    (
-        "ping",
-        "jobs",
-        "model-health",
-        "links-status",
-        "shared-coordinates",
-        "parameter-fill-check",
-        "document-info",
-        "documents",
-        "ui-state",
-        "list-views",
-        "view-summary",
-        "view-info",
-        "view-elements",
-        "element-details",
-        "view-warnings",
-        "export-view",
-        "schedule-data",
-        "query-elements",
-        "aggregate-elements",
-        "list-catalog",
-        "list-warnings",
-        "list-relations",
-        "family-audit",
-        "nwc-settings-check",
-        "compare-link-datums",
-        "select",
-        "show",
-        "isolate",
-        "move",
-        "place-family",
-        "load-family",
-        "place-families",
-        "create-wall",
-        "set-parameter",
-        "delete",
-        "batch",
-        "export-nwc",
-        "export",
-        "edit-families",
-        "align-link-datums",
-        "open-document",
-        "activate-document",
-        "activate-view",
-        "close-views",
-        "new-document",
-        "close-document",
-        "save-document",
-        "sync-document",
-        "set-view-visibility",
-        "remove-links",
-        "undo-last",
-        "views-dump",
-    ),
-    "0.6.0",
-)
 RELEASES_URL = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest"
 ADDIN_VERSION = re.compile(
     r"(\d+(?:\.\d+)+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
@@ -607,24 +545,24 @@ ADDIN_VERSION = re.compile(
 
 
 def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
-    required = MIN_ADDIN_VERSION.get(command, "0.7.0")
+    from revit_model_mcp import package_version
+
+    server_major = int(package_version().split(".")[0])
     reported = instance.get("addinVersion")
     version = reported if isinstance(reported, str) and reported else None
-    commands = instance.get("commands")
     parsed = ADDIN_VERSION.fullmatch(version) if version is not None else None
-    too_old = (
-        newer_stable(required, parsed.group(1))
-        if parsed
-        else (version is None and newer_stable(required, "0.6.0"))
-    )
-    missing_command = version is not None and (
-        not isinstance(commands, list) or command not in commands
-    )
-    if too_old or missing_command:
-        installed = version or "0.6.0 or earlier"
+    if parsed is None or int(parsed.group(1).split(".")[0]) != server_major:
+        installed = version or "no add-in version"
         raise RevitChannelError(
-            f"This tool needs add-in {required} or later; the Revit workstation has {installed}. "
-            f"Install the latest add-in from the releases page: {RELEASES_URL}."
+            f"This server needs a Revit Model MCP add-in of major version {server_major}; "
+            f"the Revit workstation has {installed}. "
+            f"Install the matching add-in from the releases page: {RELEASES_URL}."
+        )
+    commands = instance.get("commands")
+    if not isinstance(commands, list) or command not in commands:
+        raise RevitChannelError(
+            f"The Revit Model MCP add-in {version} does not support {command}. "
+            f"Install the matching add-in from the releases page: {RELEASES_URL}."
         )
 
 
@@ -679,7 +617,7 @@ class RevitChannel:
                 job, timeout_seconds, pickup_timeout_seconds
             )
             if job.command == "ping":
-                result["addinVersion"] = instance.get("addinVersion") or "0.6.0 or earlier"
+                result["addinVersion"] = instance["addinVersion"]
                 if isinstance(state := instance.get("httpState"), str):
                     result["httpListener"] = {"state": state}
                     if "httpReason" in instance:

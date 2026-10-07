@@ -66,7 +66,7 @@ internal static class BatchCommands
         if (Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
             throw new InvalidOperationException("A batch worker cannot start a supervisor.");
         if (!Guid.TryParseExact(runId, "N", out _)) throw new ArgumentException("Invalid run id.");
-        var root = Path.Combine(SnapshotFileWriter.RootDirectory, "runs", runId!);
+        var root = Path.Combine(ChannelDirectory.RootDirectory, "runs", runId!);
         if (!File.Exists(Path.Combine(root, "run.json"))) throw new FileNotFoundException("Batch run state is absent.");
         var executables = new Dictionary<int, string>();
         for (var year = 2022; year <= 2027; year++)

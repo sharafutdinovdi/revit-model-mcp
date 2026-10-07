@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.Serialization.Json;
@@ -17,11 +16,10 @@ namespace RevitModelMcp.Control;
 
 internal sealed class ControlChannel
 {
-    private readonly string _triggerFilePath;
+    private readonly string _channelDirectory;
     private readonly JobScheduler _scheduler;
     private readonly object _filesSync = new();
     private readonly Dictionary<string, TaskCompletionSource<string>> _httpCompletions = new();
-    private readonly ConcurrentDictionary<string, JobCancellation> _earlyCancellations = new();
     private IControlSession? _session;
     private ScheduledJob? _current;
     private ControlJobParseResult? _currentJob;
@@ -30,10 +28,10 @@ internal sealed class ControlChannel
     private string? _httpResponse;
     private volatile bool _stopped;
 
-    public ControlChannel(string triggerFilePath)
+    public ControlChannel(string channelDirectory)
     {
-        _triggerFilePath = triggerFilePath;
-        _scheduler = new JobScheduler(resultDirectory: Path.Combine(Path.GetDirectoryName(triggerFilePath)!, "jobs"), log: PluginLog.Warn);
+        _channelDirectory = channelDirectory;
+        _scheduler = new JobScheduler(resultDirectory: Path.Combine(channelDirectory, "jobs"), log: PluginLog.Warn);
     }
 
     public JobScheduler Scheduler => _scheduler;
@@ -51,8 +49,6 @@ internal sealed class ControlChannel
             if (submitted.Job is null) return submitted;
             var source = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _httpCompletions.Add(jobId, source);
-            if (job.Kind == ControlJobKind.Jobs && job.CancelJobId is not null)
-                _earlyCancellations[jobId] = CancelJob(job.CancelJobId, job.ClientId, false);
             completion = source.Task;
             return submitted;
         }
@@ -63,10 +59,9 @@ internal sealed class ControlChannel
         lock (_filesSync)
         {
             if (_stopped || !FileChannelEnabled) return;
-            var directory = Path.GetDirectoryName(_triggerFilePath)!;
+            var directory = _channelDirectory;
             if (!Directory.Exists(directory)) return;
             var files = Directory.GetFiles(directory, "job_*.json").OrderBy(File.GetCreationTimeUtc).ToList();
-            if (File.Exists(_triggerFilePath)) files.Add(_triggerFilePath);
             foreach (var path in files)
             {
                 string content;
@@ -121,14 +116,12 @@ internal sealed class ControlChannel
                         response.Client = new ClientIdentity { Name = parsed.ClientName, Id = parsed.ClientId };
                         response.JobId = jobId;
                         response.Responder.ProcessId = Process.GetCurrentProcess().Id;
-                        var responsePath = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
+                        var responsePath = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
                             DateTime.Now, parsed.Command, parsed.CorrelationId);
                         CommandResponseJsonFile.Write(responsePath, response);
                     }
                     PluginLog.Warn($"File job rejected. Error='{submitted.Error}'.");
                 }
-                else if (parsed.Kind == ControlJobKind.Jobs && parsed.CancelJobId is not null)
-                    _earlyCancellations[jobId] = CancelJob(parsed.CancelJobId, parsed.ClientId, false);
                 try { File.Delete(claimedPath); }
                 catch (IOException) { PluginLog.Warn("Claimed job file could not be removed."); }
             }
@@ -171,14 +164,14 @@ internal sealed class ControlChannel
                 if (ActionJobParser.IsAction(_current.Command)) _scheduler.PublishProgress(_current.JobId, content);
                 if (!isHttp)
                 {
-                    var path = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
+                    var path = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
                         _currentStartedAt.LocalDateTime, _currentJob.Command, _currentJob.CorrelationId);
                     CommandResponseJsonFile.WriteContent(path, content);
                 }
             };
             ResponseDelivery.CancellationRequested = () =>
             {
-                if (File.Exists(Path.Combine(Path.GetDirectoryName(_triggerFilePath)!, "jobs", $"{_current.JobId}.cancel")))
+                if (File.Exists(Path.Combine(_channelDirectory, "jobs", $"{_current.JobId}.cancel")))
                     _scheduler.Cancel(_current.JobId, _current.ClientId, true);
                 return _scheduler.IsCancellationRequested(_current.JobId);
             };
@@ -236,7 +229,7 @@ internal sealed class ControlChannel
     private string? ReadFileResult()
     {
         if (_currentJob?.CorrelationId is null) return null;
-        var path = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
+        var path = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
             _currentStartedAt.LocalDateTime, _currentJob.Command, _currentJob.CorrelationId);
         try { return File.Exists(path) ? File.ReadAllText(path) : null; }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
@@ -285,7 +278,7 @@ internal sealed class ControlChannel
                 return cancellation;
             }
         }
-        var path = CommandResponseJsonFile.CreatePath(SnapshotFileWriter.OutputDirectory,
+        var path = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
             DateTime.Now, job.Command, parsed.CorrelationId);
         CommandResponseJsonFile.Write(path, response);
         return cancellation;
@@ -308,16 +301,8 @@ internal sealed class ControlChannel
             TryWriteError(application, parsed.Command, "The active document no longer matches the target document.", startedAt, parsed.CorrelationId);
             return;
         }
-        if (parsed.Kind == ControlJobKind.LegacySnapshot)
-        {
-            SnapshotService.CaptureAndWrite(application, startedAt);
-            return;
-        }
         if (parsed.Kind == ControlJobKind.Jobs)
         {
-            var cancellation = parsed.CancelJobId is null ? null :
-                _earlyCancellations.TryRemove(_current!.JobId, out var early) ? early :
-                CancelJob(parsed.CancelJobId, parsed.ClientId, false);
             var data = new JobListData
             {
                 Jobs = _scheduler.ActiveJobs().Select(job => new JobSummary
@@ -328,13 +313,7 @@ internal sealed class ControlChannel
                     State = StateName(job.State),
                     Position = job.Position,
                     AgeMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds)
-                }).ToList(),
-                Cancellation = cancellation is null ? null : new JobCancellationInfo
-                {
-                    Cancelled = cancellation.Cancelled,
-                    State = cancellation.State is null ? null : StateName(cancellation.State.Value),
-                    Message = cancellation.Message
-                }
+                }).ToList()
             };
             var response = CommandResponse<JobListData>.Ok("jobs", data, 0);
             CommandResponseFileWriter.Create(startedAt.LocalDateTime, parsed.Command,
@@ -358,9 +337,7 @@ internal sealed class ControlChannel
             TryWriteError(application, parsed.Command, parsed.Error ?? "Invalid job.", startedAt, parsed.CorrelationId);
             return;
         }
-        if (parsed.Kind == ControlJobKind.ViewsDump)
-            StartSession(new ViewDumpSession(application, parsed.Views, startedAt), application);
-        else if (parsed.Kind == ControlJobKind.ViewElements)
+        if (parsed.Kind == ControlJobKind.ViewElements)
             StartSession(new ViewElementsSession(application, parsed, startedAt), application);
         else ReadCommandExecutor.Execute(application, parsed, startedAt);
     }
