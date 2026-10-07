@@ -184,12 +184,17 @@ async def test_read_only_start_is_refused_without_side_effects(monkeypatch):
     registry, host, channel = Registry(), Host(), Channel()
     register_batch(registry, lambda: host, lambda: channel)
     result = await registry.tools["revit_batch_start"](folder=r"C:\models")
-    assert result == {"success": False, "command": "batch-start", "error": "read-only mode"}
+    assert result == {
+        "success": False,
+        "command": "batch-start",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
     assert not host.runs and not host.discovery and not channel.jobs
 
 
 @pytest.mark.anyio
-async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch):
+async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch, tmp_path):
     registry, host, channel = Registry(), Host(), Channel()
     register_batch(registry, lambda: host, lambda: channel)
     run_id = (await registry.tools["revit_batch_start"](paths=[r"C:\models\A.rvt"]))["runId"]
@@ -197,10 +202,19 @@ async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch):
     read_only_registry = Registry()
     register_batch(read_only_registry, lambda: host, lambda: channel)
     result = await read_only_registry.tools["revit_batch_cancel"](run_id)
-    assert result == {"success": False, "command": "batch-cancel", "error": "read-only mode"}
+    assert result == {
+        "success": False,
+        "command": "batch-cancel",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
     assert host.runs[run_id].get("cancelRequested") is not True
     status = await read_only_registry.tools["revit_batch_status"](run_id)
     assert status["runId"] == run_id
+    host.runs[run_id]["status"] = 3
+    host.runs[run_id]["models"][0]["status"] = 4
+    fetched = await read_only_registry.tools["revit_batch_fetch"](run_id, str(tmp_path))
+    assert fetched["runId"] == run_id
 
 
 @pytest.mark.anyio
@@ -526,3 +540,78 @@ async def test_host_status_reads_bom_prefixed_run_file(tmp_path):
     actual = await host.batch_status(run_id)
     assert actual["status"] == 2
     assert run_file.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+@pytest.mark.anyio
+async def test_supervisor_failure_returns_structured_action_result(boundary):
+    from unittest.mock import AsyncMock
+
+    tools, _, channel = boundary
+    channel.execute = AsyncMock(
+        return_value={
+            "success": False,
+            "command": "batch-supervisor-start",
+            "error": "read-only mode",
+        }
+    )
+    assert await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"]) == {
+        "success": False,
+        "command": "batch-start",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "message,code", [("read-only mode", "read_only"), ("Supervisor failed.", "action_failed")]
+)
+async def test_supervisor_channel_failure_is_normal_result(boundary, message, code):
+    from unittest.mock import AsyncMock
+
+    from revit_model_mcp import package_version
+    from revit_model_mcp.revit_channel import JobPickupStatus, RevitChannel
+
+    tools, _, channel = boundary
+    remote = AsyncMock()
+    remote.requires_identity = False
+    remote.instance_info = {
+        "addinVersion": package_version(),
+        "commands": ["batch-supervisor-start"],
+    }
+    remote.select_job.side_effect = lambda job: (remote, job)
+    remote.prepare_job.return_value = set()
+    remote.wait_until_trigger_is_gone.return_value = JobPickupStatus(True, 0, False, 0)
+    remote.wait_for_new_response.return_value = "response.json"
+    remote.finish_job.return_value = (
+        json.dumps({"success": False, "command": "batch-supervisor-start", "error": message}),
+        None,
+    )
+    channel.execute = RevitChannel(remote).execute
+    assert await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"]) == {
+        "success": False,
+        "command": "batch-start",
+        "error": message,
+        "errorCode": code,
+    }
+
+
+@pytest.mark.anyio
+async def test_file_gate_cancel_refusal_is_normal_result(boundary):
+    from unittest.mock import AsyncMock
+
+    from revit_model_mcp.ssh_host import RemoteCommandError
+
+    tools, host, _ = boundary
+    host.batch_cancel = AsyncMock(
+        side_effect=RemoteCommandError(1, "Transport command exited: read-only mode")
+    )
+    assert await tools["revit_batch_cancel"]("a" * 32) == {
+        "success": False,
+        "command": "batch-cancel",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    host.batch_cancel.side_effect = RemoteCommandError(1, "Transport disconnected.")
+    with pytest.raises(ToolError, match="Transport disconnected"):
+        await tools["revit_batch_cancel"]("a" * 32)

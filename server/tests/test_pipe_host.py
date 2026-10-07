@@ -425,3 +425,32 @@ def test_local_heartbeat_preserves_http_listener_status(tmp_path, monkeypatch):
     assert instance["httpPort"] == 53110
     assert instance["httpState"] == "failed"
     assert instance["httpReason"] == "Access denied."
+
+
+def test_pipe_read_only_action_returns_refusal_and_read_raises():
+    import pytest
+
+    from revit_model_mcp import package_version
+    from revit_model_mcp.revit_channel import ReadOnlyRefusedError
+
+    async def check():
+        connection = MagicMock()
+        connection.request = AsyncMock(return_value={"type": "error", "error": "read_only"})
+        parent = MagicMock()
+        parent.connection = AsyncMock(return_value=connection)
+        remote = PipeJobHost(parent, {"processId": PID}, connection)
+        connection.hello = {"addinVersion": package_version(), "commands": ["select", "ping"]}
+        parent.select_job = AsyncMock(side_effect=lambda job: (remote, job))
+        assert await RevitChannel(remote).execute(Job("select", {"command": "select"})) == {
+            "success": False,
+            "command": "select",
+            "error": "read-only mode",
+            "errorCode": "read_only",
+        }
+        with pytest.raises(ReadOnlyRefusedError, match="workstation is in read-only mode"):
+            await RevitChannel(remote).execute(Job.ping())
+        for method in (remote.fetch_job, remote.cancel_job):
+            with pytest.raises(ReadOnlyRefusedError, match="workstation is in read-only mode"):
+                await method("a" * 32)
+
+    asyncio.run(check())

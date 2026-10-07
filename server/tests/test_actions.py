@@ -1246,7 +1246,7 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
         "targetProcessId": 42,
         "targetDocument": document,
     }
-    assert result == response
+    assert result == (response if error is None else {**response, "errorCode": "action_failed"})
 
 
 def test_action_failure_preserves_gate_message_view_and_suggestions():
@@ -1257,14 +1257,20 @@ def test_action_failure_preserves_gate_message_view_and_suggestions():
         "activeView": "Level 1",
         "data": {"closestFamilies": ["Office Desk (Furniture)"]},
     }
-    assert parse_response(json.dumps(response), "place-family") == response
+    assert parse_response(json.dumps(response), "place-family") == {
+        **response,
+        "errorCode": "action_failed",
+    }
     response = {
         "command": "move",
         "success": False,
         "error": "actions disabled on the workstation",
         "activeView": "Level 1",
     }
-    assert parse_response(json.dumps(response), "move") == response
+    assert parse_response(json.dumps(response), "move") == {
+        **response,
+        "errorCode": "action_failed",
+    }
 
 
 @pytest.mark.parametrize("view_opened", [True, False])
@@ -1280,7 +1286,9 @@ def test_show_response_preserves_view_opened_and_dialogs(view_opened, success):
     }
     if not success:
         response["error"] = "Show failed after opening view"
-    assert parse_response(json.dumps(response), "show") == response
+    assert parse_response(json.dumps(response), "show") == (
+        response if success else {**response, "errorCode": "action_failed"}
+    )
 
 
 @pytest.mark.parametrize(
@@ -1953,3 +1961,26 @@ def test_confirmation_tools_describe_confirm_token():
         assert "confirm_token" in tools[name], name
     assert "confirmation token" in tools["revit_process_models"]
     assert 'transaction="none" is refused' in tools["revit_execute_code"]
+
+
+@pytest.mark.parametrize(
+    "name,arguments,command",
+    [
+        ("revit_select", {"element_ids": [1]}, "select"),
+        ("revit_cancel_job", {"job_id": "a" * 32}, "jobs"),
+    ],
+)
+def test_read_only_action_result_has_error_code(name, arguments, command):
+    import asyncio
+
+    server, execute, host = action_server(read_only=True)
+    result = asyncio.run(server.call_tool(name, arguments))
+    assert result.is_error is False
+    assert result.structured_content == {
+        "success": False,
+        "command": command,
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    execute.assert_not_awaited()
+    host.list_revit_instances.assert_not_awaited()

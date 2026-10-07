@@ -1,0 +1,5629 @@
+{
+  "revit_activate_document": {
+    "properties": {
+      "document": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "document"
+    ],
+    "type": "object"
+  },
+  "revit_activate_view": {
+    "properties": {
+      "activate_document": {
+        "default": false,
+        "type": "boolean"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "view_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "zoom": {
+        "anyOf": [
+          {
+            "enum": [
+              "fit",
+              "none"
+            ],
+            "type": "string"
+          },
+          {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9223372036854775807,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        ],
+        "default": "fit"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_aggregate_elements": {
+    "properties": {
+      "area_scheme": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "categories": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "family": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "group_by": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "level": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "parameter_filters": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "phase": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "sum_field": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "type_name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "workset": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "group_by"
+    ],
+    "type": "object"
+  },
+  "revit_align_link_datums": {
+    "properties": {
+      "create_missing": {
+        "default": true,
+        "type": "boolean"
+      },
+      "create_plan_views": {
+        "default": false,
+        "type": "boolean"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "grid_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_pinned": {
+        "default": false,
+        "type": "boolean"
+      },
+      "kinds": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "level_offset_mm": {
+        "default": 0,
+        "type": "number"
+      },
+      "level_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "link": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "name_map": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "plan_view_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "prefix": {
+        "default": "",
+        "type": "string"
+      },
+      "reuse_matching": {
+        "default": true,
+        "type": "boolean"
+      },
+      "suffix": {
+        "default": "",
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "tolerance_mm": {
+        "default": 0.5,
+        "exclusiveMinimum": 0,
+        "type": "number"
+      }
+    },
+    "required": [
+      "link"
+    ],
+    "type": "object"
+  },
+  "revit_apply_view_template": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "template": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "views": {
+        "items": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "template",
+      "views"
+    ],
+    "type": "object"
+  },
+  "revit_batch_cancel": {
+    "properties": {
+      "run_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "type": "object"
+  },
+  "revit_batch_fetch": {
+    "properties": {
+      "output_dir": {
+        "type": "string"
+      },
+      "run_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "output_dir",
+      "run_id"
+    ],
+    "type": "object"
+  },
+  "revit_batch_start": {
+    "properties": {
+      "folder": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "open_timeout_minutes": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "parameter_rules": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "paths": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "recursive": {
+        "default": false,
+        "type": "boolean"
+      },
+      "years": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_batch_status": {
+    "properties": {
+      "run_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "type": "object"
+  },
+  "revit_build_report": {
+    "properties": {
+      "findings": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "output_path": {
+        "type": "string"
+      },
+      "previous_dir": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "snapshots_dir": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "output_path",
+      "snapshots_dir"
+    ],
+    "type": "object"
+  },
+  "revit_cancel_job": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "job_id": {
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "job_id"
+    ],
+    "type": "object"
+  },
+  "revit_capture_elements": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "element_ids": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "mode": {
+        "default": "3d",
+        "type": "string"
+      },
+      "output_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "padding_mm": {
+        "default": 1500,
+        "type": "number"
+      },
+      "pixel_size": {
+        "default": 1600,
+        "maximum": 4000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_change_type": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "family": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "type_name": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      }
+    },
+    "required": [
+      "element_ids",
+      "type_name"
+    ],
+    "type": "object"
+  },
+  "revit_close_document": {
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "save": {
+        "default": false,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "document"
+    ],
+    "type": "object"
+  },
+  "revit_close_views": {
+    "properties": {
+      "keep_active": {
+        "default": true,
+        "type": "boolean"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "views": {
+        "anyOf": [
+          {
+            "items": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_compare_link_datums": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "kinds": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "level_offset_mm": {
+        "default": 0,
+        "type": "number"
+      },
+      "link": {
+        "type": "string"
+      },
+      "name_map": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "prefix": {
+        "default": "",
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "reuse_matching": {
+        "default": true,
+        "type": "boolean"
+      },
+      "suffix": {
+        "default": "",
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "tolerance_mm": {
+        "default": 0.5,
+        "type": "number"
+      }
+    },
+    "required": [
+      "link"
+    ],
+    "type": "object"
+  },
+  "revit_copy": {
+    "properties": {
+      "count": {
+        "default": 1,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "dx_mm": {
+        "type": "number"
+      },
+      "dy_mm": {
+        "type": "number"
+      },
+      "dz_mm": {
+        "default": 0,
+        "type": "number"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "dx_mm",
+      "dy_mm",
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_create_mep_run": {
+    "properties": {
+      "connect_to": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "maximum": 9223372036854775807,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "diameter_mm": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "height_mm": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "kind": {
+        "enum": [
+          "duct",
+          "pipe",
+          "cable_tray",
+          "conduit"
+        ],
+        "type": "string"
+      },
+      "level": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "offset_mm": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "points_mm": {
+        "items": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 3,
+          "minItems": 2,
+          "type": "array"
+        },
+        "maxItems": 200,
+        "minItems": 2,
+        "type": "array"
+      },
+      "system_type": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "type_name": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "width_mm": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "kind",
+      "level",
+      "points_mm"
+    ],
+    "type": "object"
+  },
+  "revit_create_sheet": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "name": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "number": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "title_block": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "name",
+      "number"
+    ],
+    "type": "object"
+  },
+  "revit_create_view": {
+    "$defs": {
+      "ViewBox": {
+        "additionalProperties": false,
+        "properties": {
+          "max_mm": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          },
+          "min_mm": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "type": "array"
+          }
+        },
+        "required": [
+          "max_mm",
+          "min_mm"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "box": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ViewBox"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "detail_level": {
+        "anyOf": [
+          {
+            "enum": [
+              "coarse",
+              "medium",
+              "fine"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "display_style": {
+        "anyOf": [
+          {
+            "enum": [
+              "hidden_line",
+              "shaded",
+              "consistent_colors",
+              "realistic"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "anyOf": [
+          {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9223372036854775807,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "kind": {
+        "enum": [
+          "floor_plan",
+          "ceiling_plan",
+          "structural_plan",
+          "section",
+          "3d",
+          "drafting"
+        ],
+        "type": "string"
+      },
+      "level": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "name": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "scale": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "template": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view_family_type": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "kind"
+    ],
+    "type": "object"
+  },
+  "revit_create_wall": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "end_mm": {
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 2,
+        "minItems": 2,
+        "type": "array"
+      },
+      "height_mm": {
+        "default": 3000,
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "level": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "start_mm": {
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 2,
+        "minItems": 2,
+        "type": "array"
+      },
+      "wall_type": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "end_mm",
+      "level",
+      "start_mm",
+      "wall_type"
+    ],
+    "type": "object"
+  },
+  "revit_delete": {
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_document_info": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_documents": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_linked": {
+        "default": false,
+        "type": "boolean"
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_duplicate_view": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "mode": {
+        "default": "duplicate",
+        "enum": [
+          "duplicate",
+          "with_detailing",
+          "dependent"
+        ],
+        "type": "string"
+      },
+      "name": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_edit_families": {
+    "$defs": {
+      "AddSharedParameters": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "add_shared_parameters",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "$ref": "#/$defs/SharedParameter"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "replace_family_parameter": {
+            "default": false,
+            "type": "boolean"
+          },
+          "shared_parameter_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "op",
+          "parameters"
+        ],
+        "type": "object"
+      },
+      "Purge": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "purge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "op"
+        ],
+        "type": "object"
+      },
+      "RemoveParameters": {
+        "additionalProperties": false,
+        "properties": {
+          "include_shared": {
+            "default": false,
+            "type": "boolean"
+          },
+          "names": {
+            "items": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "op": {
+            "const": "remove_parameters",
+            "type": "string"
+          }
+        },
+        "required": [
+          "names",
+          "op"
+        ],
+        "type": "object"
+      },
+      "SetShared": {
+        "additionalProperties": false,
+        "properties": {
+          "op": {
+            "const": "set_shared",
+            "type": "string"
+          },
+          "shared": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "op",
+          "shared"
+        ],
+        "type": "object"
+      },
+      "SharedParameter": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "guid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "instance": {
+            "default": true,
+            "type": "boolean"
+          },
+          "name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group",
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "families": {
+        "anyOf": [
+          {
+            "items": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "operations": {
+        "items": {
+          "discriminator": {
+            "mapping": {
+              "add_shared_parameters": "#/$defs/AddSharedParameters",
+              "purge": "#/$defs/Purge",
+              "remove_parameters": "#/$defs/RemoveParameters",
+              "set_shared": "#/$defs/SetShared"
+            },
+            "propertyName": "op"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AddSharedParameters"
+            },
+            {
+              "$ref": "#/$defs/RemoveParameters"
+            },
+            {
+              "$ref": "#/$defs/Purge"
+            },
+            {
+              "$ref": "#/$defs/SetShared"
+            }
+          ]
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "overwrite_parameter_values": {
+        "default": false,
+        "type": "boolean"
+      },
+      "stop_on_error": {
+        "default": true,
+        "type": "boolean"
+      },
+      "timeout_seconds": {
+        "default": 1800,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "operations"
+    ],
+    "type": "object"
+  },
+  "revit_element_details": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "element_id": {
+        "type": "integer"
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "element_id"
+    ],
+    "type": "object"
+  },
+  "revit_execute_code": {
+    "properties": {
+      "code": {
+        "maxLength": 200000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "transaction": {
+        "default": "auto",
+        "enum": [
+          "auto",
+          "none"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "code"
+    ],
+    "type": "object"
+  },
+  "revit_export": {
+    "properties": {
+      "all_sheets": {
+        "default": false,
+        "type": "boolean"
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "format": {
+        "enum": [
+          "pdf",
+          "dwg",
+          "ifc",
+          "csv"
+        ],
+        "type": "string"
+      },
+      "options": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "output_dir": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "overwrite": {
+        "default": false,
+        "type": "boolean"
+      },
+      "sheet_set": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "sheets": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9223372036854775807,
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 1800,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "views": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9223372036854775807,
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "format"
+    ],
+    "type": "object"
+  },
+  "revit_export_nwc": {
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "convert_element_properties": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "convert_lights": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "convert_linked_cad_formats": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "coordinates": {
+        "anyOf": [
+          {
+            "enum": [
+              "shared",
+              "internal"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "divide_file_into_levels": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "anyOf": [
+          {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9223372036854775807,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "export_element_ids": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "export_links": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "export_parts": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "export_room_as_attribute": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "export_room_geometry": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "export_urls": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "faceting_factor": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "maximum": 100,
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "find_missing_materials": {
+        "anyOf": [
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "overwrite": {
+        "default": false,
+        "type": "boolean"
+      },
+      "parameters": {
+        "anyOf": [
+          {
+            "enum": [
+              "all",
+              "elements",
+              "none"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "path": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "scope": {
+        "anyOf": [
+          {
+            "enum": [
+              "model",
+              "view",
+              "selection"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "settings_xml": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 1800,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "view": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "exclusiveMinimum": 0,
+            "maximum": 9223372036854775807,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "type": "object"
+  },
+  "revit_export_view": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "output_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pixel_size": {
+        "default": 1600,
+        "maximum": 4000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_family_audit": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "families": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_isolate": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "reset": {
+        "default": false,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_issue_register": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "issues": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "output_path": {
+        "type": "string"
+      },
+      "pixel_size": {
+        "default": 900,
+        "maximum": 4000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "project": {
+        "additionalProperties": true,
+        "type": "object"
+      }
+    },
+    "required": [
+      "issues",
+      "output_path",
+      "project"
+    ],
+    "type": "object"
+  },
+  "revit_jobs": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "job_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "wait_seconds": {
+        "default": 40,
+        "maximum": 50,
+        "minimum": 0,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_link_cad": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "layers": {
+        "anyOf": [
+          {
+            "items": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "level": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "link": {
+        "default": true,
+        "type": "boolean"
+      },
+      "origin": {
+        "default": "internal",
+        "enum": [
+          "internal",
+          "shared",
+          "center"
+        ],
+        "type": "string"
+      },
+      "path": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "units": {
+        "default": "auto",
+        "enum": [
+          "auto",
+          "mm",
+          "cm",
+          "m",
+          "in",
+          "ft"
+        ],
+        "type": "string"
+      },
+      "view": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "exclusiveMinimum": 0,
+            "maximum": 9223372036854775807,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "type": "object"
+  },
+  "revit_links_status": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_list_catalog": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "section": {
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "section"
+    ],
+    "type": "object"
+  },
+  "revit_list_instances": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_list_relations": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "relation": {
+        "type": "string"
+      },
+      "source_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "source_name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "relation"
+    ],
+    "type": "object"
+  },
+  "revit_list_views": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "name_contains": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "view_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_list_warnings": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_elements": {
+        "default": false,
+        "type": "boolean"
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "warning_text": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_load_family": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "overwrite": {
+        "default": false,
+        "type": "boolean"
+      },
+      "overwrite_parameter_values": {
+        "default": false,
+        "type": "boolean"
+      },
+      "paths": {
+        "items": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "maxItems": 100,
+        "minItems": 1,
+        "type": "array"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "paths"
+    ],
+    "type": "object"
+  },
+  "revit_mirror": {
+    "properties": {
+      "axis": {
+        "enum": [
+          "x",
+          "y"
+        ],
+        "type": "string"
+      },
+      "copy": {
+        "default": true,
+        "type": "boolean"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "point_mm": {
+        "items": {
+          "type": "number"
+        },
+        "maxItems": 2,
+        "minItems": 2,
+        "type": "array"
+      }
+    },
+    "required": [
+      "axis",
+      "element_ids",
+      "point_mm"
+    ],
+    "type": "object"
+  },
+  "revit_model_health": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "output_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_model_snapshot": {
+    "$defs": {
+      "ParameterRule": {
+        "additionalProperties": false,
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "parameter": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "parameter"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "parameter_rules": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ParameterRule"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_move": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "dx_mm": {
+        "type": "number"
+      },
+      "dy_mm": {
+        "type": "number"
+      },
+      "dz_mm": {
+        "default": 0,
+        "type": "number"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "dx_mm",
+      "dy_mm",
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_new_document": {
+    "properties": {
+      "activate": {
+        "default": true,
+        "type": "boolean"
+      },
+      "kind": {
+        "default": "project",
+        "enum": [
+          "project",
+          "family"
+        ],
+        "type": "string"
+      },
+      "name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "save_as": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "template": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_nwc_settings_check": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "settings_xml": {
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "settings_xml"
+    ],
+    "type": "object"
+  },
+  "revit_open_document": {
+    "properties": {
+      "activate": {
+        "default": false,
+        "type": "boolean"
+      },
+      "audit": {
+        "default": false,
+        "type": "boolean"
+      },
+      "mode": {
+        "default": "detached",
+        "enum": [
+          "detached",
+          "detached_discard_worksets",
+          "local_copy",
+          "read_only_local"
+        ],
+        "type": "string"
+      },
+      "path": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "worksets": {
+        "anyOf": [
+          {
+            "enum": [
+              "all",
+              "none"
+            ],
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "items": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          }
+        ],
+        "default": "all"
+      }
+    },
+    "required": [
+      "path"
+    ],
+    "type": "object"
+  },
+  "revit_override_graphics": {
+    "properties": {
+      "color": {
+        "default": "#FF0000",
+        "pattern": "^#[0-9A-Fa-f]{6}$",
+        "type": "string"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "fill": {
+        "default": true,
+        "type": "boolean"
+      },
+      "halftone_others": {
+        "default": false,
+        "type": "boolean"
+      },
+      "line_weight": {
+        "anyOf": [
+          {
+            "maximum": 16,
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "reset": {
+        "default": false,
+        "type": "boolean"
+      },
+      "transparency": {
+        "default": 0,
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "views": {
+        "anyOf": [
+          {
+            "enum": [
+              "active",
+              "all"
+            ],
+            "type": "string"
+          },
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "type": "string"
+                },
+                {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9223372036854775807,
+                  "type": "integer"
+                }
+              ]
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        ],
+        "default": "active"
+      }
+    },
+    "required": [
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_parameter_fill_check": {
+    "properties": {
+      "categories": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 20,
+        "minItems": 1,
+        "type": "array"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_types": {
+        "default": true,
+        "type": "boolean"
+      },
+      "level": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "parameters": {
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 30,
+        "minItems": 1,
+        "type": "array"
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "sample_limit": {
+        "default": 20,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "view": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "workset": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "categories",
+      "parameters"
+    ],
+    "type": "object"
+  },
+  "revit_ping": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_place_families": {
+    "$defs": {
+      "FamilyPlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "host_id": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 9223372036854775807,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "level": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "\\S": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "propertyNames": {
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "rotation_deg": {
+            "default": 0,
+            "type": "number"
+          },
+          "type_name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "x_mm": {
+            "type": "number"
+          },
+          "y_mm": {
+            "type": "number"
+          },
+          "z_mm": {
+            "default": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "family",
+          "level",
+          "type_name",
+          "x_mm",
+          "y_mm"
+        ],
+        "type": "object"
+      },
+      "RoomPlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "parameters": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "\\S": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  }
+                },
+                "propertyNames": {
+                  "minLength": 1
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "rooms": {
+            "anyOf": [
+              {
+                "items": {
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "rotation_deg": {
+            "default": 0,
+            "type": "number"
+          },
+          "type_name": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "z_mm": {
+            "default": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "family",
+          "type_name"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "at_rooms": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RoomPlacement"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "load": {
+        "anyOf": [
+          {
+            "items": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "placements": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/FamilyPlacement"
+            },
+            "maxItems": 2000,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "stop_on_error": {
+        "default": true,
+        "type": "boolean"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_place_family": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "family": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "level": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "rotation_deg": {
+        "default": 0,
+        "type": "number"
+      },
+      "type_name": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "x_mm": {
+        "type": "number"
+      },
+      "y_mm": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "family",
+      "level",
+      "type_name",
+      "x_mm",
+      "y_mm"
+    ],
+    "type": "object"
+  },
+  "revit_place_views_on_sheet": {
+    "$defs": {
+      "SheetPlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "view": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "x_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "y_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "view"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "sheet": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "views": {
+        "items": {
+          "$ref": "#/$defs/SheetPlacement"
+        },
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "sheet",
+      "views"
+    ],
+    "type": "object"
+  },
+  "revit_process_models": {
+    "$defs": {
+      "ActionStep": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "move",
+              "rotate",
+              "copy",
+              "mirror",
+              "change_type",
+              "update_parameters",
+              "place_family",
+              "load_family",
+              "create_wall",
+              "create_mep_run",
+              "set_parameter",
+              "delete",
+              "select",
+              "isolate",
+              "create_view",
+              "duplicate_view",
+              "apply_view_template",
+              "create_sheet",
+              "override_graphics"
+            ],
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "action",
+          "args"
+        ],
+        "type": "object"
+      },
+      "ProcessCode": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 200000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "transaction": {
+            "default": "auto",
+            "enum": [
+              "auto",
+              "none"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "ProcessExport": {
+        "additionalProperties": false,
+        "properties": {
+          "all_sheets": {
+            "default": false,
+            "type": "boolean"
+          },
+          "format": {
+            "enum": [
+              "pdf",
+              "dwg",
+              "ifc",
+              "csv"
+            ],
+            "type": "string"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "output_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "overwrite": {
+            "default": false,
+            "type": "boolean"
+          },
+          "sheet_set": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "sheets": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9223372036854775807,
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "views": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9223372036854775807,
+                      "type": "integer"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "type": "object"
+      },
+      "ProcessOpen": {
+        "additionalProperties": false,
+        "properties": {
+          "audit": {
+            "default": false,
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "detached",
+            "enum": [
+              "detached",
+              "detached_discard_worksets",
+              "local_copy",
+              "read_only_local"
+            ],
+            "type": "string"
+          },
+          "worksets": {
+            "anyOf": [
+              {
+                "enum": [
+                  "all",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "additionalProperties": {
+                  "items": {
+                    "minLength": 1,
+                    "pattern": "\\S",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              }
+            ],
+            "default": "all"
+          }
+        },
+        "type": "object"
+      },
+      "ProcessSave": {
+        "additionalProperties": false,
+        "properties": {
+          "compact": {
+            "default": true,
+            "type": "boolean"
+          },
+          "mode": {
+            "default": "none",
+            "enum": [
+              "none",
+              "output_dir",
+              "in_place"
+            ],
+            "type": "string"
+          },
+          "output_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "overwrite": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    },
+    "properties": {
+      "code": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ProcessCode"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "exports": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ProcessExport"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "folder": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "open": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ProcessOpen"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "paths": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pattern": {
+        "default": "*.rvt",
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "recursive": {
+        "default": false,
+        "type": "boolean"
+      },
+      "save": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ProcessSave"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "steps": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ActionStep"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "stop_on_error": {
+        "default": false,
+        "type": "boolean"
+      },
+      "timeout_seconds": {
+        "default": 14400,
+        "maximum": 14400,
+        "minimum": 30,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_query_elements": {
+    "properties": {
+      "area_scheme": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "categories": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "family": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "fields": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_geometry": {
+        "default": false,
+        "type": "boolean"
+      },
+      "level": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "limit": {
+        "default": 100,
+        "type": "integer"
+      },
+      "offset": {
+        "default": 0,
+        "type": "integer"
+      },
+      "parameter_filters": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "phase": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "sort_direction": {
+        "default": "asc",
+        "type": "string"
+      },
+      "sort_field": {
+        "default": "id",
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "type_name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "workset": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_remove_links": {
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "include_imported_cad": {
+        "default": false,
+        "type": "boolean"
+      },
+      "kinds": {
+        "anyOf": [
+          {
+            "items": {
+              "enum": [
+                "revit",
+                "cad",
+                "point_cloud",
+                "image"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "links": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "const": "*",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "required": [
+      "links"
+    ],
+    "type": "object"
+  },
+  "revit_rotate": {
+    "properties": {
+      "angle_deg": {
+        "type": "number"
+      },
+      "center_mm": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "angle_deg",
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_run_actions": {
+    "$defs": {
+      "ActionStep": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "move",
+              "rotate",
+              "copy",
+              "mirror",
+              "change_type",
+              "update_parameters",
+              "place_family",
+              "load_family",
+              "create_wall",
+              "create_mep_run",
+              "set_parameter",
+              "delete",
+              "select",
+              "isolate",
+              "create_view",
+              "duplicate_view",
+              "apply_view_template",
+              "create_sheet",
+              "override_graphics"
+            ],
+            "type": "string"
+          },
+          "args": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "action",
+          "args"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "steps": {
+        "items": {
+          "$ref": "#/$defs/ActionStep"
+        },
+        "maxItems": 50,
+        "minItems": 1,
+        "type": "array"
+      }
+    },
+    "required": [
+      "steps"
+    ],
+    "type": "object"
+  },
+  "revit_save_document": {
+    "properties": {
+      "compact": {
+        "default": false,
+        "type": "boolean"
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "overwrite": {
+        "default": false,
+        "type": "boolean"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "save_as": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "document"
+    ],
+    "type": "object"
+  },
+  "revit_schedule_data": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "max_rows": {
+        "default": 500,
+        "maximum": 5000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "offset": {
+        "default": 0,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "schedule": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "schedule"
+    ],
+    "type": "object"
+  },
+  "revit_select": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_set_parameter": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_id": {
+        "exclusiveMinimum": 0,
+        "maximum": 9223372036854775807,
+        "type": "integer"
+      },
+      "parameter": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "parameter_id": {
+        "anyOf": [
+          {
+            "pattern": "^(?:[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+|[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}|0*[1-9][0-9]*)$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      }
+    },
+    "required": [
+      "element_id",
+      "parameter",
+      "value"
+    ],
+    "type": "object"
+  },
+  "revit_set_view_visibility": {
+    "properties": {
+      "category_classes": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "filters": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "hide_categories": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "hide_categories_by_type": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "show_categories": {
+        "anyOf": [
+          {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "template_mode": {
+        "anyOf": [
+          {
+            "enum": [
+              "detach",
+              "edit_template",
+              "duplicate_view"
+            ],
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "worksets": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_shared_coordinates": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "type": "object"
+  },
+  "revit_show": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "element_ids": {
+        "items": {
+          "exclusiveMinimum": 0,
+          "maximum": 9223372036854775807,
+          "type": "integer"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "select": {
+        "default": true,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "element_ids"
+    ],
+    "type": "object"
+  },
+  "revit_sync_document": {
+    "properties": {
+      "comment": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "compact": {
+        "default": false,
+        "type": "boolean"
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "relinquish": {
+        "anyOf": [
+          {
+            "enum": [
+              "all",
+              "none"
+            ],
+            "type": "string"
+          },
+          {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object"
+          }
+        ],
+        "default": "all"
+      },
+      "save_local_after": {
+        "default": true,
+        "type": "boolean"
+      },
+      "save_local_before": {
+        "default": true,
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "comment",
+      "document"
+    ],
+    "type": "object"
+  },
+  "revit_ui_state": {
+    "properties": {
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_undo_last": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
+  "revit_update_parameters": {
+    "$defs": {
+      "UpdateFilters": {
+        "additionalProperties": false,
+        "properties": {
+          "area_scheme": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "family": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "parameter_filters": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "type_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "view": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "workset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      }
+    },
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "filters": {
+        "$ref": "#/$defs/UpdateFilters"
+      },
+      "include_type_parameters": {
+        "default": false,
+        "type": "boolean"
+      },
+      "max_elements": {
+        "default": 5000,
+        "maximum": 20000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "parameter": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "parameter_id": {
+        "anyOf": [
+          {
+            "pattern": "^(?:[A-Za-z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+|[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}|0*[1-9][0-9]*)$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      }
+    },
+    "required": [
+      "filters",
+      "parameter",
+      "value"
+    ],
+    "type": "object"
+  },
+  "revit_view_elements": {
+    "properties": {
+      "categories": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "limit": {
+        "default": 100,
+        "type": "integer"
+      },
+      "offset": {
+        "default": 0,
+        "type": "integer"
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "view": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_view_info": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "view": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_view_summary": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "view": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_view_warnings": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "pickup_timeout_seconds": {
+        "default": 300,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      },
+      "view": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "view"
+    ],
+    "type": "object"
+  },
+  "revit_walls_from_cad": {
+    "properties": {
+      "cad_id": {
+        "exclusiveMinimum": 0,
+        "maximum": 9223372036854775807,
+        "type": "integer"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "height_mm": {
+        "default": 3000,
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "join": {
+        "default": true,
+        "type": "boolean"
+      },
+      "layers": {
+        "items": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "minItems": 1,
+        "type": "array"
+      },
+      "level": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "max_gap_mm": {
+        "default": 3000,
+        "minimum": 0,
+        "type": "number"
+      },
+      "max_thickness_mm": {
+        "default": 700,
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "min_length_mm": {
+        "default": 300,
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "min_thickness_mm": {
+        "default": 80,
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "wall_type": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "cad_id",
+      "layers",
+      "level"
+    ],
+    "type": "object"
+  }
+}

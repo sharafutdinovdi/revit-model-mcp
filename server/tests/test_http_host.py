@@ -820,3 +820,17 @@ def test_addin_self_probe_is_independent_of_shutdown_drain():
     assert probe.count("_closing") == 2
     dispose = source.split("public void Dispose()", 1)[1]
     assert dispose.index("_closing = true") < dispose.index("_gate.Close()")
+
+
+def test_http_read_only_action_returns_refusal(endpoint):
+    host, state = endpoint
+    state["status"] = 403
+    assert asyncio.run(RevitChannel(host).execute(Job("select", {"command": "select"}))) == {
+        "success": False,
+        "command": "select",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    assert any(
+        method == "POST" and path.startswith("/jobs") for method, path, _ in state["requests"]
+    )

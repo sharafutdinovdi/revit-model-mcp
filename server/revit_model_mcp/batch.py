@@ -14,8 +14,14 @@ from mcp.types import ToolAnnotations
 
 from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
-from revit_model_mcp.revit_channel import Job, RevitChannelError, resolve_instance
-from revit_model_mcp.ssh_host import SshPowerShellHost
+from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
+from revit_model_mcp.revit_channel import (
+    Job,
+    ReadOnlyRefusedError,
+    RevitChannelError,
+    resolve_instance,
+)
+from revit_model_mcp.ssh_host import RemoteCommandError, SshPowerShellHost
 
 BATCH_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False)
 RUN_ID = re.compile(r"[0-9a-f]{32}\Z")
@@ -166,7 +172,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         open_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory).
         """
         if read_only:
-            return {"success": False, "command": "batch-start", "error": "read-only mode"}
+            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         if (paths is None) == (folder is None):
             raise ToolError("Supply exactly one of paths or folder.")
         if folder is not None and (not isinstance(folder, str) or not folder.strip()):
@@ -217,13 +223,13 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                     },
                 )
             )
+            if result.get("success") is False:
+                return redact_model_paths(with_error_code({**result, "command": "batch-start"}))
             if result.get("success") is not True:
-                raise ToolError(
-                    redact_model_paths(
-                        {"error": str(result.get("error", "Supervisor launch failed."))}
-                    )["error"]
-                )
+                raise ToolError("Supervisor launch failed.")
             return {"runId": run_id, "acceptedModels": len(selected_paths)}
+        except ReadOnlyRefusedError:
+            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         except RevitChannelError as error:
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
@@ -247,13 +253,18 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     async def revit_batch_cancel(run_id: str) -> dict[str, Any]:
         """Persist cancellation and prevent unstarted models from running."""
         if read_only:
-            return {"success": False, "command": "batch-cancel", "error": "read-only mode"}
+            return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
         try:
             run_id = _run_id(run_id)
             file_host = _file_host(host_provider())
             await file_host.batch_cancel(run_id)
             return _public(await file_host.batch_status(run_id))
+        except ReadOnlyRefusedError:
+            return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
         except RevitChannelError as error:
+            # File-channel cancellation reports the gate through PowerShell stderr.
+            if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):
+                return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
     @mcp.tool(
