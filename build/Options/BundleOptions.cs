@@ -23,4 +23,9 @@ public sealed record BundleOptions
     ///     The vendor email address.
     /// </summary>
     public string? VendorEmail { get; init; }
+
+    /// <summary>
+    ///     The constant upgrade code GUID, in braces, shared by every version of the package.
+    /// </summary>
+    [Required] public string? UpgradeCode { get; init; }
 }

@@ -469,6 +469,21 @@ jobs:
             dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
           }
+      - name: Build and validate Autodesk bundle
+        shell: pwsh
+        env:
+          Build__Version: 0.0.0-ci
+        run: |
+          dotnet run --no-restore --project build -- bundle
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle build failed' }
+          python build/validate_bundle.py output/RevitModelMcp.bundle.zip --years 2022-2027
+          if ($LASTEXITCODE -ne 0) { throw 'Bundle validation failed' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: revit-model-mcp-bundle
+          retention-days: 90
+          path: output/RevitModelMcp.bundle.zip
+          if-no-files-found: error
       - name: Build Python package
         working-directory: server
         run: |
