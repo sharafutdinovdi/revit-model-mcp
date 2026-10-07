@@ -49,7 +49,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_batch_status` | `run_id` | Read persisted run and model status. |
 | `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
 | `revit_batch_fetch` | `run_id`, `dest_dir` | Copy completed JSON snapshots to new local files. |
-| `revit_compare_link_datums` | `link`, `kinds=["grids","levels"]`, `name_map={}`, `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
+| `revit_compare_link_datums` | `link`, `kinds=null` (grids and levels), `name_map=null` (no renames), `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 | `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. |
 | `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
 ### Snapshot report
@@ -119,7 +119,7 @@ Unavailable geometry is omitted.
 Long actions may return `status:"running"`, `jobId`, progress, and partial per-model results.
 Call `revit_jobs(job_id=jobId, wait_s=40)` until the original final action response is returned.
 The action may already have changed the model; do not resubmit it while it runs.
-Results remain available for 24 hours across MCP server restarts.
+Action results remain available for 24 hours across MCP server restarts; see [result retention](transport.md#result-retention).
 See [long action jobs](actions.md#long-action-jobs) for cancellation and retention.
 
 ### Issue register
