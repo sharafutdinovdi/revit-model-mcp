@@ -34,9 +34,9 @@ Verify downloads with `SHA256SUMS.txt` and the build provenance attestation; see
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on the client's PATH, download `revit-model-mcp-<version>.mcpb` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest), and open it in Claude Desktop.
 The bundle starts from the local uv cache. The server checks for a newer stable release in the background once per day.
 The next client start uses the refreshed version. Set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
-The settings form configures the workstation host, path redaction, optional actions and the HTTP bearer token without editing JSON.
+The settings form configures the workstation host, path redaction, read-only mode and the HTTP bearer token without editing JSON.
 Use `local` on the Windows Revit workstation, or [configure a remote workstation](#remote-workstations) for macOS and Linux clients.
-Path redaction starts enabled and actions start disabled.
+Path redaction starts enabled and actions start enabled. Check "Read-only mode" to refuse actions.
 The Windows workstation still needs the add-in below.
 See the [bundle guide](bundle/README.md) for build details and prerequisites.
 
