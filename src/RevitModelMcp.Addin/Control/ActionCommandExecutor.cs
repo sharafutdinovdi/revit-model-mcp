@@ -880,6 +880,25 @@ internal static class ActionCommandExecutor
                 data.Verification.Before = before;
                 if (command == "delete")
                     before!.Dependents = data.Verification.Changed!.Except(before.Requested!).ToList();
+                if (command == "delete" && !action.DryRun && DeletionPolicy.RequiresConfirmation(data.Verification.Changed!.Count))
+                {
+                    var deletedCount = data.Verification.Changed.Count;
+                    if (!wrapGroup) throw new InvalidOperationException(DeletionPolicy.BatchRefusal(deletedCount));
+                    var identity = DocumentConfirmationBinding.Identity(document.PathName, document.Title);
+                    var deleteArguments = DocumentConfirmationBinding.DeleteArguments(before!.Requested!, deletedCount);
+                    const string changedMessage = "The document changed after the preview. The confirmation token is used up; repeat the call without confirm_token to get a new one.";
+                    if (action.ConfirmToken is null)
+                    {
+                        if (transaction.RollBack() != TransactionStatus.RolledBack)
+                            throw new InvalidOperationException(failures.Message ?? "Could not roll back the deletion preview.");
+                        group?.RollBack();
+                        return ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document), null,
+                            $"Delete {deletedCount} elements ({before.Requested!.Count} requested, {before.Dependents!.Count} dependents) from {document.Title}. One undo entry restores them.",
+                            $"Needs confirmation to delete {deletedCount} elements from {document.Title}.", changedMessage)!;
+                    }
+                    ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document),
+                        action.ConfirmToken, string.Empty, string.Empty, changedMessage);
+                }
                 document.Regenerate();
                 ActionVerifier.CaptureAfter(document, command, action, data);
                 CaptureViewSheetAfter(document, command, action, data);
