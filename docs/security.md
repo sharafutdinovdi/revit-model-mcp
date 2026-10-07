@@ -10,8 +10,10 @@ described in [actions](actions.md).
 `revit_export_nwc` may write to a drive path or a UNC path on a trusted share unless read-only mode is active. It never transfers the NWC file to the client; logging omits the export path.
 UNC shares are denied by default for export, save, open, shared parameter files and NWC settings XML. Add approved `\\server\share` roots to the `trustedNetworkRoots` string array in `%LOCALAPPDATA%\RevitModelMcp\settings.json` and restart Revit; mapped drives remain allowed as drive paths.
 `RSN://` paths use Revit Server and are not restricted by `trustedNetworkRoots`.
-The default surface covers ping, active document information, the open document list, instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
+The default read surface covers ping, active document information, the open document list, instance information, catalogs, element queries and aggregates, views and their elements, element parameters, warnings, relations, PNG view export and the four coordinator tools for model health, links, shared coordinates and parameter fill.
 The [command executor](../src/RevitModelMcp.Addin/Control/ReadCommandExecutor.cs) and readers open no Revit transactions and expose no element creation, deletion, parameter setters or model save operations.
+Action tools are a separate surface. They create, change, delete, save, sync, close and export, and they are enabled by default unless read-only mode is on.
+Irreversible or file-overwriting calls need a [confirmation token](actions.md#confirmation-tokens-for-irreversible-actions).
 View export calls `Document.ExportImage` and writes an image file.
 Channel jobs, responses, heartbeats and diagnostic logs also write files outside the model.
 
