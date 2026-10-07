@@ -41,6 +41,10 @@ CONFIRMATION = {
         "conditional",
         "overwrite=true and the target file already exists.",
     ),
+    "revit_delete": (
+        "conditional",
+        "A real deletion of more than 500 elements, dependents included.",
+    ),
     "revit_process_models": (
         "conditional",
         "In-place saves, and code without dry_run.",

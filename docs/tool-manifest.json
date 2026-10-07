@@ -118,7 +118,7 @@
     },
     {
       "name": "revit_ui_state",
-      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
+      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, use process_id to choose one; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100.",
       "access": "read_only",
       "annotations": {
         "readOnlyHint": true,
@@ -1200,7 +1200,7 @@
     },
     {
       "name": "revit_delete",
-      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
+      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nDeletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_batch, a deletion above 500 elements is refused.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.",
       "access": "modifying",
       "annotations": {
         "readOnlyHint": false,
@@ -1209,7 +1209,9 @@
       },
       "irreversible": false,
       "confirmation": {
-        "required": "never"
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "A real deletion of more than 500 elements, dependents included."
       },
       "fileSystem": {
         "access": "none"
