@@ -39,9 +39,9 @@ from revit_model_mcp.revit_channel import (
     DEFAULT_HOST,
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
-    ReadJob,
+    Job,
+    RevitChannel,
     RevitChannelError,
-    RevitReadChannel,
     with_client_identity,
 )
 from revit_model_mcp.snapshot_report import build_report
@@ -65,7 +65,7 @@ def create_host(
 
 
 host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
-channel = RevitReadChannel(host)
+channel = RevitChannel(host)
 
 ISSUE_CAPTURE_BUDGET_SECONDS = 210
 HEALTH_CAPTURE_BUDGET_SECONDS = 60
@@ -255,7 +255,7 @@ class ParameterRule(BaseModel):
 
 
 mcp = MCPServer(
-    "Revit Model Reader",
+    "Revit Model MCP",
     version=package_version(),
     instructions=(
         "Actions are enabled by default: every change runs inside a single named Revit undo entry, is "
@@ -384,7 +384,7 @@ def batch_audit(
 
 
 async def _execute(
-    job: ReadJob,
+    job: Job,
     timeout_seconds: int,
     pickup_timeout_seconds: int,
     document: str | None,
@@ -493,9 +493,9 @@ async def revit_jobs(
     Results remain on the workstation for 24 hours, across MCP server restarts.
     Supply cancel_job_id for legacy cancellation of this server's own queued jobs.
     """
-    job = ReadJob.jobs(cancel_job_id)
+    job = Job.jobs(cancel_job_id)
     if job_id is not None:
-        job = ReadJob("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_s})
+        job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_s})
     return await _execute(job, timeout_seconds, pickup_timeout_seconds, document)
 
 
@@ -518,7 +518,7 @@ async def revit_compare_link_datums(
     A geometric match does not create a monitor relationship or later Coordination Review warnings.
     """
     return await _execute(
-        ReadJob(
+        Job(
             "compare-link-datums",
             {
                 "command": "compare-link-datums",
@@ -550,7 +550,7 @@ async def revit_ping(
     Includes httpListener state and reason when reported by the instance heartbeat.
     Connection failures and timeouts raise errors; no partial result is returned.
     """
-    return await _execute(ReadJob.ping(), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(Job.ping(), timeout_seconds, pickup_timeout_seconds, document)
 
 
 @addressed_tool
@@ -562,9 +562,7 @@ async def revit_nwc_settings_check(
 ) -> dict[str, Any]:
     """Parse a Navisworks exporter XML file on the Revit workstation without exporting."""
     return await _execute(
-        ReadJob(
-            "nwc-settings-check", {"command": "nwc-settings-check", "settingsXml": settings_xml}
-        ),
+        Job("nwc-settings-check", {"command": "nwc-settings-check", "settingsXml": settings_xml}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -584,9 +582,7 @@ async def revit_document_info(
     Call revit_list_views next for view analysis.
     A missing active document, read failure or timeout raises an error; partial data is not returned.
     """
-    return await _execute(
-        ReadJob.document_info(), timeout_seconds, pickup_timeout_seconds, document
-    )
+    return await _execute(Job.document_info(), timeout_seconds, pickup_timeout_seconds, document)
 
 
 @addressed_tool
@@ -603,7 +599,7 @@ async def revit_documents(
     when available. An empty process returns [].
     """
     return await _execute(
-        ReadJob("documents", {"command": "documents", "includeLinked": include_linked}),
+        Job("documents", {"command": "documents", "includeLinked": include_linked}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -614,7 +610,7 @@ async def revit_documents(
 async def revit_ui_state() -> dict[str, Any]:
     """Read the active document, open views, selection and open documents."""
     return await _execute(
-        ReadJob("ui-state", {"command": "ui-state"}),
+        Job("ui-state", {"command": "ui-state"}),
         DEFAULT_TIMEOUT_SECONDS,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         None,
@@ -634,7 +630,7 @@ async def revit_model_snapshot(
     at most 200 affected element IDs. Closed worksets can make the result incomplete.
     """
     return await _execute(
-        ReadJob(
+        Job(
             "model-snapshot",
             {
                 "command": "model-snapshot",
@@ -675,7 +671,7 @@ async def revit_model_health(
     except (OSError, ValueError) as error:
         raise ToolError(str(error)) from error
     health = await _execute(
-        ReadJob("model-health", {"command": "model-health"}),
+        Job("model-health", {"command": "model-health"}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -684,7 +680,7 @@ async def revit_model_health(
     if target is None:
         return health
     warning_result = await _execute(
-        ReadJob.list_warnings(None, True),
+        Job.list_warnings(None, True),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -710,7 +706,7 @@ async def revit_model_health(
                 try:
                     async with asyncio.timeout(remaining) as budget:
                         result = await _execute(
-                            ReadJob(
+                            Job(
                                 "capture-elements",
                                 {
                                     "command": "capture-elements",
@@ -762,7 +758,7 @@ async def revit_links_status(
     A missing active document, overall read failure or timeout raises an error; timeout partials are not returned.
     """
     return await _execute(
-        ReadJob("links-status", {"command": "links-status"}),
+        Job("links-status", {"command": "links-status"}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -782,7 +778,7 @@ async def revit_shared_coordinates(
     A missing active document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob("shared-coordinates", {"command": "shared-coordinates"}),
+        Job("shared-coordinates", {"command": "shared-coordinates"}),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -830,7 +826,7 @@ async def revit_parameter_fill_check(
     A missing document, invalid scope or timeout raises an error; partial data is not returned.
     """
     payload = dict(
-        ReadJob.query_elements(
+        Job.query_elements(
             categories=categories,
             level=level,
             workset=workset,
@@ -846,7 +842,7 @@ async def revit_parameter_fill_check(
         includeTypes=include_types,
     )
     return await _execute(
-        ReadJob("parameter-fill-check", payload),
+        Job("parameter-fill-check", payload),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -869,7 +865,7 @@ async def revit_list_catalog(
     An unknown section, missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document
+        Job.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document
     )
 
 
@@ -900,7 +896,7 @@ async def revit_aggregate_elements(
     A missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.aggregate_elements(
+        Job.aggregate_elements(
             group_by,
             sum_field,
             categories,
@@ -950,7 +946,7 @@ async def revit_query_elements(
     Invalid fields or filters, a missing document, read failure or timeout raise errors; partial data is not returned.
     """
     return await _execute(
-        ReadJob.query_elements(
+        Job.query_elements(
             categories,
             family,
             type_name,
@@ -989,7 +985,7 @@ async def revit_list_views(
     A missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.list_views(view_type, name_contains),
+        Job.list_views(view_type, name_contains),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -1004,9 +1000,7 @@ async def revit_view_info(
     document: Document = None,
 ) -> dict[str, Any]:
     """Inspect one view's template, display, categories, worksets, filters and links."""
-    return await _execute(
-        ReadJob.view_info(view), timeout_seconds, pickup_timeout_seconds, document
-    )
+    return await _execute(Job.view_info(view), timeout_seconds, pickup_timeout_seconds, document)
 
 
 @addressed_tool
@@ -1022,9 +1016,7 @@ async def revit_view_summary(
     Prefer this tool for view counts; select relevant categories before calling revit_view_elements for individual rows.
     A missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.
     """
-    return await _execute(
-        ReadJob.view_summary(view), timeout_seconds, pickup_timeout_seconds, document
-    )
+    return await _execute(Job.view_summary(view), timeout_seconds, pickup_timeout_seconds, document)
 
 
 @addressed_tool
@@ -1036,7 +1028,7 @@ async def revit_schedule_data(
 ) -> dict[str, Any]:
     """Read displayed schedule header and body cell text, with paging."""
     return await _execute(
-        ReadJob.schedule_data(schedule, max_rows, offset),
+        Job.schedule_data(schedule, max_rows, offset),
         DEFAULT_TIMEOUT_SECONDS,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
@@ -1061,7 +1053,7 @@ async def revit_capture_elements(
     try:
         validate_capture(element_ids, pixel_size, padding_mm, mode)
         result = await _execute(
-            ReadJob(
+            Job(
                 "capture-elements",
                 {
                     "command": "capture-elements",
@@ -1103,7 +1095,7 @@ async def revit_export_view(
     Uses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.
     """
     return await _execute(
-        ReadJob.export_view(view, pixel_size, save_to),
+        Job.export_view(view, pixel_size, save_to),
         DEFAULT_TIMEOUT_SECONDS,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
@@ -1128,7 +1120,7 @@ async def revit_view_elements(
     A missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.view_elements(view, categories, offset, limit),
+        Job.view_elements(view, categories, offset, limit),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -1151,7 +1143,7 @@ async def revit_element_details(
     An absent element or document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document
+        Job.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document
     )
 
 
@@ -1170,7 +1162,7 @@ async def revit_view_warnings(
     A missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.view_warnings(view), timeout_seconds, pickup_timeout_seconds, document
+        Job.view_warnings(view), timeout_seconds, pickup_timeout_seconds, document
     )
 
 
@@ -1190,7 +1182,7 @@ async def revit_list_warnings(
     A missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.list_warnings(warning_text, include_elements),
+        Job.list_warnings(warning_text, include_elements),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -1214,7 +1206,7 @@ async def revit_list_relations(
     An invalid relation, missing or wrong source, missing document, read failure or timeout raises an error; partial data is not returned.
     """
     return await _execute(
-        ReadJob.list_relations(relation, source_id, source_name),
+        Job.list_relations(relation, source_id, source_name),
         timeout_seconds,
         pickup_timeout_seconds,
         document,
@@ -1265,7 +1257,7 @@ async def revit_family_audit(
     if families is not None and "*" in families and families != ["*"]:
         raise ToolError("The '*' family selector must be alone.")
     return await _execute(
-        ReadJob("family-audit", {"command": "family-audit", "families": families}),
+        Job("family-audit", {"command": "family-audit", "families": families}),
         response_timeout_s,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
@@ -1353,7 +1345,7 @@ async def revit_issue_register(
                 try:
                     async with asyncio.timeout(remaining) as budget:
                         result = await _execute(
-                            ReadJob(
+                            Job(
                                 "capture-elements",
                                 {
                                     "command": "capture-elements",
@@ -1418,7 +1410,7 @@ def main() -> None:
     args = parser.parse_args()
     global host, channel
     host = create_host(args.host, args.token)
-    channel = RevitReadChannel(host)
+    channel = RevitChannel(host)
     if args.redact_paths:
         os.environ["REVIT_MCP_REDACT_PATHS"] = "1"
     check_for_updates()

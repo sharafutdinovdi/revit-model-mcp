@@ -20,9 +20,9 @@ from revit_model_mcp.actions import (
     register_actions,
 )
 from revit_model_mcp.revit_channel import (
+    Job,
     JobPickupStatus,
-    ReadJob,
-    RevitReadChannel,
+    RevitChannel,
     parse_response,
 )
 
@@ -1215,7 +1215,7 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
     import asyncio
 
     command = payload["command"]
-    job = ReadJob(command, {**payload, "targetProcessId": 42}).for_document(document)
+    job = Job(command, {**payload, "targetProcessId": 42}).for_document(document)
     response = {"command": command, "success": error is None, "activeView": "Model B Plan"}
     if error is None:
         response["data"] = {}
@@ -1229,7 +1229,7 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
     host.wait_for_new_response.return_value = "response_action.json"
     host.finish_job.return_value = (json.dumps(response), None)
 
-    result = asyncio.run(RevitReadChannel(host).execute(job))
+    result = asyncio.run(RevitChannel(host).execute(job))
 
     sent = json.loads(host.prepare_job.await_args.args[1])
     correlation_id = sent.pop("correlationId")

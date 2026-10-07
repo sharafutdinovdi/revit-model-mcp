@@ -20,7 +20,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.pipe_host import LocalPipeHost
-from revit_model_mcp.revit_channel import ReadJob, parse_response
+from revit_model_mcp.revit_channel import Job, parse_response
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -109,7 +109,7 @@ ACTION_TOOL_NAMES = {
 
 
 def test_schedule_data_maps_paging_to_read_job():
-    job = ReadJob.schedule_data("Doors", max_rows=25, offset=10)
+    job = Job.schedule_data("Doors", max_rows=25, offset=10)
     assert job.payload == {"command": "schedule-data", "view": "Doors", "limit": 25, "offset": 10}
 
 
@@ -347,7 +347,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 return_value={"latestKnownVersion": "0.7.0", "updateCheck": "disabled"},
             ),
         ):
-            result = await revit_server._execute(ReadJob.ping(), 120, 300, None)
+            result = await revit_server._execute(Job.ping(), 120, 300, None)
         self.assertEqual(result["serverVersion"], package_version())
         self.assertEqual(result["latestKnownVersion"], "0.7.0")
         self.assertEqual(result["updateCheck"], "disabled")
@@ -893,7 +893,7 @@ def test_client_name_comes_from_initialize_context():
 
     from mcp.server.mcpserver import Context
 
-    from revit_model_mcp.revit_channel import JobPickupStatus, RevitReadChannel
+    from revit_model_mcp.revit_channel import JobPickupStatus, RevitChannel
 
     class Host:
         async def select_job(self, job):
@@ -922,7 +922,7 @@ def test_client_name_comes_from_initialize_context():
         client_params=SimpleNamespace(client_info=SimpleNamespace(name="codex"))
     )
     context = Context(request_context=SimpleNamespace(session=session))
-    with patch.object(revit_server, "channel", RevitReadChannel(host)):
+    with patch.object(revit_server, "channel", RevitChannel(host)):
         asyncio.run(revit_server.mcp.call_tool("revit_ping", {}, context=context))
     assert host.payload["clientName"] == "codex"
     assert len(host.payload["clientId"]) == 32

@@ -20,15 +20,15 @@ import pytest
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     ActivationError,
+    Job,
     JobPickupStatus,
     JobPickupTimeoutError,
     PluginResponseError,
-    ReadJob,
     ResponseParseError,
     ResponseTimeoutError,
+    RevitChannel,
     RevitChannelError,
     RevitNotRunningError,
-    RevitReadChannel,
     SshUnavailableError,
     matches_document,
     parse_response,
@@ -148,31 +148,29 @@ class FakeRemoteHost:
         self.deleted_names.extend(names)
 
 
-class ReadJobTests(unittest.TestCase):
+class JobTests(unittest.TestCase):
     def test_forms_ping_job(self) -> None:
-        self.assertEqual(ReadJob.ping().payload, {"command": "ping"})
+        self.assertEqual(Job.ping().payload, {"command": "ping"})
 
     def test_forms_document_info_job(self) -> None:
-        self.assertEqual(ReadJob.document_info().payload, {"command": "document-info"})
+        self.assertEqual(Job.document_info().payload, {"command": "document-info"})
 
     def test_forms_list_views_job_with_optional_filters(self) -> None:
         self.assertEqual(
-            ReadJob.list_views(" FloorPlan ", " Plan ").payload,
+            Job.list_views(" FloorPlan ", " Plan ").payload,
             {"command": "list-views", "viewType": "FloorPlan", "nameContains": "Plan"},
         )
-        self.assertEqual(ReadJob.list_views().payload, {"command": "list-views"})
+        self.assertEqual(Job.list_views().payload, {"command": "list-views"})
 
     def test_forms_view_summary_job(self) -> None:
         self.assertEqual(
-            ReadJob.view_summary(" Level 1 Plan ").payload,
+            Job.view_summary(" Level 1 Plan ").payload,
             {"command": "view-summary", "view": "Level 1 Plan"},
         )
 
     def test_forms_view_elements_job(self) -> None:
         self.assertEqual(
-            ReadJob.view_elements(
-                "Level 1 Plan", ["Walls", " Doors ", "walls", ""], 25, 10
-            ).payload,
+            Job.view_elements("Level 1 Plan", ["Walls", " Doors ", "walls", ""], 25, 10).payload,
             {
                 "command": "view-elements",
                 "view": "Level 1 Plan",
@@ -184,27 +182,27 @@ class ReadJobTests(unittest.TestCase):
 
     def test_forms_element_details_job(self) -> None:
         self.assertEqual(
-            ReadJob.element_details(11327511).payload,
+            Job.element_details(11327511).payload,
             {"command": "element-details", "id": 11327511},
         )
 
     def test_forms_view_warnings_job(self) -> None:
         self.assertEqual(
-            ReadJob.view_warnings("Level 1 Plan").payload,
+            Job.view_warnings("Level 1 Plan").payload,
             {"command": "view-warnings", "view": "Level 1 Plan"},
         )
 
     def test_round_trips_non_ascii_mixed_scripts_as_compact_utf8_json(self) -> None:
         self.assertEqual(
-            json.loads(ReadJob.view_summary("Plan 東京 Δ").to_json())["view"], "Plan 東京 Δ"
+            json.loads(Job.view_summary("Plan 東京 Δ").to_json())["view"], "Plan 東京 Δ"
         )
         self.assertEqual(
-            ReadJob.view_summary("Plan 東京 Δ").to_json(),
+            Job.view_summary("Plan 東京 Δ").to_json(),
             '{"command":"view-summary","view":"Plan 東京 Δ"}',
         )
 
     def test_adds_optional_document_address_without_mutating_job(self) -> None:
-        job = ReadJob.document_info()
+        job = Job.document_info()
         addressed = job.for_document(" SampleModel ")
         self.assertEqual(addressed.payload["targetDocument"], "SampleModel")
         self.assertNotIn("targetDocument", job.payload)
@@ -212,11 +210,11 @@ class ReadJobTests(unittest.TestCase):
 
     def test_rejects_invalid_paging_and_id_before_ssh(self) -> None:
         with self.assertRaisesRegex(Exception, "offset"):
-            ReadJob.view_elements("Plan", offset=-1)
+            Job.view_elements("Plan", offset=-1)
         with self.assertRaisesRegex(Exception, "limit"):
-            ReadJob.view_elements("Plan", limit=0)
+            Job.view_elements("Plan", limit=0)
         with self.assertRaisesRegex(Exception, "positive"):
-            ReadJob.element_details(0)
+            Job.element_details(0)
 
 
 class ResponseTests(unittest.TestCase):
@@ -711,7 +709,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             "Processed 3 of 9 views. Current view: 'Level 1'. View elements were not read.",
             "Command accepted and running.",
         )
-        jobs = (ReadJob.view_elements("Level 1"), ReadJob.list_views())
+        jobs = (Job.view_elements("Level 1"), Job.list_views())
         for job in jobs:
             for message in progress_messages:
                 for correlated in (False, True):
@@ -754,7 +752,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
                         remote.finish_job = AsyncMock(side_effect=read_response)
                         with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-                            result = await RevitReadChannel(remote).execute(job)
+                            result = await RevitChannel(remote).execute(job)
                         self.assertEqual(result, terminal)
                         self.assertEqual(remote.finish_job.await_count, 2)
                         self.assertIn(remote.response_name, remote.deleted_names)
@@ -786,8 +784,8 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             return json.dumps(partial), None
 
         remote.finish_job = AsyncMock(side_effect=read_response)
-        result = await RevitReadChannel(remote)._execute_serial(
-            ReadJob("process-models", {"command": "process-models"}), 10, 300
+        result = await RevitChannel(remote)._execute_serial(
+            Job("process-models", {"command": "process-models"}), 10, 300
         )
 
         self.assertEqual(result, partial)
@@ -833,7 +831,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
                 remote.finish_job = AsyncMock(side_effect=read_response)
                 with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-                    result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+                    result = await RevitChannel(remote).execute(Job.list_views())
                 self.assertEqual(result, terminal)
                 self.assertEqual(remote.finish_job.await_count, 2)
                 self.assertIn(remote.response_name, remote.deleted_names)
@@ -856,7 +854,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
         remote.finish_job = AsyncMock(side_effect=read_response)
         with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-            result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+            result = await RevitChannel(remote).execute(Job.list_views())
         self.assertEqual(result, partial)
         self.assertEqual(remote.finish_job.await_count, 1)
 
@@ -875,7 +873,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                     side_effect=[(accepted, None), (SUCCESS_RESPONSE, None)]
                 )
                 with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-                    result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+                    result = await RevitChannel(remote).execute(Job.document_info())
                 self.assertTrue(result["success"])
                 self.assertEqual(result["data"]["viewCount"], 84)
                 self.assertEqual(remote.finish_job.await_count, 2)
@@ -907,7 +905,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote.finish_job = AsyncMock(side_effect=[(accepted, None), (error, None)])
         with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
             with self.assertRaisesRegex(PluginResponseError, "The document was closed"):
-                await RevitReadChannel(remote).execute(ReadJob.document_info())
+                await RevitChannel(remote).execute(Job.document_info())
         self.assertEqual(remote.finish_job.await_count, 2)
         self.assertIn(remote.response_name, remote.deleted_names)
 
@@ -945,7 +943,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             patch("revit_model_mcp.revit_channel.asyncio.sleep", side_effect=advance),
         ):
             with self.assertRaises(ResponseTimeoutError):
-                await RevitReadChannel(remote).execute(ReadJob.document_info(), timeout_seconds=3)
+                await RevitChannel(remote).execute(Job.document_info(), timeout_seconds=3)
         self.assertEqual(loop.now, 3)
         self.assertIn(remote.response_name, remote.deleted_names)
         self.assertIn(remote.written_name, remote.deleted_names)
@@ -972,7 +970,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         }
         remote.finish_job = AsyncMock(side_effect=[(accepted, None), (json.dumps(partial), None)])
         with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-            result = await RevitReadChannel(remote).execute(ReadJob.list_views())
+            result = await RevitChannel(remote).execute(Job.list_views())
         self.assertEqual(result, partial)
         self.assertIn(remote.response_name, remote.deleted_names)
 
@@ -995,7 +993,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
         remote.finish_job = AsyncMock(side_effect=read_response)
         with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-            result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+            result = await RevitChannel(remote).execute(Job.document_info())
         identity = json.loads(remote.written_content)["correlationId"]
         self.assertEqual(result["correlationId"], identity)
         self.assertFalse(result["partial"])
@@ -1008,8 +1006,8 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reusing_job_generates_a_fresh_id_without_mutating_payload(self) -> None:
         remote = FakeRemoteHost()
-        job = ReadJob.document_info()
-        channel = RevitReadChannel(remote)
+        job = Job.document_info()
+        channel = RevitChannel(remote)
         await channel.execute(job)
         first = json.loads(remote.written_content)["correlationId"]
         await channel.execute(job)
@@ -1022,14 +1020,14 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote.prepare_error = SshUnavailableError("Host revit-host is unreachable over SSH.")
 
         with self.assertRaisesRegex(SshUnavailableError, "unreachable over SSH"):
-            await RevitReadChannel(remote).execute(ReadJob.document_info())
+            await RevitChannel(remote).execute(Job.document_info())
 
     async def test_reports_revit_not_running(self) -> None:
         remote = FakeRemoteHost()
         remote.prepare_error = RevitNotRunningError("Revit is not running on host revit-host.")
 
         with self.assertRaisesRegex(RevitNotRunningError, "Revit is not running"):
-            await RevitReadChannel(remote).execute(ReadJob.document_info())
+            await RevitChannel(remote).execute(Job.document_info())
 
     async def test_reports_activation_failure(self) -> None:
         remote = FakeRemoteHost()
@@ -1038,7 +1036,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with self.assertRaisesRegex(ActivationError, "ActivateRevit"):
-            await RevitReadChannel(remote).execute(ReadJob.document_info())
+            await RevitChannel(remote).execute(Job.document_info())
 
         self.assertIsNotNone(remote.written_name)
         self.assertIn(remote.written_name, remote.deleted_names)
@@ -1051,9 +1049,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote.pickup_elapsed_seconds = 7.2
 
         with self.assertRaises(JobPickupTimeoutError) as raised:
-            await RevitReadChannel(remote).execute(
-                ReadJob.document_info(), pickup_timeout_seconds=7
-            )
+            await RevitChannel(remote).execute(Job.document_info(), pickup_timeout_seconds=7)
 
         message = str(raised.exception)
         self.assertIn("Job was not picked up within 7.2 s", message)
@@ -1067,8 +1063,8 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote.response_name = None
 
         with self.assertRaises(ResponseTimeoutError) as raised:
-            await RevitReadChannel(remote).execute(
-                ReadJob.view_elements("Level 1 Plan", limit=100), timeout_seconds=9
+            await RevitChannel(remote).execute(
+                Job.view_elements("Level 1 Plan", limit=100), timeout_seconds=9
             )
 
         self.assertIn("The add-in picked up jobId=", str(raised.exception))
@@ -1087,7 +1083,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with self.assertRaises(PluginResponseError) as raised:
-            await RevitReadChannel(remote).execute(ReadJob.document_info())
+            await RevitChannel(remote).execute(Job.document_info())
 
         self.assertEqual(str(raised.exception), "The add-in is busy.")
         self.assertIn(remote.response_name, remote.deleted_names)
@@ -1096,16 +1092,14 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote = FakeRemoteHost()
         remote.finish_job = AsyncMock(side_effect=[("{broken", None), (SUCCESS_RESPONSE, None)])
         with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
-            response = await RevitReadChannel(remote).execute(ReadJob.document_info())
+            response = await RevitChannel(remote).execute(Job.document_info())
         self.assertTrue(response["success"])
         self.assertEqual(remote.finish_job.await_count, 2)
 
     async def test_returns_response_and_cleans_temporary_files(self) -> None:
         remote = FakeRemoteHost()
 
-        response = await RevitReadChannel(remote).execute(
-            ReadJob.document_info(), timeout_seconds=120
-        )
+        response = await RevitChannel(remote).execute(Job.document_info(), timeout_seconds=120)
 
         self.assertEqual(response["data"]["viewCount"], 84)
         self.assertEqual(
@@ -1137,7 +1131,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         remote.delete_files = AsyncMock(side_effect=RevitChannelError("ssh dropped"))
 
         with self.assertLogs("revit_model_mcp.revit_channel", "WARNING") as logs:
-            result = await RevitReadChannel(remote).execute(ReadJob.document_info())
+            result = await RevitChannel(remote).execute(Job.document_info())
 
         self.assertEqual(result, json.loads(SUCCESS_RESPONSE))
         self.assertIn("ssh dropped", logs.output[0])
@@ -1150,7 +1144,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertLogs("revit_model_mcp.revit_channel", "WARNING") as logs:
             with self.assertRaises(ResponseTimeoutError):
-                await RevitReadChannel(remote).execute(ReadJob.document_info())
+                await RevitChannel(remote).execute(Job.document_info())
 
         self.assertIn("ssh dropped", logs.output[0])
         remote.delete_files.assert_awaited_once()
@@ -1171,11 +1165,11 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                 await super().delete_files(names)
 
         remote = BlockingRemote()
-        channel = RevitReadChannel(remote)
+        channel = RevitChannel(remote)
 
         await asyncio.gather(
-            channel.execute(ReadJob.document_info()),
-            channel.execute(ReadJob.document_info()),
+            channel.execute(Job.document_info()),
+            channel.execute(Job.document_info()),
         )
 
         self.assertEqual(events, ["prepare", "delete", "prepare", "delete"])
@@ -1731,7 +1725,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         )
         with patch.object(SshPowerShellHost, "_handshake", AsyncMock()) as handshake:
             selected, job = await host.select_job(
-                ReadJob.document_info().for_document("Structural.rvt")
+                Job.document_info().for_document("Structural.rvt")
             )
         handshake.assert_awaited_once()
         self.assertEqual(job.payload["targetProcessId"], 42)
@@ -1749,18 +1743,18 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
             return_value=[instance_status(42, "Structural"), instance_status(84, "Architectural")]
         )
         with patch.object(SshPowerShellHost, "_handshake", AsyncMock()):
-            selected, job = await host.select_job(ReadJob.document_info().for_process(84))
+            selected, job = await host.select_job(Job.document_info().for_process(84))
             self.assertEqual(selected._instance["processId"], 84)
             self.assertEqual(job.payload["targetProcessId"], 84)
             with self.assertRaisesRegex(RevitChannelError, "contradict"):
                 await host.select_job(
-                    ReadJob.document_info().for_document("Structural").for_process(84)
+                    Job.document_info().for_document("Structural").for_process(84)
                 )
             with self.assertRaisesRegex(RevitChannelError, "absent or ambiguous"):
-                await host.select_job(ReadJob.document_info().for_process(99))
+                await host.select_job(Job.document_info().for_process(99))
         for value in (0, -1, True, "84"):
             with self.assertRaisesRegex(RevitChannelError, "strict positive"):
-                ReadJob.document_info().for_process(value)
+                Job.document_info().for_process(value)
 
     async def test_zero_many_and_undirected_matches_fail_before_publish(self):
         for document, message in [
@@ -1775,9 +1769,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
                 )
                 with patch.object(SshPowerShellHost, "prepare_job", AsyncMock()) as prepare:
                     with self.assertRaisesRegex(RevitChannelError, message):
-                        await RevitReadChannel(host).execute(
-                            ReadJob.document_info().for_document(document)
-                        )
+                        await RevitChannel(host).execute(Job.document_info().for_document(document))
                 prepare.assert_not_awaited()
 
     async def test_actions_resolve_a_unique_document_match_across_processes(self):
@@ -1787,7 +1779,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         )
         with patch.object(SshPowerShellHost, "_handshake", AsyncMock()) as handshake:
             selected, job = await host.select_job(
-                ReadJob("delete", {"command": "delete", "targetDocument": "Structural"})
+                Job("delete", {"command": "delete", "targetDocument": "Structural"})
             )
         handshake.assert_awaited_once()
         self.assertEqual(job.payload["targetProcessId"], 42)
@@ -1799,7 +1791,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
             return_value=[instance_status(), {"processId": 84, "pluginResponding": False}]
         )
         with self.assertRaisesRegex(RevitChannelError, "exactly one"):
-            await host.select_job(ReadJob("delete", {"command": "delete"}))
+            await host.select_job(Job("delete", {"command": "delete"}))
 
     async def test_legacy_single_instance_and_mixed_versions(self):
         legacy = instance_status()
@@ -1808,13 +1800,13 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         host._discover_instances = AsyncMock(return_value=[legacy])
         with patch.object(SshPowerShellHost, "_handshake", AsyncMock()) as handshake:
-            selected, _ = await host.select_job(ReadJob.ping())
+            selected, _ = await host.select_job(Job.ping())
             self.assertEqual(selected._directory, host._root_directory)
             handshake.assert_not_awaited()
             host._discover_instances.return_value = [legacy, instance_status(84, "Architectural")]
             with self.assertRaisesRegex(RevitChannelError, "Legacy file channels"):
-                await host.select_job(ReadJob.ping().for_document("Structural"))
-            selected, _ = await host.select_job(ReadJob.ping().for_document("Architectural"))
+                await host.select_job(Job.ping().for_document("Structural"))
+            selected, _ = await host.select_job(Job.ping().for_document("Architectural"))
             self.assertIn(r"instances\84", selected._directory)
             handshake.assert_awaited_once()
 
@@ -1833,7 +1825,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
                 host._discover_instances = AsyncMock(return_value=[instance])
                 host._run = AsyncMock()
                 with self.assertRaisesRegex(RevitChannelError, message):
-                    await host.select_job(ReadJob.ping())
+                    await host.select_job(Job.ping())
                 host._run.assert_not_awaited()
 
     async def test_identity_change_and_exited_pid_rejected(self):
@@ -1852,7 +1844,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         host._discover_instances = AsyncMock(return_value=[instance_status(84)])
         with self.assertRaisesRegex(RevitChannelError, "absent or ambiguous"):
-            await host.select_job(ReadJob("select", {"command": "select", "targetProcessId": 42}))
+            await host.select_job(Job("select", {"command": "select", "targetProcessId": 42}))
 
     async def test_discovery_keeps_busy_and_timed_out_instances(self):
         for error in (RevitChannelError("busy"), RevitChannelError("handshake timed out")):
@@ -2075,8 +2067,8 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                 Path(root, f"instance_{status['processId']}.json").write_text(json.dumps(status))
             with patch.object(SshPowerShellHost, "prepare_job", respond):
                 for process_id, document in ((42, "Model A"), (84, "Model B")):
-                    result = await RevitReadChannel(host).execute(
-                        ReadJob.document_info().for_document(document)
+                    result = await RevitChannel(host).execute(
+                        Job.document_info().for_document(document)
                     )
                     self.assertEqual(result["responder"]["processId"], process_id)
             self.assertEqual(
@@ -2095,7 +2087,7 @@ def test_two_server_processes_complete_jobs_on_simulated_host(tmp_path):
 
     worker = r"""
 import asyncio, json, pathlib, sys
-from revit_model_mcp.revit_channel import JobPickupStatus, ReadJob, RevitReadChannel
+from revit_model_mcp.revit_channel import JobPickupStatus, Job, RevitChannel
 root = pathlib.Path(sys.argv[1])
 class SimulatedHost:
     async def select_job(self, job): return self, job
@@ -2114,7 +2106,7 @@ class SimulatedHost:
     async def finish_job(self, response_name, cleanup_names, download_artifact, save_to):
         return root.joinpath(response_name).read_text(), None
     async def delete_files(self, names): pass
-asyncio.run(RevitReadChannel(SimulatedHost()).execute(ReadJob.ping()))
+asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
 """
     workers = [subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]) for _ in range(2)]
     try:
@@ -2167,8 +2159,8 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
         }
         host.fetch_job = AsyncMock(return_value=response)
         with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.1):
-            result = await RevitReadChannel(host).execute(
-                ReadJob("process-models", {"command": "process-models"})
+            result = await RevitChannel(host).execute(
+                Job("process-models", {"command": "process-models"})
             )
         job_id = json.loads(host.written_content)["jobId"]
         host.fetch_job.assert_awaited_once_with(job_id)
@@ -2196,7 +2188,7 @@ def test_long_action_completed_before_budget_keeps_response_shape():
         response = {"command": "export", "success": True, "data": {"files": ["a.ifc"]}}
         host.response_content = json.dumps(response)
         host.fetch_job = AsyncMock()
-        result = await RevitReadChannel(host).execute(ReadJob("export", {"command": "export"}))
+        result = await RevitChannel(host).execute(Job("export", {"command": "export"}))
         assert result == response
         host.fetch_job.assert_not_awaited()
         assert host.deleted_names
@@ -2224,8 +2216,8 @@ def test_jobs_poll_waits_and_fetches_final_result_after_server_restart():
         }
         host.fetch_job = AsyncMock(side_effect=[progress, final])
         # A new channel has no in-memory submission record.
-        result = await RevitReadChannel(host).execute(
-            ReadJob(
+        result = await RevitChannel(host).execute(
+            Job(
                 "jobs",
                 {
                     "command": "jobs",
@@ -2255,9 +2247,9 @@ def test_jobs_zero_wait_returns_progress_and_cancel_uses_direct_host():
         )
         host.cancel_job = AsyncMock(return_value={"cancelled": True})
         payload = {"command": "jobs", "fetchJobId": "a" * 32, "waitSeconds": 0}
-        channel = RevitReadChannel(host)
-        assert (await channel.execute(ReadJob("jobs", payload)))["status"] == "running"
-        assert await channel.execute(ReadJob("jobs", {**payload, "requestCancellation": True})) == {
+        channel = RevitChannel(host)
+        assert (await channel.execute(Job("jobs", payload)))["status"] == "running"
+        assert await channel.execute(Job("jobs", {**payload, "requestCancellation": True})) == {
             "cancelled": True
         }
         host.cancel_job.assert_awaited_once_with("a" * 32)
@@ -2316,8 +2308,8 @@ def test_budget_expires_before_pickup_without_removing_submitted_action():
 
         host.wait_until_trigger_is_gone = pickup
         with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01):
-            result = await RevitReadChannel(host).execute(
-                ReadJob("process-models", {"command": "process-models"})
+            result = await RevitChannel(host).execute(
+                Job("process-models", {"command": "process-models"})
             )
         assert result["status"] == "running"
         assert result["jobId"] == json.loads(host.written_content)["jobId"]
@@ -2335,7 +2327,7 @@ def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
             host.instance_info["commands"].append("jobs/persisted")
         host.response_content = json.dumps({"command": "export", "success": True, "data": {}})
         with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10):
-            await RevitReadChannel(host).execute(ReadJob("export", {"command": "export"}), 120)
+            await RevitChannel(host).execute(Job("export", {"command": "export"}), 120)
         if persisted:
             assert host.response_timeout <= 10
         else:
@@ -2355,8 +2347,8 @@ def test_execute_code_below_budget_returns_running_job_when_persisted(persisted)
         host.wait_for_new_response = AsyncMock(side_effect=error("Poll timed out."))
         host.fetch_job = AsyncMock(side_effect=TimeoutError("Boundary fetch timed out."))
         with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=40):
-            execute = RevitReadChannel(host).execute(
-                ReadJob("execute-code", {"command": "execute-code"}), 30
+            execute = RevitChannel(host).execute(
+                Job("execute-code", {"command": "execute-code"}), 30
             )
             if persisted:
                 result = await execute
@@ -2379,7 +2371,7 @@ def test_background_wait_never_exceeds_budget_when_clock_is_frozen():
             patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10),
             patch.object(loop, "time", return_value=4087.907388981937),
         ):
-            await RevitReadChannel(host).execute(ReadJob("export", {"command": "export"}), 120)
+            await RevitChannel(host).execute(Job("export", {"command": "export"}), 120)
         assert host.response_timeout <= 10
 
     asyncio.run(check())
@@ -2407,8 +2399,8 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
         )
         host.fetch_job = AsyncMock(side_effect=error_type("Boundary fetch timed out."))
         with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1):
-            result = await RevitReadChannel(host).execute(
-                ReadJob("process-models", {"command": "process-models"})
+            result = await RevitChannel(host).execute(
+                Job("process-models", {"command": "process-models"})
             )
         assert host.wait_for_new_response.await_count == 2
         assert host.wait_for_new_response.await_args.args[2] < 1
@@ -2427,7 +2419,7 @@ def test_image_read_downloads_artifact(command):
     remote.response_content = response
     remote.finish_job = AsyncMock(side_effect=[(response, None), (response, "/tmp/view.png")])
     result = asyncio.run(
-        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, "/tmp/view.png"))
+        RevitChannel(remote).execute(Job(command, {"command": command}, "/tmp/view.png"))
     )
     assert result["data"]["localPath"] == "/tmp/view.png"
     assert remote.finish_job.await_args.args[2:] == (True, "/tmp/view.png")
@@ -2442,8 +2434,8 @@ def test_capture_http_rejected_before_submission():
         RevitChannelError, match="element snapshots need the local or SSH transport"
     ):
         asyncio.run(
-            RevitReadChannel(host).execute(
-                ReadJob("capture-elements", {"command": "capture-elements", "elementIds": [1]})
+            RevitChannel(host).execute(
+                Job("capture-elements", {"command": "capture-elements", "elementIds": [1]})
             )
         )
     host.select_job.assert_not_awaited()
@@ -2467,9 +2459,7 @@ def test_image_read_commands_download_artifact(command, tmp_path):
         return json.dumps(response), target if download_artifact else None
 
     remote.finish_job = AsyncMock(side_effect=finish)
-    result = asyncio.run(
-        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
-    )
+    result = asyncio.run(RevitChannel(remote).execute(Job(command, {"command": command}, target)))
     assert downloads == [False, True]
     assert result["data"]["localPath"] == target
     assert remote.finish_job.await_args.args[3] == target
@@ -2501,9 +2491,7 @@ def test_slow_image_read_commands_download_artifact(command, legacy_partial, tmp
         return json.dumps(response), target if download_artifact else None
 
     remote.finish_job = AsyncMock(side_effect=finish)
-    result = asyncio.run(
-        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
-    )
+    result = asyncio.run(RevitChannel(remote).execute(Job(command, {"command": command}, target)))
     assert result["success"] is True
     assert "partial" not in result
     assert result["message"] == message
@@ -2542,9 +2530,7 @@ def test_partial_read_without_image_file_is_not_completed(command, data, tmp_pat
         return json.dumps(response), None
 
     remote.finish_job = AsyncMock(side_effect=finish)
-    result = asyncio.run(
-        RevitReadChannel(remote).execute(ReadJob(command, {"command": command}, target))
-    )
+    result = asyncio.run(RevitChannel(remote).execute(Job(command, {"command": command}, target)))
     assert result["success"] is False
     assert result["partial"] is True
     assert "localPath" not in result["data"]
@@ -2560,8 +2546,8 @@ def test_http_element_snapshots_fail_before_transport_call():
         RevitChannelError, match="element snapshots need the local or SSH transport"
     ):
         asyncio.run(
-            RevitReadChannel(host).execute(
-                ReadJob("capture-elements", {"command": "capture-elements", "elementIds": [1]})
+            RevitChannel(host).execute(
+                Job("capture-elements", {"command": "capture-elements", "elementIds": [1]})
             )
         )
 
@@ -2587,7 +2573,7 @@ def test_ping_reports_http_listener_from_instance_info(instance_info, expected):
     host = FakeRemoteHost()
     host.instance_info = instance_info
     host.response_content = json.dumps({"command": "ping", "success": True, "data": "pong"})
-    result = asyncio.run(RevitReadChannel(host).execute(ReadJob.ping()))
+    result = asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert result["data"] == "pong"
     if expected is None:
         assert "httpListener" not in result

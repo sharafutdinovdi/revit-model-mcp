@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Any
 
 from revit_model_mcp.revit_channel import (
+    Job,
     JobPickupStatus,
-    ReadJob,
     ResponseParseError,
     ResponseTimeoutError,
     ResultExpiredError,
@@ -107,7 +107,7 @@ class HttpHost:
             }
         ]
 
-    async def select_job(self, job: ReadJob) -> tuple[HttpHost, ReadJob]:
+    async def select_job(self, job: Job) -> tuple[HttpHost, Job]:
         instance = select_instance(await self.list_revit_instances(), job)
         selected = copy.copy(self)
         selected._verified_token = None

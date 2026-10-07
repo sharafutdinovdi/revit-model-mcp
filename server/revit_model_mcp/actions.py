@@ -14,7 +14,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, m
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
-    ReadJob,
+    Job,
     RevitChannelError,
     _optional_text,
     _unique_texts,
@@ -649,7 +649,7 @@ async def _send_action(
         selected = (
             select_instance(
                 instances,
-                ReadJob(command, {"targetProcessId": process_id, "targetDocument": document}),
+                Job(command, {"targetProcessId": process_id, "targetDocument": document}),
             )
             if process_id is not None
             else resolve_instance(instances, document)
@@ -658,7 +658,7 @@ async def _send_action(
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
     if document is not None:
         payload["targetDocument"] = document
-    job = ReadJob(
+    job = Job(
         command,
         {
             "command": command,
@@ -1083,7 +1083,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         if read_only:
             return {"success": False, "command": "jobs", "error": "read-only mode"}
         job = (
-            ReadJob(
+            Job(
                 "jobs",
                 {
                     "command": "jobs",

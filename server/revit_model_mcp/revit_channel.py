@@ -183,28 +183,28 @@ class ResponseParseError(RevitChannelError):
 
 
 @dataclass(frozen=True)
-class ReadJob:
+class Job:
     command: str
     payload: dict[str, Any]
     save_to: str | None = None
 
     @classmethod
-    def ping(cls) -> ReadJob:
+    def ping(cls) -> Job:
         return cls("ping", {"command": "ping"})
 
     @classmethod
-    def jobs(cls, cancel_job_id: str | None = None) -> ReadJob:
+    def jobs(cls, cancel_job_id: str | None = None) -> Job:
         payload = {"command": "jobs"}
         if cancel_job_id is not None:
             payload["cancelJobId"] = _required_text(cancel_job_id, "cancel_job_id")
         return cls("jobs", payload)
 
     @classmethod
-    def document_info(cls) -> ReadJob:
+    def document_info(cls) -> Job:
         return cls("document-info", {"command": "document-info"})
 
     @classmethod
-    def list_views(cls, view_type: str | None = None, name_contains: str | None = None) -> ReadJob:
+    def list_views(cls, view_type: str | None = None, name_contains: str | None = None) -> Job:
         payload: dict[str, Any] = {"command": "list-views"}
         if normalized := _optional_text(view_type):
             payload["viewType"] = normalized
@@ -213,18 +213,18 @@ class ReadJob:
         return cls("list-views", payload)
 
     @classmethod
-    def view_summary(cls, view: str) -> ReadJob:
+    def view_summary(cls, view: str) -> Job:
         return cls(
             "view-summary",
             {"command": "view-summary", "view": _required_text(view, "view")},
         )
 
     @classmethod
-    def view_info(cls, view: str) -> ReadJob:
+    def view_info(cls, view: str) -> Job:
         return cls("view-info", {"command": "view-info", "view": _required_text(view, "view")})
 
     @classmethod
-    def schedule_data(cls, schedule: str, max_rows: int = 500, offset: int = 0) -> ReadJob:
+    def schedule_data(cls, schedule: str, max_rows: int = 500, offset: int = 0) -> Job:
         if max_rows < 1 or max_rows > 5000 or offset < 0:
             raise RevitChannelError("max_rows must be 1 to 5000 and offset must be non-negative.")
         return cls(
@@ -238,7 +238,7 @@ class ReadJob:
         )
 
     @classmethod
-    def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> ReadJob:
+    def export_view(cls, view: str, pixel_size: int = 1600, save_to: str | None = None) -> Job:
         if pixel_size < 1 or pixel_size > 4000:
             raise RevitChannelError("pixel_size must be between 1 and 4000.")
         payload = {
@@ -256,7 +256,7 @@ class ReadJob:
         categories: list[str] | None = None,
         offset: int = 0,
         limit: int = 100,
-    ) -> ReadJob:
+    ) -> Job:
         if offset < 0:
             raise RevitChannelError("offset must not be negative.")
         if limit <= 0:
@@ -273,13 +273,13 @@ class ReadJob:
         return cls("view-elements", payload)
 
     @classmethod
-    def element_details(cls, element_id: int) -> ReadJob:
+    def element_details(cls, element_id: int) -> Job:
         if element_id <= 0:
             raise RevitChannelError("element-details requires a positive element id.")
         return cls("element-details", {"command": "element-details", "id": element_id})
 
     @classmethod
-    def view_warnings(cls, view: str) -> ReadJob:
+    def view_warnings(cls, view: str) -> Job:
         return cls(
             "view-warnings",
             {"command": "view-warnings", "view": _required_text(view, "view")},
@@ -303,7 +303,7 @@ class ReadJob:
         sort_field: str = "id",
         sort_direction: str = "asc",
         include_geometry: bool = False,
-    ) -> ReadJob:
+    ) -> Job:
         try:
             payload = query_payload(
                 categories,
@@ -343,7 +343,7 @@ class ReadJob:
         phase: str | None = None,
         area_scheme: str | None = None,
         parameter_filters: list[dict[str, Any]] | None = None,
-    ) -> ReadJob:
+    ) -> Job:
         try:
             payload = aggregate_payload(
                 categories,
@@ -365,16 +365,14 @@ class ReadJob:
         return cls("aggregate-elements", payload)
 
     @classmethod
-    def list_catalog(cls, section: str) -> ReadJob:
+    def list_catalog(cls, section: str) -> Job:
         return cls(
             "list-catalog",
             {"command": "list-catalog", "section": _required_text(section, "section")},
         )
 
     @classmethod
-    def list_warnings(
-        cls, warning_text: str | None = None, include_elements: bool = False
-    ) -> ReadJob:
+    def list_warnings(cls, warning_text: str | None = None, include_elements: bool = False) -> Job:
         payload: dict[str, Any] = {"command": "list-warnings", "includeElements": include_elements}
         if normalized := _optional_text(warning_text):
             payload["warningText"] = normalized
@@ -383,7 +381,7 @@ class ReadJob:
     @classmethod
     def list_relations(
         cls, relation: str, source_id: int | None = None, source_name: str | None = None
-    ) -> ReadJob:
+    ) -> Job:
         payload: dict[str, Any] = {
             "command": "list-relations",
             "relation": _required_text(relation, "relation"),
@@ -399,7 +397,7 @@ class ReadJob:
     def to_json(self) -> str:
         return json.dumps(self.payload, ensure_ascii=False, separators=(",", ":"))
 
-    def for_document(self, document: str | None) -> ReadJob:
+    def for_document(self, document: str | None) -> Job:
         normalized = _optional_text(document)
         if normalized is None:
             return self
@@ -407,7 +405,7 @@ class ReadJob:
         payload["targetDocument"] = normalized
         return replace(self, payload=payload)
 
-    def for_process(self, process_id: int | None) -> ReadJob:
+    def for_process(self, process_id: int | None) -> Job:
         if process_id is None:
             return self
         if type(process_id) is not int or process_id <= 0:
@@ -497,7 +495,7 @@ def resolve_instance(instances: list[dict[str, Any]], document: str | None) -> d
     return matches[0]
 
 
-def select_instance(instances: list[dict[str, Any]], job: ReadJob) -> dict[str, Any]:
+def select_instance(instances: list[dict[str, Any]], job: Job) -> dict[str, Any]:
     document = job.payload.get("targetDocument")
     process_id = job.payload.get("targetProcessId")
     if process_id is not None:
@@ -519,7 +517,7 @@ class RemoteHost(Protocol):
 
     async def cancel_job(self, job_id: str) -> dict[str, Any]: ...
 
-    async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]: ...
+    async def select_job(self, job: Job) -> tuple[RemoteHost, Job]: ...
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]: ...
 
@@ -630,14 +628,14 @@ def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
         )
 
 
-class RevitReadChannel:
+class RevitChannel:
     def __init__(self, remote: RemoteHost) -> None:
         self.remote = remote
         self._lock = asyncio.Lock()
 
     async def execute(
         self,
-        job: ReadJob,
+        job: Job,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         pickup_timeout_seconds: int = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
@@ -677,7 +675,7 @@ class RevitReadChannel:
             if not isinstance(instance, dict):
                 instance = {}
             check_addin_compatibility(job.command, instance)
-            result = await RevitReadChannel(remote)._execute_serial(
+            result = await RevitChannel(remote)._execute_serial(
                 job, timeout_seconds, pickup_timeout_seconds
             )
             if job.command == "ping":
@@ -689,7 +687,7 @@ class RevitReadChannel:
             return result
 
     async def _execute_serial(
-        self, job: ReadJob, timeout_seconds: int, pickup_timeout_seconds: int
+        self, job: Job, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
         candidate = (
             job.command in LONG_ACTION_COMMANDS

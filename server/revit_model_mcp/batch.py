@@ -14,7 +14,7 @@ from mcp.types import ToolAnnotations
 
 from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
-from revit_model_mcp.revit_channel import ReadJob, RevitChannelError, resolve_instance
+from revit_model_mcp.revit_channel import Job, RevitChannelError, resolve_instance
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 BATCH_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False)
@@ -208,7 +208,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
 
             await file_host.batch_create(run_id, json.dumps(state))
             result = await channel_provider().execute(
-                ReadJob(
+                Job(
                     "batch-supervisor-start",
                     {
                         "command": "batch-supervisor-start",

@@ -18,7 +18,7 @@ from revit_model_mcp.pipe_host import (
     PipeDisconnectedError,
     PipeJobHost,
 )
-from revit_model_mcp.revit_channel import CLIENT_ID, ReadJob, RevitReadChannel
+from revit_model_mcp.revit_channel import CLIENT_ID, Job, RevitChannel
 
 PID = 4242
 INSTANCE_ID = "0f8fad5bd9cb469fa16570867728950e"
@@ -253,7 +253,7 @@ def test_pipe_is_selected_when_the_heartbeat_advertises_it(tmp_path: Path) -> No
     async def scenario() -> None:
         async with FakeRevit() as revit:
             host = LocalPipeHost(fallback, revit.connect, tmp_path)
-            selected, job = await host.select_job(ReadJob.ping())
+            selected, job = await host.select_job(Job.ping())
             assert isinstance(selected, PipeJobHost)
             assert job.payload["targetProcessId"] == PID
             assert selected.instance_info["addinVersion"] == "0.6.0"
@@ -272,12 +272,10 @@ def test_pipe_is_selected_when_the_heartbeat_advertises_it(tmp_path: Path) -> No
 def test_file_channel_is_used_when_pipe_is_not_advertised(tmp_path: Path) -> None:
     write_heartbeat(tmp_path, None)
     fallback = AsyncMock()
-    fallback.select_job.return_value = ("file-host", ReadJob.ping())
+    fallback.select_job.return_value = ("file-host", Job.ping())
     connector = AsyncMock()
 
-    selected, _ = asyncio.run(
-        LocalPipeHost(fallback, connector, tmp_path).select_job(ReadJob.ping())
-    )
+    selected, _ = asyncio.run(LocalPipeHost(fallback, connector, tmp_path).select_job(Job.ping()))
 
     assert selected == "file-host"
     connector.assert_not_awaited()
@@ -286,12 +284,10 @@ def test_file_channel_is_used_when_pipe_is_not_advertised(tmp_path: Path) -> Non
 def test_file_channel_is_used_when_the_advertised_pipe_is_unreachable(tmp_path: Path) -> None:
     write_heartbeat(tmp_path, [PIPE_PROTOCOL, "file/2"])
     fallback = AsyncMock()
-    fallback.select_job.return_value = ("file-host", ReadJob.ping())
+    fallback.select_job.return_value = ("file-host", Job.ping())
     connector = AsyncMock(side_effect=PipeDisconnectedError("pipe not found"))
 
-    selected, _ = asyncio.run(
-        LocalPipeHost(fallback, connector, tmp_path).select_job(ReadJob.ping())
-    )
+    selected, _ = asyncio.run(LocalPipeHost(fallback, connector, tmp_path).select_job(Job.ping()))
 
     assert selected == "file-host"
     connector.assert_awaited_once_with(PID)
@@ -303,7 +299,7 @@ def test_hello_submit_and_pushed_result(tmp_path: Path) -> None:
     async def scenario() -> tuple[dict[str, Any], FakeRevit]:
         async with FakeRevit() as revit:
             host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
-            result = await RevitReadChannel(host).execute(ReadJob.ping(), timeout_seconds=5)
+            result = await RevitChannel(host).execute(Job.ping(), timeout_seconds=5)
             await host.aclose()
             return result, revit
 
@@ -327,9 +323,9 @@ def test_reconnects_after_the_pipe_closes(tmp_path: Path) -> None:
     async def scenario() -> FakeRevit:
         async with FakeRevit(close_after_result=True) as revit:
             host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
-            channel = RevitReadChannel(host)
+            channel = RevitChannel(host)
             for _ in range(2):
-                result = await channel.execute(ReadJob.ping(), timeout_seconds=5)
+                result = await channel.execute(Job.ping(), timeout_seconds=5)
                 assert result["success"] is True
             await host.aclose()
             return revit
@@ -348,7 +344,7 @@ def test_running_job_resumes_through_status_after_disconnect(tmp_path: Path) -> 
     async def scenario() -> tuple[dict[str, Any], FakeRevit]:
         async with FakeRevit(drop_after_submit=1) as revit:
             host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
-            result = await RevitReadChannel(host).execute(ReadJob.ping(), timeout_seconds=5)
+            result = await RevitChannel(host).execute(Job.ping(), timeout_seconds=5)
             await host.aclose()
             return result, revit
 
@@ -366,7 +362,7 @@ def test_lost_submit_reply_resumes_instead_of_reporting_duplicate_job_id(tmp_pat
     async def scenario() -> tuple[dict[str, Any], FakeRevit]:
         async with FakeRevit(drop_before_submitted_reply=True) as revit:
             host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
-            result = await RevitReadChannel(host).execute(ReadJob.ping(), timeout_seconds=5)
+            result = await RevitChannel(host).execute(Job.ping(), timeout_seconds=5)
             await host.aclose()
             return result, revit
 
@@ -388,8 +384,8 @@ def test_action_result_can_be_fetched_by_new_server_connection(tmp_path: Path) -
             job = {"command": "export", "jobId": job_id, "correlationId": "old-request"}
             revit.jobs[job_id] = job
             host = LocalPipeHost(AsyncMock(), revit.connect, tmp_path)
-            result = await RevitReadChannel(host).execute(
-                ReadJob(
+            result = await RevitChannel(host).execute(
+                Job(
                     "jobs",
                     {
                         "command": "jobs",
