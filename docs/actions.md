@@ -78,7 +78,7 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_create_sheet` | `number`, `name`, `title_block=null` | Create a sheet with a loaded title block. Sheet numbers must be unique. |
 | `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. Group members that Revit refuses to change fail with a clear message, including in dry runs. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
-| `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
+| `revit_delete` | `element_ids`, `dry_run=false`, `confirm_token=null` | Delete nonempty IDs and their dependents. A real deletion of more than 500 elements, dependents included, needs a confirmation token. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_process_models` | `paths=null`, `folder=null`, `recursive=false`, `pattern="*.rvt"`, `open=null`, `steps=null`, `code=null`, `exports=null`, `save=null`, `stop_on_error=false`, `dry_run=false`, `confirm_token=null`, `response_timeout_s=14400`, `process_id=null` | Open and process 1-500 models in the interactive Revit session, then close each model. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `confirm_token=null`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. Replacing an existing file needs a confirmation token. |
@@ -361,8 +361,9 @@ For confirmation, call the tool once without `confirm_token`. The first response
 
 ### Confirmation tokens for irreversible actions
 
-Four more calls use the same two-step flow, with the same response fields (`needsConfirmation`, `confirmationText`, `confirmToken`), the same five-minute lifetime and single use:
+Five more calls use the same two-step flow, with the same response fields (`needsConfirmation`, `confirmationText`, `confirmToken`), the same five-minute lifetime and single use:
 
+- `revit_delete`, only when more than 500 elements would be removed, dependents included. The threshold is fixed at 500 for now. The token is bound to the document, the requested IDs, the dependent count and the document state. One undo entry restores the deletion. `dry_run` returns the count with no token. In `revit_batch` and `revit_process_models` steps such a deletion is refused; use `revit_delete` on its own.
 - `revit_remove_links` without `dry_run`. The token is bound to the document, the exact set of selected link types and the document state.
 - `revit_export` and `revit_export_nwc` with `overwrite=true`, only when at least one target file already exists. The token is bound to the target paths and their size and modification time. Without an existing target there is no token.
 - `revit_execute_code` without `dry_run`. The token is bound to the SHA-256 of the code, the transaction mode and the target document.
