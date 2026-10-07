@@ -1377,6 +1377,17 @@
   },
   "revit_delete": {
     "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "document": {
         "anyOf": [
           {
