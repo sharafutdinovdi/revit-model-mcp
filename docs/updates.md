@@ -6,6 +6,12 @@ For a per-user install, the add-in downloads the new SingleUser MSI and `SHA256S
 
 For a per-machine install, the activity pane shows an update notice once per version. The add-in does not download or install the MSI. An administrator must update the installation.
 
-To disable checks, install the MSI with `UPDATECHECK=0`. A per-machine MSI writes `{"updateCheck":false}` to `%ProgramData%\RevitModelMcp\settings.json`. A per-user MSI writes the same field to `%LOCALAPPDATA%\RevitModelMcp\settings.json`. You can also set that field yourself in either file. A false machine setting takes precedence. If any setting disables checks, the add-in makes no update request. Updates do not change the read-only gate.
+To disable checks, install the MSI with `UPDATECHECK=0`. A per-machine MSI writes `{"updateCheck":false}` to `%ProgramData%\RevitModelMcp\settings.json`. A per-user MSI writes the same field to `%LOCALAPPDATA%\RevitModelMcp\settings.json`. You can also set that field yourself in either file. A false machine setting takes precedence. You can also set `REVIT_MCP_NO_UPDATE_CHECK=1` in the environment of the Revit process. If any setting disables checks, the add-in makes no update request. Updates do not change the read-only gate.
 
 Revit shows its unsigned add-in security dialog again when the add-in DLL content changes or it loads from a new path. The decision is stored for that path and content only after a graceful Revit exit. Until release builds are signed, expect one security prompt at the next Revit start after each automatic update. The updater does not answer the prompt or write to the CodeSigning registry. See the [code signing policy](code-signing.md).
+
+## Managed installs and mirrors
+
+An add-in built with the MSBuild property `ManagedInstall=true` never checks for updates. Use it when another system, such as your software deployment tool, delivers add-in updates. The default is `false`, so other builds keep the behavior above. For example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:ManagedInstall=true`.
+
+To check an internal mirror instead of GitHub, set `REVIT_MCP_UPDATE_FEED` to an HTTPS base URL (loopback HTTP is allowed for tests). The mirror must serve the same `/repos/sharafutdinovdi/revit-model-mcp/releases/latest` JSON as the GitHub API.
