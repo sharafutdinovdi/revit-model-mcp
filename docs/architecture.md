@@ -51,7 +51,7 @@ Responses also carry timing, responder and client metadata, `jobId` and `queuedM
 See the [response contracts](../src/RevitModelMcp.Core/Models/ReadCommandModels.cs).
 The server gives each job a fresh `correlationId`; v2 responses must echo it.
 Late responses from other jobs are ignored.
-The server assigns a `jobId` and a process-wide `clientId`; `clientName` comes from MCP initialize. HTTP polls `/jobs/{id}`. Completed results expire after ten minutes.
+The server assigns a `jobId` and a process-wide `clientId`; `clientName` comes from MCP initialize. HTTP polls `/jobs/{id}`. Completed read results expire after ten minutes and action results after 24 hours; see [result retention](transport.md#result-retention).
 The asyncio lock serializes calls within one server process only.
 Clients targeting different PIDs use separate directories.
 Clients targeting the same PID have separate FIFO queues. The scheduler rotates between clients and executes one job or read-session slice per ExternalEvent.

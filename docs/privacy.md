@@ -41,7 +41,7 @@ User-configured remote hosts, proxies and tunnels are part of the selected trans
 
 ## Data retention
 
-The [transport contract](transport.md) specifies that completed HTTP results expire after ten minutes.
+The [transport contract](transport.md#result-retention) specifies that completed read results expire after ten minutes and action results after 24 hours. Action results are also stored as files in the instance `jobs` directory for the same 24 hours.
 The add-in checks expiry once per minute and attempts to delete associated HTTP image artifacts.
 In-memory results also disappear when the Revit process exits.
 The file channel consumes the trigger during processing and attempts to remove response files and source PNG exports during retrieval.
