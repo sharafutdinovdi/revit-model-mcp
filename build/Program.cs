@@ -24,6 +24,11 @@ if (args.Contains("test"))
     builder.Services.AddModule<TestProjectModule>();
 }
 
+if (args.Contains("bundle") && !args.Contains("pack"))
+{
+    builder.Services.AddModule<CreateBundleModule>();
+}
+
 if (args.Contains("pack"))
 {
     if (!args.Contains("--no-build"))

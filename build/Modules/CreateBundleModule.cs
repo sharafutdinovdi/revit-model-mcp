@@ -1,4 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
+using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Autodesk.PackageBuilder;
 using Build.Options;
@@ -18,9 +21,13 @@ namespace Build.Modules;
 ///     Create the Autodesk .bundle package.
 /// </summary>
 [DependsOn<ResolveVersioningModule>]
-[DependsOn<CompileProjectModule>]
+[DependsOn<CompileProjectModule>(Optional = true)]
 public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptions, IOptions<BundleOptions> bundleOptions) : Module
 {
+    private const string BundleName = "RevitModelMcp";
+    private const string ProductName = "Revit Model MCP";
+    private const string ProductDescription = "Read live Revit models from AI clients through MCP. Actions can be turned off with read-only mode.";
+
     protected override async Task ExecuteModuleAsync(IModuleContext context, CancellationToken cancellationToken)
     {
         var versioningResult = await context.GetModule<ResolveVersioningModule>();
@@ -30,20 +37,26 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
         var targetDirectories = bundleTarget.Folder!
             .GetFolder("bin")
             .GetFolders(folder => folder.Name == "publish")
+            .OrderBy(folder => folder.Path, StringComparer.Ordinal)
             .ToArray();
 
         targetDirectories.ShouldNotBeEmpty("No content were found to create a bundle");
 
         var outputFolder = SolutionRoot.Directory.GetFolder(buildOptions.Value.OutputDirectory);
-        var bundleFolder = outputFolder.CreateFolder($"{bundleTarget.NameWithoutExtension}.bundle");
+        var bundleFolder = outputFolder.CreateFolder($"{BundleName}.bundle");
         var contentFolder = bundleFolder.CreateFolder("Contents");
         var manifestFile = bundleFolder.GetFile("PackageContents.xml");
 
         PackFiles(targetDirectories, contentFolder);
-        GenerateManifest(bundleTarget, targetDirectories, manifestFile, versioning);
+        GenerateManifest(targetDirectories, manifestFile, versioning);
 
         var outputFile = outputFolder.GetFile($"{bundleFolder.Name}.zip");
-        context.Files.Zip.ZipFolder(bundleFolder, outputFile.Path);
+        if (outputFile.Exists)
+        {
+            outputFile.Delete();
+        }
+
+        ZipFile.CreateFromDirectory(bundleFolder.Path, outputFile.Path, CompressionLevel.Optimal, includeBaseDirectory: true);
         await bundleFolder.DeleteAsync(cancellationToken);
 
         context.Summary.KeyValue("Artifacts", "Bundle", outputFile.Path);
@@ -66,6 +79,9 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
                     destinationPath.Folder!.Create();
                 }
 
+                Regex.IsMatch(filePath.Name, @"^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$", RegexOptions.IgnoreCase)
+                    .ShouldBeFalse($"Revit API assemblies must not be packed: {filePath.Path}");
+
                 filePath.CopyTo(destinationPath.Path);
             }
         }
@@ -74,15 +90,24 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
     /// <summary>
     ///     Generate the Autodesk manifest.
     /// </summary>
-    private void GenerateManifest(File bundleTarget, Folder[] targetDirectories, File manifestDirectory, ResolveVersioningResult versioning)
+    private void GenerateManifest(Folder[] targetDirectories, File manifestDirectory, ResolveVersioningResult versioning)
     {
+        var upgradeCode = bundleOptions.Value.UpgradeCode!;
+        var productCode = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"{upgradeCode}:{versioning.Version}")));
+
         BuilderUtils.Build<PackageContentsBuilder>(builder =>
         {
             builder.ApplicationPackage.Create()
                 .ProductType(ProductTypes.Application)
                 .AutodeskProduct(AutodeskProducts.Revit)
-                .Name(bundleTarget.NameWithoutExtension)
-                .AppVersion(versioning.Version);
+                .Name(ProductName)
+                .Description(ProductDescription)
+                .AppVersion(versioning.VersionPrefix)
+                .FriendlyVersion(versioning.Version)
+                .ProductCode(productCode.ToString("B").ToUpperInvariant())
+                .UpgradeCode(upgradeCode.ToUpperInvariant())
+                .Author(bundleOptions.Value.VendorName)
+                .OnlineDocumentation(bundleOptions.Value.VendorUrl);
 
             builder.CompanyDetails.Create(bundleOptions.Value.VendorName)
                 .Email(bundleOptions.Value.VendorEmail)
@@ -100,8 +125,8 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
 
                     builder.Components.CreateEntry($"Revit {version}")
                         .RevitPlatform(int.Parse(version))
-                        .AppName(bundleTarget.NameWithoutExtension)
-                        .ModuleName($"./Contents/{version}/{relativePath}");
+                        .AppName(ProductName)
+                        .ModuleName($"./Contents/{version}/{relativePath.Replace('\\', '/')}");
                 }
             }
         }, manifestDirectory);
