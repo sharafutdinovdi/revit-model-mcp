@@ -3,9 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Revit Model MCP social card</title>
+  <title>Revit Model MCP README banner</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&amp;display=swap" rel="stylesheet">
   <style>
+    :root {
+      --bg: #F2F5FA;
+      --ink: #081C38;
+      --muted: #5C6F88;
+      --glow: rgba(54, 142, 245, 0);
+      --side: #081C38;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #081C38;
+        --ink: #FFFFFF;
+        --muted: #A9BAD3;
+        --glow: rgba(54, 142, 245, 0.55);
+        --side: #1B5BB0;
+      }
+    }
+
     * { box-sizing: border-box; }
 
     body {
@@ -13,122 +31,111 @@
       font-family: Inter, system-ui, sans-serif;
     }
 
-    #card {
-      width: 1280px;
-      height: 640px;
-      background: #081C38;
+    #hero {
+      width: 1200px;
+      height: 440px;
+      background: var(--bg);
       position: relative;
       overflow: hidden;
     }
 
     .lockup {
       position: absolute;
-      left: 88px;
-      top: 150px;
+      left: 72px;
+      top: 118px;
     }
 
     .name {
       display: flex;
       align-items: center;
-      gap: 28px;
+      gap: 24px;
     }
 
     .name svg {
-      width: 112px;
-      height: 112px;
+      width: 88px;
+      height: 88px;
       flex: none;
     }
 
     h1 {
       margin: 0;
-      font-size: 80px;
+      font-size: 64px;
       font-weight: 800;
       letter-spacing: -0.03em;
       line-height: 1;
-      color: #FFFFFF;
+      color: var(--ink);
     }
 
     .claim {
-      margin: 48px 0 0;
-      max-width: 700px;
-      font-size: 34px;
+      margin: 36px 0 0;
+      max-width: 720px;
+      font-size: 26px;
       font-weight: 700;
       line-height: 1.3;
       letter-spacing: -0.01em;
-      color: #FFFFFF;
+      color: var(--ink);
     }
 
     .sub {
-      margin: 18px 0 0;
-      font-size: 26px;
+      margin: 14px 0 0;
+      font-size: 20px;
       font-weight: 400;
-      color: #A9BAD3;
-    }
-
-    .url {
-      position: absolute;
-      left: 88px;
-      bottom: 52px;
-      margin: 0;
-      font-size: 22px;
-      font-weight: 700;
-      color: #3CC7D4;
+      color: var(--muted);
     }
 
     .glow {
       position: absolute;
-      left: 820px;
-      top: 40px;
-      width: 480px;
-      height: 480px;
+      left: 800px;
+      top: 20px;
+      width: 380px;
+      height: 380px;
       border-radius: 50%;
-      background: radial-gradient(circle, rgba(54, 142, 245, 0.55) 0%, rgba(54, 142, 245, 0) 68%);
+      background: radial-gradient(circle, var(--glow) 0%, rgba(54, 142, 245, 0) 68%);
     }
 
     .stage {
       position: absolute;
-      left: 911px;
-      top: 429px;
-      width: 298px;
-      height: 166px;
+      left: 924px;
+      top: 299px;
+      width: 230px;
+      height: 128px;
     }
 
     .mascot {
       position: absolute;
-      left: 989px;
-      top: 70px;
-      height: 440px;
+      left: 918px;
+      top: 24px;
+      height: 340px;
     }
   </style>
 </head>
 <body>
-  <div id="card">
+  <div id="hero">
     <div class="lockup">
       <div class="name">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Revit Model MCP">
           <polygon points="32,34 56,46 32,58 8,46" fill="#368EF5"/>
-          <polygon points="8,46 32,58 32,63 8,51" fill="#1B5BB0"/>
-          <polygon points="32,58 56,46 56,51 32,63" fill="#1B5BB0"/>
+          <polygon points="8,46 32,58 32,63 8,51" fill="var(--side)"/>
+          <polygon points="32,58 56,46 56,51 32,63" fill="var(--side)"/>
           <polygon points="32,20 56,32 32,44 8,32" fill="#368EF5"/>
-          <polygon points="8,32 32,44 32,49 8,37" fill="#1B5BB0"/>
-          <polygon points="32,44 56,32 56,37 32,49" fill="#1B5BB0"/>
+          <polygon points="8,32 32,44 32,49 8,37" fill="var(--side)"/>
+          <polygon points="32,44 56,32 56,37 32,49" fill="var(--side)"/>
           <polygon points="32,6 56,18 32,30 8,18" fill="#3CC7D4"/>
-          <polygon points="8,18 32,30 32,35 8,23" fill="#1B5BB0"/>
-          <polygon points="32,30 56,18 56,23 32,35" fill="#1B5BB0"/>
+          <polygon points="8,18 32,30 32,35 8,23" fill="var(--side)"/>
+          <polygon points="32,30 56,18 56,23 32,35" fill="var(--side)"/>
         </svg>
         <h1>Revit Model MCP</h1>
       </div>
       <p class="claim">Read and act on live Revit models from your AI client.</p>
       <p class="sub">One undo per change. Read-only on request.</p>
     </div>
-    <p class="url">github.com/sharafutdinovdi/revit-model-mcp</p>
     <div class="glow"></div>
     <svg class="stage" viewBox="0 0 270 150" aria-hidden="true">
       <polygon points="135,0 270,62.5 135,125 0,62.5" fill="#3CC7D4"/>
-      <polygon points="0,62.5 135,125 135,150 0,87.5" fill="#1B5BB0"/>
-      <polygon points="135,125 270,62.5 270,87.5 135,150" fill="#1B5BB0"/>
+      <polygon points="0,62.5 135,125 135,150 0,87.5" fill="var(--side)"/>
+      <polygon points="135,125 270,62.5 270,87.5 135,150" fill="var(--side)"/>
     </svg>
-    <img class="mascot" src="brand/mascot-laptop.webp" alt="">
+    <img class="mascot" src="brand/mascot-pointing.webp" alt="">
   </div>
 </body>
 </html>

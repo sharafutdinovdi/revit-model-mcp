@@ -2,7 +2,7 @@
 
 ## Purpose and runtime
 
-Revit Model MCP exposes live Revit model data to MCP clients, read-only by default.
+Revit Model MCP exposes live Revit models to MCP clients. Actions are enabled by default, and read-only mode stays available.
 The C# add-in runs inside Revit on Windows and owns Revit API access through ExternalEvent.
 The Python server runs on the MCP client's machine and exposes stdio tools over local, SSH or HTTP transport to the add-in.
 

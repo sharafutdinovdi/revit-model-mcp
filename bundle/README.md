@@ -56,10 +56,10 @@ For stable releases, the Smithery job copies the released desktop bundle into a 
 The Smithery archive is built with `build/bundle_manifest.py --smithery <output.mcpb> --from <desktop.mcpb>`.
 Add the `SMITHERY_API_KEY` repository secret to enable publishing; an empty secret produces a notice and skips it.
 
-The committed icon is rendered from the repository logo:
+The committed icon is the product mark on a navy tile. `build/render_brand_assets.py` renders it, together with the other brand images, from `docs/assets`:
 
 ```sh
-rsvg-convert -w 256 -h 256 docs/assets/logo.svg -o bundle/icon.png
+uv run build/render_brand_assets.py
 ```
 
 ## Verify downloads
