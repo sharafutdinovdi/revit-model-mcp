@@ -1,4 +1,4 @@
-"""MCP tools for reading a live Autodesk Revit model."""
+"""MCP tools for a live Autodesk Revit model."""
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version

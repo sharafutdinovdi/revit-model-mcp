@@ -25,12 +25,12 @@ from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     TRIGGER_FILE,
     ActivationError,
+    Job,
     JobPickupStatus,
-    ReadJob,
     ResponseParseError,
+    RevitChannel,
     RevitChannelError,
     RevitNotRunningError,
-    RevitReadChannel,
     SshUnavailableError,
     matches_document,
     select_instance,
@@ -298,7 +298,7 @@ class SshPowerShellHost:
         await asyncio.gather(*(ping(instance) for instance in candidates))
         return candidates
 
-    async def select_job(self, job: ReadJob) -> tuple[SshPowerShellHost, ReadJob]:
+    async def select_job(self, job: Job) -> tuple[SshPowerShellHost, Job]:
         instances = await self._discover_instances()
         instance = select_instance(instances, job)
         selected = self._for_instance(instance)
@@ -334,10 +334,8 @@ class SshPowerShellHost:
         resolved_timeout = HANDSHAKE_TIMEOUT_SECONDS if timeout is None else timeout
 
         async def confirm() -> None:
-            job = ReadJob(
-                "ping", {"command": "ping", "targetProcessId": self._instance["processId"]}
-            )
-            await RevitReadChannel(self)._execute_serial(job, resolved_timeout, resolved_timeout)
+            job = Job("ping", {"command": "ping", "targetProcessId": self._instance["processId"]})
+            await RevitChannel(self)._execute_serial(job, resolved_timeout, resolved_timeout)
             await self._verify_identity()
 
         try:

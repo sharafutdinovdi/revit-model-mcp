@@ -21,8 +21,8 @@ from typing import Any
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     CLIENT_ID,
+    Job,
     JobPickupStatus,
-    ReadJob,
     RemoteHost,
     ResponseParseError,
     RevitChannelError,
@@ -361,7 +361,7 @@ class LocalPipeHost:
 
         return list(await asyncio.gather(*(ping(instance) for instance in matched)))
 
-    async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]:
+    async def select_job(self, job: Job) -> tuple[RemoteHost, Job]:
         instances = self.heartbeats()
         if any(PIPE_PROTOCOL in _protocols(item) for item in instances):
             instance = select_instance(instances, job)
@@ -446,7 +446,7 @@ class PipeJobHost:
         self._future: asyncio.Future[dict[str, Any]] | None = None
         self._result: str | None = None
 
-    async def select_job(self, job: ReadJob) -> tuple[RemoteHost, ReadJob]:
+    async def select_job(self, job: Job) -> tuple[RemoteHost, Job]:
         return await self._parent.select_job(job)
 
     async def fetch_job(self, job_id: str) -> dict[str, Any]:

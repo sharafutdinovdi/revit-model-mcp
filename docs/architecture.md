@@ -3,7 +3,7 @@
 ## Components
 
 The [Python server](../server/revit_model_mcp/server.py) registers read tools and optional action tools, then constructs jobs.
-[RevitReadChannel](../server/revit_model_mcp/revit_channel.py) serializes calls with an asyncio lock.
+[RevitChannel](../server/revit_model_mcp/revit_channel.py) serializes calls with an asyncio lock.
 The [pipe host](../server/revit_model_mcp/pipe_host.py) serves `REVIT_MCP_HOST=local`: it reads heartbeats, talks pipe/1 to the selected add-in and falls back to the file channel.
 The [HTTP host](../server/revit_model_mcp/http_host.py) submits jobs and polls results by ID.
 The [PowerShell host](../server/revit_model_mcp/ssh_host.py) publishes jobs and reads responses locally or through SSH.

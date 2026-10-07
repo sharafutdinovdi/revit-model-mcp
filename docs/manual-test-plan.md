@@ -52,7 +52,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 ### 2.1 Local server via `uvx` (Windows workstation)
 - [ ] `uvx revit-model-mcp` resolves and installs the package from PyPI on first run (record package count + time).
-- [ ] Server starts and reports `serverInfo: { name: "Revit Model Reader", version: "<ver>" }` on `initialize`.
+- [ ] Server starts and reports `serverInfo: { name: "Revit Model MCP", version: "<ver>" }` on `initialize`.
 - [ ] `tools/list` returns **19 read tools** (enumerate — see §3).
 
 ### 2.2 Claude Code registration (`claude mcp add`)
