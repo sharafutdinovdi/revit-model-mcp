@@ -134,6 +134,15 @@ def test_bundle_tool_description_is_dedented():
     }
 
 
+def test_addressing_sentence_matches_tool_parameters():
+    import asyncio
+
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    assert "document is required" not in tools["revit_ui_state"].description
+    assert "process_id" in tools["revit_ui_state"].description
+    assert "document is required" in tools["revit_document_info"].description
+
+
 def test_bundle_manifest_matches_tool_registry():
     import asyncio
 
