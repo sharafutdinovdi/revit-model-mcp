@@ -255,6 +255,27 @@ class ResponseTests(unittest.TestCase):
             {"steps": [{"success": True}, {"success": False}], "failedStep": 1},
         )
 
+    def test_action_failures_have_error_codes(self) -> None:
+        for command in ("undo-last", "move"):
+            for error, code in (
+                ("read-only mode", "read_only"),
+                ("Action failed.", "action_failed"),
+            ):
+                response = {"command": command, "success": False, "error": error}
+                self.assertEqual(
+                    parse_response(json.dumps(response), command), {**response, "errorCode": code}
+                )
+
+    def test_intermediate_action_failure_is_unchanged(self) -> None:
+        response = {
+            "command": "move",
+            "success": False,
+            "partial": True,
+            "error": "Pending",
+            "message": "Command accepted and running.",
+        }
+        self.assertEqual(parse_response(json.dumps(response), "move"), response)
+
     def test_reports_malformed_json(self) -> None:
         with self.assertRaisesRegex(ResponseParseError, "could not be parsed as JSON"):
             parse_response("not-json", "document-info")
@@ -1065,6 +1086,65 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("job file is still present", message)
         self.assertIn("may still execute later", message)
         self.assertNotIn("trigger.txt", remote.deleted_names)
+
+    async def test_undo_response_timeout_has_action_advice(self) -> None:
+        remote = FakeRemoteHost()
+        remote.response_name = None
+        with self.assertRaises(ResponseTimeoutError) as raised:
+            await RevitChannel(remote).execute(
+                Job("undo-last", {"command": "undo-last"}), timeout_seconds=9
+            )
+        self.assertIn(
+            "The action may have executed. Inspect the model before retrying.",
+            str(raised.exception),
+        )
+        self.assertNotIn("increase timeout_seconds", str(raised.exception))
+
+    async def test_cancel_read_only_refusal_returns_normal_result(self) -> None:
+        from unittest.mock import AsyncMock
+
+        from revit_model_mcp.revit_channel import ReadOnlyRefusedError
+
+        remote = FakeRemoteHost()
+        remote.cancel_job = AsyncMock(
+            side_effect=ReadOnlyRefusedError("Workstation refused cancellation.")
+        )
+        response = await RevitChannel(remote).execute(
+            Job("jobs", {"fetchJobId": "a" * 32, "requestCancellation": True})
+        )
+        self.assertEqual(
+            response,
+            {
+                "success": False,
+                "command": "jobs",
+                "error": "read-only mode",
+                "errorCode": "read_only",
+            },
+        )
+
+    async def test_file_gate_cancel_refusal_is_normal_result(self) -> None:
+        from unittest.mock import AsyncMock
+
+        from revit_model_mcp.ssh_host import RemoteCommandError
+
+        remote = FakeRemoteHost()
+        remote.cancel_job = AsyncMock(
+            side_effect=RemoteCommandError(1, "PowerShell: read-only mode")
+        )
+        job = Job("jobs", {"fetchJobId": "a" * 32, "requestCancellation": True})
+        response = await RevitChannel(remote).execute(job)
+        self.assertEqual(
+            response,
+            {
+                "success": False,
+                "command": "jobs",
+                "error": "read-only mode",
+                "errorCode": "read_only",
+            },
+        )
+        remote.cancel_job.side_effect = RemoteCommandError(1, "Transport disconnected.")
+        with self.assertRaisesRegex(RemoteCommandError, "Transport disconnected"):
+            await RevitChannel(remote).execute(job)
 
     async def test_reports_response_timeout_for_long_command(self) -> None:
         remote = FakeRemoteHost()

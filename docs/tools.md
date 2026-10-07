@@ -168,3 +168,24 @@ Unavailable metrics receive Review status.
 | Design options | 0 at the stage under review |
 | Images | At most 20 |
 | Model groups | At most 50 |
+
+## Errors and refusals
+
+Every tool follows one rule.
+
+| Case | What the client gets |
+| --- | --- |
+| Invalid or missing argument, unknown document, transport failure, failed read | An MCP tool error (`isError`) with a message. |
+| A refused or failed action, including read-only mode | A normal result with `success:false`, `command`, `error` and `errorCode`. |
+| An action that needs confirmation | `success:true` with `data.needsConfirmation:true`, `confirmationText` and `confirmToken`. This is not an error. |
+
+Read `errorCode`, not the text of `error`. The wording of messages is not part of the contract. The `error` value `read-only mode` is.
+
+| `errorCode` | Meaning |
+| --- | --- |
+| `read_only` | Refused because the server runs with `REVIT_MCP_READ_ONLY=1`, the workstation `read-only` file exists, or the transport reported a read-only refusal. `error` is `read-only mode`. |
+| `action_failed` | The add-in tried the action and reported a failure. `error` holds the add-in's message. |
+
+New codes can appear in a minor release; treat an unknown code as a failed action.
+A timed-out action is a tool error, not a result: the action may have changed the model, so inspect it before retrying.
+The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` and `revit_batch_cancel`. The last two start and stop Revit processes, so they are refused in read-only mode like any action; `revit_batch_status` and `revit_batch_fetch` stay available.

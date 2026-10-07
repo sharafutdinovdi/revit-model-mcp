@@ -232,7 +232,7 @@ Each sample list is capped independently at `sampleLimit`; `byCategory` contains
 `message` carries optional diagnostic text.
 Read failures use `success:false` and `message`; the Python server converts them to MCP tool errors.
 Partial reads use `success:false`, `partial:true` and any available `data`; the server also treats them as errors.
-Action failures retain the response object and add `error`.
+Action failures retain the response object and add `error` and `errorCode`; see [Errors and refusals](tools.md#errors-and-refusals).
 `revit_list_instances` returns an object with `instances`, `skipped:[]` and `skippedCount:0` outside this response envelope.
 
 | Action response field | Contract |

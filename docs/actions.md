@@ -2,7 +2,7 @@
 
 Actions run unless read-only mode is active: `REVIT_MCP_READ_ONLY=1` in the Python server environment, or the
 workstation `%LOCALAPPDATA%\RevitModelMcp\read-only` file. Action tools stay listed either way; a refused call
-returns `success:false` and `error:"read-only mode"` instead of running. See [Read-only mode](#read-only-mode).
+returns `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` instead of running. See [Read-only mode](#read-only-mode) and [Errors and refusals](tools.md#errors-and-refusals).
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
 Every action result carries a `summary`: one human sentence describing what changed, how many elements, and in
@@ -277,7 +277,7 @@ For a family name alone, `type_name=null` selects the first loaded type.
 ### Read-only mode
 
 Actions run by default. Either gate below independently switches Revit into read-only mode, with the action
-tools still listed and returning `success:false`, `error:"read-only mode"` instead of running:
+tools still listed and returning `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` instead of running:
 
 1. Set `REVIT_MCP_READ_ONLY=1` in the Python server process environment and restart the server.
    Every action call short-circuits before it reaches Revit, including `revit_undo_last`.
@@ -448,7 +448,7 @@ Writes happen only through explicit calls from an interactive client, for exampl
 There is no opt-in for unattended writes.
 
 `revit_batch_start` and `revit_batch_cancel` start and stop Revit processes, so read-only mode refuses them like any action.
-The server returns `success:false` and `error:"read-only mode"` when `REVIT_MCP_READ_ONLY=1`.
+The server returns `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` when `REVIT_MCP_READ_ONLY=1`.
 The add-in refuses `batch-supervisor-start` and the server host refuses cancellation while the workstation `read-only` file exists.
 `revit_batch_status` and `revit_batch_fetch` stay available.
 

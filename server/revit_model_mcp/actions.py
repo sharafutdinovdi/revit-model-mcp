@@ -11,6 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
+from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
@@ -683,7 +684,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         **payload,
     ) -> dict[str, Any]:
         if read_only:
-            return {"success": False, "command": command, "error": "read-only mode"}
+            return refusal(command, READ_ONLY, READ_ONLY_MESSAGE)
         return await _send_action(
             execute,
             host_provider,
@@ -1081,7 +1082,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         Poll revit_jobs for the final result; completed changes remain committed.
         """
         if read_only:
-            return {"success": False, "command": "jobs", "error": "read-only mode"}
+            return refusal("jobs", READ_ONLY, READ_ONLY_MESSAGE)
         job = (
             Job(
                 "jobs",
