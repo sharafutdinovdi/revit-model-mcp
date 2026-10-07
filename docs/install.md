@@ -53,10 +53,29 @@ If your organization delivers add-in updates itself, build the add-in with `Mana
 ## Install from the MSI or WinGet
 
 The installers published on the [releases page](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) install the same add-in with their own update path.
-`RevitModelMcp-<version>-SingleUser.msi` installs for the current user, and `RevitModelMcp-<version>-MultiUser.msi` installs for all users. Install only one.
-Both support automatic updates described in [automatic updates](updates.md).
+`RevitModelMcp-<version>-SingleUser.msi` installs for the current user, and `RevitModelMcp-<version>-MultiUser.msi` installs for all users.
+The two installers are alternatives: install only one.
+Each refuses to install while the other is present, so uninstall the other first (**Apps > Installed apps**), then install.
+Upgrade within the same scope works in place.
+Run the installer with Revit closed, then start Revit and open a model.
+The installer replaces the add-in files and the `RevitModelMcp.addin` manifest it ships, even when an older developer build left a higher file version or a manifest with absolute paths. It leaves other add-ins in the same folder alone.
+Both support automatic updates; see [automatic updates](updates.md) for behavior and opt-out settings.
+From a clone, run `.\install.ps1 -Source Release` in PowerShell instead.
 WinGet manifests for the package `Sharafutdinov.RevitModelMcp` are generated weekly for the latest stable release; see [CONTRIBUTING](contributing.md) for how they are published.
-The README has the full steps for the [add-in](https://github.com/sharafutdinovdi/revit-model-mcp#on-the-revit-workstation), the [MCP client](https://github.com/sharafutdinovdi/revit-model-mcp#on-the-machine-with-the-mcp-client) and the Claude Desktop bundle.
+
+Then register the server as in step 6 of [Install the add-in bundle](#install-the-add-in-bundle), or use the Claude Desktop bundle below.
+
+## Claude Desktop bundle
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on the client's PATH, download `revit-model-mcp-<version>.mcpb` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest), and open it in Claude Desktop.
+The bundle starts from the local uv cache. The server checks for a newer stable release in the background once per day.
+The next client start uses the refreshed version. Set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
+The settings form configures the workstation host, path redaction, read-only mode and the HTTP bearer token without editing JSON.
+Use `local` on the Windows Revit workstation, or configure a [remote workstation](transport.md) for macOS and Linux clients.
+Path redaction starts enabled and actions start enabled. Check "Read-only mode" to refuse actions.
+The Windows workstation still needs the add-in.
+See the [bundle guide](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/bundle/README.md) for build details and prerequisites.
+Release assets include GitHub build provenance attestations. Follow [download verification](security.md#verify-downloads) before installing.
 
 ## Uninstall
 

@@ -89,7 +89,7 @@ Numeric filter values use mm for lengths, m2 for areas and m3 for volumes.
 Other measurable filter values use the document's display units; unmeasurable doubles use internal values.
 Returned query fields include `value`, optional `numericValue`, `unit`, `hasValue` and `source`.
 Aggregation uses these numeric values; inspect the returned unit before interpreting a sum.
-See the [tool tables](../README.md#tools) for argument defaults and units.
+See the [tool reference](tools.md) for argument defaults and units.
 The [job builders](../server/revit_model_mcp/universal_jobs.py) and [parser](../src/RevitModelMcp.Core/Control/ControlJobParser.cs) define the request contract.
 
 ### Coordinator checks

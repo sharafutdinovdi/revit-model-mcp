@@ -140,7 +140,7 @@ uv run --with pytest pytest -q
 
 The tests use mocked host operations and exercise MCP stdio without Revit.
 
-See the [tool arguments](../README.md#tools), [action arguments](../README.md#actions-opt-in) and [response contract](../docs/feed-format.md#command-responses).
+See the [tool arguments](../docs/tools.md), [action arguments](../docs/actions.md) and [response contract](../docs/feed-format.md#command-responses).
 
 ## License
 
