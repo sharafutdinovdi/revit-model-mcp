@@ -21,7 +21,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
 | `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
-| `revit_jobs` | `job_id=null`, `wait_seconds=40`, `cancel_job_id=null` | List jobs, or wait up to 50 seconds for an action job (0 through 50, default 40; poll again for longer jobs). Returns progress or the original final action response. |
+| `revit_jobs` | `job_id=null`, `wait_seconds=40` | List jobs, or wait up to 50 seconds for an action job (0 through 50, default 40; poll again for longer jobs). Returns progress or the original final action response. |
 | `revit_nwc_settings_check` | `settings_xml` | Parse exporter XML on the Revit workstation without exporting; return values, mapping, notApplied and ignored. |
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |

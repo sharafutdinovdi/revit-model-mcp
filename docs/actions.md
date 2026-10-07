@@ -294,10 +294,6 @@ Removing the file re-enables actions immediately; restarting Revit is unnecessar
 The gate stays in the default local application data directory even if the transport uses `REVIT_MCP_CHANNEL_DIR`.
 Direct HTTP action jobs are refused the same way, with HTTP status 403.
 
-Earlier versions required `REVIT_MCP_ALLOW_WRITE=1` and a workstation `allow-write` file before any action ran, and
-hid action tools otherwise. That opt-in gate is removed: actions run by default now, and the two settings above
-are an opt-out instead.
-
 Actions address the process ID reported by the transport.
 Coordinates use model axes and the named level's project elevation.
 Pass `null` for `type_name` to choose the family's first type, or for `wall_type` to choose the first basic wall type.

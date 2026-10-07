@@ -191,7 +191,11 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
     async def test_channel_returns_local_path_with_plugin_metadata(self) -> None:
         events: list[str] = []
 
+        from revit_model_mcp import package_version
+
         class Remote:
+            instance_info = {"addinVersion": package_version(), "commands": ["export-view"]}
+
             async def select_job(self, job):
                 return self, job
 

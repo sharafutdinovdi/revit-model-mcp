@@ -201,7 +201,7 @@ internal sealed class HttpChannel : IDisposable
                     ["commands"] = Application.SupportedCommands,
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
-                    ["startedUtc"] = SnapshotFileWriter.StartedUtc,
+                    ["startedUtc"] = ChannelDirectory.StartedUtc,
                     ["readOnly"] = ActionCommandExecutor.ReadOnlyMode
                 }).ConfigureAwait(false);
                 return;
@@ -308,7 +308,7 @@ internal sealed class HttpChannel : IDisposable
                 var fileName = response.Element("data")?.Element("fileName")?.Value;
                 if (string.IsNullOrEmpty(fileName) || Path.GetFileName(fileName) != fileName)
                     throw new InvalidDataException("Invalid image artifact name.");
-                var imagePath = Path.Combine(SnapshotFileWriter.OutputDirectory, fileName);
+                var imagePath = Path.Combine(ChannelDirectory.OutputDirectory, fileName);
                 var bytes = File.ReadAllBytes(imagePath);
                 job.ImagePath = imagePath;
                 context.Response.Headers["X-Revit-Job-Id"] = job.Id;

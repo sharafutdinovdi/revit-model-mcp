@@ -215,7 +215,6 @@ EXPECTED_PARAMETERS = {
     "revit_build_report": ["snapshots_dir", "output_path", "previous_dir", "findings"],
     "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_jobs": [
-        "cancel_job_id",
         "job_id",
         "wait_seconds",
         "timeout_seconds",
@@ -362,13 +361,15 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["latestKnownVersion"], "0.7.0")
         self.assertEqual(result["updateCheck"], "disabled")
 
-    async def test_jobs_tool_passes_cancellation_without_write_gate(self) -> None:
+    async def test_jobs_tool_lists_without_cancellation(self) -> None:
         channel = RecordingChannel()
         with patch.object(revit_server, "channel", channel):
-            await revit_server.mcp.call_tool("revit_jobs", {"cancel_job_id": "job-1"})
+            await revit_server.mcp.call_tool("revit_jobs", {})
+        tools = {tool.name: tool for tool in await revit_server.mcp.list_tools()}
+        self.assertNotIn("cancel_job_id", tools["revit_jobs"].input_schema["properties"])
         job, _, _ = channel.calls[0]
         self.assertEqual(job.command, "jobs")
-        self.assertEqual(job.payload["cancelJobId"], "job-1")
+        self.assertEqual(job.payload, {"command": "jobs"})
 
     async def test_documents_lists_background_models_as_read(self) -> None:
         channel = RecordingChannel()
@@ -654,7 +655,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         result = await host.list_revit_instances("Sample")
 
         self.assertEqual(result[0]["documentName"], "SampleModel")
-        self.assertTrue(result[0]["pluginResponding"])
+        self.assertFalse(result[0]["pluginResponding"])
         script = host._run.await_args.args[0]
         self.assertIn("instance_*.json", script)
         self.assertNotIn("MainWindowTitle", script)
@@ -903,9 +904,12 @@ def test_client_name_comes_from_initialize_context():
 
     from mcp.server.mcpserver import Context
 
+    from revit_model_mcp import package_version
     from revit_model_mcp.revit_channel import JobPickupStatus, RevitChannel
 
     class Host:
+        instance_info = {"addinVersion": package_version(), "commands": ["ping"]}
+
         async def select_job(self, job):
             return self, job
 
