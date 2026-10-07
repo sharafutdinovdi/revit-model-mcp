@@ -64,7 +64,7 @@ Boolean server variables accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`,
 | Variable | Read by | Default | Behavior |
 |---|---|---|---|
 | `REVIT_MCP_HOST` | Server | `local` | Local PowerShell or pipe, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_READ_ONLY` | Server | Off | `1` refuses action calls, including `revit_batch`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation `read-only` file is checked independently. |
+| `REVIT_MCP_READ_ONLY` | Server | Off | `1` refuses action calls, including `revit_run_actions`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `read-only mode` instead of running them; the tools stay listed. The workstation `read-only` file is checked independently. |
 | `REVIT_MCP_REDACT_PATHS` | Server and add-in | Off | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior in the server. In the add-in it also redacts paths in the activity pane, stored code and logs. |
 | `REVIT_MCP_TOKEN` | Server and add-in | Unset | HTTP bearer token. The server sends it; `--token` overrides it. In Revit it overrides the `token` in `settings.json`. |
 | `REVIT_MCP_CHANNEL_DIR` | Server and add-in | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. `settings.json` and the `read-only` file stay in the default directory. |

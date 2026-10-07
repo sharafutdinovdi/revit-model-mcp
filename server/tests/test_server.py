@@ -89,7 +89,7 @@ ACTION_TOOL_NAMES = {
     "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
-    "revit_batch",
+    "revit_run_actions",
     "revit_export_nwc",
     "revit_export",
     "revit_edit_families",
@@ -173,6 +173,8 @@ def test_parameter_names_follow_the_contract():
     assert "output_path" in by_name["revit_export_view"]
     assert "timeout_seconds" in by_name["revit_family_audit"]
     assert "timeout_seconds" in by_name["revit_execute_code"]
+    assert "revit_run_actions" in by_name
+    assert "revit_batch" not in by_name
 
 
 def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):

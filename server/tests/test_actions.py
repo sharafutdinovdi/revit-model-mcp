@@ -54,7 +54,7 @@ ACTION_TOOLS = {
     "revit_place_views_on_sheet",
     "revit_set_parameter",
     "revit_delete",
-    "revit_batch",
+    "revit_run_actions",
     "revit_export_nwc",
     "revit_export",
     "revit_edit_families",
@@ -1029,7 +1029,7 @@ def test_batch_accepts_load_family_step():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {"steps": [{"action": "load_family", "args": {"paths": [r"C:\Families\Chair.rfa"]}}]},
         )
     )
@@ -1045,7 +1045,7 @@ def test_batch_accepts_override_graphics_step():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {"action": "override_graphics", "args": {"element_ids": [42], "views": [17]}}
@@ -1324,7 +1324,7 @@ def test_batch_invalid_steps_never_reach_channel(steps):
 
     server, execute, host = action_server()
     with pytest.raises(Exception):
-        asyncio.run(server.call_tool("revit_batch", {"steps": steps}))
+        asyncio.run(server.call_tool("revit_run_actions", {"steps": steps}))
     execute.assert_not_awaited()
     host.list_revit_instances.assert_not_awaited()
 
@@ -1340,7 +1340,7 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {"action": "move", "args": {"element_ids": [1], "dx_mm": 10, "dy_mm": 0}},
@@ -1390,7 +1390,7 @@ def test_batch_payload_and_annotations(dry_run, document_arguments):
         ],
     }
     tools = asyncio.run(server.list_tools())
-    tool = next(tool for tool in tools if tool.name == "revit_batch")
+    tool = next(tool for tool in tools if tool.name == "revit_run_actions")
     assert tool.annotations.read_only_hint is False
     assert tool.annotations.destructive_hint is True
     assert tool.annotations.idempotent_hint is False
@@ -1402,7 +1402,7 @@ def test_update_parameters_batch_uses_query_filter_names():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {
@@ -1602,7 +1602,7 @@ def test_create_view_batch_mapping_and_validation():
     server, execute, _ = action_server()
     asyncio.run(
         server.call_tool(
-            "revit_batch",
+            "revit_run_actions",
             {
                 "steps": [
                     {"action": "create_view", "args": {"kind": "floor_plan", "level": "Level 1"}}
@@ -1621,7 +1621,7 @@ def test_create_view_batch_mapping_and_validation():
 def test_create_view_3d_defaults_and_optional_bounds(bounds):
     import asyncio
 
-    from revit_model_mcp.actions import BatchStep
+    from revit_model_mcp.actions import ActionStep
 
     server, execute, _ = action_server()
     asyncio.run(server.call_tool("revit_create_view", {"kind": "3d", **bounds}))
@@ -1630,7 +1630,7 @@ def test_create_view_3d_defaults_and_optional_bounds(bounds):
     assert payload["detailLevel"] == "fine"
     assert payload["elementIds"] == bounds.get("element_ids")
     assert (payload["box"] is None) == ("box" not in bounds)
-    step = BatchStep(action="create_view", args={"kind": "3d", **bounds})
+    step = ActionStep(action="create_view", args={"kind": "3d", **bounds})
     assert step.payload()["displayStyle"] == "shaded"
     assert step.payload()["detailLevel"] == "fine"
 
@@ -1703,7 +1703,7 @@ def test_create_mep_run_maps_points_sizes_and_batch():
 
     asyncio.run(
         server.call_tool(
-            "revit_batch", {"steps": [{"action": "create_mep_run", "args": arguments}]}
+            "revit_run_actions", {"steps": [{"action": "create_mep_run", "args": arguments}]}
         )
     )
     assert execute.await_args.args[0].payload["steps"][0]["command"] == "create-mep-run"
@@ -1769,7 +1769,7 @@ def test_addin_change_type_empty_candidates_has_specific_error():
 def test_batch_allowlists_and_process_models_schema_match():
     import asyncio
 
-    from revit_model_mcp.actions import _BATCH_FIELDS, BatchStep
+    from revit_model_mcp.actions import _BATCH_FIELDS, ActionStep
 
     parser = (
         Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Core/Control/ActionJobParser.cs"
@@ -1778,13 +1778,13 @@ def test_batch_allowlists_and_process_models_schema_match():
     commands = set(re.findall(r'"([a-z-]+)"', allowlist))
     actions = set(_BATCH_FIELDS)
     assert commands == {action.replace("_", "-") for action in actions}
-    assert set(BatchStep.model_json_schema()["properties"]["action"]["enum"]) == actions
+    assert set(ActionStep.model_json_schema()["properties"]["action"]["enum"]) == actions
     assert {"override_graphics", "create_mep_run"} <= actions
     server, _, _ = action_server()
     tools = asyncio.run(server.list_tools())
-    for name in ("revit_batch", "revit_process_models"):
+    for name in ("revit_run_actions", "revit_process_models"):
         schema = next(tool.input_schema for tool in tools if tool.name == name)
-        assert set(schema["$defs"]["BatchStep"]["properties"]["action"]["enum"]) == actions
+        assert set(schema["$defs"]["ActionStep"]["properties"]["action"]["enum"]) == actions
 
 
 @pytest.mark.parametrize(
@@ -1874,11 +1874,11 @@ def test_preflight_tool_descriptions(tool_name, expected_text):
 
 
 def test_mirror_batch_step_keeps_copy_arg():
-    from revit_model_mcp.actions import BatchStep
+    from revit_model_mcp.actions import ActionStep
 
     base = {"element_ids": [1], "axis": "x", "point_mm": [0, 0]}
-    assert BatchStep(action="mirror", args=base).args["copy"] is True
-    assert BatchStep(action="mirror", args={**base, "copy": False}).args["copy"] is False
+    assert ActionStep(action="mirror", args=base).args["copy"] is True
+    assert ActionStep(action="mirror", args={**base, "copy": False}).args["copy"] is False
 
 
 def test_actions_import_emits_no_user_warning():

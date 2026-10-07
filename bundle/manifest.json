@@ -311,7 +311,7 @@
     },
     {
       "name": "revit_delete",
-      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nDeletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_batch, a deletion above 500 elements is refused.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nDeletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {
       "name": "revit_export",
@@ -322,7 +322,7 @@
       "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run.\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
     },
     {
-      "name": "revit_batch",
+      "name": "revit_run_actions",
       "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\nPass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected."
     },
     {

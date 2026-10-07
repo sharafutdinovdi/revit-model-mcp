@@ -283,7 +283,7 @@ def validate_mep_run(
             raise ValueError("Consecutive points must be more than 2.54 mm apart.")
 
 
-class BatchStep(BaseModel):
+class ActionStep(BaseModel):
     model_config = ConfigDict(extra="forbid")
     action: Literal[
         "move",
@@ -733,7 +733,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_place_views_on_sheet": "Place Views on Sheet",
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
-            "revit_batch": "Run Action Batch",
+            "revit_run_actions": "Run Actions",
             "revit_process_models": "Process Many Models",
             "revit_export_nwc": "Export Navisworks NWC",
             "revit_export": "Export Model Files",
@@ -1534,7 +1534,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model with shaded, fine defaults. Box coordinates use model millimetres."""
         try:
-            step = BatchStep(
+            step = ActionStep(
                 action="create_view",
                 args={
                     "kind": kind,
@@ -1657,7 +1657,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.
         dry_run executes and rolls back, returning the same verification block without changing the model.
-        Deletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_batch, a deletion above 500 elements is refused.
+        Deletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.
         Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
@@ -1764,8 +1764,8 @@ def register_actions(mcp, execute, host_provider) -> None:
         )
 
     @action
-    async def revit_batch(
-        steps: Annotated[list[BatchStep], Field(min_length=1, max_length=50)],
+    async def revit_run_actions(
+        steps: Annotated[list[ActionStep], Field(min_length=1, max_length=50)],
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
@@ -1785,7 +1785,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         recursive: bool = False,
         pattern: str = "*.rvt",
         open: ProcessOpen | None = None,
-        steps: Annotated[list[BatchStep] | None, Field(min_length=1, max_length=50)] = None,
+        steps: Annotated[list[ActionStep] | None, Field(min_length=1, max_length=50)] = None,
         code: ProcessCode | None = None,
         exports: list[ProcessExport] | None = None,
         save: ProcessSave | None = None,
