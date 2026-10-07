@@ -3,8 +3,8 @@
   "name": "revit-model-mcp",
   "display_name": "Revit Model MCP",
   "version": "0.0.0",
-  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP; actions that change the model run by default, gated by workstation confirmation. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
-  "long_description": "Actions run by default and assimilate into one named, undoable Revit change; check Read-only mode to disable them without hiding the tools. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
+  "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, and change it with undoable actions. Actions run by default. Saving, syncing, closing, removing links, overwriting exports and running C# code need a confirmation token that you approve in chat. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
+  "long_description": "Actions run by default, and each committed change is one named, undoable Revit change. Check Read-only mode to refuse actions without hiding the tools. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",
   "author": {
     "name": "Dinar Sharafutdinov"
   },
@@ -75,7 +75,7 @@
     },
     {
       "name": "revit_ui_state",
-      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, use process_id to choose one; otherwise any instance may respond. Non-empty skipped means the answer is incomplete; skippedCount includes entries beyond the first 100."
     },
     {
       "name": "revit_model_snapshot",
