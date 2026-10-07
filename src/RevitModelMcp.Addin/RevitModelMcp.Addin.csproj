@@ -5,7 +5,7 @@
     <RootNamespace>RevitModelMcp</RootNamespace>
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
-    <StoreBuild Condition="'$(StoreBuild)' == ''">false</StoreBuild>
+    <ManagedInstall Condition="'$(ManagedInstall)' == ''">false</ManagedInstall>
     <DeployAddin>true</DeployAddin>
     <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
@@ -56,7 +56,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AssemblyMetadata Include="StoreBuild" Value="$(StoreBuild)"/>
+    <AssemblyMetadata Include="ManagedInstall" Value="$(ManagedInstall)"/>
   </ItemGroup>
 
   <ItemGroup>

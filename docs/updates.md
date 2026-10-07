@@ -10,8 +10,8 @@ To disable checks, install the MSI with `UPDATECHECK=0`. A per-machine MSI write
 
 Revit shows its unsigned add-in security dialog again when the add-in DLL content changes or it loads from a new path. The decision is stored for that path and content only after a graceful Revit exit. Until release builds are signed, expect one security prompt at the next Revit start after each automatic update. The updater does not answer the prompt or write to the CodeSigning registry. See the [code signing policy](code-signing.md).
 
-## Store builds and mirrors
+## Managed installs and mirrors
 
-An add-in built with the MSBuild property `StoreBuild=true` never checks for updates, because the Autodesk App Store delivers updates. The default is `false`, so other builds keep the behavior above. For example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:StoreBuild=true`.
+An add-in built with the MSBuild property `ManagedInstall=true` never checks for updates. Use it when another system, such as your software deployment tool, delivers add-in updates. The default is `false`, so other builds keep the behavior above. For example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:ManagedInstall=true`.
 
 To check an internal mirror instead of GitHub, set `REVIT_MCP_UPDATE_FEED` to an HTTPS base URL (loopback HTTP is allowed for tests). The mirror must serve the same `/repos/sharafutdinovdi/revit-model-mcp/releases/latest` JSON as the GitHub API.

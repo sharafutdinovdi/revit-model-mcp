@@ -14,10 +14,10 @@ Revit Model MCP has two parts. The add-in runs inside Revit on Windows. The serv
 
 The add-in changes nothing in a model on its own. The MCP client asks for data or actions through the server. Actions are enabled by default and every one is a named undo entry. Switch to read-only mode if you only want to inspect models; see [actions](actions.md).
 
-## Install from the Autodesk App Store
+## Install the add-in bundle
 
-1. Open the Revit Model MCP page in the Autodesk App Store and choose **Download**. Sign in with your Autodesk account if asked.
-2. Close Revit and run the downloaded installer.
+1. Get the add-in package from your BIM manager or IT team, or build it from the repository. It is an Autodesk `.bundle` folder with a `PackageContents.xml` file.
+2. Close Revit and copy the folder to `%APPDATA%\Autodesk\ApplicationPlugins` (current user) or `%ProgramData%\Autodesk\ApplicationPlugins` (all users).
 3. Start Revit and open a model. The first time, Revit asks whether to load the add-in. Choose **Always Load** after you check the publisher and path. Release builds are not code-signed yet; see [code signing](code-signing.md).
 4. Find the **MCP** panel on the **Add-Ins** tab. Its **Activity** button opens the activity pane, which lists every request and action.
 5. Install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
@@ -48,11 +48,11 @@ The add-in changes nothing in a model on its own. The MCP client asks for data o
 
 7. Restart the client. With a model open in Revit, ask it to call `revit_ping`. A reply with `success: true` means both parts are connected.
 
-The App Store delivers add-in updates, so the add-in's own update check is turned off in the store build. The server still looks for a newer package on PyPI once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` in the client's server settings to turn that off too.
+If your organization delivers add-in updates itself, build the add-in with `ManagedInstall=true` to turn off its own update check; see [automatic updates](updates.md#managed-installs-and-mirrors). The server still looks for a newer package on PyPI once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` in the client's server settings to turn that off too.
 
 ## Install from the MSI or WinGet
 
-The installers published on the [releases page](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) install the same add-in outside the store.
+The installers published on the [releases page](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) install the same add-in with their own update path.
 `RevitModelMcp-<version>-SingleUser.msi` installs for the current user, and `RevitModelMcp-<version>-MultiUser.msi` installs for all users. Install only one.
 Both support automatic updates described in [automatic updates](updates.md).
 WinGet manifests for the package `Sharafutdinov.RevitModelMcp` are generated weekly for the latest stable release; see [CONTRIBUTING](contributing.md) for the status of the submission.
@@ -60,7 +60,7 @@ The README has the full steps for the [add-in](https://github.com/sharafutdinovd
 
 ## Uninstall
 
-Close Revit, then remove the add-in from **Apps > Installed apps** (or from the App Store installer). Remove the server by deleting its entry from your MCP client. Settings and logs remain until you delete them; the [privacy policy](privacy.md#data-retention) lists the folders.
+Close Revit, then remove the add-in from **Apps > Installed apps** (or delete the bundle folder). Remove the server by deleting its entry from your MCP client. Settings and logs remain until you delete them; the [privacy policy](privacy.md#data-retention) lists the folders.
 
 ## Get help
 

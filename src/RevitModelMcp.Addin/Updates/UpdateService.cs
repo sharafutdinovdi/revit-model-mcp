@@ -58,7 +58,7 @@ internal static class UpdateService
         var programData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RevitModelMcp");
         var machine = ReadJson<UpdateSettings>(Path.Combine(programData, "settings.json"));
         var user = ReadJson<UpdateSettings>(Path.Combine(LocalDirectory, "settings.json"));
-        if (!UpdatePolicy.IsEnabled(null, machine?.UpdateCheck, user?.UpdateCheck, IsStoreBuild(),
+        if (!UpdatePolicy.IsEnabled(null, machine?.UpdateCheck, user?.UpdateCheck, IsManagedInstall(),
                 Environment.GetEnvironmentVariable("REVIT_MCP_NO_UPDATE_CHECK"))) return;
         if (state.QueuedVersion is not null)
         {
@@ -165,9 +165,9 @@ internal static class UpdateService
         typeof(Application).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
         typeof(Application).Assembly.GetName().Version?.ToString() ?? "0.0.0";
 
-    private static bool IsStoreBuild() =>
+    private static bool IsManagedInstall() =>
         typeof(Application).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .Any(attribute => attribute.Key == "StoreBuild" &&
+            .Any(attribute => attribute.Key == "ManagedInstall" &&
                               string.Equals(attribute.Value, "true", StringComparison.OrdinalIgnoreCase));
 
     private static string FailureReason(int code) => code switch

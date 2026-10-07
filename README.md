@@ -22,7 +22,7 @@ Revit Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
 The project has no telemetry.
-See [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/) for Revit, Python and MCP client requirements and the Autodesk App Store steps.
+See [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/) for Revit, Python and MCP client requirements and the bundle install steps.
 
 ## Code signing
 

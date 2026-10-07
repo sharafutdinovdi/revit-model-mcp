@@ -50,10 +50,10 @@ public sealed class UpdatePolicyTests
     }
 
     [Test]
-    public async Task StoreBuildPreventsChecks()
+    public async Task ManagedInstallPreventsChecks()
     {
-        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, storeBuild: true)).IsFalse();
-        await Assert.That(UpdatePolicy.IsEnabled(null, true, true, storeBuild: false)).IsTrue();
+        await Assert.That(UpdatePolicy.IsEnabled(null, null, null, managedInstall: true)).IsFalse();
+        await Assert.That(UpdatePolicy.IsEnabled(null, true, true, managedInstall: false)).IsTrue();
     }
 
     [Test]
