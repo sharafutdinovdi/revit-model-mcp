@@ -1,4 +1,4 @@
-"""Generate the Autodesk Design and Make Marketplace MCP tool manifest."""
+"""Generate the tool manifest with per-tool access declarations."""
 
 import argparse
 import asyncio
@@ -11,8 +11,8 @@ from pathlib import Path
 from revit_model_mcp.server import mcp
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-MANIFEST_PATH = REPOSITORY_ROOT / "store" / "autodesk-mcp-manifest.json"
-REGENERATE_COMMAND = "cd server && uv run python ../build/autodesk_mcp_manifest.py"
+MANIFEST_PATH = REPOSITORY_ROOT / "docs" / "tool-manifest.json"
+REGENERATE_COMMAND = "cd server && uv run python ../build/tool_manifest.py"
 
 _bundle_spec = importlib.util.spec_from_file_location(
     "bundle_manifest", Path(__file__).with_name("bundle_manifest.py")

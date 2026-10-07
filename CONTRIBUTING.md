@@ -152,8 +152,8 @@ Run `mkdocs build --strict` in the activated environment before submitting a PR.
 The Python tests cover job construction, transport failures, downloads, action validation and MCP stdio registration with both flag states.
 They also check that the bundle manifest lists every registered tool in order with its current description.
 After changing tools, run `cd server && uv run python ../build/bundle_manifest.py` to regenerate the manifest.
-The same tests compare `store/autodesk-mcp-manifest.json` with the registry and check the policy tables behind it.
-After changing tools, also run `cd server && uv run python ../build/autodesk_mcp_manifest.py`; see [store/README.md](store/README.md).
+The same tests compare `docs/tool-manifest.json` with the registry and check the policy tables behind it.
+After changing tools, also run `cd server && uv run python ../build/tool_manifest.py`; see [Tool manifest](docs/tool-manifest.md).
 A threaded fake HTTP server covers health, authentication, busy responses, job polling and PNG download.
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.
@@ -217,7 +217,7 @@ The module installs WiX 7, accepts its EULA, installs the matching UI extension,
 Single-user installation uses `%APPDATA%\Autodesk\Revit\Addins\<year>`.
 Multi-user installation uses `%ProgramData%\Autodesk\Revit\Addins\<year>` through 2026 and `%ProgramFiles%\Autodesk\Revit\Addins\2027` for 2027.
 
-`dotnet run --project build -- bundle` builds the Autodesk `.bundle` zip from the same `Release.R*/publish` output, and `python build/validate_bundle.py output/RevitModelMcp.bundle.zip --years 2022-2027` checks its `PackageContents.xml` and file layout on any platform.
+`dotnet run --project build -- bundle` builds the Revit `.bundle` zip from the same `Release.R*/publish` output, and `python build/validate_bundle.py output/RevitModelMcp.bundle.zip --years 2022-2027` checks its `PackageContents.xml` and file layout on any platform.
 CI runs both after the six Revit builds and uploads the zip as the `revit-model-mcp-bundle` artifact.
 
 Stable releases publish the wheel and source distribution to PyPI through GitHub OIDC in the `pypi` environment.

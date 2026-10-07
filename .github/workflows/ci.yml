@@ -469,7 +469,7 @@ jobs:
             dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
           }
-      - name: Build and validate Autodesk bundle
+      - name: Build and validate the Revit bundle
         shell: pwsh
         env:
           Build__Version: 0.0.0-ci

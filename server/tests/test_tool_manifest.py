@@ -11,8 +11,8 @@ import pytest
 from revit_model_mcp import server as revit_server
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPOSITORY_ROOT / "build" / "autodesk_mcp_manifest.py"
-COMMITTED = REPOSITORY_ROOT / "store" / "autodesk-mcp-manifest.json"
+SCRIPT = REPOSITORY_ROOT / "build" / "tool_manifest.py"
+COMMITTED = REPOSITORY_ROOT / "docs" / "tool-manifest.json"
 
 
 @pytest.fixture(scope="module")
@@ -36,8 +36,8 @@ def built(generator, registry):
 
 def test_committed_manifest_matches_registry(generator, built):
     assert json.loads(COMMITTED.read_text(encoding="utf-8")) == built, (
-        "Autodesk manifest differs from the server registry. Regenerate with "
-        "cd server && uv run python ../build/autodesk_mcp_manifest.py"
+        "The tool manifest differs from the server registry. Regenerate with "
+        "cd server && uv run python ../build/tool_manifest.py"
     )
     assert COMMITTED.read_text(encoding="utf-8") == generator["render"](built)
 
@@ -70,7 +70,7 @@ def test_read_only_tools_are_safe(built, registry):
         assert entry["file_system"]["access"] in {"none", "read", "write", "read_write"}
 
 
-def test_autodesk_format_keys(built):
+def test_required_manifest_keys(built):
     assert built["mcp_manifest_version"] == "1.0"
     assert built["app_model"] == "A"
     assert isinstance(built["mcp_spec_version"], str)
@@ -90,7 +90,7 @@ def test_check_mode(generator, tmp_path):
     output = tmp_path / "manifest.json"
 
     def run_check() -> int:
-        with patch("sys.argv", ["autodesk_mcp_manifest.py", "--check", "--output", str(output)]):
+        with patch("sys.argv", ["tool_manifest.py", "--check", "--output", str(output)]):
             try:
                 main()
             except SystemExit as exit_info:
@@ -101,7 +101,7 @@ def test_check_mode(generator, tmp_path):
     assert run_check() == 1
     assert output.read_text(encoding="utf-8") == "{}\n"
 
-    with patch("sys.argv", ["autodesk_mcp_manifest.py", "--output", str(output)]):
+    with patch("sys.argv", ["tool_manifest.py", "--output", str(output)]):
         main()
     assert run_check() == 0
 
