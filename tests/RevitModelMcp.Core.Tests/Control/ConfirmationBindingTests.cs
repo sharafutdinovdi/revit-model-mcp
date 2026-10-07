@@ -119,4 +119,27 @@ public sealed class ConfirmationBindingTests
         await Assert.That(tokens.Consume(token, "export", "model", "targets", "state"))
             .IsEqualTo(DocumentConfirmationResult.Invalid);
     }
+
+    [Test]
+    public async Task DeleteArguments_IgnoreOrderAndDuplicates()
+    {
+        await Assert.That(DocumentConfirmationBinding.DeleteArguments([3, 1, 2, 2], 600))
+            .IsEqualTo(DocumentConfirmationBinding.DeleteArguments([1, 2, 3], 600));
+    }
+
+    [Test]
+    public async Task DeleteArguments_BindIdsAndDependentCount()
+    {
+        var baseline = DocumentConfirmationBinding.DeleteArguments([1, 2], 600);
+        await Assert.That(DocumentConfirmationBinding.DeleteArguments([1, 3], 600)).IsNotEqualTo(baseline);
+        await Assert.That(DocumentConfirmationBinding.DeleteArguments([1, 2], 601)).IsNotEqualTo(baseline);
+    }
+
+    [Test]
+    public async Task DeleteArguments_DifferFromOtherCommands()
+    {
+        var arguments = DocumentConfirmationBinding.DeleteArguments([1, 2], 600);
+        await Assert.That(arguments).IsNotEqualTo(DocumentConfirmationBinding.ExportArguments("delete", ["1", "2"]));
+        await Assert.That(arguments).IsNotEqualTo(DocumentConfirmationBinding.CodeArguments("1,2", "auto"));
+    }
 }

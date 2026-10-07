@@ -8,7 +8,7 @@ Transaction warnings are dismissed and reported in `warningsDismissed` (omitted 
 Every action result carries a `summary`: one human sentence describing what changed, how many elements, and in
 which document, alongside `verification`. A committed mutation assimilates its transaction into a single named
 Revit undo entry, `MCP (<clientName>): <short summary>` (at most 60 characters), visible in Revit's Undo list and
-in the add-in's "MCP activity" dockable pane (ribbon: RevitModelMcp tab, MCP panel, "Activity" button).
+in the add-in's "MCP activity" dockable pane ("Activity" button in the MCP panel on Revit's Add-Ins tab).
 `select` and `show` make no document change and get no undo entry, but still appear in the activity pane.
 See [Undo the last action](#undo-the-last-action) for `revit_undo_last`.
 
@@ -44,7 +44,7 @@ A running poll returns progress and completed per-model results in `partial`.
 A final poll preserves the original response, summary, timeout warnings, and verification warnings.
 Do not resubmit a running action.
 
-The add-in retains action results for 24 hours in the selected instance's `jobs/<jobId>.json` directory.
+The add-in retains action results for 24 hours in the selected instance's `jobs/<jobId>.json` directory; other results are kept for ten minutes (see [result retention](transport.md#result-retention)).
 Local pipe, SSH file, and authenticated HTTP clients can fetch the result after an MCP server restart.
 Path redaction applies to stored responses when `REVIT_MCP_REDACT_PATHS=1` on the workstation, and to returned responses when enabled on the server.
 `revit_cancel_job(job_id)` requests cancellation.
@@ -78,7 +78,7 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_create_sheet` | `number`, `name`, `title_block=null` | Create a sheet with a loaded title block. Sheet numbers must be unique. |
 | `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. Group members that Revit refuses to change fail with a clear message, including in dry runs. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
-| `revit_delete` | `element_ids` | Delete nonempty IDs and their dependents. |
+| `revit_delete` | `element_ids`, `dry_run=false`, `confirm_token=null` | Delete nonempty IDs and their dependents. A real deletion of more than 500 elements, dependents included, needs a confirmation token. |
 | `revit_batch` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
 | `revit_process_models` | `paths=null`, `folder=null`, `recursive=false`, `pattern="*.rvt"`, `open=null`, `steps=null`, `code=null`, `exports=null`, `save=null`, `stop_on_error=false`, `dry_run=false`, `confirm_token=null`, `response_timeout_s=14400`, `process_id=null` | Open and process 1-500 models in the interactive Revit session, then close each model. |
 | `revit_export_nwc` | `path`, exporter options, `overwrite=false`, `dry_run=false`, `confirm_token=null`, `response_timeout_s=1800` | Export NWC to an absolute workstation path. Requires the matching Navisworks NWC Export Utility. Replacing an existing file needs a confirmation token. |
@@ -86,7 +86,7 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `response_timeout_s=1800` | Edit open family or named project families; one load cycle per family. |
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `response_timeout_s=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
-| `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=["revit","cad","point_cloud"]`, `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. A real removal needs a confirmation token. Cannot be used in a batch. |
+| `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. A real removal needs a confirmation token. Cannot be used in a batch. |
 | `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `response_timeout_s=600` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
@@ -361,8 +361,9 @@ For confirmation, call the tool once without `confirm_token`. The first response
 
 ### Confirmation tokens for irreversible actions
 
-Four more calls use the same two-step flow, with the same response fields (`needsConfirmation`, `confirmationText`, `confirmToken`), the same five-minute lifetime and single use:
+Five more calls use the same two-step flow, with the same response fields (`needsConfirmation`, `confirmationText`, `confirmToken`), the same five-minute lifetime and single use:
 
+- `revit_delete`, only when more than 500 elements would be removed, dependents included. The threshold is fixed at 500 for now. The token is bound to the document, the requested IDs, the dependent count and the document state. One undo entry restores the deletion. `dry_run` returns the count with no token. In `revit_batch` and `revit_process_models` steps such a deletion is refused; use `revit_delete` on its own.
 - `revit_remove_links` without `dry_run`. The token is bound to the document, the exact set of selected link types and the document state.
 - `revit_export` and `revit_export_nwc` with `overwrite=true`, only when at least one target file already exists. The token is bound to the target paths and their size and modification time. Without an existing target there is no token.
 - `revit_execute_code` without `dry_run`. The token is bound to the SHA-256 of the code, the transaction mode and the target document.
