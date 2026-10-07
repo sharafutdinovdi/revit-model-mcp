@@ -23,6 +23,7 @@ from revit_model_mcp.revit_channel import (
     CLIENT_ID,
     Job,
     JobPickupStatus,
+    ReadOnlyRefusedError,
     RemoteHost,
     ResponseParseError,
     RevitChannelError,
@@ -453,7 +454,9 @@ class PipeJobHost:
         connection = await self._parent.connection(self._instance)
         reply = await connection.request({"type": "status", "jobId": job_id})
         if reply.get("type") == "error":
-            raise RevitChannelError(_error_text(reply))
+            raise (
+                ReadOnlyRefusedError if reply.get("error") == "read_only" else RevitChannelError
+            )(_error_text(reply))
         result = reply.get("result")
         if isinstance(result, dict):
             return result
@@ -469,7 +472,9 @@ class PipeJobHost:
         connection = await self._parent.connection(self._instance)
         reply = await connection.request({"type": "cancel", "jobId": job_id})
         if reply.get("type") == "error":
-            raise RevitChannelError(_error_text(reply))
+            raise (
+                ReadOnlyRefusedError if reply.get("error") == "read_only" else RevitChannelError
+            )(_error_text(reply))
         return reply
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
@@ -492,6 +497,9 @@ class PipeJobHost:
             self._connection = await self._parent.connection(self._instance)
             self._future = self._connection.watch(job_id)
             status_reply = await self._connection.request({"type": "status", "jobId": job_id})
+            if status_reply.get("type") == "error" and status_reply.get("error") == "read_only":
+                self._connection.forget(job_id)
+                raise ReadOnlyRefusedError(_error_text(status_reply))
             if status_reply.get("type") == "status":
                 if status_reply.get("state") in FINISHED_STATES and "result" in status_reply:
                     self._connection.forget(job_id)
@@ -504,7 +512,9 @@ class PipeJobHost:
             reply = await self._connection.request({"type": "submit", "job": payload})
         if reply.get("type") == "error":
             self._connection.forget(job_id)
-            raise RevitChannelError(_error_text(reply))
+            raise (
+                ReadOnlyRefusedError if reply.get("error") == "read_only" else RevitChannelError
+            )(_error_text(reply))
         if reply.get("type") != "submitted" or reply.get("jobId") != job_id:
             raise ResponseParseError("Revit sent an unexpected reply to a pipe submit.")
         return set()

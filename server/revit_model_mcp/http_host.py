@@ -19,6 +19,7 @@ from typing import Any
 from revit_model_mcp.revit_channel import (
     Job,
     JobPickupStatus,
+    ReadOnlyRefusedError,
     ResponseParseError,
     ResponseTimeoutError,
     ResultExpiredError,
@@ -329,7 +330,12 @@ class HttpHost:
                     429: "Revit job queue is full for this client; retry after a short wait.",
                     404: "Revit job or endpoint not found; check the job ID.",
                 }
-                raise RevitChannelError(
+                error_type = (
+                    ReadOnlyRefusedError
+                    if error.code == 403 and method == "POST" and path.split("?")[0] == "/jobs"
+                    else RevitChannelError
+                )
+                raise error_type(
                     messages.get(error.code, f"Revit endpoint returned HTTP {error.code}.")
                 ) from None
             except (

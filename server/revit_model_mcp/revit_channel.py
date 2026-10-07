@@ -14,6 +14,7 @@ from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
+from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
 from revit_model_mcp.universal_jobs import aggregate_payload, query_payload
 
 LOGGER = logging.getLogger(__name__)
@@ -63,6 +64,8 @@ def with_client_identity(function):
 
 ACTION_COMMANDS = frozenset(
     {
+        "undo-last",
+        "batch-supervisor-start",
         "select",
         "show",
         "isolate",
@@ -146,6 +149,10 @@ def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str
 
 class RevitChannelError(RuntimeError):
     """User-facing Revit read channel error."""
+
+
+class ReadOnlyRefusedError(RevitChannelError):
+    """The transport refused a request because the workstation is read-only."""
 
 
 class ResultExpiredError(RevitChannelError):
@@ -577,6 +584,18 @@ class RevitChannel:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         pickup_timeout_seconds: int = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     ) -> dict[str, Any]:
+        try:
+            return await self._execute(job, timeout_seconds, pickup_timeout_seconds)
+        except ReadOnlyRefusedError:
+            if job.command in ACTION_COMMANDS or (
+                job.command == "jobs" and job.payload.get("requestCancellation")
+            ):
+                return refusal(job.command, READ_ONLY, READ_ONLY_MESSAGE)
+            raise
+
+    async def _execute(
+        self, job: Job, timeout_seconds: int, pickup_timeout_seconds: int
+    ) -> dict[str, Any]:
         if job.command == "capture-elements":
             from revit_model_mcp.http_host import HttpHost
 
@@ -596,7 +615,15 @@ class RevitChannel:
                 raise RevitChannelError("wait_seconds must be between 0 and 50.")
             remote, job = await self.remote.select_job(job)
             if job.payload.get("requestCancellation"):
-                return await remote.cancel_job(job_id)
+                from revit_model_mcp.ssh_host import RemoteCommandError
+
+                try:
+                    return await remote.cancel_job(job_id)
+                except RemoteCommandError as error:
+                    # File-channel cancellation reports the gate through PowerShell stderr.
+                    if READ_ONLY_MESSAGE in str(error):
+                        raise ReadOnlyRefusedError(str(error)) from error
+                    raise
             deadline = asyncio.get_running_loop().time() + wait_seconds
             while True:
                 response = await remote.fetch_job(job_id)
@@ -708,7 +735,7 @@ class RevitChannel:
                     ),
                     remaining() if background else None,
                 )
-            except ResultExpiredError:
+            except (ResultExpiredError, ReadOnlyRefusedError):
                 raise
             except (RevitChannelError, TimeoutError):
                 if not background:
@@ -721,7 +748,7 @@ class RevitChannel:
                         self.remote.finish_job(response_name, [], False, None),
                         timeout=remaining(),
                     )
-                except ResultExpiredError:
+                except (ResultExpiredError, ReadOnlyRefusedError):
                     raise
                 except (RevitChannelError, TimeoutError):
                     if not background:
@@ -764,7 +791,7 @@ class RevitChannel:
                     response_name = await self.remote.wait_for_new_response(
                         job.command, known_responses, remaining(), correlation_id
                     )
-                except ResultExpiredError:
+                except (ResultExpiredError, ReadOnlyRefusedError):
                     raise
                 except (RevitChannelError, TimeoutError):
                     if not background:
@@ -775,7 +802,7 @@ class RevitChannel:
                 # Recheck at the boundary: a completed result wins over the budget.
                 try:
                     response = await asyncio.wait_for(self.remote.fetch_job(job_id), 1)
-                except ResultExpiredError:
+                except (ResultExpiredError, ReadOnlyRefusedError):
                     raise
                 except (RevitChannelError, TimeoutError):
                     return running_job(job_id)
@@ -909,7 +936,7 @@ def parse_response(content: str, expected_command: str) -> dict[str, Any]:
         )
     if response["success"] is False:
         if expected_command in ACTION_COMMANDS:
-            return response
+            return with_error_code(response)
         if _is_intermediate_response(response) or (
             response.get("partial") is True
             and isinstance(response.get("data"), (dict, list))

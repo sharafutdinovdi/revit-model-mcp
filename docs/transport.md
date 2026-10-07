@@ -244,7 +244,7 @@ It is final: do not poll it again, and inspect the model before resubmitting an 
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
-MCP action tools are refused with `read-only mode` when `REVIT_MCP_READ_ONLY=1` in the Python process.
+MCP action tools return `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` when `REVIT_MCP_READ_ONLY=1` in the Python process. A read-only refusal from the pipe or HTTP transport (pipe error `read_only`, HTTP 403) is returned the same way for actions.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
 Jobs are limited to 1 MiB. The add-in returns HTTP 413 before reading a body
 whose `Content-Length` exceeds that limit, and also enforces the limit while
