@@ -26,7 +26,9 @@ public static class UpdatePolicy
     public static bool ShouldCheck(DateTimeOffset now, DateTimeOffset? lastCheck) =>
         lastCheck is null || now - lastCheck.Value >= TimeSpan.FromHours(24);
 
-    public static bool IsEnabled(bool? msiSetting, bool? machineSetting, bool? userSetting) =>
+    public static bool IsEnabled(bool? msiSetting, bool? machineSetting, bool? userSetting,
+        bool managedInstall = false, string? environmentOptOut = null) =>
+        !managedInstall && environmentOptOut != "1" &&
         msiSetting != false && machineSetting != false && userSetting != false;
 
     public static string? SelectSingleUserAsset(IEnumerable<string> names, string version)
