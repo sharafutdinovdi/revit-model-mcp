@@ -273,12 +273,18 @@ mcp = MCPServer(
 )
 
 
-@mcp.resource("revit://guides/coordinator", mime_type="text/markdown")
+@mcp.resource(
+    "revit://guides/coordinator",
+    mime_type="text/markdown",
+    description="Guide for reviewing a Revit model: tool order, result fields and reporting conventions.",
+)
 def coordinator_guide() -> str:
     return files("revit_model_mcp").joinpath("guides", "coordinator.md").read_text(encoding="utf-8")
 
 
-@mcp.prompt()
+@mcp.prompt(
+    description="Review one open model: health, warnings, links, coordinates and families, as a findings table."
+)
 def model_overview() -> str:
     return (
         "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
@@ -289,7 +295,9 @@ def model_overview() -> str:
     )
 
 
-@mcp.prompt()
+@mcp.prompt(
+    description="Check an open model before issuing it: health, warnings, links, coordinates, parameter fill and families."
+)
 def pre_issue_check() -> str:
     return (
         "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
@@ -302,7 +310,7 @@ def pre_issue_check() -> str:
     )
 
 
-@mcp.prompt()
+@mcp.prompt(description="Group and prioritize model warnings with affected element IDs.")
 def warnings_triage() -> str:
     return (
         "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
@@ -313,7 +321,9 @@ def warnings_triage() -> str:
     )
 
 
-@mcp.prompt()
+@mcp.prompt(
+    description="Report how completely the requested parameters are filled for the requested categories."
+)
 def parameter_fill_report(categories: str, parameters: str) -> str:
     return (
         "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
@@ -327,7 +337,9 @@ def parameter_fill_report(categories: str, parameters: str) -> str:
     )
 
 
-@mcp.prompt()
+@mcp.prompt(
+    description="Collect snapshots from many models in the background and build a comparison report."
+)
 def batch_audit(
     output_path: str,
     folder: str | None = None,
