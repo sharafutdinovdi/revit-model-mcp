@@ -205,17 +205,17 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     assert job.payload["dryRun"] is False
     assert execute.await_args.args[1] == 600
 
-    with pytest.raises(Exception):
-        asyncio.run(
-            server.call_tool(
-                "revit_execute_code",
-                {
-                    "code": "return 42;",
-                    "transaction": "none",
-                    "dry_run": True,
-                },
-            )
+    execute.reset_mock()
+    refused = asyncio.run(
+        server.call_tool(
+            "revit_execute_code",
+            {"code": "return 42;", "transaction": "none", "dry_run": True},
         )
+    )
+    assert refused.structured_content["success"] is False
+    assert refused.structured_content["errorCode"] == "action_failed"
+    assert "dry_run requires" in refused.structured_content["error"]
+    execute.assert_not_awaited()
     blocked, blocked_execute, _ = action_server(read_only=True)
     result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
     assert "read-only mode" in str(result)

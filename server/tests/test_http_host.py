@@ -834,3 +834,31 @@ def test_http_read_only_action_returns_refusal(endpoint):
     assert any(
         method == "POST" and path.startswith("/jobs") for method, path, _ in state["requests"]
     )
+
+
+def test_http_read_only_cancel_returns_refusal(endpoint):
+    host, state = endpoint
+    state["status"] = 403
+    job = Job("jobs", {"command": "jobs", "fetchJobId": "a" * 32, "requestCancellation": True})
+    assert asyncio.run(RevitChannel(host).execute(job)) == {
+        "success": False,
+        "command": "jobs",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    assert any(
+        method == "POST" and path == "/jobs/" + "a" * 32 + "/cancel"
+        for method, path, _ in state["requests"]
+    )
+
+
+def test_addin_refuses_job_control_and_batch_start_in_read_only_mode():
+    control = REPOSITORY / "src/RevitModelMcp.Addin/Control"
+    http = (control / "HttpChannel.cs").read_text()
+    cancel = http.split('path.EndsWith("/cancel"', 1)[1].split("_channel.CancelJob", 1)[0]
+    assert "ActionCommandExecutor.ReadOnlyMode" in cancel and "403" in cancel
+    assert "ReadOnlyGatePolicy.RefusesSubmission" in http
+    pipe = (control / "PipeChannel.cs").read_text()
+    pipe_cancel = pipe.split("private PipeMessage Cancel(", 1)[1].split("CancelJob", 1)[0]
+    assert '"read_only"' in pipe_cancel
+    assert "ReadOnlyGatePolicy.RefusesSubmission" in pipe

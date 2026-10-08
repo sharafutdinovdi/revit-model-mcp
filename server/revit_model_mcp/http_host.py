@@ -34,6 +34,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _is_job_submission_path(path: str) -> bool:
+    route = path.split("?")[0]
+    return route == "/jobs" or (route.startswith("/jobs/") and route.endswith("/cancel"))
+
+
 class HttpHost:
     def __init__(self, host: str, token: str | None = None) -> None:
         parsed = urllib.parse.urlsplit(host)
@@ -332,7 +337,7 @@ class HttpHost:
                 }
                 error_type = (
                     ReadOnlyRefusedError
-                    if error.code == 403 and method == "POST" and path.split("?")[0] == "/jobs"
+                    if error.code == 403 and method == "POST" and _is_job_submission_path(path)
                     else RevitChannelError
                 )
                 raise error_type(

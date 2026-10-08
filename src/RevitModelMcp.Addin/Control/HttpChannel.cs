@@ -235,6 +235,11 @@ internal sealed class HttpChannel : IDisposable
                 var payload = await ReadBodyAsync(context).ConfigureAwait(false);
                 if (payload is null) return;
                 var request = ControlJobParser.Parse(payload);
+                if (ActionCommandExecutor.ReadOnlyMode)
+                {
+                    await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = request.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+                    return;
+                }
                 var cancellation = _channel.CancelJob(jobId, request.ClientId);
                 await JsonAsync(context, cancellation.State is null ? 404 : 200, new()
                 {
@@ -400,7 +405,7 @@ internal sealed class HttpChannel : IDisposable
     private async Task<HttpJob?> SubmitAsync(HttpListenerContext context, ControlJobParseResult command, string payload)
     {
         RemoveExpiredResults();
-        if (ActionJobParser.IsAction(command.Command) && ActionCommandExecutor.ReadOnlyMode)
+        if (ReadOnlyGatePolicy.RefusesSubmission(command.Command) && ActionCommandExecutor.ReadOnlyMode)
         {
             await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
             return null;
