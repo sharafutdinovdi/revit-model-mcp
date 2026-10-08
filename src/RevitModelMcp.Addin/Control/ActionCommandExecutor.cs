@@ -847,14 +847,31 @@ internal static class ActionCommandExecutor
             return viewData;
         }
 
+        var skips = new SkippedByReason();
+        var transform = TransformSkipPolicy.Supports(command, action.Copy);
+        var requestedCount = ids.Count;
+        if (transform)
+        {
+            var free = new List<ElementId>();
+            foreach (var id in ids)
+            {
+                var element = document.GetElement(id)!;
+                var reason = TransformSkipPolicy.ClassifyBefore(element.Pinned, element.GroupId != ElementId.InvalidElementId);
+                if (reason is null) free.Add(id);
+                else TransformSkipPolicy.Add(skips, reason.Value, RevitValueReader.GetId(id));
+            }
+            if (free.Count == 0) throw new InvalidOperationException(TransformSkipPolicy.NoneChangedMessage(command, requestedCount, skips));
+            ids = free;
+            action.ElementIds = ids.Select(RevitValueReader.GetId).ToList();
+        }
         var preflight = ActionPreflight.Run(document, command, action, ids);
-        List<long>? skippedInGroup = null;
         if (GroupSkipPolicy.Supports(command) && preflight is { InGroup.Count: > 0 })
         {
-            skippedInGroup = preflight.InGroup.OrderBy(id => id).ToList();
+            skips.InGroup.AddRange(preflight.InGroup.Where(id => !skips.InGroup.Contains(id)));
             ids = ids.Where(id => !preflight.InGroup.Contains(RevitValueReader.GetId(id))).ToList();
             action.ElementIds = ids.Select(RevitValueReader.GetId).ToList();
         }
+        skips.InGroup.Sort();
         var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
         if (group is not null && group.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction group.");
@@ -868,11 +885,31 @@ internal static class ActionCommandExecutor
             try
             {
                 var before = ActionVerifier.CaptureBefore(document, command, action, ids);
+                var poses = transform ? ids.Select(id => ActionVerifier.Pose(document.GetElement(id)!)).ToList() : null;
                 var data = Mutate(document, command, action, ids, preflight);
-                if (skippedInGroup is not null)
+                var changedIds = ids;
+                if (poses is not null)
                 {
-                    data.Skipped = new SkippedByReason { InGroup = skippedInGroup };
-                    var warning = GroupSkipPolicy.SkipWarning(skippedInGroup.Count);
+                    document.Regenerate();
+                    changedIds = [];
+                    for (var index = 0; index < ids.Count; index++)
+                    {
+                        var element = document.GetElement(ids[index])!;
+                        if (!TransformSkipPolicy.SamePose(poses[index], ActionVerifier.Pose(element)))
+                            changedIds.Add(ids[index]);
+                        else
+                            TransformSkipPolicy.Add(skips, TransformSkipPolicy.ClassifyUnchanged(ActionVerifier.IsHosted(element)),
+                                RevitValueReader.GetId(ids[index]));
+                    }
+                    if (changedIds.Count == 0)
+                        throw new InvalidOperationException(TransformSkipPolicy.NoneChangedMessage(command, requestedCount, skips));
+                    data.Count = changedIds.Count;
+                    data.Verification = new ActionVerification { Changed = changedIds.Select(RevitValueReader.GetId).ToList() };
+                }
+                if (TransformSkipPolicy.Total(skips) > 0)
+                {
+                    data.Skipped = skips;
+                    var warning = TransformSkipPolicy.Warning(skips);
                     data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
                 }
                 data.DryRun = action.DryRun;
@@ -902,10 +939,9 @@ internal static class ActionCommandExecutor
                 document.Regenerate();
                 ActionVerifier.CaptureAfter(document, command, action, data);
                 CaptureViewSheetAfter(document, command, action, data);
-                if (action.DryRun && command is ("move" or "set-parameter"))
-                    data.Verification.Changed = command == "move"
-                        ? ids.Select(RevitValueReader.GetId).ToList() : [action.ElementId];
-                data.Summary = BuildSummary(command, action, data, document.Title, ids);
+                if (action.DryRun && command == "set-parameter")
+                    data.Verification.Changed = [action.ElementId];
+                data.Summary = BuildSummary(command, action, data, document.Title, changedIds);
                 if (action.DryRun)
                 {
                     // Dry runs must never commit: some deletions are irreversible.

@@ -59,10 +59,10 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_show` | `element_ids`, `select=true` | Show nonempty IDs and zoom to fit when opening a new view; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
-| `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. Group members that Revit refuses to change are skipped; see [Group members](#group-members-in-dry-runs-and-real-runs). |
-| `revit_rotate` | `element_ids`, `angle_deg`, `center_mm=null` | Rotate around a vertical axis through the given model XY point in mm or the combined bounding box center. Pinned elements are refused. Group members that Revit refuses to change are skipped. |
+| `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. Group members that Revit refuses to change are skipped; see [Group members](#group-members-in-dry-runs-and-real-runs). Pinned, hosted and constrained elements that do not move are skipped too; see [Elements that cannot move](#elements-that-move-rotate-or-mirror-cannot-change). |
+| `revit_rotate` | `element_ids`, `angle_deg`, `center_mm=null` | Rotate around a vertical axis through the given model XY point in mm or the combined bounding box center. Pinned elements are skipped and reported, as are hosted and constrained elements that do not rotate. Group members that Revit refuses to change are skipped. |
 | `revit_copy` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0`, `count=1` | Create 1-100 copies at successive multiples of the offset. Return IDs per copy. Group members that Revit refuses to change are skipped. |
-| `revit_mirror` | `element_ids`, `axis`, `point_mm`, `copy=true` | Mirror across an X or Y parallel line through the model XY point in mm. Copy keeps originals. Group members that Revit refuses to change are skipped. |
+| `revit_mirror` | `element_ids`, `axis`, `point_mm`, `copy=true` | Mirror across an X or Y parallel line through the model XY point in mm. Copy keeps originals. Without copy, pinned, hosted and constrained elements that do not mirror are skipped and reported. Group members that Revit refuses to change are skipped. |
 | `revit_change_type` | `element_ids`, `type_name`, `family=null` | Resolve each target among compatible types. Refuse ambiguous or incompatible targets with candidates. Group members that Revit refuses to change are skipped. |
 | `revit_update_parameters` | `filters`, `parameter`, `value`, `parameter_id=null`, `max_elements=5000`, `include_type_parameters=false` | Use query filters to update matching instance parameters. Refuse counts above the limit, at most 20000. Report missing, read-only and type-only parameters and preview up to 50 values. Members of groups that Revit refuses to change appear in `skipped.inGroup`, next to `skipped.missing`, `skipped.readOnly` and `skipped.typeParameter`; dry runs predict these skips. With `include_type_parameters=true`, update each distinct type once and report `affectedTypeIds` and `outsideFilterCount` for instances sharing those types outside the filter. |
 | `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
@@ -202,6 +202,19 @@ The remaining elements are processed, and `count`, `verification` and the summar
 If every requested element is a rejected group member, the action refuses with a clear message and changes nothing.
 A dry run and a real run take the same path, so they report the same skipped elements.
 Actions that only create elements or change views are not probed; their commit failures are reported by the real run.
+
+#### Elements that move, rotate or mirror cannot change
+
+`revit_move`, `revit_rotate` and `revit_mirror` with `copy=false` check what actually changed.
+Before the action they skip pinned elements and group members.
+After the action they compare each element's bounds, location and orientation with the state before it.
+An element that did not change is skipped as `hosted` when it sits on a host, such as a door in a wall, and as `constrained` otherwise, such as a curtain wall panel.
+The result lists the ids in `data.skipped.pinned`, `data.skipped.inGroup`, `data.skipped.hosted` and `data.skipped.constrained`, and adds a `warning`.
+Only the elements that changed count in `count`, `verification.changed` and the summary.
+If no requested element changed, the action fails and rolls back with a message that gives the count per reason.
+The tools never unpin elements or ungroup them.
+A dry run goes the same way, so it reports the same skipped ids as the real run.
+Mirror with `copy=true` and copy create new elements and report the created ids.
 
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.

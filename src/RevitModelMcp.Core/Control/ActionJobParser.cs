@@ -1640,6 +1640,9 @@ public sealed class SkippedByReason
     [DataMember(Name = "readOnly", Order = 1)] public List<long> ReadOnly { get; set; } = [];
     [DataMember(Name = "typeParameter", Order = 2)] public List<long> TypeParameter { get; set; } = [];
     [DataMember(Name = "inGroup", Order = 3)] public List<long> InGroup { get; set; } = [];
+    [DataMember(Name = "pinned", Order = 4, EmitDefaultValue = false)] public List<long>? Pinned { get; set; }
+    [DataMember(Name = "hosted", Order = 5, EmitDefaultValue = false)] public List<long>? Hosted { get; set; }
+    [DataMember(Name = "constrained", Order = 6, EmitDefaultValue = false)] public List<long>? Constrained { get; set; }
 }
 
 [DataContract]

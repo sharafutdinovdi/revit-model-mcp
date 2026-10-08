@@ -126,8 +126,6 @@ internal static class ActionMutations
 
     internal static ActionResultData Rotate(Document document, ActionJobContract action, List<ElementId> ids)
     {
-        var pinned = ids.Where(id => document.GetElement(id)?.Pinned == true).Select(RevitValueReader.GetId).ToList();
-        if (pinned.Count > 0) throw new InvalidOperationException($"Pinned elements cannot rotate: {string.Join(", ", pinned)}.");
         var boxes = ids.Select(id => document.GetElement(id)!.get_BoundingBox(null)).ToList();
         if (action.CenterMm is null && boxes.Any(box => box is null))
             throw new InvalidOperationException("All elements need bounding boxes when centerMm is omitted.");
@@ -142,7 +140,7 @@ internal static class ActionMutations
         {
             throw new InvalidOperationException($"Elements cannot rotate: {string.Join(", ", action.ElementIds)}. {exception.Message}", exception);
         }
-        return new ActionResultData { Count = ids.Count, Verification = new ActionVerification { Changed = action.ElementIds } };
+        return new ActionResultData { Count = ids.Count };
     }
 
     internal static ActionResultData Copy(Document document, ActionJobContract action, List<ElementId> ids)
@@ -175,7 +173,7 @@ internal static class ActionMutations
         {
             Count = action.Copy ? created.Count : ids.Count,
             Copies = action.Copy ? [created] : null,
-            Verification = new ActionVerification { Changed = action.Copy ? created : action.ElementIds }
+            Verification = action.Copy ? new ActionVerification { Changed = created } : null
         };
     }
 
