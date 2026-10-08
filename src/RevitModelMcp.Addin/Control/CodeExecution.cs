@@ -121,6 +121,16 @@ internal static class CodeExecution
         var context = new ScriptContext(application, uiDocument, document);
         TransactionGroup? group = null;
         Transaction? transaction = null;
+        var changedElementCount = 0;
+        void CountChanges(object? sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs arguments)
+        {
+            if (arguments.Operation != Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted) return;
+            if (document is null || !document.Equals(arguments.GetDocument())) return;
+            changedElementCount += arguments.GetAddedElementIds().Count + arguments.GetModifiedElementIds().Count
+                + arguments.GetDeletedElementIds().Count;
+        }
+        var counting = action.TransactionMode == "auto" && !action.DryRun;
+        if (counting) application.Application.DocumentChanged += CountChanges;
 #if !NETFRAMEWORK
         var loadContext = new AssemblyLoadContext("McpScript_" + key.Substring(0, 12), isCollectible: true);
         loadContext.Resolving += (_, name) => AppDomain.CurrentDomain.GetAssemblies()
@@ -179,12 +189,29 @@ internal static class CodeExecution
                 {
                     if (transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
-                    var undoName = ActionSummaryBuilder.BuildGroupName(clientName, "Execute code");
-                    group!.SetName(undoName);
-                    if (group.Assimilate() != TransactionStatus.Committed)
-                        throw new InvalidOperationException("Could not assimilate the action transaction group.");
-                    result.UndoName = undoName;
-                    result.Committed = true;
+                    if (changedElementCount == 0)
+                    {
+                        // The script changed nothing: leave no undo entry behind.
+                        if (group!.RollBack() != TransactionStatus.RolledBack)
+                            throw new InvalidOperationException("Could not roll back the empty action transaction group.");
+                        result.RolledBack = true;
+                        result.Committed = false;
+                        result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                        {
+                            Command = "execute-code",
+                            DocumentTitle = documentTitle,
+                            NoChanges = true
+                        });
+                    }
+                    else
+                    {
+                        var undoName = ActionSummaryBuilder.BuildGroupName(clientName, "Execute code");
+                        group!.SetName(undoName);
+                        if (group.Assimilate() != TransactionStatus.Committed)
+                            throw new InvalidOperationException("Could not assimilate the action transaction group.");
+                        result.UndoName = undoName;
+                        result.Committed = true;
+                    }
                 }
             }
         }
@@ -208,6 +235,7 @@ internal static class CodeExecution
         }
         finally
         {
+            if (counting) application.Application.DocumentChanged -= CountChanges;
             transaction?.Dispose();
             group?.Dispose();
 #if !NETFRAMEWORK

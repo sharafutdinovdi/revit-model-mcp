@@ -84,6 +84,57 @@ public sealed class ActionSummaryBuilderTests
     }
 
     [Test]
+    public async Task ExecuteCode_WithoutChanges_SaysNothingWasKept()
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt",
+            NoChanges = true
+        })).IsEqualTo("Executed code in Model.rvt. It changed nothing, so no undo entry was kept.");
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "execute-code",
+            DocumentTitle = "Model.rvt",
+            DryRun = true,
+            NoChanges = true
+        })).IsEqualTo("Ran a code preview in Model.rvt.");
+    }
+
+    [Test]
+    [Arguments(true, "Would export an NWC file from Model.rvt.")]
+    [Arguments(false, "Exported an NWC file from Model.rvt.")]
+    public async Task ExportNwc_DryRunUsesFutureTense(bool dryRun, string expected)
+    {
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "export-nwc",
+            DocumentTitle = "Model.rvt",
+            DryRun = dryRun
+        })).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments("export-nwc")]
+    [Arguments("edit-families")]
+    [Arguments("align-link-datums")]
+    [Arguments("remove-links")]
+    [Arguments("set-view-visibility")]
+    [Arguments("batch")]
+    public async Task DryRunSummariesNeverUsePastTense(string command)
+    {
+        var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = command,
+            DocumentTitle = "Model.rvt",
+            DryRun = true,
+            Count = 2,
+            BatchStepCount = 2
+        });
+        await Assert.That(summary).StartsWith("Would ");
+    }
+
+    [Test]
     [Arguments(CodeFailureKind.Compilation, "Code failed to compile in Model.rvt.")]
     [Arguments(CodeFailureKind.Execution, "Code failed in Model.rvt.")]
     public async Task ExecuteCode_FailureSummaryDescribesFailure(CodeFailureKind failure, string expected)
