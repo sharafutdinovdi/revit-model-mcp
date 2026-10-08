@@ -29,6 +29,7 @@ public sealed class ActionSummaryContext
     public bool NeedsConfirmation { get; init; }
     public string? ConfirmationText { get; init; }
     public CodeFailureKind CodeFailure { get; init; }
+    public bool NoChanges { get; init; }
 }
 
 /// <summary>
@@ -75,7 +76,7 @@ public static class ActionSummaryBuilder
             "batch" => $"{(context.DryRun ? "Would run" : "Ran")} a batch of {Plural(context.BatchStepCount, "step")} in {doc}.",
             "process-models" when context.ProcessTotal > 0 => $"{(context.DryRun ? "Previewed" : "Processed")} {context.Count} of {context.ProcessTotal} models; {context.ProcessFailed} failed, {context.ProcessSkipped} skipped{(context.ProcessCancelled > 0 ? $", {context.ProcessCancelled} cancelled" : "")}.",
             "process-models" => $"{(context.DryRun ? "Previewed" : "Processed")} {doc}.",
-            "export-nwc" => $"Exported an NWC file from {doc}.",
+            "export-nwc" => $"{(context.DryRun ? "Would export" : "Exported")} an NWC file from {doc}.",
             "edit-families" => $"{(context.DryRun ? "Would edit" : "Edited")} {Plural(context.Count, "family")} in {doc}.",
             "align-link-datums" => $"{(context.DryRun ? "Would align" : "Aligned")} link datums in {doc}.",
             "undo-last" => $"Requested undo of the last MCP action in {doc}.",
@@ -91,6 +92,7 @@ public static class ActionSummaryBuilder
             "remove-links" => $"{(context.DryRun ? "Would remove" : "Removed")} {Plural(context.Count, "link")} in {doc}.",
             "execute-code" when context.CodeFailure == CodeFailureKind.Compilation => $"Code failed to compile in {doc}.",
             "execute-code" when context.CodeFailure == CodeFailureKind.Execution => $"Code failed in {doc}.",
+            "execute-code" when context.NoChanges && !context.DryRun => $"Executed code in {doc}. It changed nothing, so no undo entry was kept.",
             "execute-code" => $"{(context.DryRun ? "Ran a code preview" : "Executed code")} in {doc}.",
             _ => $"Ran {context.Command} in {doc}."
         };
