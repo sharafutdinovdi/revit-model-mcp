@@ -175,9 +175,11 @@ Every tool follows one rule.
 
 | Case | What the client gets |
 | --- | --- |
-| Invalid or missing argument, unknown document, transport failure, failed read | An MCP tool error (`isError`) with a message. |
+| Invalid, missing or unknown argument, unknown batch run, unknown document, transport failure, failed read | An MCP tool error (`isError`) with a message. |
 | A refused or failed action, including read-only mode | A normal result with `success:false`, `command`, `error` and `errorCode`. |
 | An action that needs confirmation | `success:true` with `data.needsConfirmation:true`, `confirmationText` and `confirmToken`. This is not an error. |
+
+A tool rejects an argument it does not declare and names it. If the argument is a former name, the message names the new one. Documented aliases such as `timeoutSeconds` are accepted.
 
 Read `errorCode`, not the text of `error`. The wording of messages is not part of the contract. The `error` value `read-only mode` is.
 

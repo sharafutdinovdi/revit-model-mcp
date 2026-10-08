@@ -17,7 +17,7 @@ A breaking change to anything in the first list needs a major release.
 ## Allowed in minor releases
 
 - New tools, new optional parameters whose default keeps the old behavior, new response fields, new settings keys, new error codes, and new values of output enums. Clients must ignore unknown fields and unknown enum values.
-- Tighter validation that rejects input that never worked.
+- Tighter validation that rejects input that never worked. Tools reject arguments they do not declare, so clients must send only documented parameter names.
 
 ## Not covered
 

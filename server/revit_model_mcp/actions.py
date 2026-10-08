@@ -11,7 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
-from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal
+from revit_model_mcp.errors import ACTION_FAILED, READ_ONLY, READ_ONLY_MESSAGE, refusal
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
@@ -1002,7 +1002,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run needs no token.
         """
         if transaction == "none" and dry_run:
-            raise ToolError("dry_run requires transaction='auto'.")
+            return refusal("execute-code", ACTION_FAILED, "dry_run requires transaction='auto'.")
         return await send(
             "execute-code",
             code=code,
@@ -1137,6 +1137,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         """Move elements; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
         dry_run executes and rolls back, returning the same verification block without changing the model.
         Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        Pinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.
         document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
@@ -1188,6 +1189,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Rotate elements about a vertical axis through center_mm, or their combined bounding box center.
         Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        Pinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.
         """
         return await send(
             "rotate",
@@ -1233,6 +1235,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Mirror across a model X or Y parallel line through point_mm; copy keeps originals.
         Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
+        Pinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.
         """
         return await send(
             "mirror",

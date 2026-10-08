@@ -15,6 +15,7 @@ from mcp.types import ToolAnnotations
 from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
 from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
+from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
     Job,
     ReadOnlyRefusedError,
@@ -32,6 +33,16 @@ def _file_host(host: object) -> SshPowerShellHost:
     if not isinstance(candidate, SshPowerShellHost):
         raise ToolError("Batch collection requires a local or SSH workstation file channel.")
     return candidate
+
+
+async def _http_workstation_is_read_only(host: object) -> bool:
+    """Batch collection has no HTTP path, so only the health report can show the read-only gate."""
+    if not isinstance(host, HttpHost):
+        return False
+    try:
+        return (await host.health()).get("readOnly") is True
+    except RevitChannelError:
+        return False
 
 
 def _run_id(value: str) -> str:
@@ -186,6 +197,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         ):
             raise ToolError("open_timeout_minutes must be an integer from 5 through 180.")
         host = host_provider()
+        if await _http_workstation_is_read_only(host):
+            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         file_host = _file_host(host)
         try:
             discovered = (
