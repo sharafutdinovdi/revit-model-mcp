@@ -447,7 +447,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
     def test_instructions_state_the_confirmation_rule(self) -> None:
         instructions = revit_server.mcp.instructions
         self.assertIn("summary", instructions)
-        self.assertIn("explicit confirmation", instructions)
+        self.assertIn("confirmation token", instructions)
         self.assertIn("REVIT_MCP_READ_ONLY", instructions)
         self.assertIn("revit_undo_last", instructions)
 
@@ -501,20 +501,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             ],
             3000,
         )
-        self.assertIn(
-            "Call revit_list_views next",
-            tools["revit_document_info"].description,
-        )
-        self.assertIn("with revit_view_summary", tools["revit_list_views"].description)
-        self.assertIn(
-            "before calling revit_view_elements",
-            tools["revit_view_summary"].description,
-        )
-        self.assertIn("numbers do not explain geometry", tools["revit_export_view"].description)
         self.assertIn("change the active view", tools["revit_export_view"].description)
-        self.assertIn("Start universal queries here", tools["revit_list_catalog"].description)
-        self.assertIn("after revit_list_catalog", tools["revit_aggregate_elements"].description)
-        self.assertIn("after revit_list_catalog", tools["revit_query_elements"].description)
         self.assertFalse(
             tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"]
         )

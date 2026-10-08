@@ -195,6 +195,30 @@ After the action, report changed element IDs and verification results.
 A timed-out or failed verification response can follow a committed change.
 Do not infer that the model was unchanged from such a response alone.
 
+## Confirmation tokens
+
+Save, sync, close-with-loss, link removal, large deletions, overwriting exports, in-place saves in process-models and C# execution use a two-step flow.
+The first call without `confirm_token` changes nothing and returns `needsConfirmation`, `confirmationText` and `confirmToken`.
+Show the exact `confirmationText` to the user.
+Retry with identical arguments plus `confirm_token` only after the user explicitly agrees in chat.
+Never perform a save, sync or close-with-loss without that confirmation.
+A failed confirmation uses up the token; repeat the call without `confirm_token` for a new preview.
+
+## Placement and addressing
+
+Use `roomCenterMm` from `revit_query_elements` or `revit_element_details` to place something inside a room.
+A bounding-box centre can lie outside a nonrectangular room.
+Call `revit_list_instances` before choosing a unique `document` substring when several Revit instances run.
+Describe each action to the user before running it, and relay `summary` and the changed element IDs afterwards.
+Only the last action can be undone with `revit_undo_last`, and only while it is still the most recent change in Revit.
+
+## View analysis
+
+Call `revit_list_views`, then `revit_view_summary` for counts by category.
+Request individual rows with `revit_view_elements` only for the relevant categories, and use `revit_element_details` for all parameters of one element.
+Use `revit_view_warnings` for warnings in one view and `revit_list_warnings` for model-wide groups.
+For element images, `revit_capture_elements` highlights elements and `revit_export_view` exports a whole view when numbers do not explain geometry.
+
 ## Long action jobs
 
 Long actions may return `status:"running"` and `jobId` after the server wait budget expires.
