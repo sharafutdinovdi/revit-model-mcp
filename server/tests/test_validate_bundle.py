@@ -22,7 +22,7 @@ def component_xml(year: int, series_max: str | None = None) -> str:
         f'  <Components Description="Revit {year}">\n'
         f'    <RuntimeRequirements OS="Win64" Platform="Revit" SeriesMin="R{year}" '
         f'SeriesMax="{series_max or f"R{year}"}" />\n'
-        f'    <ComponentEntry AppName="Revit Model MCP" '
+        f'    <ComponentEntry AppName="Model MCP" '
         f'ModuleName="./Contents/{year}/RevitModelMcp.addin" />\n'
         "  </Components>\n"
     )
@@ -41,7 +41,7 @@ def manifest_xml(
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="Revit" '
-        'ProductType="Application" Name="Revit Model MCP" Description="Read live models." '
+        'ProductType="Application" Name="Model MCP" Description="Read live models." '
         f'AppVersion="{app_version}" FriendlyVersion="{app_version}"{product} '
         f'UpgradeCode="{upgrade_code}" Author="Dinar">\n'
         f'  <CompanyDetails Name="Dinar" Url="{url}" Email="a@b.c" />\n'

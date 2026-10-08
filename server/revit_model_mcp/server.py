@@ -309,7 +309,7 @@ class RevitMCPServer(MCPServer):
 
 
 mcp = RevitMCPServer(
-    "Revit Model MCP",
+    "Model MCP",
     version=package_version(),
     instructions=(
         "Actions are enabled by default. Every change runs inside one named Revit undo entry, is "

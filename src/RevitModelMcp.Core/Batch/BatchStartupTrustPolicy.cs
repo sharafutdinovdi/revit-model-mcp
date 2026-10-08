@@ -24,7 +24,7 @@ public static class BatchStartupTrustPolicy
     }
 
     public static string Message(int year) =>
-        $"Revit {year} asks to trust the unsigned Revit Model MCP add-in. Start Revit {year} once, choose Always Load, close Revit normally, then rerun.";
+        $"Revit {year} asks to trust the unsigned Model MCP add-in. Start Revit {year} once, choose Always Load, close Revit normally, then rerun.";
 
     public static string UnavailableMessage(int year, string reason) =>
         $"Revit {year} is unavailable for this batch run. {reason}";

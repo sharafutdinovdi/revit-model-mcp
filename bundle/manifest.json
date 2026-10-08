@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "revit-model-mcp",
-  "display_name": "Revit Model MCP",
+  "display_name": "Model MCP",
   "version": "0.0.0",
   "description": "For people reviewing or automating Revit models with an AI client: read a live Revit model through MCP, and change it with undoable actions. Actions run by default. Saving, syncing, closing, removing links, overwriting exports and running C# code need a confirmation token that you approve in chat. Requires uv on the client PATH: https://docs.astral.sh/uv/getting-started/installation/.",
   "long_description": "Actions run by default, and each committed change is one named, undoable Revit change. Check Read-only mode to refuse actions without hiding the tools. The Revit add-in must be installed separately on Windows. macOS and Linux clients connect to a remote Windows workstation.",

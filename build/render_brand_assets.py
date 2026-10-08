@@ -140,7 +140,7 @@ def installer_dialog() -> str:
         f"<div style='position:absolute;left:0;top:0;width:164px;height:312px;background:{NAVY}'>"
         f"<div style='position:absolute;left:34px;top:62px;width:96px;height:96px'>{NEUTRAL_MARK}</div>"
         "<div style='position:absolute;left:0;top:178px;width:164px;text-align:center;color:#fff;"
-        "font-weight:800;font-size:20px;line-height:1.2;letter-spacing:-0.01em'>Revit Model<br>MCP</div>"
+        "font-weight:800;font-size:20px;line-height:1.2;letter-spacing:-0.01em'>Model<br>MCP</div>"
         "</div></div><style>svg{width:100%;height:100%;display:block}</style></body></html>"
     )
 

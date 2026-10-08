@@ -561,14 +561,14 @@ def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
     if parsed is None or int(parsed.group(1).split(".")[0]) != server_major:
         installed = version or "no add-in version"
         raise RevitChannelError(
-            f"This server needs a Revit Model MCP add-in of major version {server_major}; "
+            f"This server needs a Model MCP add-in of major version {server_major}; "
             f"the Revit workstation has {installed}. "
             f"Install the matching add-in from the releases page: {RELEASES_URL}."
         )
     commands = instance.get("commands")
     if not isinstance(commands, list) or command not in commands:
         raise RevitChannelError(
-            f"The Revit Model MCP add-in {version} does not support {command}. "
+            f"The Model MCP add-in {version} does not support {command}. "
             f"Install the matching add-in from the releases page: {RELEASES_URL}."
         )
 

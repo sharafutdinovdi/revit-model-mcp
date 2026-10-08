@@ -1,6 +1,7 @@
 <RevitAddIns>
   <AddIn Type="Application">
-    <Name>Revit Model MCP</Name>
+    <Name>Model MCP</Name>
+    <Description>Model MCP for Autodesk Revit: read live models from AI clients through MCP. Actions can be turned off with read-only mode.</Description>
     <Assembly>RevitModelMcp\RevitModelMcp.dll</Assembly>
     <AddInId>e211feb7-ff0c-4bb0-92ee-f546daead189</AddInId>
     <FullClassName>RevitModelMcp.Application</FullClassName>

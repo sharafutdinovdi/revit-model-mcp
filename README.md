@@ -1,11 +1,11 @@
 <h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
-    <img alt="Revit Model MCP: read and act on live Revit models from your AI client" src="docs/assets/hero-light.png" width="1200">
+    <img alt="Model MCP: read and act on live Revit models from your AI client" src="docs/assets/hero-light.png" width="1200">
   </picture>
 </h1>
 
-Revit Model MCP connects an MCP client such as Claude Desktop or Claude Code to a live Revit project.
+Model MCP for Autodesk® Revit® connects an MCP client such as Claude Desktop or Claude Code to a live Revit project.
 Ask questions about the model, check it, and change it in plain language.
 Every change is one named undo entry in Revit, and read-only mode is one switch away.
 
@@ -237,7 +237,7 @@ See [validation evidence](https://sharafutdinovdi.github.io/revit-model-mcp/vali
 
 ## Privacy
 
-Revit Model MCP returns requested model data to the selected MCP client.
+Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The project has no telemetry.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
@@ -254,7 +254,7 @@ See [automatic updates](docs/updates.md) for how the add-in updates itself.
 [Documentation](https://sharafutdinovdi.github.io/revit-model-mcp/) covers setup, tools and transport.
 Start with [CONTRIBUTING.md](CONTRIBUTING.md), ask questions in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions), or report bugs and request features through the [issue forms](https://github.com/sharafutdinovdi/revit-model-mcp/issues/new/choose).
 CI runs the C# and Python test suites and builds the supported Revit configurations.
-If Revit Model MCP saves you time, a :star: on GitHub helps other Revit users find it.
+If Model MCP saves you time, a :star: on GitHub helps other Revit users find it.
 
 [![Contributors](https://contrib.rocks/image?repo=sharafutdinovdi/revit-model-mcp)](https://github.com/sharafutdinovdi/revit-model-mcp/graphs/contributors)
 
@@ -262,3 +262,7 @@ If Revit Model MCP saves you time, a :star: on GitHub helps other Revit users fi
 
 [MIT](LICENSE), maintained by Dinar Sharafutdinov.
 See [third-party notices](THIRD-PARTY-NOTICES.md) for dependency licenses.
+
+## Trademarks
+
+Autodesk and Revit are registered trademarks or trademarks of Autodesk, Inc., and/or its subsidiaries and/or affiliates in the USA and/or other countries. Model MCP is an independent project and is not affiliated with or endorsed by Autodesk.

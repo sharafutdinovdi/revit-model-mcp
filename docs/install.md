@@ -1,6 +1,6 @@
 # Requirements and installation
 
-Revit Model MCP has two parts. The add-in runs inside Revit on Windows. The server runs next to your MCP client and talks to the add-in. You need both.
+Model MCP has two parts. The add-in runs inside Revit on Windows. The server runs next to your MCP client and talks to the add-in. You need both.
 
 ## Requirements
 

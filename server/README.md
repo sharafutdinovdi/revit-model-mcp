@@ -1,6 +1,6 @@
-# Revit Model MCP server
+# Model MCP server
 
-The Python package exposes Revit tools over MCP stdio; actions run by default.
+The Python package of Model MCP for Autodesk® Revit® exposes Revit tools over MCP stdio; actions run by default.
 Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them without hiding the action tools.
 It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
 
