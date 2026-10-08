@@ -6,6 +6,74 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.9.1...v0.10.0) (2026-10-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* rename the product display name to Model MCP ([#272](https://github.com/sharafutdinovdi/revit-model-mcp/issues/272))
+* **actions:** `revit_batch` is now `revit_run_actions`.
+* `revit_jobs(cancel_job_id)`, the file channel without `fileChannelVersion`, legacy feed files and `views-dump` are removed. The server requires an add-in of the same major version.
+* **server:** `response_timeout_s` is now `timeout_seconds`, `wait_s` is now `wait_seconds`, `save_to` is now `output_path`, `dest_dir` and the output `folder` of `revit_export` are now `output_dir`.
+* **server:** rename the server and internal job classes ([#252](https://github.com/sharafutdinovdi/revit-model-mcp/issues/252))
+* **actions:** confirm deletions above 500 elements ([#253](https://github.com/sharafutdinovdi/revit-model-mcp/issues/253))
+
+### Features
+
+* **actions:** confirm deletions above 500 elements ([#253](https://github.com/sharafutdinovdi/revit-model-mcp/issues/253)) ([2e1fa85](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2e1fa85a9d97c6130a33dea5f89598f8176e0d87))
+* **actions:** confirm link removal, overwriting exports and C# scripts ([#242](https://github.com/sharafutdinovdi/revit-model-mcp/issues/242)) ([9412a8e](https://github.com/sharafutdinovdi/revit-model-mcp/commit/9412a8eae703dd844e7cd0feb249504b6844d4b6))
+* **addin:** harden the HTTP host with limits, read deadline and graceful shutdown ([#231](https://github.com/sharafutdinovdi/revit-model-mcp/issues/231)) ([61a3567](https://github.com/sharafutdinovdi/revit-model-mcp/commit/61a35670f785a7ac923fbedf65f1789fece98946))
+* **addin:** managed install switch, privacy, requirements and install docs ([#259](https://github.com/sharafutdinovdi/revit-model-mcp/issues/259)) ([4bc733f](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4bc733f9a72a7ab6f7487688f05d13a41955e594))
+* **build:** generate a tool manifest and validate the Revit bundle ([#258](https://github.com/sharafutdinovdi/revit-model-mcp/issues/258)) ([6932778](https://github.com/sharafutdinovdi/revit-model-mcp/commit/693277840845d2dd486cb6b449a9367b668e3f8e))
+* **build:** managed install bundle and ribbon help ([#265](https://github.com/sharafutdinovdi/revit-model-mcp/issues/265)) ([9ecaa57](https://github.com/sharafutdinovdi/revit-model-mcp/commit/9ecaa573d44fd902d441a0638e03584a0a5c5676))
+* **server:** one rule for errors and refusals ([#261](https://github.com/sharafutdinovdi/revit-model-mcp/issues/261)) ([936c599](https://github.com/sharafutdinovdi/revit-model-mcp/commit/936c599e692bd99426dd9f63384afcd0e198fb7c)), closes [#248](https://github.com/sharafutdinovdi/revit-model-mcp/issues/248) [#202](https://github.com/sharafutdinovdi/revit-model-mcp/issues/202) [#249](https://github.com/sharafutdinovdi/revit-model-mcp/issues/249)
+
+
+### Bug Fixes
+
+* **actions:** truthful summaries for dry runs and empty scripts ([#271](https://github.com/sharafutdinovdi/revit-model-mcp/issues/271)) ([2ff406c](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2ff406c83ee4a3569cf8c1da330f558fb591a530))
+* **addin:** keep undo_last available after element captures ([#267](https://github.com/sharafutdinovdi/revit-model-mcp/issues/267)) ([36cf71e](https://github.com/sharafutdinovdi/revit-model-mcp/commit/36cf71efe36ec38d37d88d5079de5000b331c3c3))
+* **addin:** predict group failures for move, rotate, copy, mirror and change_type ([#228](https://github.com/sharafutdinovdi/revit-model-mcp/issues/228)) ([50eba5c](https://github.com/sharafutdinovdi/revit-model-mcp/commit/50eba5c121bfb61ac5204a1e7148ef175cd0b02f)), closes [#191](https://github.com/sharafutdinovdi/revit-model-mcp/issues/191)
+* **addin:** refuse shared coordinates on family documents ([#224](https://github.com/sharafutdinovdi/revit-model-mcp/issues/224)) ([6af4dee](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6af4dee9445192a9d7df6697f5b2d728c11b1c53)), closes [#189](https://github.com/sharafutdinovdi/revit-model-mcp/issues/189)
+* **addin:** replace stale per-process channel directory ([#226](https://github.com/sharafutdinovdi/revit-model-mcp/issues/226)) ([46841e8](https://github.com/sharafutdinovdi/revit-model-mcp/commit/46841e818e08a02e1d53cdb832538889791c595f)), closes [#196](https://github.com/sharafutdinovdi/revit-model-mcp/issues/196)
+* **addin:** report elements that move, rotate or mirror cannot change ([#268](https://github.com/sharafutdinovdi/revit-model-mcp/issues/268)) ([c912f2d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/c912f2dcf900aa4d170be943ed5b030e5e278ac9))
+* **addin:** report why HTTP is disabled or serves 503 ([#229](https://github.com/sharafutdinovdi/revit-model-mcp/issues/229)) ([013e45d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/013e45d59f9efc5358e88a7619e7fea87c4b3e62)), closes [#206](https://github.com/sharafutdinovdi/revit-model-mcp/issues/206)
+* **batch:** refuse batch start and cancel in read-only mode ([#241](https://github.com/sharafutdinovdi/revit-model-mcp/issues/241)) ([fa336b9](https://github.com/sharafutdinovdi/revit-model-mcp/commit/fa336b9d15c9646bc08637b69c9a99613cf8f241)), closes [#26](https://github.com/sharafutdinovdi/revit-model-mcp/issues/26)
+* **build:** publish SHA256SUMS.txt with LF line endings ([#225](https://github.com/sharafutdinovdi/revit-model-mcp/issues/225)) ([2463b5f](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2463b5f1c1e263a6dc635cea4b98b7eb09e28867)), closes [#197](https://github.com/sharafutdinovdi/revit-model-mcp/issues/197)
+* **build:** upgrade MSI over developer builds and stale manifests ([#227](https://github.com/sharafutdinovdi/revit-model-mcp/issues/227)) ([a5ec995](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a5ec995dd22982a09aed1234ca8650b0a03b8f3e)), closes [#205](https://github.com/sharafutdinovdi/revit-model-mcp/issues/205)
+* **build:** version development builds from the repository version ([#270](https://github.com/sharafutdinovdi/revit-model-mcp/issues/270)) ([1f60a8e](https://github.com/sharafutdinovdi/revit-model-mcp/commit/1f60a8e79632f97aac431d222ee459f473fa34e7))
+* keep finished image exports complete after 60 seconds ([#232](https://github.com/sharafutdinovdi/revit-model-mcp/issues/232)) ([b14926c](https://github.com/sharafutdinovdi/revit-model-mcp/commit/b14926cc412379bb43317451a2c1ea5c5ca99490)), closes [#200](https://github.com/sharafutdinovdi/revit-model-mcp/issues/200)
+* list unprocessed models as cancelled in process-models ([#233](https://github.com/sharafutdinovdi/revit-model-mcp/issues/233)) ([8c4e13b](https://github.com/sharafutdinovdi/revit-model-mcp/commit/8c4e13b17adc83359df3c05d2f9675a199828f25)), closes [#192](https://github.com/sharafutdinovdi/revit-model-mcp/issues/192)
+* **server:** bound the SSH limiter wait by the caller timeout ([#235](https://github.com/sharafutdinovdi/revit-model-mcp/issues/235)) ([1e93efe](https://github.com/sharafutdinovdi/revit-model-mcp/commit/1e93efec3db334598a046926726ab7c9d25e6e0a))
+* **server:** reject unknown tool arguments ([#269](https://github.com/sharafutdinovdi/revit-model-mcp/issues/269)) ([bff8d7c](https://github.com/sharafutdinovdi/revit-model-mcp/commit/bff8d7c61a3b0c7376ba3794fc183289c63b93ad))
+* **server:** validate save_to before deleting the remote capture ([#234](https://github.com/sharafutdinovdi/revit-model-mcp/issues/234)) ([a10a0cc](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a10a0cc60ad4b91d8c274dd13bd24db640a3a552))
+* uniform read-only refusals for job control and batch start ([#266](https://github.com/sharafutdinovdi/revit-model-mcp/issues/266)) ([2240b49](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2240b4991901fb137e91bbf62afc914cc0f1758f))
+
+
+### Documentation
+
+* add a downloads section with the code signing notice ([#274](https://github.com/sharafutdinovdi/revit-model-mcp/issues/274)) ([d51f403](https://github.com/sharafutdinovdi/revit-model-mcp/commit/d51f403c36ff4f2f382451704f929454c633764d))
+* design the model audit rules and snapshot storage ([#240](https://github.com/sharafutdinovdi/revit-model-mcp/issues/240)) ([2dba958](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2dba958b999362a36f56a0b80329aacdfd7225b0)), closes [#211](https://github.com/sharafutdinovdi/revit-model-mcp/issues/211)
+* fix places where docs disagree with the code ([#254](https://github.com/sharafutdinovdi/revit-model-mcp/issues/254)) ([a68b2f1](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a68b2f190a2452d5a81bc85e2344518cffed69d7))
+* refresh the brand and restructure the README ([#263](https://github.com/sharafutdinovdi/revit-model-mcp/issues/263)) ([2e56c3f](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2e56c3f0ccfb7571b38345ee8510588b8a209c47))
+* **server:** describe tools declaratively ([#264](https://github.com/sharafutdinovdi/revit-model-mcp/issues/264)) ([0d7659d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0d7659dac121f19a2b4f5e3e0c0b191fa590d3f9))
+* state what stays stable in 1.x ([#255](https://github.com/sharafutdinovdi/revit-model-mcp/issues/255)) ([a853115](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a853115e735f43928f683c7a9c74c310a442c3e4))
+
+
+### Dependencies
+
+* **deps:** Bump the all group across 3 directories with 7 updates ([#223](https://github.com/sharafutdinovdi/revit-model-mcp/issues/223)) ([43a2629](https://github.com/sharafutdinovdi/revit-model-mcp/commit/43a2629fea672086478024c031a5be8091f47086))
+* **deps:** Bump the all group with 2 updates ([#222](https://github.com/sharafutdinovdi/revit-model-mcp/issues/222)) ([1a12f52](https://github.com/sharafutdinovdi/revit-model-mcp/commit/1a12f523637021946c12b01e1e062a4197df4033))
+
+
+### Refactor
+
+* **actions:** rename revit_batch to revit_run_actions ([#257](https://github.com/sharafutdinovdi/revit-model-mcp/issues/257)) ([a9e14a5](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a9e14a504eb4f307210ce6dfb48116cd232e99b5))
+* remove legacy cancellation, file channel and feed files ([#260](https://github.com/sharafutdinovdi/revit-model-mcp/issues/260)) ([a9e14a5](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a9e14a504eb4f307210ce6dfb48116cd232e99b5))
+* rename the product display name to Model MCP ([#272](https://github.com/sharafutdinovdi/revit-model-mcp/issues/272)) ([5c56f89](https://github.com/sharafutdinovdi/revit-model-mcp/commit/5c56f89ac727c9553e5ecacbf7de26d6d4ccb091))
+* **server:** one name for timeouts and output paths ([#256](https://github.com/sharafutdinovdi/revit-model-mcp/issues/256)) ([a9e14a5](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a9e14a504eb4f307210ce6dfb48116cd232e99b5)), closes [#245](https://github.com/sharafutdinovdi/revit-model-mcp/issues/245) [#246](https://github.com/sharafutdinovdi/revit-model-mcp/issues/246) [#247](https://github.com/sharafutdinovdi/revit-model-mcp/issues/247) [#218](https://github.com/sharafutdinovdi/revit-model-mcp/issues/218)
+* **server:** rename the server and internal job classes ([#252](https://github.com/sharafutdinovdi/revit-model-mcp/issues/252)) ([f00bf37](https://github.com/sharafutdinovdi/revit-model-mcp/commit/f00bf37fb1e6521aa4b17d33dd84137b195f8d27))
+
 ## [0.9.1](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.9.0...v0.9.1) (2026-10-06)
 
 
