@@ -426,7 +426,7 @@ jobs:
       - name: Verify WinGet manifest generation
         shell: pwsh
         run: |
-          ./build/winget/New-WingetManifests.ps1 -Version 0.0.0-ci -ReleaseTag v0.0.0-ci -OutputDir artifacts/winget -SkipDownload
+          ./build/winget/New-WingetManifests.ps1 -Version $env:CI_VERSION -ReleaseTag "v$env:CI_VERSION" -OutputDir artifacts/winget -SkipDownload
           winget --version
           $output = winget validate --manifest artifacts/winget --disable-interactivity 2>&1 | Out-String
           Write-Host $output

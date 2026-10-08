@@ -25,7 +25,7 @@ def test_ci_resolves_version_from_the_repository():
     job = _test_job()
     assert "server/pyproject.toml" in job
     assert "CI_VERSION=" in job
-    assert "0.0.0-ci" not in re.sub(r"New-WingetManifests\.ps1[^\n]*", "", job)
+    assert "0.0.0-ci" not in job
 
 
 def test_every_add_in_build_in_ci_carries_the_repository_version():
