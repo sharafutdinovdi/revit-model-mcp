@@ -76,6 +76,26 @@ def test_valid_zip(tmp_path: Path) -> None:
     assert validate(write_zip(tmp_path, bundle_files()), YEARS) == []
 
 
+@pytest.mark.parametrize("version", ["0.9.1", "0.9.1-rc.1"])
+def test_valid_managed_zip(tmp_path: Path, version: str) -> None:
+    files = bundle_files()
+    launcher = "uvx --prerelease=allow" if "-" in version else "uvx"
+    files["RevitModelMcp.bundle/README.txt"] = f"{launcher} revit-model-mcp=={version}\n"
+    assert validate(write_zip(tmp_path, files), YEARS, managed_version=version) == []
+
+
+def test_managed_zip_needs_readme(tmp_path: Path) -> None:
+    errors = validate(write_zip(tmp_path, bundle_files()), YEARS, managed_version="0.9.1")
+    assert errors == ["Managed bundle needs README.txt"]
+
+
+def test_managed_zip_needs_matching_server_version(tmp_path: Path) -> None:
+    files = bundle_files()
+    files["RevitModelMcp.bundle/README.txt"] = "uvx revit-model-mcp==0.9.0\n"
+    errors = validate(write_zip(tmp_path, files), YEARS, managed_version="0.9.1")
+    assert errors == ["README.txt does not pin revit-model-mcp==0.9.1"]
+
+
 def test_valid_zip_with_manifest_at_root(tmp_path: Path) -> None:
     assert validate(write_zip(tmp_path, bundle_files(prefix="")), YEARS) == []
 
@@ -189,3 +209,14 @@ def test_main_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
             main()
     assert exit_info.value.code == 1
     assert "ERROR" in capsys.readouterr().out
+
+
+def test_main_managed_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    files = bundle_files()
+    files["RevitModelMcp.bundle/README.txt"] = "uvx revit-model-mcp==0.9.1\n"
+    archive = write_zip(tmp_path, files)
+    with patch("sys.argv", ["validate_bundle.py", str(archive), "--managed-version", "0.9.1"]):
+        with pytest.raises(SystemExit) as exit_info:
+            main()
+    assert exit_info.value.code == 0
+    assert capsys.readouterr().out.startswith("OK")

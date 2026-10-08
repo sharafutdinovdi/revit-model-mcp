@@ -187,7 +187,9 @@ def check_addin(
         )
 
 
-def validate(path: str | Path, years: list[int]) -> list[str]:
+def validate(
+    path: str | Path, years: list[int], managed_version: str | None = None
+) -> list[str]:
     """Return a list of error messages; an empty list means the bundle is valid."""
     path = Path(path)
     errors: list[str] = []
@@ -209,6 +211,18 @@ def validate(path: str | Path, years: list[int]) -> list[str]:
             f"{MANIFEST_NAME} not found at the root or in a single top-level .bundle folder"
         )
         return errors
+    if managed_version is not None:
+        readme_name = base + "README.txt"
+        if readme_name not in names:
+            errors.append("Managed bundle needs README.txt")
+        else:
+            readme = read_member(path, contents, readme_name).decode(
+                "utf-8", errors="replace"
+            )
+            if f"revit-model-mcp=={managed_version}" not in readme:
+                errors.append(
+                    f"README.txt does not pin revit-model-mcp=={managed_version}"
+                )
     root = parse_xml(read_member(path, contents, base + MANIFEST_NAME))
     if root is None:
         errors.append(f"{MANIFEST_NAME} is not valid XML")
@@ -249,9 +263,14 @@ def main() -> None:
     parser.add_argument(
         "--years", default="2022-2027", help="Range 2022-2027 or list 2022,2023"
     )
+    parser.add_argument(
+        "--managed-version",
+        metavar="VERSION",
+        help="Require a pinned server version in README.txt",
+    )
     arguments = parser.parse_args()
     years = parse_years(arguments.years)
-    errors = validate(arguments.path, years)
+    errors = validate(arguments.path, years, arguments.managed_version)
     if errors:
         for error in errors:
             print(f"ERROR: {error}")

@@ -1,4 +1,4 @@
-"""Generate the tool manifest with per-tool access declarations."""
+"""Generate public or managed tool manifests with per-tool access declarations."""
 
 import argparse
 import asyncio
@@ -12,6 +12,7 @@ from revit_model_mcp.server import mcp
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPOSITORY_ROOT / "docs" / "tool-manifest.json"
+MANAGED_MANIFEST_PATH = REPOSITORY_ROOT / "output" / "tool-manifest-managed.json"
 REGENERATE_COMMAND = "cd server && uv run python ../build/tool_manifest.py"
 
 _bundle_spec = importlib.util.spec_from_file_location(
@@ -195,8 +196,7 @@ DATA_HANDLING = {
         "user's own agreement."
     ),
     "readOnlyMode": (
-        "Actions are refused when REVIT_MCP_READ_ONLY=1 or the workstation read-only "
-        "file exists."
+        "Actions are refused when REVIT_MCP_READ_ONLY=1 or the workstation read-only file exists."
     ),
     "localChannels": (
         "Named pipe (current Windows user only), a file channel under "
@@ -249,9 +249,16 @@ def _described(item, *fields) -> dict:
     return entry
 
 
-def build_manifest(tools, resources, prompts) -> dict:
+def build_manifest(tools, resources, prompts, managed=False) -> dict:
+    data_handling = dict(DATA_HANDLING)
+    if managed:
+        data_handling["updateChecks"] = (
+            "None. The managed add-in build never checks for updates, "
+            "and the server is started with REVIT_MCP_NO_UPDATE_CHECK=1."
+        )
     return {
         "schemaVersion": "1.0",
+        **({"variant": "managed"} if managed else {}),
         "mcpSpecVersion": "2025-11-25",
         "server": {
             "name": "revit-model-mcp",
@@ -263,10 +270,12 @@ def build_manifest(tools, resources, prompts) -> dict:
             _described(item, "uri", "name", "description") for item in resources
         ],
         "prompts": [_described(item, "name", "description") for item in prompts],
-        "externalEndpoints": [dict(endpoint) for endpoint in EXTERNAL_ENDPOINTS],
+        "externalEndpoints": (
+            [] if managed else [dict(endpoint) for endpoint in EXTERNAL_ENDPOINTS]
+        ),
         "apisUsed": list(APIS_USED),
         "aiServices": [],
-        "dataHandling": dict(DATA_HANDLING),
+        "dataHandling": data_handling,
     }
 
 
@@ -309,7 +318,14 @@ def render(manifest: dict) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--output", type=Path, default=MANIFEST_PATH, help="Manifest path"
+        "--output",
+        type=Path,
+        help="Manifest path (default: docs/tool-manifest.json, or output/tool-manifest-managed.json with --managed)",
+    )
+    parser.add_argument(
+        "--managed",
+        action="store_true",
+        help="Generate the managed manifest without external endpoints",
     )
     parser.add_argument(
         "--check", action="store_true", help="Fail when the file differs; do not write"
@@ -321,11 +337,14 @@ def main() -> None:
         help="Write the manifest with snake_case keys to PATH",
     )
     args = parser.parse_args()
+    if args.output is None:
+        args.output = MANAGED_MANIFEST_PATH if args.managed else MANIFEST_PATH
 
     manifest = build_manifest(
         asyncio.run(mcp.list_tools()),
         asyncio.run(mcp.list_resources()),
         asyncio.run(mcp.list_prompts()),
+        managed=args.managed,
     )
     if args.export_snake_case:
         args.export_snake_case.parent.mkdir(parents=True, exist_ok=True)
