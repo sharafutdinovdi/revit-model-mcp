@@ -24,7 +24,7 @@ internal static class ActionVerifier
             case "move":
                 var after = action.ElementIds.Select(id => Bounds(RequiredElement(targetDocument, id))).ToList();
                 verification.After = new ActionFacts { Elements = after };
-                verification.Changed = verification.Before!.Elements!.Zip(after, (before, current) =>
+                verification.Changed ??= verification.Before!.Elements!.Zip(after, (before, current) =>
                     SameBounds(before.BoundingBoxMinMm, current.BoundingBoxMinMm) &&
                     SameBounds(before.BoundingBoxMaxMm, current.BoundingBoxMaxMm) ? (long?)null : current.Id)
                     .Where(id => id.HasValue).Select(id => id!.Value).ToList();
@@ -52,6 +52,37 @@ internal static class ActionVerifier
                 break;
         }
     }
+
+    /// <summary>Captures what a move, rotate or mirror can change: bounds, location and facing/hand orientation.</summary>
+    internal static List<double> Pose(Element element)
+    {
+        var pose = new List<double>();
+        using var bounds = element.get_BoundingBox(null);
+        if (bounds is not null)
+        {
+            pose.AddRange(Millimeters(bounds.Min));
+            pose.AddRange(Millimeters(bounds.Max));
+        }
+        switch (element.Location)
+        {
+            case LocationPoint point:
+                pose.AddRange(Millimeters(point.Point));
+                pose.Add(Math.Round(point.Rotation, 4));
+                break;
+            case LocationCurve { Curve: { IsBound: true } curve }:
+                pose.AddRange(Millimeters(curve.GetEndPoint(0)));
+                pose.AddRange(Millimeters(curve.GetEndPoint(1)));
+                break;
+        }
+        if (element is FamilyInstance instance)
+        {
+            foreach (var direction in new[] { instance.FacingOrientation, instance.HandOrientation })
+                pose.AddRange(new[] { direction.X, direction.Y, direction.Z }.Select(value => Math.Round(value, 4)));
+        }
+        return pose;
+    }
+
+    internal static bool IsHosted(Element element) => element is FamilyInstance { Host: not null };
 
     private static Element RequiredElement(Document targetDocument, long id) =>
         ActionCommandExecutor.CreateId(id).ToElement(targetDocument)

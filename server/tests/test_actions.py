@@ -1860,6 +1860,10 @@ def test_process_progress_current_path_is_redacted():
     [
         ("revit_update_parameters", ["skipped.inGroup", "dry_run", "groups"]),
         ("revit_set_parameter", ["Group members", "clear message", "dry_run"]),
+        *(
+            (name, ["skipped.pinned", "skipped.hosted", "skipped.constrained", "unpinning"])
+            for name in ("revit_move", "revit_rotate", "revit_mirror")
+        ),
         ("revit_walls_from_cad", ["unjoinedEnds", "unjoinedReasons", "dry_run"]),
         *(
             (name, ["skipped.inGroup", "dry_run", "every element"])

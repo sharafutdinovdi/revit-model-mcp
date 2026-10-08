@@ -838,7 +838,7 @@
     },
     {
       "name": "revit_move",
-      "description": "Move elements; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.",
+      "description": "Move elements; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.",
       "access": "modifying",
       "annotations": {
         "readOnlyHint": false,
@@ -874,7 +874,7 @@
     },
     {
       "name": "revit_rotate",
-      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.",
+      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.",
       "access": "modifying",
       "annotations": {
         "readOnlyHint": false,
@@ -910,7 +910,7 @@
     },
     {
       "name": "revit_mirror",
-      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.",
+      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.",
       "access": "modifying",
       "annotations": {
         "readOnlyHint": false,
