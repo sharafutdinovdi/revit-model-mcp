@@ -491,6 +491,8 @@ jobs:
           Bundle__Managed: 'true'
         run: |
           foreach ($year in '22', '23', '24', '25', '26', '27') {
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false
+            if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
             dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true -p:ManagedInstall=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year managed build failed" }
             $bytes = [IO.File]::ReadAllBytes("src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll")
