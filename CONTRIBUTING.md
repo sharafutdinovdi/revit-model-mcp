@@ -195,7 +195,7 @@ Repository Actions settings must allow GitHub Actions to create pull requests.
 
 ## Release assets
 
-CI uploads installable R22, R26 and R27 folder layouts and an `installers` artifact.
+CI builds all six add-in years, uploads installable R22, R26 and R27 folder layouts, and an `installers` artifact with both MSIs covering every year.
 It extracts both MSIs, rejects Revit API assemblies, and checks installation and removal for each built year.
 CI also checks that each MSI refuses to install while the other scope is installed.
 The release-please workflow or a manually pushed `v<version>` tag triggers all six add-in builds and Core/server tests.
@@ -205,7 +205,8 @@ Extract each year's ZIP into `%APPDATA%\Autodesk\Revit\Addins\20<yy>` while that
 The archive root contains `RevitModelMcp.addin` and the `RevitModelMcp` assembly directory.
 
 The release workflow invokes the WixSharp pipeline with `Build__Version` set to the tag version.
-CI uses `0.0.0-ci`.
+CI reads the repository version from `server/pyproject.toml` and builds with `<version>-dev`, for example `0.9.1-dev`, so the add-in reports `0.9.1-dev+<commit>` and passes the server's same-major check.
+A local `dotnet build` without `-p:Version` takes the plain version from `server/pyproject.toml`, so the add-in passes the same-major check against the server in the same checkout.
 After building the required years on Windows, the same packaging command is available locally:
 
 ```powershell
