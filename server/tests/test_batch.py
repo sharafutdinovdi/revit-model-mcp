@@ -194,6 +194,29 @@ async def test_read_only_start_is_refused_without_side_effects(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_read_only_http_workstation_refuses_start(monkeypatch):
+    from revit_model_mcp.http_host import HttpHost
+
+    class ReadOnlyHttp(HttpHost):
+        def __init__(self):
+            pass
+
+        async def health(self):
+            return {"ok": True, "readOnly": True}
+
+    registry, channel = Registry(), Channel()
+    http = ReadOnlyHttp()
+    register_batch(registry, lambda: http, lambda: channel)
+    assert await registry.tools["revit_batch_start"](folder=r"C:\models") == {
+        "success": False,
+        "command": "batch-start",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    assert not channel.jobs
+
+
+@pytest.mark.anyio
 async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch, tmp_path):
     registry, host, channel = Registry(), Host(), Channel()
     register_batch(registry, lambda: host, lambda: channel)
