@@ -454,3 +454,25 @@ def test_pipe_read_only_action_returns_refusal_and_read_raises():
                 await method("a" * 32)
 
     asyncio.run(check())
+
+
+def test_pipe_read_only_cancel_returns_refusal():
+    from revit_model_mcp import package_version
+
+    async def check():
+        connection = MagicMock()
+        connection.request = AsyncMock(return_value={"type": "error", "error": "read_only"})
+        parent = MagicMock()
+        parent.connection = AsyncMock(return_value=connection)
+        remote = PipeJobHost(parent, {"processId": PID}, connection)
+        connection.hello = {"addinVersion": package_version(), "commands": ["jobs", "ping"]}
+        parent.select_job = AsyncMock(side_effect=lambda job: (remote, job))
+        job = Job("jobs", {"command": "jobs", "fetchJobId": "a" * 32, "requestCancellation": True})
+        assert await RevitChannel(remote).execute(job) == {
+            "success": False,
+            "command": "jobs",
+            "error": "read-only mode",
+            "errorCode": "read_only",
+        }
+
+    asyncio.run(check())
