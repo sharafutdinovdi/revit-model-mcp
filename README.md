@@ -243,10 +243,10 @@ The project has no telemetry.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
 The server checks for a newer stable release once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
 
-## Code signing
+## Code signing policy
 
 Release builds are not code-signed yet, so Revit asks whether to load the add-in after install and after each update.
-Verify downloads with `SHA256SUMS.txt` and the build provenance attestation; see [code signing](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) and [download verification](https://sharafutdinovdi.github.io/revit-model-mcp/security/#verify-downloads).
+Verify downloads with `SHA256SUMS.txt` and the build provenance attestation; see the [code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) and [download verification](https://sharafutdinovdi.github.io/revit-model-mcp/security/#verify-downloads).
 See [automatic updates](docs/updates.md) for how the add-in updates itself.
 
 ## Contributing and support
