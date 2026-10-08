@@ -17,8 +17,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 120
     permissions:
+      actions: read
       contents: read
       id-token: write
       attestations: write
@@ -161,6 +162,110 @@ jobs:
           python build/validate_bundle.py $bundle --years 2022-2027 --managed-version $env:RELEASE_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Managed bundle validation failed' }
           Copy-Item $bundle artifacts/release/
+      - name: Check SignPath configuration
+        id: signpath
+        shell: bash
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+        run: |
+          if [[ -n "$SIGNPATH_API_TOKEN" && -n "$SIGNPATH_ORGANIZATION_ID" ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::SignPath is not configured (SIGNPATH_API_TOKEN secret or SIGNPATH_ORGANIZATION_ID variable is empty); release assets stay unsigned.'
+          fi
+      - name: Stage unsigned artifacts for SignPath
+        id: signing-input
+        if: ${{ steps.signpath.outputs.enabled == 'true' }}
+        shell: pwsh
+        run: |
+          $stage = 'signing/unsigned'
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item output/*.msi, artifacts/release/*.zip $stage
+          $names = @(Get-ChildItem $stage -File).Name
+          $zips = @($names | Where-Object { $_ -like '*.zip' })
+          $msis = @($names | Where-Object { $_ -like '*.msi' })
+          if ($msis.Count -ne 2 -or $zips.Count -ne 7) { throw "Expected 2 MSIs and 7 ZIPs to sign, found $($msis.Count) and $($zips.Count)" }
+          # The artifact configuration enforces these values, so fail here with a readable message.
+          $productVersion = (Get-Item 'src/RevitModelMcp.Addin/bin/Release.R27/RevitModelMcp.dll').VersionInfo.ProductVersion
+          foreach ($year in '22', '23', '24', '25', '26', '27') {
+            foreach ($name in 'RevitModelMcp.dll', 'RevitModelMcp.Core.dll', 'RevitModelMcp.Updater.exe', 'RevitModelMcp.BatchSupervisor.exe') {
+              $info = (Get-Item "artifacts/addin-R$year/RevitModelMcp/$name").VersionInfo
+              if ($info.ProductName -ne 'Model MCP') { throw "R$year $name has product name '$($info.ProductName)'" }
+              if ($info.ProductVersion -ne $productVersion) { throw "R$year $name has product version '$($info.ProductVersion)', expected '$productVersion'" }
+            }
+          }
+          "PRODUCT_VERSION=$productVersion" >> $env:GITHUB_ENV
+      - name: Upload unsigned artifacts
+        id: upload-unsigned
+        if: ${{ steps.signpath.outputs.enabled == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-for-signing
+          path: signing/unsigned/*
+          if-no-files-found: error
+      - name: Sign with SignPath
+        if: ${{ steps.signpath.outputs.enabled == 'true' }}
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'revit-model-mcp' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG || 'release-signing' }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG || 'release' }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 5400
+          output-artifact-directory: signing/signed
+          parameters: |
+            version: ${{ toJSON(env.RELEASE_VERSION) }}
+            product-version: ${{ toJSON(env.PRODUCT_VERSION) }}
+      - name: Replace unsigned assets with signed assets
+        if: ${{ steps.signpath.outputs.enabled == 'true' }}
+        shell: pwsh
+        run: |
+          $unsigned = @(Get-ChildItem signing/unsigned -File | Sort-Object Name)
+          $signed = @(Get-ChildItem signing/signed -File | Sort-Object Name)
+          if (($unsigned.Name -join '|') -ne ($signed.Name -join '|')) {
+            throw "Signed files differ from submitted files. Submitted: $($unsigned.Name -join ', '). Signed: $($signed.Name -join ', ')"
+          }
+          Copy-Item signing/signed/*.msi output/ -Force
+          Copy-Item signing/signed/*.zip artifacts/release/ -Force
+          Copy-Item "signing/signed/revit-model-mcp-$env:RELEASE_VERSION-managed.bundle.zip" output/ -Force
+      - name: Verify signatures
+        if: ${{ steps.signpath.outputs.enabled == 'true' }}
+        shell: pwsh
+        run: |
+          $names = 'RevitModelMcp.dll', 'RevitModelMcp.Core.dll', 'RevitModelMcp.Updater.exe', 'RevitModelMcp.BatchSupervisor.exe'
+          function Assert-Signed($file) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if ($signature.Status -ne 'Valid') { throw "$($file.Name) signature status is $($signature.Status)" }
+            Write-Host "ASSERT: $($file.Name) is signed by $($signature.SignerCertificate.Subject)"
+          }
+          function Assert-OwnBinariesSigned($root, $label) {
+            $files = @(Get-ChildItem $root -Recurse -File | Where-Object { $names -contains $_.Name })
+            if (!$files.Count) { throw "$label contains none of the add-in binaries" }
+            foreach ($file in $files) { Assert-Signed $file }
+          }
+          foreach ($msi in Get-ChildItem output/*.msi) {
+            Assert-Signed $msi
+            $target = Join-Path $env:RUNNER_TEMP "signed-$($msi.BaseName)"
+            $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn /norestart TARGETDIR=`"$target`"" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "MSI extraction failed: $($process.ExitCode)" }
+            Assert-OwnBinariesSigned $target $msi.Name
+          }
+          foreach ($zip in Get-ChildItem artifacts/release/*.zip) {
+            $target = Join-Path $env:RUNNER_TEMP "signed-$($zip.BaseName)"
+            Expand-Archive -LiteralPath $zip.FullName -DestinationPath $target
+            Assert-OwnBinariesSigned $target $zip.Name
+          }
+      - name: Validate signed managed bundle
+        if: ${{ steps.signpath.outputs.enabled == 'true' }}
+        shell: pwsh
+        run: |
+          python build/validate_bundle.py "output/revit-model-mcp-$env:RELEASE_VERSION-managed.bundle.zip" --years 2022-2027 --managed-version $env:RELEASE_VERSION
+          if ($LASTEXITCODE -ne 0) { throw 'Signed managed bundle validation failed' }
       - name: Upload MSI logs on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

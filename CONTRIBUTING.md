@@ -170,6 +170,8 @@ Automated tests do not validate live Revit behavior; see [validation evidence](d
 4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`. If a job fails with `The job was not acquired by Runner`, that is a GitHub infrastructure failure: rerun it with `gh run rerun <run id> --failed`.
 5. Check PyPI, MCP Registry and Smithery job results for stable releases. Check the weekly WinGet run separately; download its manifests if submission is not configured.
 
+When the `SIGNPATH_API_TOKEN` secret and the `SIGNPATH_ORGANIZATION_ID` variable are set, the release job submits the MSIs and ZIPs to SignPath and waits up to 90 minutes for the approval of the signing request. Without them the job skips signing and publishes unsigned assets. Optional variables `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG` and `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` override the defaults `revit-model-mcp`, `release-signing` and `release`. The artifact configuration lives in `.signpath/artifact-configuration.xml`; keep the copy in SignPath identical.
+
 The required `release-window` check keeps the release PR red outside Monday in Europe/Moscow time and passes at once for every other PR.
 A scheduled run refreshes it when Monday starts and when it ends.
 For an urgent fix, the maintainer adds the `hotfix-release` label to the release PR, which turns the check green and allows a release on another day.

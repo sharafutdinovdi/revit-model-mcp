@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration for release builds (slug: release).
+  Root artifact: a ZIP with the two MSI installers and the seven release ZIPs
+  (six per-year add-in archives and the managed Revit bundle). The release workflow builds it.
+
+  Signed: the add-in assembly, its Core assembly, the updater, the batch supervisor and the MSIs.
+  Not listed, so left unchanged: third-party assemblies (Nice3point.*, JetBrains.Annotations,
+  Microsoft.CodeAnalysis.*, System.*). Revit API assemblies are never shipped and never listed.
+
+  Parameters, supplied by the workflow:
+    version          release version, for example 0.9.0 or 0.9.0-rc.1
+    product-version  ProductVersion read from the built RevitModelMcp.dll (version plus source revision)
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+    <parameter name="product-version" required="true" />
+  </parameters>
+  <zip-file>
+    <msi-file path="RevitModelMcp-${version}-*.msi" min-matches="2" max-matches="2">
+      <pe-file-set product-name="Model MCP" product-version="${product-version}">
+        <include path="**/RevitModelMcp.dll" max-matches="unbounded" />
+        <include path="**/RevitModelMcp.Core.dll" max-matches="unbounded" />
+        <include path="**/RevitModelMcp.Updater.exe" max-matches="unbounded" />
+        <include path="**/RevitModelMcp.BatchSupervisor.exe" max-matches="unbounded" />
+        <for-each>
+          <authenticode-sign />
+        </for-each>
+      </pe-file-set>
+      <authenticode-sign />
+    </msi-file>
+    <zip-file-set>
+      <include path="revit-model-mcp-addin-${version}-R??.zip" min-matches="6" max-matches="6" />
+      <include path="revit-model-mcp-${version}-managed.bundle.zip" />
+      <for-each>
+        <pe-file-set product-name="Model MCP" product-version="${product-version}">
+          <include path="**/RevitModelMcp.dll" max-matches="unbounded" />
+          <include path="**/RevitModelMcp.Core.dll" max-matches="unbounded" />
+          <include path="**/RevitModelMcp.Updater.exe" max-matches="unbounded" />
+          <include path="**/RevitModelMcp.BatchSupervisor.exe" max-matches="unbounded" />
+          <for-each>
+            <authenticode-sign />
+          </for-each>
+        </pe-file-set>
+      </for-each>
+    </zip-file-set>
+  </zip-file>
+</artifact-configuration>
