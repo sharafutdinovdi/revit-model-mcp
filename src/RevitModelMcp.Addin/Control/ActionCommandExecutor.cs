@@ -752,6 +752,7 @@ internal static class ActionCommandExecutor
                 SpaceBoundaryLevel = options.SpaceBoundaries ?? 0,
                 WallAndColumnSplitting = options.SplitWallsByLevel ?? false
             };
+            using var temporaryUndoState = UndoTracker.BeginTemporary();
             using var transaction = new Transaction(document, "MCP IFC export");
             transaction.Start();
             try

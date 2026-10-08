@@ -194,6 +194,29 @@ async def test_read_only_start_is_refused_without_side_effects(monkeypatch):
 
 
 @pytest.mark.anyio
+async def test_read_only_http_workstation_refuses_start(monkeypatch):
+    from revit_model_mcp.http_host import HttpHost
+
+    class ReadOnlyHttp(HttpHost):
+        def __init__(self):
+            pass
+
+        async def health(self):
+            return {"ok": True, "readOnly": True}
+
+    registry, channel = Registry(), Channel()
+    http = ReadOnlyHttp()
+    register_batch(registry, lambda: http, lambda: channel)
+    assert await registry.tools["revit_batch_start"](folder=r"C:\models") == {
+        "success": False,
+        "command": "batch-start",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    assert not channel.jobs
+
+
+@pytest.mark.anyio
 async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch, tmp_path):
     registry, host, channel = Registry(), Host(), Channel()
     register_batch(registry, lambda: host, lambda: channel)
@@ -615,3 +638,34 @@ async def test_file_gate_cancel_refusal_is_normal_result(boundary):
     host.batch_cancel.side_effect = RemoteCommandError(1, "Transport disconnected.")
     with pytest.raises(ToolError, match="Transport disconnected"):
         await tools["revit_batch_cancel"]("a" * 32)
+
+
+@pytest.mark.anyio
+async def test_host_batch_status_reports_missing_run_without_transport_error():
+    from revit_model_mcp.ssh_host import BatchRunNotFoundError
+
+    class MissingRunHost(SshPowerShellHost):
+        def __init__(self):
+            super().__init__("test-host")
+
+        async def _run(self, script, **_kwargs):
+            assert "throw 'Batch run was not found.'" not in script
+            return '{"notFound":true}'
+
+    with pytest.raises(BatchRunNotFoundError, match="Batch run was not found"):
+        await MissingRunHost().batch_status("a" * 32)
+
+
+@pytest.mark.anyio
+async def test_host_batch_cancel_reports_missing_run():
+    from revit_model_mcp.ssh_host import BatchRunNotFoundError
+
+    class MissingRunHost(SshPowerShellHost):
+        def __init__(self):
+            super().__init__("test-host")
+
+        async def _run(self, script, **_kwargs):
+            return "RMM_RUN_NOT_FOUND"
+
+    with pytest.raises(BatchRunNotFoundError):
+        await MissingRunHost().batch_cancel("a" * 32)

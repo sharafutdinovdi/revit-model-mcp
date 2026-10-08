@@ -46,6 +46,7 @@ internal static class BatchCommands
         catch (Exception exception)
         {
             var response = CommandResponse<object>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
+            if (exception.Message == ReadOnlyGatePolicy.Message) response.Error = exception.Message;
             CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                 ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
         }

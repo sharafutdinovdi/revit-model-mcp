@@ -11,7 +11,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
-from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal
+from revit_model_mcp.errors import ACTION_FAILED, READ_ONLY, READ_ONLY_MESSAGE, refusal
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
@@ -1002,7 +1002,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run needs no token.
         """
         if transaction == "none" and dry_run:
-            raise ToolError("dry_run requires transaction='auto'.")
+            return refusal("execute-code", ACTION_FAILED, "dry_run requires transaction='auto'.")
         return await send(
             "execute-code",
             code=code,
