@@ -198,7 +198,7 @@ jobs:
           $body = @"
           ## 📖 Description
 
-          Revit Model MCP $version, an MIT-licensed MCP server and add-in that reads live Autodesk Revit models (Revit 2022-2027). Single-user and multi-user MSI installers from https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG. Submitted by the project's WinGet workflow.
+          Model MCP $version, an MIT-licensed MCP server and add-in that reads live Autodesk Revit models (Revit 2022-2027). Single-user and multi-user MSI installers from https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG. Submitted by the project's WinGet workflow.
 
           ## ✅ Checklist
 

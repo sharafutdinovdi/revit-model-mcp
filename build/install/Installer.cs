@@ -5,7 +5,7 @@ using WixSharp.CommonTasks;
 using WixSharp.Controls;
 
 const string outputName = "RevitModelMcp";
-const string projectName = "RevitModelMcp";
+const string productName = "Model MCP";
 
 var versioning = Versioning.CreateFromVersionString(args[0]);
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
@@ -18,7 +18,7 @@ Project CreateProject(InstallScope scope)
     var project = new Project
     {
         OutDir = "output",
-        Name = projectName,
+        Name = productName,
         Scope = scope,
         Platform = Platform.x64,
         UI = WUI.WixUI_FeatureTree,
@@ -54,7 +54,7 @@ void BuildSingleUserMsi()
     project.LaunchConditions =
     [
         OtherScopeLaunchCondition(
-            "The Revit Model MCP MultiUser (all users) installer is already installed on this computer. " +
+            "The Model MCP MultiUser (all users) installer is already installed on this computer. " +
             "Uninstall it from Apps > Installed apps, then run this SingleUser installer again.")
     ];
     project.RegValues = [];
@@ -73,7 +73,7 @@ void BuildMultiUserMsi()
     project.LaunchConditions =
     [
         OtherScopeLaunchCondition(
-            "The Revit Model MCP SingleUser (current user) installer is already installed for this user. " +
+            "The Model MCP SingleUser (current user) installer is already installed for this user. " +
             "Uninstall it from Apps > Installed apps, then run this MultiUser installer again.")
     ];
     project.Properties =

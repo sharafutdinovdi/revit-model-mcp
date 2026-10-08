@@ -12,7 +12,7 @@ Changes to this policy are recorded in the repository history.
 
 ## Data collection
 
-Revit Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
+Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
 Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
 The maintainer collects no personal data, accounts or usage statistics.

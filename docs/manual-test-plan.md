@@ -1,4 +1,4 @@
-# Revit Model MCP — Manual End-to-End Test Plan
+# Model MCP: manual end-to-end test plan
 
 Full manual validation checklist. Goal: exercise **every tool** and **every install/transport path**, from a clean install through live model reads and gated actions, on each supported Revit version.
 
@@ -39,7 +39,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 - [ ] **1.4 Manifest present**: `%APPDATA%\Autodesk\Revit\Addins\<year>\RevitModelMcp.addin` exists and points to a `RevitModelMcp.dll` that exists.
 - [ ] **1.5 DLL version**: the installed `RevitModelMcp.dll` matches the release version.
 - [ ] **1.6 Provenance**: verify the release asset's build-provenance attestation (per docs `security/#verify-downloads`) before install.
-- [ ] **1.7 Load in Revit**: start Revit, accept the "unsigned add-in" trust dialog (**Always Load**), open a model. Journal (`%LOCALAPPDATA%\Autodesk\Revit\Autodesk Revit <year>\Journals\journal.*.txt`) shows `API_SUCCESS ... Starting External Application: Revit Model MCP ... Assembly Version: <ver>` and event registrations. No fatal `API_ERROR` for the MCP DLL (benign "assembly version conflict" warnings, where the reference is *lower* than the installed Revit build, are OK).
+- [ ] **1.7 Load in Revit**: start Revit, accept the "unsigned add-in" trust dialog (**Always Load**), open a model. Journal (`%LOCALAPPDATA%\Autodesk\Revit\Autodesk Revit <year>\Journals\journal.*.txt`) shows `API_SUCCESS ... Starting External Application: Model MCP ... Assembly Version: <ver>` and event registrations. No fatal `API_ERROR` for the MCP DLL (benign "assembly version conflict" warnings, where the reference is *lower* than the installed Revit build, are OK).
 - [ ] **1.8 Uninstall**: MSI uninstall removes the manifest cleanly (no orphan files, no load error next Revit start).
 
 **Regression to watch (found before):** the add-in must reference `RevitAPI/RevitAPIUI` pinned to `<year>.0.0.0` (≤ installed build) and `System.Diagnostics.DiagnosticSource 8.x`, or it fails to load. Confirm per version.
@@ -52,7 +52,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 ### 2.1 Local server via `uvx` (Windows workstation)
 - [ ] `uvx revit-model-mcp` resolves and installs the package from PyPI on first run (record package count + time).
-- [ ] Server starts and reports `serverInfo: { name: "Revit Model MCP", version: "<ver>" }` on `initialize`.
+- [ ] Server starts and reports `serverInfo: { name: "Model MCP", version: "<ver>" }` on `initialize`.
 - [ ] `tools/list` returns **19 read tools** (enumerate — see §3).
 
 ### 2.2 Claude Code registration (`claude mcp add`)

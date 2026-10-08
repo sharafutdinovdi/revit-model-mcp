@@ -47,7 +47,7 @@ public sealed class BatchStartupTrustPolicyTests
     public async Task Message_UsesExecutableYear()
     {
         await Assert.That(BatchStartupTrustPolicy.Message(2026)).IsEqualTo(
-            "Revit 2026 asks to trust the unsigned Revit Model MCP add-in. Start Revit 2026 once, choose Always Load, close Revit normally, then rerun.");
+            "Revit 2026 asks to trust the unsigned Model MCP add-in. Start Revit 2026 once, choose Always Load, close Revit normally, then rerun.");
     }
 
     [Test]

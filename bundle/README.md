@@ -16,7 +16,7 @@ Redaction leaves model names, parameter values, errors and exported image `local
 
 ## Privacy policy
 
-Revit Model MCP returns requested model data to the selected MCP client.
+Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, storage, sharing, retention and contact information.
 
