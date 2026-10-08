@@ -315,7 +315,7 @@ Run once in an elevated Windows command prompt, replacing `<user>` with the acco
 
 ```bat
 netsh http add urlacl url=http://+:53110/ user=<user>
-netsh advfirewall firewall add rule name="Revit Model MCP" dir=in action=allow protocol=TCP localport=53110
+netsh advfirewall firewall add rule name="Model MCP" dir=in action=allow protocol=TCP localport=53110
 ```
 
 On the Mac at the clone root, replace `revit-host` with the workstation hostname and supply `REVIT_MCP_TOKEN` through the secret store:

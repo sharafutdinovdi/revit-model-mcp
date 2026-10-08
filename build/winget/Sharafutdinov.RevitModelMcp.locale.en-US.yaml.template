@@ -5,7 +5,7 @@ PackageLocale: en-US
 Publisher: Dinar Sharafutdinov
 PublisherUrl: https://github.com/sharafutdinovdi
 PublisherSupportUrl: https://github.com/sharafutdinovdi/revit-model-mcp/issues
-PackageName: RevitModelMcp
+PackageName: Model MCP
 PackageUrl: https://github.com/sharafutdinovdi/revit-model-mcp
 License: MIT
 LicenseUrl: https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/LICENSE

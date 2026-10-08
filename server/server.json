@@ -1,6 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.sharafutdinovdi/revit-model-mcp",
+  "title": "Model MCP",
   "description": "Revit tools over MCP stdio. Actions are enabled by default; REVIT_MCP_READ_ONLY=1 disables them.",
   "repository": {
     "url": "https://github.com/sharafutdinovdi/revit-model-mcp",

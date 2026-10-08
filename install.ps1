@@ -1,5 +1,5 @@
 <#
-Installs or removes Revit Model MCP for selected or detected Revit 2022-2027 years.
+Installs or removes Model MCP for selected or detected Revit 2022-2027 years.
 Release installs check available assets and report missing Revit year packages.
 Keep this script ASCII-only for BOM-less Windows PowerShell 5.1 compatibility.
 Examples (run on Windows from a repository checkout):

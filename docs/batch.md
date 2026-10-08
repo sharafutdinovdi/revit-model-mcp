@@ -9,7 +9,7 @@ For changes, scripts, exports, or saved copies across many models, use [`revit_p
 
 ## Before the first batch run
 
-For each installed Revit year, start Revit once and verify that any unsigned add-in trust dialog names Revit Model MCP and `RevitModelMcp.dll`.
+For each installed Revit year, start Revit once and verify that any unsigned add-in trust dialog names Model MCP and `RevitModelMcp.dll`.
 Choose Always Load, then close Revit normally before starting a batch run.
 Revit remembers Always Load for the same add-in location and AddInId; replacing identical DLL contents or changing only the file timestamp does not require trust again.
 If a batch worker encounters this dialog, startup fails with the affected year and the worker is stopped.

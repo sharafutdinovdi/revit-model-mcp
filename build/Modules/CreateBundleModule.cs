@@ -25,7 +25,7 @@ namespace Build.Modules;
 public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptions, IOptions<BundleOptions> bundleOptions) : Module
 {
     private const string BundleName = "RevitModelMcp";
-    private const string ProductName = "Revit Model MCP";
+    private const string ProductName = "Model MCP";
     private const string ProductDescription = "Read live Revit models from AI clients through MCP. Actions can be turned off with read-only mode.";
 
     protected override async Task ExecuteModuleAsync(IModuleContext context, CancellationToken cancellationToken)
@@ -56,7 +56,7 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
                 ? $"uvx --prerelease=allow revit-model-mcp=={versioning.Version}"
                 : $"uvx revit-model-mcp=={versioning.Version}";
             var readme = $"""
-                Revit Model MCP {versioning.Version}, managed install
+                Model MCP {versioning.Version}, managed install
 
                 This package was built for managed deployment. The add-in does not check for updates.
                 Update it by deploying a newer package.

@@ -117,7 +117,7 @@ def test_compatibility_gate_rejects_missing_invalid_or_different_major(reported)
     if reported is not None:
         instance["addinVersion"] = reported
     with pytest.raises(
-        RevitChannelError, match=f"needs a Revit Model MCP add-in of major version {major}"
+        RevitChannelError, match=f"needs a Model MCP add-in of major version {major}"
     ) as error:
         check_addin_compatibility("ping", instance)
     assert "Install the matching add-in from the releases page" in str(error.value)
