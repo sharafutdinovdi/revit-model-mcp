@@ -706,7 +706,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         }:
             function.__doc__ = (
                 inspect.cleandoc(function.__doc__ or "")
-                + "\n\nLong actions may return status=running and jobId. Call revit_jobs(job_id=jobId) until the original action result is returned. The action may already have changed the model; do not resubmit it."
+                + "\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
             )
         title = {
             "revit_cancel_job": "Cancel Action Job",
@@ -865,7 +865,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Close a background document. Show confirmationText and retry with the token only after explicit chat approval."""
+        """Close a background document. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the close."""
         return await send(
             "close-document",
             document=document,
@@ -883,7 +883,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Save only after showing confirmationText and receiving explicit chat approval for the token retry."""
+        """Save a document. Returns needsConfirmation, confirmationText and confirmToken; a second call with identical arguments plus confirm_token performs the save."""
         return await send(
             "save-document",
             document=document,
@@ -905,7 +905,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Synchronize only after showing confirmationText and receiving explicit chat approval for the token retry."""
+        """Synchronize a workshared document with central. Returns needsConfirmation, confirmationText and confirmToken; a second call with identical arguments plus confirm_token performs the sync."""
         allowed = {
             "borrowed",
             "user_worksets",
@@ -972,7 +972,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. Show confirmationText and retry with the same arguments plus confirm_token only after explicit chat approval."""
+        """Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the removal."""
         return await send(
             "remove-links",
             links=[str(value) for value in ([links] if isinstance(links, str) else links)],
@@ -994,12 +994,12 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Compile and run C# against the live Revit API on the Revit thread.
 
-        Use a method body or a public static Script class with Execute(ScriptContext ctx).
+        Accepts a method body or a public static Script class with Execute(ScriptContext ctx).
         Auto mode owns one transaction and undo entry. transaction="none" is refused by
-        default; use auto. Every call except dry_run first returns needsConfirmation,
+        default. Every call except dry_run first returns needsConfirmation,
         confirmationText (code hash, length, mode, document) and confirmToken without running
-        the code. Show it and retry with identical arguments plus confirm_token only after
-        explicit chat approval. dry_run needs no token.
+        the code. A second call with identical arguments plus confirm_token runs it.
+        dry_run needs no token.
         """
         if transaction == "none" and dry_run:
             raise ToolError("dry_run requires transaction='auto'.")
@@ -1020,7 +1020,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         Allowed only when the target document is active, no command is pending in Revit, and
         Revit's last undo entry is still the one this session recorded. Otherwise the action
         result carries a clear refusal reason instead of running.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send("undo-last", document=document)
 
@@ -1079,7 +1079,7 @@ def register_actions(mcp, execute, host_provider) -> None:
 
         Process-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.
         A single running Revit operation finishes without interruption.
-        Poll revit_jobs for the final result; completed changes remain committed.
+        revit_jobs returns the final result; completed changes remain committed.
         """
         if read_only:
             return refusal("jobs", READ_ONLY, READ_ONLY_MESSAGE)
@@ -1101,7 +1101,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     @action
     async def revit_select(element_ids: ElementIds, document: Document = None) -> dict[str, Any]:
         """Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send("select", elementIds=element_ids, document=document)
 
@@ -1109,8 +1109,8 @@ def register_actions(mcp, execute, host_provider) -> None:
     async def revit_show(
         element_ids: NonEmptyIds, select: bool = True, document: Document = None
     ) -> dict[str, Any]:
-        """Show elements, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        """Display elements in Revit, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send("show", elementIds=element_ids, select=select, document=document)
 
@@ -1119,7 +1119,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         element_ids: ElementIds, reset: bool = False, document: Document = None
     ) -> dict[str, Any]:
         """Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         if not reset and not element_ids:
             raise ToolError("element_ids must not be empty unless reset is true.")
@@ -1134,10 +1134,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Move elements when adjusting their position; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
+        """Move elements; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
         dry_run executes and rolls back, returning the same verification block without changing the model.
         Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
             "move",
@@ -1307,10 +1307,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         null type_name uses the embedded type or the first type. Conflicting types
         are rejected. Missing families return similar names with categories.
         Model XY is in millimetres and Z rotation in degrees.
-        Use roomCenterMm when placing something inside a room.
+        roomCenterMm gives a point inside the room; a bounding-box centre can lie outside a nonrectangular room.
 
         dry_run executes and rolls back, returning the same verification block without changing the model.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
             "place-family",
@@ -1393,7 +1393,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.
         dry_run executes and rolls back, returning the same verification block without changing the model.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         if start_mm == end_mm:
             raise ToolError("Wall endpoints must differ.")
@@ -1464,7 +1464,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Link or import a DWG into a plan view on the Revit workstation. Return CAD layers and extents in mm."""
+        """Link or import a DWG into a plan view on the Revit workstation. Returns CAD layers and extents in mm."""
         return await send(
             "link-cad",
             path=path,
@@ -1632,12 +1632,12 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         parameter_id: ParameterId | None = None,
     ) -> dict[str, Any]:
-        """Set exactly one instance or type parameter. Supply parameter_id to select by BuiltInParameter name, shared GUID or positive ParameterElement ID.
+        """Set exactly one instance or type parameter. parameter_id selects by BuiltInParameter name, shared GUID or positive ParameterElement ID.
         Without parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.
-        Use a JSON string for String, integer for Integer and number for Double. Lengths use mm, areas m2 and other doubles internal units.
+        value type: JSON string for String, integer for Integer, number for Double. Lengths use mm, areas m2 and other doubles internal units.
         dry_run executes and rolls back, returning the same verification block without changing the model.
         Group members that Revit refuses to change fail with a clear message, including in dry_run.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
             "set-parameter",
@@ -1656,10 +1656,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Delete elements and their Revit dependencies when removal is intended; IDs are unitless and the returned count includes dependents.
+        """Delete elements and their Revit dependencies; IDs are unitless and the returned count includes dependents.
         dry_run executes and rolls back, returning the same verification block without changing the model.
-        Deletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken; show it and retry with identical arguments plus confirm_token only after explicit chat approval. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        Deletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the deletion. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
             "delete",
@@ -1684,7 +1684,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when no target exists or with dry_run."""
+        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; a second call with identical arguments plus confirm_token replaces them. No token when no target exists or with dry_run."""
         return await send(
             "export",
             format=format,
@@ -1728,7 +1728,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; retry with identical arguments plus confirm_token after explicit approval. No token when the path does not exist or with dry_run."""
+        """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; a second call with identical arguments plus confirm_token replaces it. No token when the path does not exist or with dry_run."""
         if scope == "view" and not view:
             raise ToolError("view is required for scope=view.")
         if scope == "selection" and not element_ids:
@@ -1773,7 +1773,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         """Execute up to 50 actions with one undo step; roll back the batch on its first failure.
 
         dry_run executes and rolls back, returning the same verification block without changing the model.
-        Pass `document` to address a specific open model when several are open; an unknown or ambiguous reference is rejected.
+        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
         """
         return await send(
             "batch", steps=[step.payload() for step in steps], dryRun=dry_run, document=document
@@ -1880,7 +1880,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     ) -> dict[str, Any]:
         """Edit an open family in place or named project families in one load cycle each.
 
-        In project mode, pass exact family names or ["*"]. A dry run rolls back all changes.
+        Project mode takes exact family names or ["*"]. A dry run rolls back all changes.
         Refused in read-only mode.
         """
         if families is not None and "*" in families and families != ["*"]:
