@@ -18,6 +18,12 @@
     <Configurations>$(Configurations);Release.R22;Release.R23;Release.R24;Release.R25;Release.R26;Release.R27</Configurations>
   </PropertyGroup>
 
+  <!-- Builds without an explicit Version use the repository version, never the SDK default 1.0.0. -->
+  <PropertyGroup>
+    <RepositoryVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../../server/pyproject.toml')), '(?m)^version = \x22(\d+\.\d+\.\d+)\x22').Groups[1].Value)</RepositoryVersion>
+    <VersionPrefix Condition="'$(RepositoryVersion)' != ''">$(RepositoryVersion)</VersionPrefix>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(RevitVersion)' == '2022'">
     <MinimumRevitApiPackageVersion>2022.1.1</MinimumRevitApiPackageVersion>
     <MinimumRevitApiAssemblyVersion>22.0.0.0</MinimumRevitApiAssemblyVersion>

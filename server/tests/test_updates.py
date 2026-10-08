@@ -99,7 +99,10 @@ def test_pypi_lookup_records_latest_stable_even_when_prerelease_is_newest(tmp_pa
 
 def test_compatibility_gate_accepts_same_major():
     major = int(package_version().split(".")[0])
-    for suffix in (".0.0", ".99.0", ".1.0-rc.1", ".1.0-rc.1+sha", ".1.0+sha"):
+    current = package_version().split("+")[0]
+    for version in (f"{current}-dev", f"{current}-dev+2e56c3f8a1b2c3d4e5f6"):
+        check_addin_compatibility("ping", {"addinVersion": version, "commands": ["ping"]})
+    for suffix in (".0.0", ".99.0", ".1.0-rc.1", ".1.0-rc.1+sha", ".1.0+sha", ".1.0-dev+2e56c3f"):
         check_addin_compatibility(
             "ping", {"addinVersion": f"{major}{suffix}", "commands": ["ping"]}
         )

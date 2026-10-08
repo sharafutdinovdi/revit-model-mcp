@@ -81,14 +81,25 @@ jobs:
         run: dotnet restore build/RevitApiReferencePin/RevitApiReferencePin.csproj --locked-mode -p:Configuration=Release
       - name: Restore batch supervisor with lock
         run: dotnet restore src/RevitModelMcp.BatchSupervisor/RevitModelMcp.BatchSupervisor.csproj --locked-mode -p:Configuration=Release.R26
+      - name: Resolve development version
+        shell: pwsh
+        run: |
+          $match = Select-String -Path server/pyproject.toml -Pattern '^version = "(\d+\.\d+\.\d+)"' | Select-Object -First 1
+          if (!$match) { throw 'server/pyproject.toml has no plain MAJOR.MINOR.PATCH version' }
+          "CI_VERSION=$($match.Matches[0].Groups[1].Value)-dev" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Build installer Revit versions
         shell: pwsh
         run: |
-          foreach ($year in '26', '22', '27') {
-            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false
+          foreach ($year in '22', '23', '24', '25', '26', '27') {
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false "-p:Version=$env:CI_VERSION"
             if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true --no-restore
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:CI_VERSION" -p:IsRepackable=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
+            $assemblyVersion = [System.Reflection.AssemblyName]::GetAssemblyName("src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll").Version.ToString(3)
+            $expectedVersion = $env:CI_VERSION.Split('-')[0]
+            if ($assemblyVersion -ne $expectedVersion) { throw "R$year assembly version $assemblyVersion differs from $expectedVersion" }
+            $product = (Get-Item "src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll").VersionInfo.ProductVersion
+            if (!$product.StartsWith("$env:CI_VERSION+")) { throw "R$year product version $product does not start with $env:CI_VERSION+" }
           }
       - name: Restore tests and installer projects with locks
         shell: pwsh
@@ -120,7 +131,7 @@ jobs:
       - name: Build installers
         shell: pwsh
         env:
-          Build__Version: 0.0.0-ci
+          Build__Version: ${{ env.CI_VERSION }}
         run: |
           dotnet run --no-restore --project build -- pack --no-build
           if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
@@ -142,8 +153,8 @@ jobs:
             })
             if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
             $manifests = @($files | Where-Object Name -EQ 'RevitModelMcp.addin')
-            if ($manifests.Count -ne 3) { throw 'Unexpected Revit year count in MSI' }
-            foreach ($year in '22', '26', '27') {
+            if ($manifests.Count -ne 6) { throw 'Unexpected Revit year count in MSI' }
+            foreach ($year in '22', '23', '24', '25', '26', '27') {
               $manifest = @($manifests | Where-Object { $_.Directory.Name -eq "20$year" })
               if ($manifest.Count -ne 1) { throw "Missing or duplicate R$year manifest in MSI" }
               [xml]$manifestXml = Get-Content -LiteralPath $manifest[0].FullName
@@ -299,7 +310,7 @@ jobs:
       - name: Smoke test same-version MSI upgrade
         shell: pwsh
         env:
-          Build__Version: 0.0.0-ci
+          Build__Version: ${{ env.CI_VERSION }}
         run: |
           $buildA = Join-Path $env:RUNNER_TEMP 'msi-a'
           $buildB = Join-Path $env:RUNNER_TEMP 'msi-b'
@@ -415,7 +426,7 @@ jobs:
       - name: Verify WinGet manifest generation
         shell: pwsh
         run: |
-          ./build/winget/New-WingetManifests.ps1 -Version 0.0.0-ci -ReleaseTag v0.0.0-ci -OutputDir artifacts/winget -SkipDownload
+          ./build/winget/New-WingetManifests.ps1 -Version $env:CI_VERSION -ReleaseTag "v$env:CI_VERSION" -OutputDir artifacts/winget -SkipDownload
           winget --version
           $output = winget validate --manifest artifacts/winget --disable-interactivity 2>&1 | Out-String
           Write-Host $output
@@ -460,19 +471,10 @@ jobs:
           retention-days: 90
           path: artifacts/addin-R27/
           if-no-files-found: error
-      - name: Build remaining Revit versions
-        shell: pwsh
-        run: |
-          foreach ($year in '23', '24', '25') {
-            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false
-            if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true --no-restore
-            if ($LASTEXITCODE -ne 0) { throw "R$year build or AssemblyRef verification failed" }
-          }
       - name: Build and validate the Revit bundle
         shell: pwsh
         env:
-          Build__Version: 0.0.0-ci
+          Build__Version: ${{ env.CI_VERSION }}
         run: |
           dotnet run --no-restore --project build -- bundle
           if ($LASTEXITCODE -ne 0) { throw 'Bundle build failed' }
@@ -487,13 +489,13 @@ jobs:
       - name: Build and validate the managed Revit bundle
         shell: pwsh
         env:
-          Build__Version: 0.0.0-ci
+          Build__Version: ${{ env.CI_VERSION }}
           Bundle__Managed: 'true'
         run: |
           foreach ($year in '22', '23', '24', '25', '26', '27') {
-            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false "-p:Version=$env:CI_VERSION"
             if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:IsRepackable=true -p:ManagedInstall=true --no-restore
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:CI_VERSION" -p:IsRepackable=true -p:ManagedInstall=true --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year managed build failed" }
             $bytes = [IO.File]::ReadAllBytes("src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll")
             $text = [Text.Encoding]::Latin1.GetString($bytes)
@@ -501,13 +503,13 @@ jobs:
           }
           dotnet run --no-restore --project build -- bundle
           if ($LASTEXITCODE -ne 0) { throw 'Managed bundle build failed' }
-          python build/validate_bundle.py output/revit-model-mcp-0.0.0-ci-managed.bundle.zip --years 2022-2027 --managed-version 0.0.0-ci
+          python build/validate_bundle.py "output/revit-model-mcp-$env:CI_VERSION-managed.bundle.zip" --years 2022-2027 --managed-version $env:CI_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Managed bundle validation failed' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: revit-model-mcp-bundle-managed
           retention-days: 90
-          path: output/revit-model-mcp-0.0.0-ci-managed.bundle.zip
+          path: output/revit-model-mcp-${{ env.CI_VERSION }}-managed.bundle.zip
           if-no-files-found: error
       - name: Build Python package
         working-directory: server
