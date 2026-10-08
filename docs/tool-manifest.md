@@ -10,6 +10,8 @@ cd server && uv run python ../build/tool_manifest.py --check
 ```
 
 `--check` fails when the committed file is stale.
+
+`--managed` writes the manifest for the managed install variant to `output/tool-manifest-managed.json`, or to `--output`. That variant has no external endpoints, because the add-in makes no update check and the server runs with `REVIT_MCP_NO_UPDATE_CHECK=1`. The committed file describes the regular build.
 The server tests run the same comparison, so a PR that changes a tool without regenerating the manifest fails CI.
 Tool names and descriptions are identical to `bundle/manifest.json`.
 
@@ -53,11 +55,16 @@ See [Security](security.md), [Privacy](privacy.md) and [Automatic updates](updat
 The archive contains one `RevitModelMcp.bundle/` folder with `PackageContents.xml` and a `Contents/<year>/` folder per Revit year.
 `pack` builds the same archive when it runs without `--no-build`.
 
+The managed bundle is named `revit-model-mcp-<version>-managed.bundle.zip`. Build it with `Bundle__Managed=true` after compiling the add-in with `-p:ManagedInstall=true`.
+
 `build/validate_bundle.py` checks the archive without Windows or Revit:
 
 ```sh
 python build/validate_bundle.py output/RevitModelMcp.bundle.zip --years 2022-2027
+python build/validate_bundle.py output/revit-model-mcp-<version>-managed.bundle.zip --years 2022-2027 --managed-version <version>
 ```
+
+With `--managed-version`, the check also requires a `README.txt` that pins `revit-model-mcp==<version>`.
 
 It checks the `PackageContents.xml` attributes (numeric `AppVersion`, braced `ProductCode` and `UpgradeCode`, company details), one `Components` entry per year with `SeriesMin` and `SeriesMax` set to `R<year>`, that every `ModuleName` and every `.addin` assembly path exists in the archive, and that no Revit API assemblies are packed.
 CI builds the bundle after all six Revit years compile, validates it and uploads it as the `revit-model-mcp-bundle` artifact.

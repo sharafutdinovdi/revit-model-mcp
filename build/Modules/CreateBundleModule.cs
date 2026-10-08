@@ -50,7 +50,35 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
         PackFiles(targetDirectories, contentFolder);
         GenerateManifest(targetDirectories, manifestFile, versioning);
 
-        var outputFile = outputFolder.GetFile($"{bundleFolder.Name}.zip");
+        if (bundleOptions.Value.Managed)
+        {
+            var serverLauncher = versioning.Version.Contains('-')
+                ? $"uvx --prerelease=allow revit-model-mcp=={versioning.Version}"
+                : $"uvx revit-model-mcp=={versioning.Version}";
+            var readme = $"""
+                Revit Model MCP {versioning.Version}, managed install
+
+                This package was built for managed deployment. The add-in does not check for updates.
+                Update it by deploying a newer package.
+
+                The server is not part of this package. Pin the server launcher to the same release:
+
+                    {serverLauncher}
+
+                For example, for Claude Code:
+
+                    claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- {serverLauncher}
+
+                Always set REVIT_MCP_NO_UPDATE_CHECK=1 in the server settings so the server makes no update request.
+                """;
+            await System.IO.File.WriteAllTextAsync(bundleFolder.GetFile("README.txt").Path,
+                readme.Replace("\r\n", "\n") + "\n", new UTF8Encoding(false), cancellationToken);
+        }
+
+        var outputName = bundleOptions.Value.Managed
+            ? $"revit-model-mcp-{versioning.Version}-managed.bundle.zip"
+            : $"{bundleFolder.Name}.zip";
+        var outputFile = outputFolder.GetFile(outputName);
         if (outputFile.Exists)
         {
             outputFile.Delete();

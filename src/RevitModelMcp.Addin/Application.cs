@@ -14,6 +14,7 @@ using RevitModelMcp.Activity;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
+using RevitModelMcp.Core.Help;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Updates;
@@ -222,10 +223,11 @@ public sealed class Application : ExternalApplication
     {
         ActivityPaneProvider.Register(Application);
         var panel = Application.CreatePanel("MCP");
-        panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton)
+        var button = panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton)
             .SetImage("/RevitModelMcp;component/Resources/Icons/Activity16.png")
             .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Activity32.png")
             .SetToolTip(PaneText.RibbonToolTip);
+        button.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, HelpLinks.AddinHelpUrl));
     }
 
     private void OnViewActivated(object? sender, ViewActivatedEventArgs args)

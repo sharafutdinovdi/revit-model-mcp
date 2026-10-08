@@ -48,7 +48,21 @@ The add-in changes nothing in a model on its own. The MCP client asks for data o
 
 7. Restart the client. With a model open in Revit, ask it to call `revit_ping`. A reply with `success: true` means both parts are connected.
 
-If your organization delivers add-in updates itself, build the add-in with `ManagedInstall=true` to turn off its own update check; see [automatic updates](updates.md#managed-installs-and-mirrors). The server still looks for a newer package on PyPI once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` in the client's server settings to turn that off too.
+### The MCP ribbon panel
+
+The **MCP** panel on the **Add-Ins** tab has one button, **Activity**. It shows or hides the activity pane. Press F1 while the pointer is on the button to open this page.
+
+### Managed installs
+
+Managed installs do not check for updates. If your organization delivers add-in updates itself, use `revit-model-mcp-<version>-managed.bundle.zip` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest). It is the same bundle, built with `ManagedInstall=true`; see [automatic updates](updates.md#managed-installs-and-mirrors). You can also build it yourself with that property.
+
+The bundle does not contain the server. Pin the server launcher to the exact release version and turn off its daily check for a newer package on PyPI:
+
+```sh
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- uvx revit-model-mcp==<version>
+```
+
+In a JSON configuration, use `"args": ["revit-model-mcp==<version>"]` and set `REVIT_MCP_NO_UPDATE_CHECK` to `1` in `env`. A `README.txt` in the bundle repeats these commands for its version. With both settings, neither part makes an update request.
 
 ## Install from the MSI or WinGet
 

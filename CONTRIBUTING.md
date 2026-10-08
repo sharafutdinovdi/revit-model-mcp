@@ -221,6 +221,7 @@ Multi-user installation uses `%ProgramData%\Autodesk\Revit\Addins\<year>` throug
 
 `dotnet run --project build -- bundle` builds the Revit `.bundle` zip from the same `Release.R*/publish` output, and `python build/validate_bundle.py output/RevitModelMcp.bundle.zip --years 2022-2027` checks its `PackageContents.xml` and file layout on any platform.
 CI runs both after the six Revit builds and uploads the zip as the `revit-model-mcp-bundle` artifact.
+CI and the release workflow also rebuild the six years with `-p:ManagedInstall=true`, run the bundle step with `Bundle__Managed=true` and validate `revit-model-mcp-<version>-managed.bundle.zip` with `--managed-version`. The release attaches that zip.
 
 Stable releases publish the wheel and source distribution to PyPI through GitHub OIDC in the `pypi` environment.
 The pending publisher configuration is listed above the `pypi` job in `.github/workflows/release.yml`.

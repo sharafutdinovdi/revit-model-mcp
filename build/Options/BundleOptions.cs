@@ -28,4 +28,9 @@ public sealed record BundleOptions
     ///     The constant upgrade code GUID, in braces, shared by every version of the package.
     /// </summary>
     [Required] public string? UpgradeCode { get; init; }
+
+    /// <summary>
+    ///     Build the managed install variant: no update check and a README that pins the server.
+    /// </summary>
+    public bool Managed { get; init; }
 }

@@ -42,6 +42,20 @@ def test_committed_manifest_matches_registry(generator, built):
     assert COMMITTED.read_text(encoding="utf-8") == generator["render"](built)
 
 
+def test_managed_manifest(generator, registry, built):
+    managed = generator["build_manifest"](*registry, managed=True)
+    assert managed["externalEndpoints"] == []
+    assert managed["variant"] == "managed"
+    assert list(managed)[:2] == ["schemaVersion", "variant"]
+    assert managed["tools"] == built["tools"]
+    assert managed["dataHandling"]["updateChecks"] == (
+        "None. The managed add-in build never checks for updates, "
+        "and the server is started with REVIT_MCP_NO_UPDATE_CHECK=1."
+    )
+    assert "variant" not in built
+    assert "updateChecks" not in built["dataHandling"]
+
+
 def test_tools_match_bundle_manifest(built):
     bundle = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
     assert [
@@ -99,9 +113,13 @@ def test_committed_manifest_has_neutral_keys():
         assert old not in text, old
 
 
-def test_snake_case_export(generator, built, tmp_path):
+@pytest.mark.parametrize("managed", [False, True])
+def test_snake_case_export(generator, built, tmp_path, managed):
     output = tmp_path / "nested" / "export.json"
-    with patch("sys.argv", ["tool_manifest.py", "--export-snake-case", str(output)]):
+    argv = ["tool_manifest.py", "--export-snake-case", str(output)]
+    if managed:
+        argv.append("--managed")
+    with patch("sys.argv", argv):
         generator["main"]()
     exported = json.loads(output.read_text(encoding="utf-8"))
     assert exported["tools"] == [
@@ -109,9 +127,9 @@ def test_snake_case_export(generator, built, tmp_path):
     ]
     assert "mcp_manifest_version" in exported
     assert "app_model" in exported
-    assert [e["domain"] for e in exported["external_endpoints"]] == [
-        e["domain"] for e in built["externalEndpoints"]
-    ]
+    assert [e["domain"] for e in exported["external_endpoints"]] == (
+        [] if managed else [e["domain"] for e in built["externalEndpoints"]]
+    )
 
 
 def test_check_mode(generator, tmp_path):
@@ -133,6 +151,32 @@ def test_check_mode(generator, tmp_path):
     with patch("sys.argv", ["tool_manifest.py", "--output", str(output)]):
         main()
     assert run_check() == 0
+
+
+def test_managed_output_and_check(generator, tmp_path):
+    output = tmp_path / "nested" / "managed.json"
+    argv = ["tool_manifest.py", "--managed", "--output", str(output)]
+    with patch("sys.argv", argv):
+        generator["main"]()
+    assert json.loads(output.read_text(encoding="utf-8"))["variant"] == "managed"
+    with patch("sys.argv", [*argv, "--check"]):
+        generator["main"]()
+
+
+def test_managed_default_preserves_public_manifest(generator, tmp_path):
+    main = generator["main"]
+    output = tmp_path / "output" / "tool-manifest-managed.json"
+    original = COMMITTED.read_bytes()
+    assert generator["MANAGED_MANIFEST_PATH"] == (
+        REPOSITORY_ROOT / "output" / "tool-manifest-managed.json"
+    )
+    with patch.dict(main.__globals__, {"MANAGED_MANIFEST_PATH": output}):
+        with patch("sys.argv", ["tool_manifest.py", "--managed"]):
+            main()
+        assert json.loads(output.read_text(encoding="utf-8"))["variant"] == "managed"
+        with patch("sys.argv", ["tool_manifest.py", "--managed", "--check"]):
+            main()
+    assert COMMITTED.read_bytes() == original
 
 
 def test_generated_text_is_clean():
