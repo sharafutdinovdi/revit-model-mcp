@@ -254,7 +254,61 @@ class ParameterRule(BaseModel):
         return stripped
 
 
-mcp = MCPServer(
+_RENAMED_ARGUMENTS: dict[str, tuple[str | None, str]] = {
+    "response_timeout_s": (None, "timeout_seconds"),
+    "wait_s": (None, "wait_seconds"),
+    "save_to": (None, "output_path"),
+    "dest_dir": (None, "output_dir"),
+    "folder": ("revit_export", "output_dir"),
+    "cancel_job_id": ("revit_jobs", "revit_cancel_job"),
+}
+
+
+def _accepted_argument_names(tool: Any) -> set[str]:
+    names: set[str] = set()
+    for name, field in tool.fn_metadata.arg_model.model_fields.items():
+        names.add(name)
+        if field.alias:
+            names.add(field.alias)
+        alias = field.validation_alias
+        if isinstance(alias, str):
+            names.add(alias)
+        elif isinstance(alias, AliasChoices):
+            names.update(choice for choice in alias.choices if isinstance(choice, str))
+    return names
+
+
+def _unknown_argument_message(tool_name: str, unknown: list[str], accepted: set[str]) -> str:
+    parts = []
+    for argument in unknown:
+        scope, replacement = _RENAMED_ARGUMENTS.get(argument, (None, ""))
+        if scope is not None and scope != tool_name:
+            replacement = ""
+        if replacement.startswith("revit_"):
+            parts.append(
+                f"'{argument}' is not an argument of {tool_name}; use the tool {replacement}"
+            )
+        elif replacement and replacement in accepted:
+            parts.append(f"'{argument}' was renamed; use '{replacement}'")
+        else:
+            parts.append(f"'{argument}' is not an argument of {tool_name}")
+    return "Unknown argument: " + "; ".join(parts) + "."
+
+
+class RevitMCPServer(MCPServer):
+    """Rejects arguments a tool does not declare instead of dropping them."""
+
+    async def call_tool(self, name, arguments, context=None):
+        tool = self._tool_manager.get_tool(name)
+        if tool is not None:
+            accepted = _accepted_argument_names(tool)
+            unknown = sorted(key for key in arguments if key not in accepted)
+            if unknown:
+                raise ToolError(_unknown_argument_message(name, unknown, accepted))
+        return await super().call_tool(name, arguments, context)
+
+
+mcp = RevitMCPServer(
     "Revit Model MCP",
     version=package_version(),
     instructions=(

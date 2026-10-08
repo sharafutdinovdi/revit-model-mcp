@@ -71,6 +71,10 @@ class RemoteCommandTimeoutError(RevitChannelError):
     pass
 
 
+class BatchRunNotFoundError(RevitChannelError):
+    """The batch run id does not exist on the workstation."""
+
+
 class RemoteCommandError(RevitChannelError):
     def __init__(self, returncode: int, detail: str) -> None:
         super().__init__(detail)
@@ -140,7 +144,7 @@ class SshPowerShellHost:
         output = await self._run(
             f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
             "$path = Join-Path $run 'run.json'; "
-            "if (!(Test-Path -LiteralPath $path)) { throw 'Batch run was not found.' }; "
+            "if (!(Test-Path -LiteralPath $path)) { '{\"notFound\":true}' } else { "
             "$state = [IO.File]::ReadAllBytes($path); "
             "$decoded = [Text.Encoding]::UTF8.GetString($state); "
             "if ($decoded.Length -gt 0 -and $decoded[0] -eq [char]0xFEFF) { $decoded = $decoded.Substring(1) }; "
@@ -154,9 +158,11 @@ class SshPowerShellHost:
             "} catch { $alive = $true } } }; "
             "$cancel = Test-Path -LiteralPath (Join-Path $run 'cancel.json'); "
             "[ordered]@{ state = [Convert]::ToBase64String($state); cancel = $cancel; "
-            "supervisorAlive = $alive } | ConvertTo-Json -Compress"
+            "supervisorAlive = $alive } | ConvertTo-Json -Compress }"
         )
         package = json.loads(output)
+        if package.get("notFound") is True:
+            raise BatchRunNotFoundError("Batch run was not found.")
         state = json.loads(base64.b64decode(package["state"], validate=True))
         if not isinstance(state, dict):
             raise ResponseParseError("Batch run state is invalid.")
@@ -191,18 +197,20 @@ class SshPowerShellHost:
     async def batch_cancel(self, run_id: str) -> None:
         if not re.fullmatch(r"[0-9a-f]{32}", run_id):
             raise RevitChannelError("Invalid batch run id.")
-        await self._run(
+        output = await self._run(
             "if (Test-Path -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA 'RevitModelMcp') 'read-only')) "
             "{ throw 'read-only mode' }; "
             f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
-            "if (!(Test-Path -LiteralPath (Join-Path $run 'run.json'))) { throw 'Batch run was not found.' }; "
+            "if (!(Test-Path -LiteralPath (Join-Path $run 'run.json'))) { 'RMM_RUN_NOT_FOUND' } else { "
             "$target = Join-Path $run 'cancel.json'; "
             "if (!(Test-Path -LiteralPath $target)) { "
             "$temporary = Join-Path $run ('cancel.' + [Guid]::NewGuid().ToString('N') + '.tmp'); "
             "[IO.File]::WriteAllText($temporary, '{\"cancelRequested\":true}'); "
             "try { [IO.File]::Move($temporary, $target) } finally { "
-            "if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } } }"
+            "if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } } } }"
         )
+        if "RMM_RUN_NOT_FOUND" in output:
+            raise BatchRunNotFoundError("Batch run was not found.")
 
     async def batch_fetch_artifact(self, run_id: str, name: str) -> dict[str, str]:
         if not re.fullmatch(r"[0-9a-f]{32}", run_id) or not re.fullmatch(
