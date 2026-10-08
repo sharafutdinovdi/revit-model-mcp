@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
+using RevitModelMcp.Activity;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
@@ -394,6 +395,8 @@ internal static class ReadCommandExecutor
         {
             ElementIds = elements.Select(element => RevitValueReader.GetId(element.Id)).ToList()
         }, job.PaddingMm);
+        // The group is always rolled back; keep that out of the undo tracking used by revit_undo_last.
+        using var temporaryUndoState = UndoTracker.BeginTemporary();
         using var group = new TransactionGroup(document, "Capture elements");
         group.Start();
         try
