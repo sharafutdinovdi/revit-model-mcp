@@ -100,6 +100,10 @@ jobs:
             if ($assemblyVersion -ne $expectedVersion) { throw "R$year assembly version $assemblyVersion differs from $expectedVersion" }
             $product = (Get-Item "src/RevitModelMcp.Addin/bin/Release.R$year/RevitModelMcp.dll").VersionInfo.ProductVersion
             if (!$product.StartsWith("$env:CI_VERSION+")) { throw "R$year product version $product does not start with $env:CI_VERSION+" }
+            foreach ($name in 'RevitModelMcp.dll', 'RevitModelMcp.Updater.exe', 'RevitModelMcp.BatchSupervisor.exe', 'RevitModelMcp.Core.dll') {
+              $productName = (Get-Item "src/RevitModelMcp.Addin/bin/Release.R$year/$name").VersionInfo.ProductName
+              if ($productName -ne 'Model MCP') { throw "R$year $name has product name '$productName', expected 'Model MCP'" }
+            }
           }
       - name: Restore tests and installer projects with locks
         shell: pwsh

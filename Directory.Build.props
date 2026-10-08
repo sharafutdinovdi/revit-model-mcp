@@ -3,4 +3,8 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetLockFilePath Condition="'$(MSBuildProjectName)' == 'RevitModelMcp.Addin'">$(MSBuildProjectDirectory)/packages.$(Configuration).lock.json</NuGetLockFilePath>
   </PropertyGroup>
+  <!-- Shipped binaries carry one product name; SignPath enforces it as a file metadata restriction. -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src'))">
+    <Product>Model MCP</Product>
+  </PropertyGroup>
 </Project>
