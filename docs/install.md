@@ -14,6 +14,14 @@ Model MCP has two parts. The add-in runs inside Revit on Windows. The server run
 
 The add-in changes nothing in a model on its own. The MCP client asks for data or actions through the server. Actions are enabled by default and every one is a named undo entry. Switch to read-only mode if you only want to inspect models; see [actions](actions.md).
 
+## Downloads
+
+Download the installers, add-in archives, bundles and the Claude Desktop bundle from the [releases page](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
+The server package is on [PyPI](https://pypi.org/project/revit-model-mcp/).
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+Signing starts with the first release after the project's application is approved; until then, releases are unsigned. See the [code signing policy](code-signing.md).
+
 ## Install the add-in bundle
 
 1. Get the add-in package from your BIM manager or IT team, or build it from the repository. It is an Autodesk `.bundle` folder with a `PackageContents.xml` file.
