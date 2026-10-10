@@ -845,8 +845,9 @@ internal static class ActionCommandExecutor
                 uiDocument!.ShowElements(ids);
                 if (viewOpened) DocumentActions.ZoomActiveView(uiDocument);
             }
-            if (command == "select" || action.Select) uiDocument!.Selection.SetElementIds(ids);
-            var viewData = new ActionResultData { Count = uiDocument!.Selection.GetElementIds().Count };
+            var selecting = command == "select" || action.Select;
+            if (selecting) uiDocument!.Selection.SetElementIds(ids);
+            var viewData = new ActionResultData { Count = selecting ? uiDocument!.Selection.GetElementIds().Count : ids.Count };
             viewData.Summary = BuildSummary(command, action, viewData, document.Title, ids);
             return viewData;
         }
