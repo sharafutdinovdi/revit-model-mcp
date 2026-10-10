@@ -10,6 +10,7 @@ using System.Security.Principal;
 using System.Text;
 using RevitModelMcp.Activity;
 using RevitModelMcp.Core.Updates;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Updates;
 
@@ -52,14 +53,25 @@ internal static class UpdateService
             ActivityRecorder.RecordSystemNotice(message, resultReleaseUrl, result.ExitCode != 0);
             state.ReportedResultTime = result.Time;
             state.QueuedVersion = null;
+            if (result.ExitCode != 0)
+            {
+                var failed = result.Version.TrimStart('v', 'V');
+                state.BlockedVersions.RemoveAll(item => item.Version == failed);
+                state.BlockedVersions.Add(new BlockedVersion { Version = failed, Until = DateTimeOffset.UtcNow + UpdatePolicy.BlockDuration });
+            }
             WriteJson(statePath, state);
         }
 
+        var assemblyPath = typeof(Application).Assembly.Location;
+        var perUserRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var perUser = assemblyPath.StartsWith(perUserRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
         var programData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RevitModelMcp");
         var machine = ReadJson<UpdateSettings>(Path.Combine(programData, "settings.json"));
         var user = ReadJson<UpdateSettings>(Path.Combine(LocalDirectory, "settings.json"));
-        if (!UpdatePolicy.IsEnabled(null, machine?.UpdateCheck, user?.UpdateCheck, IsManagedInstall(),
-                Environment.GetEnvironmentVariable("REVIT_MCP_NO_UPDATE_CHECK"))) return;
+        var mode = UpdateDecision.Decide(new UpdateInputs(Channel(), perUser, PolicyProvider.Current.UpdateMode,
+            machine?.UpdateMode, user?.UpdateMode, machine?.UpdateCheck, user?.UpdateCheck,
+            Environment.GetEnvironmentVariable("REVIT_MCP_NO_UPDATE_CHECK")));
+        if (mode == UpdateMode.Off) return;
         if (state.QueuedVersion is not null)
         {
             if (Mutex.TryOpenExisting(@"Local\RevitModelMcp.Updater", out var runningUpdater))
@@ -79,15 +91,15 @@ internal static class UpdateService
         var release = RequestJson<Release>(new Uri(feed, ReleasePath));
         if (release is null || !UpdatePolicy.IsNewerStable(InstalledVersion(), release.TagName, release.Draft, release.Prerelease)) return;
         if (state.QueuedVersion == release.TagName) return;
-        var releaseUrl = ValidDownloadUrl(release.HtmlUrl) ? release.HtmlUrl :
+        var blocked = state.BlockedVersions.ToDictionary(item => item.Version, item => item.Until);
+        if (UpdatePolicy.IsBlocked(release.TagName, blocked, now)) return;
+        var releaseUrl = UpdatePolicy.IsAllowedDownloadUrl(release.HtmlUrl, feed) ? release.HtmlUrl :
             UpdatePolicy.BuildReleaseUrl(ReleasePage, release.TagName, release.TagName);
-        var assemblyPath = typeof(Application).Assembly.Location;
-        var perUserRoot = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var perUser = assemblyPath.StartsWith(perUserRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-        if (!perUser)
+        if (mode == UpdateMode.Notify)
         {
             if (state.NotifiedVersion == release.TagName) return;
-            ActivityRecorder.RecordSystemNotice($"Update available: {release.TagName.TrimStart('v', 'V')}", releaseUrl);
+            var hint = perUser ? " To install updates automatically, set \"updateMode\": \"auto\" in %LOCALAPPDATA%\\RevitModelMcp\\settings.json." : string.Empty;
+            ActivityRecorder.RecordSystemNotice($"Update available: {release.TagName.TrimStart('v', 'V')}.{hint}", releaseUrl);
             state.NotifiedVersion = release.TagName;
             WriteJson(statePath, state);
             return;
@@ -96,15 +108,17 @@ internal static class UpdateService
         var assetName = UpdatePolicy.SelectSingleUserAsset(release.Assets.Select(asset => asset.Name), release.TagName);
         var msiAsset = release.Assets.FirstOrDefault(asset => asset.Name == assetName);
         var checksumAsset = release.Assets.FirstOrDefault(asset => asset.Name == "SHA256SUMS.txt");
-        if (msiAsset is null || checksumAsset is null || !ValidDownloadUrl(msiAsset.Url) || !ValidDownloadUrl(checksumAsset.Url))
+        if (msiAsset is null || checksumAsset is null ||
+            !UpdatePolicy.IsAllowedDownloadUrl(msiAsset.Url, feed) || !UpdatePolicy.IsAllowedDownloadUrl(checksumAsset.Url, feed))
         {
-            ActivityRecorder.RecordSystemNotice($"Update to {release.TagName} failed: release assets are missing or invalid.", releaseUrl, true);
+            ActivityRecorder.RecordSystemNotice($"Update to {release.TagName} failed: release assets are missing or not on an allowed download host.", releaseUrl, true);
             return;
         }
+
         var version = release.TagName.TrimStart('v', 'V');
         var directory = Path.Combine(LocalDirectory, "updates", version);
         CreatePrivateDirectory(directory);
-        var checksumText = ReadText(new Uri(checksumAsset.Url));
+        var checksumText = ReadText(new Uri(checksumAsset.Url), feed);
         File.WriteAllText(Path.Combine(directory, "SHA256SUMS.txt"), checksumText);
         var expected = UpdatePolicy.ParseChecksum(checksumText, msiAsset.Name);
         if (expected is null)
@@ -115,13 +129,16 @@ internal static class UpdateService
         var msiPath = Path.Combine(directory, msiAsset.Name);
         try
         {
-            Download(new Uri(msiAsset.Url), msiPath);
+            Download(new Uri(msiAsset.Url), msiPath, feed);
             using var file = File.OpenRead(msiPath);
             if (!UpdatePolicy.VerifyChecksum(file, expected))
             {
                 file.Close();
                 File.Delete(msiPath);
-                ActivityRecorder.RecordSystemNotice($"Update to {version} failed: SHA256 checksum mismatch.", releaseUrl, true);
+                state.BlockedVersions.RemoveAll(item => item.Version == version);
+                state.BlockedVersions.Add(new BlockedVersion { Version = version, Until = now + UpdatePolicy.BlockDuration });
+                WriteJson(statePath, state);
+                ActivityRecorder.RecordSystemNotice($"Update to {version} failed: SHA256 checksum mismatch. This version is skipped for seven days.", releaseUrl, true);
                 return;
             }
         }
@@ -156,19 +173,17 @@ internal static class UpdateService
         return uri;
     }
 
-    private static bool ValidDownloadUrl(string? value) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
-        (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp &&
-         (uri.Host == "127.0.0.1" || uri.Host == "localhost"));
+    private static UpdateChannel Channel()
+    {
+        string? Metadata(string key) => typeof(Application).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attribute => attribute.Key == key)?.Value;
+        return UpdateDecision.ResolveChannel(Metadata("UpdateChannel"),
+            string.Equals(Metadata("ManagedInstall"), "true", StringComparison.OrdinalIgnoreCase), InstalledVersion());
+    }
 
     private static string InstalledVersion() =>
         typeof(Application).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ??
         typeof(Application).Assembly.GetName().Version?.ToString() ?? "0.0.0";
-
-    private static bool IsManagedInstall() =>
-        typeof(Application).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
-            .Any(attribute => attribute.Key == "ManagedInstall" &&
-                              string.Equals(attribute.Value, "true", StringComparison.OrdinalIgnoreCase));
 
     private static string FailureReason(int code) => code switch
     {
@@ -184,20 +199,30 @@ internal static class UpdateService
         return stream is null ? null : new DataContractJsonSerializer(typeof(T)).ReadObject(stream) as T;
     }
 
-    private static string ReadText(Uri uri)
+    private static string ReadText(Uri uri, Uri feed)
     {
-        using var response = Request(uri).GetResponse();
+        using var response = AllowedResponse(uri, feed);
         using var stream = response.GetResponseStream()!;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
 
-    private static void Download(Uri uri, string path)
+    private static void Download(Uri uri, string path, Uri feed)
     {
-        using var response = Request(uri).GetResponse();
+        using var response = AllowedResponse(uri, feed);
         using var source = response.GetResponseStream()!;
         using var destination = File.Create(path);
         source.CopyTo(destination);
+    }
+
+    // Redirects are followed by the framework, so the final host is checked before any body is read.
+    private static WebResponse AllowedResponse(Uri uri, Uri feed)
+    {
+        var response = Request(uri).GetResponse();
+        if (UpdatePolicy.IsAllowedDownloadUrl(response.ResponseUri.AbsoluteUri, feed)) return response;
+        var host = response.ResponseUri.Host;
+        response.Dispose();
+        throw new InvalidDataException($"Download redirected to a host that is not allowed: {host}.");
     }
 
     private static HttpWebRequest Request(Uri uri)
@@ -311,6 +336,14 @@ internal static class UpdateService
     private sealed class UpdateSettings
     {
         [DataMember(Name = "updateCheck")] public bool? UpdateCheck { get; set; }
+        [DataMember(Name = "updateMode")] public string? UpdateMode { get; set; }
+    }
+
+    [DataContract]
+    private sealed class BlockedVersion
+    {
+        [DataMember(Name = "version")] public string Version { get; set; } = string.Empty;
+        [DataMember(Name = "until")] public DateTimeOffset Until { get; set; }
     }
 
     [DataContract]
@@ -318,6 +351,8 @@ internal static class UpdateService
     {
         [DataMember(Name = "lastCheck")] public DateTimeOffset? LastCheck { get; set; }
         [DataMember(Name = "notifiedVersion")] public string? NotifiedVersion { get; set; }
+        [DataMember(Name = "blockedVersions", EmitDefaultValue = false)] private List<BlockedVersion>? blockedVersions;
+        public List<BlockedVersion> BlockedVersions => blockedVersions ??= [];
         [DataMember(Name = "queuedVersion")] public string? QueuedVersion { get; set; }
         [DataMember(Name = "reportedResultTime")] public DateTimeOffset ReportedResultTime { get; set; }
     }

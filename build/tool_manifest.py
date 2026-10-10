@@ -111,7 +111,8 @@ FILE_SYSTEM = {
 UNRESTRICTED_NETWORK = {"revit_execute_code", "revit_process_models"}
 
 _UPDATE_CHECK_DISABLE = (
-    "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+    "Install with UPDATEMODE=off (or UPDATECHECK=0), set updateMode to off "
+    "in settings.json, or build with UpdateChannel=managed."
 )
 _HTTPS_REQUEST_ONLY = "None beyond a standard HTTPS request."
 _RELEASE_DOWNLOAD_PURPOSE = (

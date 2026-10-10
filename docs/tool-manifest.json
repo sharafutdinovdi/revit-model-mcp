@@ -1467,7 +1467,7 @@
       "purpose": "Check for the latest stable release at most once every 24 hours after Revit starts.",
       "dataSent": "None beyond a standard HTTPS request; no model data.",
       "optional": true,
-      "disable": "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+      "disable": "Install with UPDATEMODE=off (or UPDATECHECK=0), set updateMode to off in settings.json, or build with UpdateChannel=managed."
     },
     {
       "domain": "github.com",
@@ -1476,7 +1476,7 @@
       "purpose": "Download the release MSI and its SHA256 checksum when an update is available; the checksum is verified before install.",
       "dataSent": "None beyond a standard HTTPS request.",
       "optional": true,
-      "disable": "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+      "disable": "Install with UPDATEMODE=off (or UPDATECHECK=0), set updateMode to off in settings.json, or build with UpdateChannel=managed."
     },
     {
       "domain": "release-assets.githubusercontent.com",
@@ -1485,7 +1485,7 @@
       "purpose": "Download the release MSI and its SHA256 checksum when an update is available; the checksum is verified before install.",
       "dataSent": "None beyond a standard HTTPS request.",
       "optional": true,
-      "disable": "Install with UPDATECHECK=0 or set updateCheck to false in settings.json."
+      "disable": "Install with UPDATEMODE=off (or UPDATECHECK=0), set updateMode to off in settings.json, or build with UpdateChannel=managed."
     },
     {
       "domain": "pypi.org",

@@ -552,6 +552,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
     [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
     [DataMember(Name = "updateCheck", Order = 7)] public bool UpdateCheck { get; set; } = true;
+    [DataMember(Name = "updateMode", Order = 12, EmitDefaultValue = false)] public string? UpdateMode { get; set; }
     [DataMember(Name = "maxStoredResponses", Order = 8)] public int MaxStoredResponses { get; set; } = HttpLimits.DefaultMaxStoredResponses;
     [DataMember(Name = "maxStoredBytes", Order = 9)] public long MaxStoredBytes { get; set; } = HttpLimits.DefaultMaxStoredBytes;
     [DataMember(Name = "requestReadTimeoutSeconds", Order = 10)] public int RequestReadTimeoutSeconds { get; set; } = HttpLimits.DefaultRequestReadTimeoutSeconds;

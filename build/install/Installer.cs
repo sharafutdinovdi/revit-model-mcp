@@ -49,6 +49,7 @@ void BuildSingleUserMsi()
     project.Properties =
     [
         new Property("UPDATECHECK", "1") { Secure = true },
+        new Property("UPDATEMODE", "") { Secure = true },
         .. OtherScopeProperties("Machine", year => $@"{MachineAddinsRoot(year).Search}\{year}")
     ];
     project.LaunchConditions =
@@ -58,7 +59,7 @@ void BuildSingleUserMsi()
             "Uninstall it from Apps > Installed apps, then run this SingleUser installer again.")
     ];
     project.RegValues = [];
-    project.Actions = [UpdateSettingAction("LOCALAPPDATA", false)];
+    project.Actions = [.. UpdateSettingActions("LOCALAPPDATA", false)];
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
     project.Dirs =
     [
@@ -82,6 +83,7 @@ void BuildMultiUserMsi()
         new Property("HTTP_ENABLED", "0") { Secure = true },
         .. MachinePolicyValues.Properties(),
         new Property("UPDATECHECK", "1") { Secure = true },
+        new Property("UPDATEMODE", "") { Secure = true },
         new Property("HTTP_URL_PREFIX", "http://127.0.0.1:53110/") { Secure = true },
         new RegValueProperty("HTTP_OWNED_PREFIX", RegistryHive.LocalMachine,
             @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]", "Prefix", "") { Secure = true }
@@ -119,7 +121,7 @@ void BuildMultiUserMsi()
             Execute = Execute.deferred,
             Impersonate = false
         },
-        UpdateSettingAction("ProgramData", true)
+        .. UpdateSettingActions("ProgramData", true)
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
@@ -156,19 +158,30 @@ LaunchCondition OtherScopeLaunchCondition(string message) =>
     new("Installed OR (" + string.Join(" AND ",
         wixEntities.Select(entity => $"RMM_OTHER_SCOPE_{entity.Version}=\"\"")) + ")", message);
 
-PathFileAction UpdateSettingAction(string environmentFolder, bool elevated)
+// UPDATECHECK=0 is the legacy alias for UPDATEMODE=off. Both persist in settings.json so they survive upgrades.
+// The mode value cannot be spliced into a deferred script, so each allowed value gets its own action.
+IEnumerable<PathFileAction> UpdateSettingActions(string environmentFolder, bool elevated)
+{
+    yield return UpdateSettingAction(environmentFolder, elevated, "DisableUpdateCheck",
+        "updateCheck", "$false", "UPDATECHECK=\"0\"");
+    foreach (var mode in new[] { "off", "notify", "auto" })
+        yield return UpdateSettingAction(environmentFolder, elevated, $"SetUpdateMode{mode}",
+            "updateMode", $"'{mode}'", $"UPDATEMODE~=\"{mode}\"");
+}
+
+PathFileAction UpdateSettingAction(string environmentFolder, bool elevated, string id, string key, string value, string condition)
 {
     var script = $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
         "$directory = Split-Path $path; New-Item -ItemType Directory -Path $directory -Force | Out-Null; " +
         "$settings = if (Test-Path $path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }; " +
-        "$settings | Add-Member -NotePropertyName updateCheck -NotePropertyValue $false -Force; " +
+        $"$settings | Add-Member -NotePropertyName {key} -NotePropertyValue {value} -Force; " +
         "$settings | ConvertTo-Json -Compress | Set-Content -LiteralPath $path -Encoding UTF8";
     var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-    return new PathFileAction(new Id(elevated ? "DisableMachineUpdateCheck" : "DisableUserUpdateCheck"),
+    return new PathFileAction(new Id((elevated ? "Machine" : "User") + id),
         @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
         $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
         "SystemFolder", Return.check, When.After, Step.InstallFiles,
-        new Condition("UPDATECHECK=\"0\" AND NOT REMOVE~=\"ALL\""))
+        new Condition($"{condition} AND NOT REMOVE~=\"ALL\""))
     {
         Execute = Execute.deferred,
         Impersonate = !elevated
