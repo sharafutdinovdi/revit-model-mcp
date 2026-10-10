@@ -132,6 +132,7 @@ Restart Revit after a change.
 | `token` | string | generated | Bearer token: nonempty, no control characters. The add-in writes a random 32-byte token on first start. `REVIT_MCP_TOKEN` overrides it. |
 | `showActivityPaneOnAction` | boolean | `true` | Shows the MCP activity pane when an action runs. |
 | `trustedNetworkRoots` | array of strings | `[]` | UNC share roots such as `\\server\share` that file actions may use. See [security](security.md). |
+| `updateMode` | string | channel default | `off`, `notify` or `auto`. See [automatic updates](updates.md). |
 | `updateCheck` | boolean | `true` | `false` stops the add-in from checking for updates. A `false` in `%ProgramData%\RevitModelMcp\settings.json` applies to every user. See [automatic updates](updates.md). |
 | `maxStoredResponses` | integer | `256` | See [Limits](#limits). |
 | `maxStoredBytes` | integer | `67108864` | See [Limits](#limits). |
