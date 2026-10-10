@@ -30,6 +30,13 @@ def test_refusal_shape():
             },
             POLICY_BLOCKED,
         ),
+        (
+            {
+                "success": False,
+                "error": "Blocked by organization policy: the workstation is read-only.",
+            },
+            POLICY_BLOCKED,
+        ),
         ({"success": False, "error": "Cannot move element."}, ACTION_FAILED),
         ({"success": False, "error": "Failed", "errorCode": "future_code"}, "future_code"),
         ({"success": True, "error": "Ignored"}, None),

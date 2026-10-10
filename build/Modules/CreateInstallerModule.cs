@@ -130,6 +130,12 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
                 Arguments = ["extension", "add", "-g", $"WixToolset.UI.wixext/{wixVersion}"]
             }, cancellationToken: cancellationToken);
 
+        await context.Shell.Command.ExecuteCommandLineTool(
+            new GenericCommandLineToolOptions(wixExe.Path)
+            {
+                Arguments = ["extension", "add", "-g", $"WixToolset.Util.wixext/{wixVersion}"]
+            }, cancellationToken: cancellationToken);
+
         return wixToolFolder;
     }
 }

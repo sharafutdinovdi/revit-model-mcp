@@ -21,6 +21,7 @@ from revit_model_mcp.revit_channel import (
     Job,
     ReadOnlyRefusedError,
     RevitChannelError,
+    refused_response,
     resolve_instance,
 )
 from revit_model_mcp.ssh_host import RemoteCommandError, SshPowerShellHost
@@ -245,8 +246,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             if result.get("success") is not True:
                 raise ToolError("Supervisor launch failed.")
             return {"runId": run_id, "acceptedModels": len(selected_paths)}
-        except ReadOnlyRefusedError:
-            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
+        except ReadOnlyRefusedError as error:
+            return refused_response("batch-start", error)
         except RevitChannelError as error:
             if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):
                 return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
@@ -279,8 +280,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             file_host = _file_host(host_provider())
             await file_host.batch_cancel(run_id)
             return _public(await file_host.batch_status(run_id))
-        except ReadOnlyRefusedError:
-            return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
+        except ReadOnlyRefusedError as error:
+            return refused_response("batch-cancel", error)
         except RevitChannelError as error:
             # File-channel cancellation reports the gate through PowerShell stderr.
             if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):

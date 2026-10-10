@@ -871,3 +871,30 @@ def test_addin_refuses_job_control_and_batch_start_in_read_only_mode():
     pipe_cancel = pipe.split("private PipeMessage Cancel(", 1)[1].split("CancelJob", 1)[0]
     assert '"read_only"' in pipe_cancel
     assert "ReadOnlyGatePolicy.RefusesSubmission" in pipe
+
+
+POLICY_READ_ONLY_TEXT = "Blocked by organization policy: the workstation is read-only."
+
+
+def test_http_policy_read_only_action_keeps_the_organization_text(endpoint):
+    host, state = endpoint
+    state["status"] = 403
+    state["error_text"] = POLICY_READ_ONLY_TEXT
+    assert asyncio.run(RevitChannel(host).execute(Job("select", {"command": "select"}))) == {
+        "success": False,
+        "command": "select",
+        "error": POLICY_READ_ONLY_TEXT,
+        "errorCode": "policy_blocked",
+    }
+
+
+def test_http_policy_denied_action_returns_policy_blocked(endpoint):
+    host, state = endpoint
+    state["status"] = 403
+    state["error_text"] = "Blocked by organization policy: the tool 'select' is denied."
+    assert asyncio.run(RevitChannel(host).execute(Job("select", {"command": "select"}))) == {
+        "success": False,
+        "command": "select",
+        "error": "Blocked by organization policy: the tool 'select' is denied.",
+        "errorCode": "policy_blocked",
+    }

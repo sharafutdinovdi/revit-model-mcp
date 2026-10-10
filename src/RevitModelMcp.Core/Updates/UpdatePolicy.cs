@@ -3,6 +3,12 @@ using System.Text.RegularExpressions;
 
 namespace RevitModelMcp.Core.Updates;
 
+/// <summary>An update download or its redirect target is on a host the update policy does not allow.</summary>
+public sealed class UpdateDownloadRefusedException(string host) : Exception(UpdatePolicy.RefusalText(host))
+{
+    public string Host { get; } = host;
+}
+
 public static class UpdatePolicy
 {
     public static string BuildReleaseUrl(string releasePage, string? releaseTag, string version)
@@ -49,6 +55,17 @@ public static class UpdatePolicy
         if (string.Equals(uri.Host, feed.Host, StringComparison.OrdinalIgnoreCase)) return true;
         return string.Equals(feed.Host, "api.github.com", StringComparison.OrdinalIgnoreCase) &&
                DefaultDownloadHosts.Contains(uri.Host, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The text for a download or redirect target that is not allowed. It names the host, never the full URL, so no query or credentials leak.</summary>
+    public static string RefusalText(string host) => $"Update download refused: host {host} is not allowed.";
+
+    /// <summary>Throws <see cref="UpdateDownloadRefusedException"/> naming the host when <paramref name="value"/> is not an allowed download URL.</summary>
+    public static void EnsureAllowedDownloadUrl(string? value, Uri feed)
+    {
+        if (IsAllowedDownloadUrl(value, feed)) return;
+        var host = Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Host.Length != 0 ? uri.Host : "(unknown)";
+        throw new UpdateDownloadRefusedException(host);
     }
 
     private static bool IsLoopback(Uri uri) => uri.Host is "127.0.0.1" or "localhost";

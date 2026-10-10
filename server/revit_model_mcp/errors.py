@@ -25,7 +25,7 @@ def with_error_code(response: dict) -> dict:
         and not _is_intermediate_response(response)
     ):
         error = response["error"]
-        if error in (READ_ONLY_MESSAGE, POLICY_READ_ONLY_MESSAGE):
+        if error == READ_ONLY_MESSAGE:
             response["errorCode"] = READ_ONLY
         elif error.startswith(POLICY_BLOCKED_PREFIX):
             response["errorCode"] = POLICY_BLOCKED

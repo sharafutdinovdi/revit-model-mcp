@@ -500,3 +500,40 @@ def test_pipe_move_failure_deletes_source_image(tmp_path):
         assert target.read_bytes() == b"original"
 
     asyncio.run(scenario())
+
+
+def test_pipe_policy_read_only_and_denial_keep_the_organization_text():
+    import pytest
+
+    from revit_model_mcp import package_version
+    from revit_model_mcp.revit_channel import PolicyRefusedError, RevitChannelError
+
+    text = "Blocked by organization policy: the workstation is read-only."
+    denied = "Blocked by organization policy: the tool 'select' is denied."
+
+    async def check():
+        connection = MagicMock()
+        parent = MagicMock()
+        parent.connection = AsyncMock(return_value=connection)
+        remote = PipeJobHost(parent, {"processId": PID}, connection)
+        connection.hello = {"addinVersion": package_version(), "commands": ["select", "ping"]}
+        parent.select_job = AsyncMock(side_effect=lambda job: (remote, job))
+        connection.request = AsyncMock(
+            return_value={"type": "error", "error": "read_only", "message": text}
+        )
+        assert await RevitChannel(remote).execute(Job("select", {"command": "select"})) == {
+            "success": False,
+            "command": "select",
+            "error": text,
+            "errorCode": "policy_blocked",
+        }
+        with pytest.raises(PolicyRefusedError, match="Blocked by organization policy"):
+            await remote.fetch_job("a" * 32)
+        connection.request = AsyncMock(
+            return_value={"type": "error", "error": "policy_blocked", "message": denied}
+        )
+        with pytest.raises(RevitChannelError, match="the tool 'select' is denied") as error:
+            await remote.cancel_job("a" * 32)
+        assert "Revit rejected the pipe request" not in str(error.value)
+
+    asyncio.run(check())

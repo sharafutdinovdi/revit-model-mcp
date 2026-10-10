@@ -151,7 +151,7 @@ public sealed class Application : ExternalApplication
         _instanceHeartbeat?.Start(_activeDocument, _documents);
         var httpStatus = httpSettings is null
             ? HttpListenerStatus.ConfigError(httpSettingsError!)
-            : HttpListenerStatus.DisabledBySettings();
+            : HttpListenerStatus.ForDisabled(Policy.PolicyProvider.Current.HttpEnabled);
         var channelOwnsStatus = false;
         if (httpSettings is not null)
         {

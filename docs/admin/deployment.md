@@ -47,7 +47,7 @@ Switches and properties:
 
 See [policy properties and Group Policy](#policy-properties-and-group-policy) for how `READONLY` and `EXECUTECODE` behave on upgrade, repair and uninstall. `ToolDeny`, `ToolAllow` and the other policy values cannot be set through the MSI: use Group Policy, Intune or `policy.json`.
 
-The MultiUser MSI also creates `%ProgramData%\RevitModelMcp` as SYSTEM with a protected ACL (Administrators and SYSTEM full control, Users read and execute) on every install, because that folder holds `policy.json` and `settings.json`. If the folder already exists as a link or is owned by someone other than Administrators or SYSTEM, the install fails and the log says why. Remove the folder and install again. See [the policy folder](policy-reference.md#the-policy-folder).
+The MultiUser MSI also creates `%ProgramData%\RevitModelMcp` as SYSTEM with a protected ACL (Administrators and SYSTEM full control, Users read and execute) on every install, because that folder holds `policy.json` and `settings.json`. If the folder already exists as a link or is owned by someone other than Administrators or SYSTEM, the install stops before it changes anything. The verbose log (`/l*v`) has a line that starts with `Model MCP:` (copied from the check by the WiX quiet-exec action) and names the folder and the reason, and an interactive install shows the same text in a message box. The check exit codes are 20 (link or not a folder), 21 (wrong owner) and 22 (could not be checked). For a wrong owner run `takeown /a /f "%ProgramData%\RevitModelMcp"` in an elevated prompt (or delete the folder) and install again; for a link delete it. See [the policy folder](policy-reference.md#the-policy-folder).
 
 Example for a locked-down fleet:
 
@@ -69,6 +69,7 @@ Exit codes follow Windows Installer:
 
 Upgrades within the same scope run in place, also for the same version. Repair with `msiexec /fa <msi>`. Uninstall with `msiexec /x <msi> /qn`.
 Uninstall leaves settings, logs and the channel folder; see [data retention](../privacy.md#data-retention) for the folders.
+MultiUser uninstall (not the removal step of an upgrade) also cleans `%ProgramData%\RevitModelMcp`: it deletes `settings.json` only when it holds nothing but the keys the MSI writes (`updateCheck`, `updateMode`), then deletes the folder only when it is empty. `policy.json`, any other file, a link or a folder with other content stays untouched, so an administrator's policy is never removed.
 
 ### Policy properties and Group Policy
 
@@ -76,7 +77,7 @@ The installer treats `HKLM\Software\Policies\RevitModelMcp` as owned by Group Po
 
 - It writes `ReadOnly` or `ExecuteCode` only when you set `READONLY=1` or `EXECUTECODE=off|confirm` on the command line, or when an earlier run of the installer wrote that value. `ReadOnly` is always written as `1`, so a repair can never write `0`.
 - It remembers what it wrote in `HKLM\Software\RevitModelMcp\MsiPolicy`, not by reading the policy key. An upgrade, a repair (`msiexec /fa`) and Modify therefore keep the values without passing the properties again, and a value that Group Policy set is never rewritten, reset or deleted by the installer. A value on the command line always wins over the remembered one.
-- Uninstall removes only the values the installer wrote. To take a value back on an upgrade, pass `READONLY=0` or `EXECUTECODE=confirm`.
+- Uninstall removes only the values the installer wrote. To take a value back on an upgrade or a maintenance reinstall (`msiexec /i <msi> REINSTALL=ALL REINSTALLMODE=vomus READONLY=0`), pass `READONLY=0` or `EXECUTECODE=confirm`. `READONLY=0` removes the `ReadOnly` value the installer wrote (it never writes `0`) in both cases, and only when the installer owns it: a value from Group Policy stays.
 
 If Group Policy and the installer both write the same value, Group Policy refresh restores its own value. A broken or unreadable policy is never the result of an installer run: it fails closed, see [unreadable policy](policy-reference.md#unreadable-policy-fails-closed).
 
