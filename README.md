@@ -243,6 +243,13 @@ The project has no telemetry.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
 The server checks for a newer stable release once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
 
+## For administrators
+
+The [deployment guide](https://sharafutdinovdi.github.io/revit-model-mcp/admin/deployment/) covers silent MSI installs, SCCM, Intune, Group Policy, offline server installs and proxies.
+The [policy reference](https://sharafutdinovdi.github.io/revit-model-mcp/admin/policy-reference/) lists every setting and its precedence.
+For security reviews, use the [security whitepaper](https://sharafutdinovdi.github.io/revit-model-mcp/admin/security-whitepaper/) and the [questionnaire answers](https://sharafutdinovdi.github.io/revit-model-mcp/admin/security-questionnaire/).
+See also the [MCP specifications](https://sharafutdinovdi.github.io/revit-model-mcp/mcp-specifications/), the [tested clients](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/) and [what Model MCP deliberately does not do](https://sharafutdinovdi.github.io/revit-model-mcp/not-doing/).
+
 ## Code signing policy
 
 Release builds are not code-signed yet, so Revit asks whether to load the add-in after install and after each update.
