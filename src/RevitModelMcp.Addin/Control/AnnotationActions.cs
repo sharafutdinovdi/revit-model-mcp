@@ -113,9 +113,10 @@ internal static class AnnotationActions
         using (var independent = new FilteredElementCollector(document, view.Id).OfClass(typeof(IndependentTag)))
             foreach (IndependentTag tag in independent)
                 foreach (var id in tag.GetTaggedLocalElementIds()) tagged.Add(RevitValueReader.GetId(id));
-        using (var rooms = new FilteredElementCollector(document, view.Id).OfClass(typeof(RoomTag)))
-            foreach (RoomTag tag in rooms)
-                if (tag.Room is { } room) tagged.Add(RevitValueReader.GetId(room.Id));
+        // RoomTag is not in Revit's native object model, so OfClass(typeof(RoomTag)) throws; filter by category instead.
+        using (var rooms = new FilteredElementCollector(document, view.Id).OfCategory(BuiltInCategory.OST_RoomTags).WhereElementIsNotElementType())
+            foreach (var element in rooms)
+                if (element is RoomTag { Room: { } room }) tagged.Add(RevitValueReader.GetId(room.Id));
         return tagged;
     }
 
@@ -123,7 +124,7 @@ internal static class AnnotationActions
     {
         if (name is null) return [];
         using var collector = new FilteredElementCollector(document).OfClass(typeof(FamilySymbol));
-        return collector.Cast<FamilySymbol>().Where(symbol => symbol.Category is { } category &&
+        return collector.Cast<FamilySymbol>().Where(symbol => symbol is not RoomTagType && symbol.Category is { } category &&
                 (QueryFilterBuilder.GetBuiltInCategoryName(category)?.EndsWith("Tags", StringComparison.Ordinal) ?? false) &&
                 NameMatches(name, symbol.FamilyName, symbol.Name))
             .ToList();
@@ -132,8 +133,9 @@ internal static class AnnotationActions
     private static RoomTagType? ResolveRoomTagType(Document document, string? name)
     {
         if (name is null) return null;
-        using var collector = new FilteredElementCollector(document).OfClass(typeof(RoomTagType));
-        return collector.Cast<RoomTagType>().FirstOrDefault(type => NameMatches(name, type.FamilyName, type.Name));
+        // RoomTagType is not usable with OfClass either; room tag types are element types of the room tag category.
+        using var collector = new FilteredElementCollector(document).OfCategory(BuiltInCategory.OST_RoomTags).WhereElementIsElementType();
+        return collector.OfType<RoomTagType>().FirstOrDefault(type => NameMatches(name, type.FamilyName, type.Name));
     }
 
     private static bool NameMatches(string requested, string family, string type) =>

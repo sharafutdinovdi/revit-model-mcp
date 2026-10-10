@@ -1043,14 +1043,16 @@ internal static class ActionMutations
             string.Equals(candidate.SheetNumber, action.Sheet, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(candidate.Name, action.Sheet, StringComparison.OrdinalIgnoreCase))
             ?? throw new ArgumentException($"Sheet '{action.Sheet}' was not found.");
-        var outline = sheet.Outline;
+        var outline = sheet.Outline
+            ?? throw new InvalidOperationException($"Sheet '{sheet.Name}' has no outline.");
         var gap = Millimeters(20);
         // Refuse empty views before any viewport exists, so no partial placement is created.
         foreach (var placement in action.Placements!)
         {
             var candidate = FindView(document, placement.View);
-            if (candidate is not ViewSchedule && ViewExtent(candidate) is null)
-                throw new ArgumentException($"View '{candidate.Name}' has no content yet; add elements before placing it on a sheet.");
+            var candidateExtent = candidate is ViewSchedule ? null : ViewExtent(candidate);
+            if (candidate is not ViewSchedule && !SheetPlacementPolicy.HasVisibleContent(candidateExtent?.Width, candidateExtent?.Height))
+                throw new ArgumentException(SheetPlacementPolicy.EmptyViewMessage(candidate.Name));
         }
         var cursorX = outline.Min.U + gap;
         var cursorY = outline.Max.V - gap;
@@ -1085,7 +1087,11 @@ internal static class ActionMutations
             if (view is ViewSchedule viewSchedule)
                 scheduleInstanceIds.Add(RevitValueReader.GetId(ScheduleSheetInstance.Create(document, sheet.Id, viewSchedule.Id, new XYZ(x, y, 0)).Id));
             else
-                viewportIds.Add(RevitValueReader.GetId(Viewport.Create(document, sheet.Id, view.Id, new XYZ(x, y, 0)).Id));
+            {
+                var viewport = Viewport.Create(document, sheet.Id, view.Id, new XYZ(x, y, 0))
+                    ?? throw new InvalidOperationException(SheetPlacementPolicy.EmptyViewMessage(view.Name));
+                viewportIds.Add(RevitValueReader.GetId(viewport.Id));
+            }
             names.Add(view.Name);
             cursorX += width + gap;
             rowHeight = Math.Max(rowHeight, height);
