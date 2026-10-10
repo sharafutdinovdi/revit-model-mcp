@@ -1010,6 +1010,20 @@ internal static class ActionMutations
         };
     }
 
+    /// <summary>Paper-space size of a view, or null when the view has no extent yet (for example an empty drafting view).</summary>
+    private static (double Width, double Height)? ViewExtent(View view)
+    {
+        try
+        {
+            var outline = view.Outline;
+            return outline is null ? null : (outline.Max.U - outline.Min.U, outline.Max.V - outline.Min.V);
+        }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     internal static ActionResultData PlaceViewsOnSheet(Document document, ActionJobContract action)
     {
         using var sheets = document.CollectElements().OfClass<ViewSheet>();
@@ -1019,6 +1033,13 @@ internal static class ActionMutations
             ?? throw new ArgumentException($"Sheet '{action.Sheet}' was not found.");
         var outline = sheet.Outline;
         var gap = Millimeters(20);
+        // Refuse empty views before any viewport exists, so no partial placement is created.
+        foreach (var placement in action.Placements!)
+        {
+            var candidate = FindView(document, placement.View);
+            if (candidate is not ViewSchedule && ViewExtent(candidate) is null)
+                throw new ArgumentException($"View '{candidate.Name}' has no content yet; add elements before placing it on a sheet.");
+        }
         var cursorX = outline.Min.U + gap;
         var cursorY = outline.Max.V - gap;
         var rowHeight = 0.0;
@@ -1038,8 +1059,9 @@ internal static class ActionMutations
             }
             else if (!Viewport.CanAddViewToSheet(document, sheet.Id, view.Id))
                 throw new ArgumentException($"View '{view.Name}' cannot be placed or is already on another sheet.");
-            var width = Math.Max(gap, view.Outline.Max.U - view.Outline.Min.U);
-            var height = Math.Max(gap, view.Outline.Max.V - view.Outline.Min.V);
+            var extent = ViewExtent(view);
+            var width = Math.Max(gap, extent?.Width ?? 0);
+            var height = Math.Max(gap, extent?.Height ?? 0);
             if (!placement.XMm.HasValue && cursorX + width > outline.Max.U - gap)
             {
                 cursorX = outline.Min.U + gap;
