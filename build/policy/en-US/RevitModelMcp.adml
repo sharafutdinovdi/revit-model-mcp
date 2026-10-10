@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitionResources revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <displayName>Model MCP</displayName>
+  <description>Machine-wide settings for the Model MCP add-in for Autodesk Revit.</description>
+  <resources>
+    <stringTable>
+      <string id="Category">Model MCP for Revit</string>
+      <string id="ReadOnly">Force read-only mode</string>
+      <string id="ReadOnly_Help">Enabled: every action tool is refused on this computer and users cannot lift the restriction. Disabled or not configured: users decide with their own read-only setting. Read-only tools keep working.</string>
+      <string id="ToolDeny">Denied tools</string>
+      <string id="ToolDeny_Help">Tool names to refuse, one per line, for example revit_delete or execute-code. A denied tool is refused even when it is also in the allowed list. The names ping and jobs are never blocked.</string>
+      <string id="ToolAllow">Allowed tools</string>
+      <string id="ToolAllow_Help">When the list is not empty, only these tools run. Names are written like the denied tools. The names ping and jobs are always allowed.</string>
+      <string id="ExecuteCode">Run C# code (revit_execute_code)</string>
+      <string id="ExecuteCode_Help">Off: revit_execute_code and code steps in revit_process_models are refused. Confirm: code runs after the usual confirmation.</string>
+      <string id="ExecuteCode_Off">Off</string>
+      <string id="ExecuteCode_Confirm">Confirm</string>
+      <string id="UpdateMode">Update mode</string>
+      <string id="UpdateMode_Help">Off: no update check. Notify: show a notice when a new version exists. Auto: per-user installs may install updates after a check. Per-machine installs never install updates by themselves.</string>
+      <string id="UpdateMode_Off">Off</string>
+      <string id="UpdateMode_Notify">Notify</string>
+      <string id="UpdateMode_Auto">Auto</string>
+      <string id="TrustedNetworkRoots">Trusted network shares</string>
+      <string id="TrustedNetworkRoots_Help">UNC share roots such as \\server\share that exports, saves and opens may use. When configured, this list replaces the per-user trustedNetworkRoots setting, including an empty list.</string>
+      <string id="LogDir">Log folder</string>
+      <string id="LogDir_Help">Folder for the add-in log and the activity log. Without this policy the logs stay in the user profile.</string>
+      <string id="LogRetentionDays">Log retention in days</string>
+      <string id="LogRetentionDays_Help">Add-in log files older than this number of days are deleted when Revit starts and when a log file rotates.</string>
+      <string id="RedactPaths">Redact file paths</string>
+      <string id="RedactPaths_Help">Enabled: model and file paths are removed from responses, logs and stored code files. Disabled: paths are kept even when a user sets the environment variable.</string>
+      <string id="HttpEnabled">Allow the local HTTP listener</string>
+      <string id="HttpEnabled_Help">Disabled: the HTTP listener never starts. Enabled: the listener starts even when the user setting is off. Not configured: the user setting decides.</string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="ToolDeny">
+        <multiTextBox refId="ToolDenyList" />
+      </presentation>
+      <presentation id="ToolAllow">
+        <multiTextBox refId="ToolAllowList" />
+      </presentation>
+      <presentation id="ExecuteCode">
+        <dropdownList refId="ExecuteCodeMode" defaultItem="0">Mode:</dropdownList>
+      </presentation>
+      <presentation id="UpdateMode">
+        <dropdownList refId="UpdateModeValue" defaultItem="1">Mode:</dropdownList>
+      </presentation>
+      <presentation id="TrustedNetworkRoots">
+        <multiTextBox refId="TrustedNetworkRootsList" />
+      </presentation>
+      <presentation id="LogDir">
+        <textBox refId="LogDirPath">
+          <label>Folder:</label>
+        </textBox>
+      </presentation>
+      <presentation id="LogRetentionDays">
+        <decimalTextBox refId="LogRetentionDaysValue" defaultValue="30">Days:</decimalTextBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

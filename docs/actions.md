@@ -301,6 +301,10 @@ tools still listed and returning `success:false`, `error:"read-only mode"` and `
    New-Item -ItemType File -Force "$env:LOCALAPPDATA\RevitModelMcp\read-only" | Out-Null
    ```
 
+3. An administrator can enforce read-only mode for the whole machine with the `ReadOnly` machine policy.
+   Users cannot lift it, and the refusal text is `Blocked by organization policy: the workstation is read-only.`
+   See the [Administrator guide](admin.md).
+
 The add-in checks the gate file for every action, including selection and navigation, and shows a "Read-only"
 bar at the top of the MCP activity pane while it is present.
 Removing the file re-enables actions immediately; restarting Revit is unnecessary.

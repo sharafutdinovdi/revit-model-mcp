@@ -125,7 +125,7 @@ internal static class PluginLog
     {
         try
         {
-            var directory = Path.Combine(
+            var directory = Policy.PolicyProvider.Current.LogDir ?? Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
                 "RevitModelMcp",
                 "Logs");
@@ -157,6 +157,16 @@ internal static class PluginLog
                          .Skip(RetainedFileCountLimit))
             {
                 File.Delete(file);
+            }
+
+            if (Policy.PolicyProvider.Current.LogRetentionDays is { } retentionDays)
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-retentionDays);
+                foreach (var file in Directory.EnumerateFiles(directory, "RevitModelMcp-*.log")
+                             .Where(file => File.GetLastWriteTimeUtc(file) < cutoff))
+                {
+                    File.Delete(file);
+                }
             }
         }
         catch

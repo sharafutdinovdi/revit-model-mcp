@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<policyDefinitions revision="1.0" schemaVersion="1.0" xmlns="http://schemas.microsoft.com/GroupPolicy/2006/07/PolicyDefinitions">
+  <policyNamespaces>
+    <target prefix="RevitModelMcp" namespace="DinarSharafutdinov.Policies.RevitModelMcp" />
+    <using prefix="windows" namespace="Microsoft.Policies.Windows" />
+  </policyNamespaces>
+  <resources minRequiredRevision="1.0" />
+  <categories>
+    <category name="RevitModelMcp" displayName="$(string.Category)" />
+  </categories>
+  <policies>
+    <policy name="ReadOnly" class="Machine" displayName="$(string.ReadOnly)" explainText="$(string.ReadOnly_Help)" key="Software\Policies\RevitModelMcp" valueName="ReadOnly">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+    <policy name="ToolDeny" class="Machine" displayName="$(string.ToolDeny)" explainText="$(string.ToolDeny_Help)" presentation="$(presentation.ToolDeny)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <multiText id="ToolDenyList" valueName="ToolDeny" />
+      </elements>
+    </policy>
+    <policy name="ToolAllow" class="Machine" displayName="$(string.ToolAllow)" explainText="$(string.ToolAllow_Help)" presentation="$(presentation.ToolAllow)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <multiText id="ToolAllowList" valueName="ToolAllow" />
+      </elements>
+    </policy>
+    <policy name="ExecuteCode" class="Machine" displayName="$(string.ExecuteCode)" explainText="$(string.ExecuteCode_Help)" presentation="$(presentation.ExecuteCode)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <enum id="ExecuteCodeMode" valueName="ExecuteCode" required="true">
+          <item displayName="$(string.ExecuteCode_Off)">
+            <value>
+              <string>off</string>
+            </value>
+          </item>
+          <item displayName="$(string.ExecuteCode_Confirm)">
+            <value>
+              <string>confirm</string>
+            </value>
+          </item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="UpdateMode" class="Machine" displayName="$(string.UpdateMode)" explainText="$(string.UpdateMode_Help)" presentation="$(presentation.UpdateMode)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <enum id="UpdateModeValue" valueName="UpdateMode" required="true">
+          <item displayName="$(string.UpdateMode_Off)">
+            <value>
+              <string>off</string>
+            </value>
+          </item>
+          <item displayName="$(string.UpdateMode_Notify)">
+            <value>
+              <string>notify</string>
+            </value>
+          </item>
+          <item displayName="$(string.UpdateMode_Auto)">
+            <value>
+              <string>auto</string>
+            </value>
+          </item>
+        </enum>
+      </elements>
+    </policy>
+    <policy name="TrustedNetworkRoots" class="Machine" displayName="$(string.TrustedNetworkRoots)" explainText="$(string.TrustedNetworkRoots_Help)" presentation="$(presentation.TrustedNetworkRoots)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <multiText id="TrustedNetworkRootsList" valueName="TrustedNetworkRoots" />
+      </elements>
+    </policy>
+    <policy name="LogDir" class="Machine" displayName="$(string.LogDir)" explainText="$(string.LogDir_Help)" presentation="$(presentation.LogDir)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <text id="LogDirPath" valueName="LogDir" required="true" />
+      </elements>
+    </policy>
+    <policy name="LogRetentionDays" class="Machine" displayName="$(string.LogRetentionDays)" explainText="$(string.LogRetentionDays_Help)" presentation="$(presentation.LogRetentionDays)" key="Software\Policies\RevitModelMcp">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <elements>
+        <decimal id="LogRetentionDaysValue" valueName="LogRetentionDays" required="true" minValue="1" maxValue="3650" />
+      </elements>
+    </policy>
+    <policy name="RedactPaths" class="Machine" displayName="$(string.RedactPaths)" explainText="$(string.RedactPaths_Help)" key="Software\Policies\RevitModelMcp" valueName="RedactPaths">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+    <policy name="HttpEnabled" class="Machine" displayName="$(string.HttpEnabled)" explainText="$(string.HttpEnabled_Help)" key="Software\Policies\RevitModelMcp" valueName="HttpEnabled">
+      <parentCategory ref="RevitModelMcp" />
+      <supportedOn ref="windows:SUPPORTED_Windows7" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+  </policies>
+</policyDefinitions>

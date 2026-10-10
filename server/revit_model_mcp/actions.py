@@ -11,7 +11,14 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
-from revit_model_mcp.errors import ACTION_FAILED, READ_ONLY, READ_ONLY_MESSAGE, refusal
+from revit_model_mcp.errors import (
+    ACTION_FAILED,
+    POLICY_BLOCKED,
+    READ_ONLY,
+    READ_ONLY_MESSAGE,
+    refusal,
+)
+from revit_model_mcp.policy import policy_read_only, policy_refusal
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
@@ -683,8 +690,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         **payload,
     ) -> dict[str, Any]:
-        if read_only:
+        if read_only or policy_read_only():
             return refusal(command, READ_ONLY, READ_ONLY_MESSAGE)
+        if (blocked := policy_refusal(command)) is not None:
+            return refusal(command, POLICY_BLOCKED, blocked)
         return await _send_action(
             execute,
             host_provider,
@@ -1081,7 +1090,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         A single running Revit operation finishes without interruption.
         revit_jobs returns the final result; completed changes remain committed.
         """
-        if read_only:
+        if read_only or policy_read_only():
             return refusal("jobs", READ_ONLY, READ_ONLY_MESSAGE)
         job = (
             Job(

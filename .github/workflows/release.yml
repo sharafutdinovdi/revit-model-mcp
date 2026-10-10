@@ -328,11 +328,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bundle validation failed' }
           npx --yes @anthropic-ai/mcpb@2.1.2 pack bundle "artifacts/release/revit-model-mcp-$env:RELEASE_VERSION.mcpb"
           if ($LASTEXITCODE -ne 0) { throw 'Bundle packing failed' }
+      - name: Generate CycloneDX SBOMs
+        shell: pwsh
+        run: |
+          python build/sbom_dotnet.py --version $env:RELEASE_VERSION --output "artifacts/release/revit-model-mcp-addin-$env:RELEASE_VERSION.cdx.json"
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet SBOM generation failed' }
+          uv export --project server --frozen --no-dev --format cyclonedx1.5 --preview-features sbom-export --output-file "artifacts/release/revit-model-mcp-python-$env:RELEASE_VERSION.cdx.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Python SBOM generation failed' }
       - name: Stage release assets and checksums
         shell: pwsh
         run: |
           Copy-Item output/*.msi, server/dist/*.whl, server/dist/*.tar.gz artifacts/release/
-          $expected = @{ '*.zip' = 7; '*.msi' = 2; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1 }
+          $expected = @{ '*.zip' = 7; '*.msi' = 2; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1; '*.cdx.json' = 2 }
           foreach ($pattern in $expected.Keys) {
             $count = @(Get-ChildItem "artifacts/release/$pattern").Count
             if ($count -ne $expected[$pattern]) { throw "Unexpected $pattern count: $count" }
@@ -395,7 +402,7 @@ jobs:
             done
             echo
             echo "- [Python wheel]($base/$wheel)"
-            echo "- [SHA256SUMS.txt]($base/SHA256SUMS.txt) covers every release asset."
+            echo "- [SHA256SUMS.txt]($base/SHA256SUMS.txt) covers every release asset, including the CycloneDX SBOMs (\`*.cdx.json\`)."
             echo "- [Code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/)"
             echo
             echo 'Close Revit before installing, then start Revit and open a model.'

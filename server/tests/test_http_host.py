@@ -109,7 +109,7 @@ def endpoint():
                 self.end_headers()
                 return
             if state["status"] not in (200, 202):
-                return self.reply(state["status"], {"error": "error"})
+                return self.reply(state["status"], {"error": state.get("error_text", "error")})
             if self.command == "POST":
                 state["payload"] = json.loads(body)
                 if state["status"] == 202:
@@ -199,6 +199,15 @@ def test_http_errors(endpoint, status, message):
     with pytest.raises(RevitChannelError, match=message):
         asyncio.run(RevitChannel(host).execute(Job.ping()))
     assert len(state["requests"]) == 3
+
+
+def test_policy_refusal_text_survives_the_http_403(endpoint):
+    host, state = endpoint
+    state["status"] = 403
+    state["error_text"] = "Blocked by organization policy: the tool 'delete' is denied."
+    with pytest.raises(RevitChannelError, match="the tool 'delete' is denied") as error:
+        asyncio.run(RevitChannel(host).execute(Job.ping()))
+    assert "read-only" not in str(error.value)
 
 
 def test_wrong_token(endpoint):
