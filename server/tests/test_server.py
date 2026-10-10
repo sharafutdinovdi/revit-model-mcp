@@ -123,24 +123,25 @@ def test_bundle_tool_description_is_dedented():
     ]
     tool = SimpleNamespace(
         name="example",
-        description=(
-            "First line.\n\n    Second line.\n    \n\n"
-            "If more than one Revit instance is running, choose one."
-        ),
+        description="First line.\n\n    Second line.\n    \n    Third line.",
     )
     assert tool_manifest_entry(tool) == {
         "name": "example",
-        "description": "First line.\n\nSecond line.\n\nIf more than one Revit instance is running, choose one.",
+        "description": "First line.\n\nSecond line.\n\nThird line.",
     }
 
 
-def test_addressing_sentence_matches_tool_parameters():
+def test_addressing_is_described_on_the_parameters():
     import asyncio
 
     tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
-    assert "document is required" not in tools["revit_ui_state"].description
-    assert "process_id" in tools["revit_ui_state"].description
-    assert "document is required" in tools["revit_document_info"].description
+    for name in ("revit_ui_state", "revit_document_info"):
+        properties = tools[name].input_schema["properties"]
+        assert "process_id" in properties
+        assert "process_id" not in tools[name].description
+    document = tools["revit_document_info"].input_schema["properties"]["document"]
+    assert "several Revit instances" in document["description"]
+    assert "document" not in tools["revit_ui_state"].input_schema["properties"]
 
 
 def test_bundle_manifest_matches_tool_registry():

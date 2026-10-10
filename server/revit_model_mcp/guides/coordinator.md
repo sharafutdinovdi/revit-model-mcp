@@ -230,3 +230,15 @@ Use the final model results to build the completion table and preserve verificat
 Results remain on the workstation for 24 hours and survive MCP server restarts.
 Use `revit_cancel_job(job_id=jobId)` to stop process-models before the next model, then poll for its cancelled result.
 Completed model changes remain committed.
+
+## Confirmation tokens, dry runs and addressing
+
+Tool descriptions state what a tool does and keep this procedure out of the tool list.
+Save, synchronize, close-with-loss, link removal, C# execution, large deletions and file replacement are confirmed in two calls.
+The first call changes nothing and returns `needsConfirmation`, `confirmationText` and `confirmToken`.
+Show the `confirmationText` to the user and wait for explicit approval.
+Repeat the call with identical arguments plus `confirm_token` to perform the action.
+A `dry_run` call executes, rolls back and returns the verification block; it never needs a token.
+When several Revit instances run, pass `document` (a title or file name substring) or `process_id`; a zero or ambiguous match is rejected before anything is published.
+When several documents are open in one process, `document` on an action selects the target open document.
+`REVIT_MCP_TOOLSETS` can hide tool groups; a tool this guide names may be unavailable until its toolset is enabled.

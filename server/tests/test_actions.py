@@ -1858,10 +1858,10 @@ def test_process_progress_current_path_is_redacted():
 @pytest.mark.parametrize(
     ("tool_name", "expected_text"),
     [
-        ("revit_update_parameters", ["skipped.inGroup", "dry_run", "groups"]),
+        ("revit_update_parameters", ["skipped.inGroup", "dry_run", "Group members"]),
         ("revit_set_parameter", ["Group members", "clear message", "dry_run"]),
         *(
-            (name, ["skipped.pinned", "skipped.hosted", "skipped.constrained", "unpinning"])
+            (name, ["skipped.pinned", "skipped.hosted", "skipped.constrained"])
             for name in ("revit_move", "revit_rotate", "revit_mirror")
         ),
         ("revit_walls_from_cad", ["unjoinedEnds", "unjoinedReasons", "dry_run"]),
@@ -1963,7 +1963,7 @@ def test_confirmation_tools_describe_confirm_token():
     tools = {tool.name: tool.description for tool in asyncio.run(server.list_tools())}
     for name in CONFIRMED_TOOL_CALLS:
         assert "confirm_token" in tools[name], name
-    assert "confirmation token" in tools["revit_process_models"]
+    assert "confirm_token" in tools["revit_process_models"]
     assert 'transaction="none" is refused' in tools["revit_execute_code"]
 
 

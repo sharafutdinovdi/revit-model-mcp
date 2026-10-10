@@ -34,6 +34,7 @@ Tool names and descriptions are identical to `bundle/manifest.json`.
 | Field | Meaning |
 | --- | --- |
 | `name`, `description` | As registered |
+| `toolset` | The toolset the tool belongs to, see [Toolsets](tools.md#toolsets) |
 | `access` | `read_only` or `modifying`, from the `readOnlyHint` annotation |
 | `annotations` | `readOnlyHint`, `destructiveHint` and `idempotentHint` as registered |
 | `irreversible` | `true` when `revit_undo_last` does not cover the effect (save, synchronize, close, link removal, file export, C# execution) |

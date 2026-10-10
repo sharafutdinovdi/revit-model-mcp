@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from revit_model_mcp.server import mcp
+from revit_model_mcp.toolsets import TOOLSETS
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = REPOSITORY_ROOT / "docs" / "tool-manifest.json"
@@ -208,6 +209,9 @@ DATA_HANDLING = {
 }
 
 
+TOOLSET_OF = {tool: name for name, members in TOOLSETS.items() for tool in members}
+
+
 def _tool_entry(tool) -> dict:
     annotations = tool.annotations
     read_only = bool(annotations and annotations.read_only_hint)
@@ -222,6 +226,7 @@ def _tool_entry(tool) -> dict:
         file_system["scope"] = scope
     return {
         **tool_manifest_entry(tool),
+        "toolset": TOOLSET_OF[tool.name],
         "access": "read_only" if read_only else "modifying",
         "annotations": {
             "readOnlyHint": annotations.read_only_hint if annotations else None,

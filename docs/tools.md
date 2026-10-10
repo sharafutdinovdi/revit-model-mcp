@@ -1,5 +1,50 @@
 # Read tool reference
 
+## Toolsets
+
+`tools/list` costs context in every MCP client that does not load tools on demand. Set `REVIT_MCP_TOOLSETS` (or start the server with `--toolsets`) to a comma-separated list to expose only some tools. `core` is always included, `all` exposes everything, and an unknown name stops the server with the list of valid names. A hidden tool cannot be called; the tools stay registered in [tool-manifest.json](tool-manifest.json), which lists each tool's `toolset`.
+
+Toolsets limit visibility only. They are not a permission: read-only mode, confirmation tokens and the add-in's own checks apply to every listed tool.
+
+The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (20 tools, about 6.7k tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+
+| Toolset | Tools |
+| --- | --- |
+| `core` | `revit_ping`, `revit_list_instances`, `revit_documents`, `revit_document_info`, `revit_ui_state`, `revit_jobs`, `revit_cancel_job`, `revit_undo_last` |
+| `read` | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations`, `revit_model_health`, `revit_list_warnings`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check`, `revit_model_snapshot`, `revit_schedule_data` |
+| `actions` | `revit_set_parameter`, `revit_update_parameters`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_delete`, `revit_run_actions` |
+| `documents` | `revit_open_document`, `revit_activate_document`, `revit_new_document`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
+| `views-sheets` | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| `family` | `revit_family_audit`, `revit_edit_families`, `revit_load_family`, `revit_place_family`, `revit_place_families` |
+| `links` | `revit_compare_link_datums`, `revit_align_link_datums`, `revit_remove_links` |
+| `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
+| `export` | `revit_export`, `revit_export_nwc`, `revit_nwc_settings_check`, `revit_issue_register` |
+| `batch` | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report`, `revit_process_models` |
+| `code` | `revit_execute_code` |
+
+### Tool list size
+
+`cd server && uv run python ../build/tool_size.py` measures the `tools/list` payload (compact JSON of every tool, bytes; tokens are bytes divided by 4, an estimate).
+Tool and parameter descriptions state plain behavior. The confirmation procedure, addressing rules and long-job handling live in the server instructions and the `revit://guides/coordinator` resource, not in each description.
+
+| Toolset | Tools | Bytes | About tokens |
+| --- | --- | --- | --- |
+| `core` | 8 | 7,464 | 1,866 |
+| `read` | 12 | 19,224 | 4,806 |
+| `actions` | 9 | 11,103 | 2,775 |
+| `documents` | 6 | 4,952 | 1,238 |
+| `views-sheets` | 19 | 21,363 | 5,340 |
+| `family` | 5 | 8,591 | 2,147 |
+| `links` | 3 | 4,261 | 1,065 |
+| `cad-mep` | 4 | 5,663 | 1,415 |
+| `export` | 4 | 7,288 | 1,822 |
+| `batch` | 6 | 7,459 | 1,864 |
+| `code` | 1 | 1,326 | 331 |
+| `all` (default) | 77 | 98,694 | 24,673 |
+| `core,read` | 20 | 26,688 | 6,672 |
+
+Before this change all 77 tools measured 156,658 bytes (about 39,164 tokens).
+
 MEP routing, graphic overrides, view and sheet creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 
 Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` runs on the MCP client machine from snapshot files and needs no Revit transport or running instance.
