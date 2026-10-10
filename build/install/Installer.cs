@@ -97,6 +97,7 @@ void BuildMultiUserMsi()
         },
         .. MachinePolicyValues.RegValues()
     ];
+    project.Include(WixExtension.Util);
     project.WixSourceGenerated += MachinePolicyValues.MarkReadOnlyAsDword;
     project.Actions =
     [
@@ -122,6 +123,7 @@ void BuildMultiUserMsi()
             Impersonate = false
         },
         .. MachinePolicyValues.RememberActions(),
+        CheckProgramDataFolderMessageAction(),
         CheckProgramDataFolderAction(),
         EnsureProgramDataFolderAction(),
         ClearMsiReadOnlyAction(),
@@ -190,11 +192,25 @@ PathFileAction EnsureProgramDataFolderAction()
     };
 }
 
-// Immediate pre-check of the same folder test, so a refusal comes with a sentence in the MSI log and in the UI
-// instead of a bare 1722/1603 from the elevated script. It runs before InstallInitialize: nothing to roll back.
-ScriptAction CheckProgramDataFolderAction() =>
-    new(new Id("MachineCheckProgramDataFolder"), InstallerScripts.CheckProgramDataFolderVbScript(),
-        Return.check, When.Before, Step.InstallInitialize, new Condition("NOT REMOVE~=\"ALL\""));
+// Pre-check of the same folder test, so a refusal comes with a sentence in the MSI log instead of a bare 1722/1603 from
+// the ensure script. WixQuietExec copies the script output to the log. It runs as SYSTEM right after InstallInitialize,
+// before any file or registry change, so the rollback has nothing to undo. Needs the WiX Util extension.
+WixQuietExecAction CheckProgramDataFolderAction() =>
+    new(new Id("MachineCheckProgramDataFolder"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.CheckProgramDataFolderScript(false))}",
+        Return.check, When.After, Step.InstallInitialize, new Condition("NOT REMOVE~=\"ALL\""))
+    {
+        Impersonate = false
+    };
+
+// The same check in the user's session before the install sequence, only with a UI: the reason is shown in a message box.
+PathFileAction CheckProgramDataFolderMessageAction() =>
+    new(new Id("MachineCheckProgramDataFolderMessage"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.CheckProgramDataFolderScript(true))}",
+        "SystemFolder", Return.check, When.Before, Step.InstallInitialize,
+        new Condition("UILevel>=4 AND NOT REMOVE~=\"ALL\""));
 
 // READONLY=0 on a maintenance run (REINSTALL=ALL): the ReadOnly component condition turns false, but Windows Installer
 // keeps a value of an installed component, so this removes the value the installer wrote, as an upgrade does.

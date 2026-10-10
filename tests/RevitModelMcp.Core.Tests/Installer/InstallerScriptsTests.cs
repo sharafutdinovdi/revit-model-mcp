@@ -27,7 +27,7 @@ public sealed class InstallerScriptsTests
     [Test]
     [Arguments(InstallerScripts.FolderIsLink, "link or not a folder", "rd /s /q")]
     [Arguments(InstallerScripts.FolderWrongOwner, "owned by an account other than Administrators or SYSTEM", "takeown /a /f")]
-    [Arguments(22, "could not be checked (PowerShell exit code 22)", "run the installer again")]
+    [Arguments(22, "could not be checked (error 22)", "run the installer again")]
     public async Task FolderRefusalNamesTheReasonAndTheRemedy(int exitCode, string reason, string remedy)
     {
         var text = InstallerScripts.FolderRefusal(exitCode);
@@ -42,30 +42,39 @@ public sealed class InstallerScriptsTests
         await Assert.That(InstallerScripts.FolderRefusal(InstallerScripts.FolderOk)).IsNull();
 
     [Test]
-    public async Task CheckScriptReportsEachRefusalAsItsExitCode()
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task CheckScriptPrintsTheReasonAndExitsWithItsCode(bool showMessage)
     {
-        var script = InstallerScripts.CheckProgramDataFolderScript;
-        await Assert.That(script).Contains($"exit {InstallerScripts.FolderIsLink} ");
-        await Assert.That(script).Contains($"exit {InstallerScripts.FolderWrongOwner} ");
+        var script = InstallerScripts.CheckProgramDataFolderScript(showMessage);
+        await Assert.That(script).Contains($"exit {InstallerScripts.FolderIsLink}");
+        await Assert.That(script).Contains($"exit {InstallerScripts.FolderWrongOwner}");
+        await Assert.That(script).Contains($"exit {InstallerScripts.FolderUnchecked}");
+        await Assert.That(script).Contains("Write-Output ('Model MCP: ' + $reason)");
+        await Assert.That(script).Contains("link or not a folder");
+        await Assert.That(script).Contains("owned by an account other than Administrators or SYSTEM");
+        await Assert.That(script).Contains("takeown /a /f \"%ProgramData%\\RevitModelMcp\"");
         await Assert.That(script).Contains("ReparsePoint");
         await Assert.That(script).Contains("S-1-5-32-544");
         await Assert.That(script).Contains("S-1-5-18");
         await Assert.That(script).DoesNotContain("Set-Acl");
         await Assert.That(script).DoesNotContain("Remove-Item");
+        await Assert.That(script).DoesNotContain("vbscript");
     }
 
     [Test]
-    public async Task CheckActionLogsTheReasonShowsItAndFailsWithIt()
+    public async Task OnlyTheInteractiveCheckShowsAMessageBox()
     {
-        var script = InstallerScripts.CheckProgramDataFolderVbScript();
-        await Assert.That(script).Contains("Session.Log");
-        await Assert.That(script).Contains("Session.Message &H01000000");
-        await Assert.That(script).Contains("Err.Raise");
-        await Assert.That(script).Contains("link or not a folder");
-        await Assert.That(script).Contains("-EncodedCommand " + InstallerScripts.Encode(InstallerScripts.CheckProgramDataFolderScript));
-        await Assert.That(script).Contains("exitCode = shell.Run(");
-        // The quotes in the remedy text are doubled for VBScript.
-        await Assert.That(script).Contains("takeown /a /f \"\"%ProgramData%\\RevitModelMcp\"\"");
+        await Assert.That(InstallerScripts.CheckProgramDataFolderScript(true)).Contains("MessageBox]::Show($reason");
+        await Assert.That(InstallerScripts.CheckProgramDataFolderScript(false)).DoesNotContain("MessageBox");
+    }
+
+    [Test]
+    public async Task CheckScriptSurvivesEncodingForTheCommandLine()
+    {
+        var script = InstallerScripts.CheckProgramDataFolderScript(false);
+        var decoded = System.Text.Encoding.Unicode.GetString(Convert.FromBase64String(InstallerScripts.Encode(script)));
+        await Assert.That(decoded).IsEqualTo(script);
     }
 
     [Test]
