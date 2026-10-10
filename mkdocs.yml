@@ -110,6 +110,7 @@ nav:
       - Transport: transport.md
       - Batch: batch.md
       - Security: security.md
+      - Administrator guide: admin.md
       - Architecture: architecture.md
       - Automatic updates: updates.md
   - Design:
