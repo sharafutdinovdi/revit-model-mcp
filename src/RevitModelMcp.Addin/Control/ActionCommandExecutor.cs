@@ -153,6 +153,9 @@ internal static class ActionCommandExecutor
             ActivityRecorder.RecordAction(job,
                 job.Command == "execute-code" && job.Action?.TransactionMode == "none" ? null : document,
                 data, response, changes);
+        else if (changes is not null && UndoRestorePolicy.ShouldRestore(true, false, false, null, true))
+            // A confirmation preview rolls its transactions back, so the previous undo entry stays on top.
+            UndoTracker.Restore(changes.UndoStateAtStart);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
