@@ -45,7 +45,9 @@ Switches and properties:
 | `READONLY=1` | Refuse every action tool on this machine. Writes `ReadOnly=1` (DWORD) under `HKLM\Software\Policies\RevitModelMcp`. MultiUser MSI only. |
 | `EXECUTECODE=off\|confirm` | `off` refuses `revit_execute_code` and code in `revit_process_models`. Writes `ExecuteCode` to the same key. MultiUser MSI only. |
 
-An install without `READONLY` or `EXECUTECODE` leaves the matching registry value out, and an uninstall removes the values the MSI wrote. Pass the properties again on every upgrade. `ToolDeny`, `ToolAllow` and the other policy values cannot be set through the MSI: use Group Policy, Intune or `policy.json`.
+See [policy properties and Group Policy](#policy-properties-and-group-policy) for how `READONLY` and `EXECUTECODE` behave on upgrade, repair and uninstall. `ToolDeny`, `ToolAllow` and the other policy values cannot be set through the MSI: use Group Policy, Intune or `policy.json`.
+
+The MultiUser MSI also creates `%ProgramData%\RevitModelMcp` as SYSTEM with a protected ACL (Administrators and SYSTEM full control, Users read and execute) on every install, because that folder holds `policy.json` and `settings.json`. If the folder already exists as a link or is owned by someone other than Administrators or SYSTEM, the install fails and the log says why. Remove the folder and install again. See [the policy folder](policy-reference.md#the-policy-folder).
 
 Example for a locked-down fleet:
 
@@ -67,6 +69,16 @@ Exit codes follow Windows Installer:
 
 Upgrades within the same scope run in place, also for the same version. Repair with `msiexec /fa <msi>`. Uninstall with `msiexec /x <msi> /qn`.
 Uninstall leaves settings, logs and the channel folder; see [data retention](../privacy.md#data-retention) for the folders.
+
+### Policy properties and Group Policy
+
+The installer treats `HKLM\Software\Policies\RevitModelMcp` as owned by Group Policy or Intune. It follows three rules:
+
+- It writes `ReadOnly` or `ExecuteCode` only when you set `READONLY=1` or `EXECUTECODE=off|confirm` on the command line, or when an earlier run of the installer wrote that value. `ReadOnly` is always written as `1`, so a repair can never write `0`.
+- It remembers what it wrote in `HKLM\Software\RevitModelMcp\MsiPolicy`, not by reading the policy key. An upgrade, a repair (`msiexec /fa`) and Modify therefore keep the values without passing the properties again, and a value that Group Policy set is never rewritten, reset or deleted by the installer.
+- Uninstall removes only the values the installer wrote. To take a value back on an upgrade, pass `READONLY=0` or `EXECUTECODE=confirm`.
+
+If Group Policy and the installer both write the same value, Group Policy refresh restores its own value. A broken or unreadable policy is never the result of an installer run: it fails closed, see [unreadable policy](policy-reference.md#unreadable-policy-fails-closed).
 
 ## Software distribution
 
