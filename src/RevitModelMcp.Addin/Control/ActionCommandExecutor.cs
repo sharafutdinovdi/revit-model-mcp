@@ -66,6 +66,7 @@ internal static class ActionCommandExecutor
                 documentAction.Document ??= job.TargetDocument;
                 if (job.Command == "open-document") openAttempted = true;
                 var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
+                RevitModelMcp.Application.RefreshDocumentList();
                 documentResult.Summary = BuildDocumentSummary(job.Command, documentAction, documentResult);
                 response = CommandResponse<ActionResultData>.Ok(job.Command, documentResult, stopwatch.ElapsedMilliseconds);
                 response.DialogsSuppressed = dialogsSuppressed;
