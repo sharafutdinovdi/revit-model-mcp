@@ -161,8 +161,8 @@ internal static class ScheduleActions
         using var collector = new FilteredElementCollector(document).OfCategoryId(category.Id).WhereElementIsNotElementType();
         foreach (var element in collector)
         {
-            var parameter = builtIn < 0 && Enum.IsDefined(typeof(BuiltInParameter), (int)builtIn)
-                ? element.get_Parameter((BuiltInParameter)(int)builtIn)
+            var parameter = RevitValueReader.ToBuiltInParameter(builtIn) is { } builtInParameter
+                ? element.get_Parameter(builtInParameter)
                 : null;
             parameter ??= element.LookupParameter(name);
             if (parameter is not null) result.Add(parameter);

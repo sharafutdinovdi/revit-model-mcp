@@ -53,7 +53,9 @@ internal static class AnnotationActions
             }
         }
         if (created.Count == 0)
-            throw new InvalidOperationException("No tags were created. " + string.Join(" ", skipped.Take(5)));
+            throw new InvalidOperationException("No tags were created. " + (skipped.Count > 0
+                ? string.Join(" ", skipped.Take(5))
+                : $"No taggable element was found in view '{view.Name}'."));
 
         var result = new ActionResultData
         {
@@ -87,6 +89,8 @@ internal static class AnnotationActions
                 var element = document.GetElement(ActionCommandExecutor.CreateId(id));
                 if (element is null) skipped.Add($"Element {id}: not found.");
                 else if (element is ElementType) skipped.Add($"Element {id}: is a type, not an instance.");
+                else if (element.Category is { } elementCategory && IsCategoryHidden(view, elementCategory))
+                    skipped.Add($"Element {id}: category {elementCategory.Name} is hidden in view '{view.Name}'.");
                 else Add(element);
             }
             return result;
@@ -100,11 +104,26 @@ internal static class AnnotationActions
                 skipped.Add($"Category '{name}': not found.");
                 continue;
             }
+            if (IsCategoryHidden(view, category))
+            {
+                skipped.Add($"Category '{category.Name}': hidden in view '{view.Name}'; make it visible there or tag in another view.");
+                continue;
+            }
+            var before = result.Count;
             using var collector = new FilteredElementCollector(document, view.Id).OfCategoryId(category.Id).WhereElementIsNotElementType();
             foreach (var element in collector) Add(element);
+            if (result.Count == before)
+                skipped.Add($"Category '{category.Name}': no elements are visible in view '{view.Name}'.");
             if (result.Count > action.MaxElements) throw new ActionMutations.MatchLimitException(result.Count, action.MaxElements);
         }
         return result;
+    }
+
+    /// <summary>True when the category is hidden in the view; categories that cannot be hidden report false.</summary>
+    private static bool IsCategoryHidden(View view, Category category)
+    {
+        try { return view.GetCategoryHidden(category.Id); }
+        catch (Autodesk.Revit.Exceptions.ArgumentException) { return false; }
     }
 
     private static HashSet<long> TaggedElementIds(Document document, View view)

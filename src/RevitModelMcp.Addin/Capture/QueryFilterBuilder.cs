@@ -243,14 +243,7 @@ internal static class QueryFilterBuilder
 
     private static BuiltInCategory? GetBuiltInCategory(Category category)
     {
-        var value = RevitValueReader.GetId(category.Id);
-        if (value is < int.MinValue or > int.MaxValue)
-        {
-            return null;
-        }
-
-        var builtInCategory = (BuiltInCategory)(int)value;
-        return Enum.IsDefined(typeof(BuiltInCategory), builtInCategory) ? builtInCategory : null;
+        return RevitValueReader.ToBuiltInCategory(RevitValueReader.GetId(category.Id));
     }
 
     private static View ResolveView(Document document, string name) =>
