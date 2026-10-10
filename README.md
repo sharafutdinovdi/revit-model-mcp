@@ -141,6 +141,7 @@ See [safety](#safety).
 | Create elements | `revit_create_wall`, `revit_create_mep_run` |
 | Work with families | `revit_load_family`, `revit_place_family`, `revit_place_families`, `revit_edit_families` |
 | Work with views and sheets | `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| Tag elements and create schedules | `revit_tag_elements`, `revit_create_schedule` |
 | Open, save and close documents | `revit_open_document`, `revit_new_document`, `revit_activate_document`, `revit_close_views`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
 | Export files | `revit_export` |
 | Run C# in Revit | `revit_execute_code` |

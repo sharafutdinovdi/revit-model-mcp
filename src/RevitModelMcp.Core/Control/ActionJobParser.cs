@@ -19,7 +19,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet";
+        "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet" or "tag-elements" or "create-schedule";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -151,6 +151,15 @@ public static class ActionJobParser
                 Sheet = job.Sheet,
                 Number = job.Number,
                 TitleBlock = job.TitleBlock,
+                Categories = job.Categories,
+                Category = job.Category,
+                Leader = job.Leader ?? false,
+                Orientation = job.Orientation ?? "horizontal",
+                SkipTagged = job.SkipTagged ?? true,
+                ScheduleFields = job.ScheduleFields,
+                ScheduleFilters = job.ScheduleFilters,
+                ScheduleSort = job.ScheduleSort,
+                Itemized = job.Itemized ?? true,
                 PointsMm = job.PointsMm,
                 SystemType = job.SystemType,
                 WidthMm = job.WidthMm,
@@ -318,6 +327,32 @@ public static class ActionJobParser
                 Require(action.Placements is { Count: > 0 } && action.Placements.All(item => item is not null && !string.IsNullOrWhiteSpace(item.View) &&
                     item.XMm.HasValue == item.YMm.HasValue && (!item.XMm.HasValue || Finite(item.XMm.Value, item.YMm!.Value))),
                     "views require names and paired finite coordinates.");
+            }
+            if (command == "tag-elements")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.View), "view is required.");
+                var byIds = job.ElementIds is { Count: > 0 };
+                var byCategories = action.Categories is { Count: > 0 };
+                Require(byIds != byCategories, "Supply exactly one of categories or element_ids.");
+                Require(!byIds || action.ElementIds.All(id => id > 0), "element_ids must contain positive IDs.");
+                Require(!byCategories || ValidNames(action.Categories), "categories must contain names.");
+                Require(action.Orientation is "horizontal" or "vertical", "orientation must be horizontal or vertical.");
+                Require(ValidOptional(action.TypeName), "tag_type must not be blank.");
+                Require(action.MaxElements is >= 1 and <= 20000, "max_elements must be 1 to 20000.");
+            }
+            if (command == "create-schedule")
+            {
+                Require(!string.IsNullOrWhiteSpace(action.Category), "category is required.");
+                Require(action.ScheduleFields is { Count: > 0 and <= 100 } && ValidNames(action.ScheduleFields), "fields must contain 1 to 100 names.");
+                Require(ValidOptional(action.Name), "name must not be blank.");
+                var scheduleFilters = action.ScheduleFilters ?? [];
+                Require(scheduleFilters.Count <= 20 && scheduleFilters.All(filter => filter is not null && !string.IsNullOrWhiteSpace(filter.Field) &&
+                    ScheduleFilterOperators.IsKnown(filter.Operator) &&
+                    ScheduleFilterOperators.RequiresValue(filter.Operator!) == (filter.Value is not null)),
+                    "filters need a field, a known operator and a value (none for has_value and has_no_value).");
+                var scheduleSort = action.ScheduleSort ?? [];
+                Require(scheduleSort.Count <= 10 && scheduleSort.All(sort => sort is not null && !string.IsNullOrWhiteSpace(sort.Field)),
+                    "sort needs at most 10 entries with a field.");
             }
             if (command is "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "delete")
             {
@@ -929,6 +964,15 @@ public sealed class ActionJobContract
     public string? Sheet { get; set; }
     public string? Number { get; set; }
     public string? TitleBlock { get; set; }
+    public List<string>? Categories { get; set; }
+    public string? Category { get; set; }
+    public bool Leader { get; set; }
+    public string Orientation { get; set; } = "horizontal";
+    public bool SkipTagged { get; set; } = true;
+    public List<string>? ScheduleFields { get; set; }
+    public List<ScheduleFilterContract>? ScheduleFilters { get; set; }
+    public List<ScheduleSortContract>? ScheduleSort { get; set; }
+    public bool Itemized { get; set; } = true;
     public List<List<double>>? PointsMm { get; set; }
     public string? SystemType { get; set; }
     public double? WidthMm { get; set; }
@@ -1522,6 +1566,14 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "sheet")] public string? Sheet { get; set; }
     [DataMember(Name = "number")] public string? Number { get; set; }
     [DataMember(Name = "titleBlock")] public string? TitleBlock { get; set; }
+    [DataMember(Name = "category")] public string? Category { get; set; }
+    [DataMember(Name = "leader")] public bool? Leader { get; set; }
+    [DataMember(Name = "orientation")] public string? Orientation { get; set; }
+    [DataMember(Name = "skipTagged")] public bool? SkipTagged { get; set; }
+    [DataMember(Name = "scheduleFields")] public List<string>? ScheduleFields { get; set; }
+    [DataMember(Name = "scheduleFilters")] public List<ScheduleFilterContract>? ScheduleFilters { get; set; }
+    [DataMember(Name = "scheduleSort")] public List<ScheduleSortContract>? ScheduleSort { get; set; }
+    [DataMember(Name = "itemized")] public bool? Itemized { get; set; }
     [DataMember(Name = "pointsMm")] public List<List<double>>? PointsMm { get; set; }
     [DataMember(Name = "systemType")] public string? SystemType { get; set; }
     [DataMember(Name = "widthMm")] public double? WidthMm { get; set; }
@@ -1581,6 +1633,44 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "operations")] public List<FamilyEditOperationContract>? Operations { get; set; }
     [DataMember(Name = "overwriteParameterValues")] public bool? OverwriteParameterValues { get; set; }
     [DataMember(Name = "stopOnError")] public bool? StopOnError { get; set; }
+}
+
+[DataContract]
+public sealed class ScheduleFilterContract
+{
+    [DataMember(Name = "field")] public string? Field { get; set; }
+    [DataMember(Name = "operator")] public string? Operator { get; set; }
+    [DataMember(Name = "value")] public string? Value { get; set; }
+}
+
+[DataContract]
+public sealed class ScheduleSortContract
+{
+    [DataMember(Name = "field")] public string? Field { get; set; }
+    [DataMember(Name = "descending")] public bool Descending { get; set; }
+    [DataMember(Name = "header")] public bool Header { get; set; }
+    [DataMember(Name = "footer")] public bool Footer { get; set; }
+    [DataMember(Name = "blankLine")] public bool BlankLine { get; set; }
+}
+
+[DataContract]
+public sealed class ScheduleFieldResult
+{
+    [DataMember(Name = "requested")] public string Requested { get; set; } = "";
+    [DataMember(Name = "name")] public string Name { get; set; } = "";
+}
+
+public static class ScheduleFilterOperators
+{
+    private static readonly HashSet<string> WithValue = new(StringComparer.Ordinal)
+    {
+        "equal", "not_equal", "greater_than", "greater_than_or_equal", "less_than", "less_than_or_equal",
+        "contains", "not_contains", "begins_with", "not_begins_with", "ends_with", "not_ends_with"
+    };
+
+    public static bool IsKnown(string? value) => value is not null && (WithValue.Contains(value) || value is "has_value" or "has_no_value");
+
+    public static bool RequiresValue(string value) => WithValue.Contains(value);
 }
 
 [DataContract]
@@ -1704,6 +1794,9 @@ public sealed class ActionResultData
     [DataMember(Name = "sheetName", EmitDefaultValue = false)] public string? SheetName { get; set; }
     [DataMember(Name = "viewportIds", EmitDefaultValue = false)] public List<long>? ViewportIds { get; set; }
     [DataMember(Name = "scheduleInstanceIds", EmitDefaultValue = false)] public List<long>? ScheduleInstanceIds { get; set; }
+    [DataMember(Name = "fields", EmitDefaultValue = false)] public List<ScheduleFieldResult>? Fields { get; set; }
+    [DataMember(Name = "filtersApplied", EmitDefaultValue = false)] public int? FiltersApplied { get; set; }
+    [DataMember(Name = "sortApplied", EmitDefaultValue = false)] public int? SortApplied { get; set; }
     [DataMember(Name = "elementCount", EmitDefaultValue = false)] public int? ElementCount { get; set; }
     [DataMember(Name = "options", EmitDefaultValue = false)] public NwcOptionsResult? Options { get; set; }
     [DataMember(Name = "overwritten", EmitDefaultValue = false)] public bool? Overwritten { get; set; }

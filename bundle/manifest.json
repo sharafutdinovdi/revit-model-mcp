@@ -306,6 +306,14 @@
       "description": "Place views and schedules on a sheet. Coordinates use sheet millimetres."
     },
     {
+      "name": "revit_tag_elements",
+      "description": "Tag elements in a view, chosen by category names or by element IDs (exactly one of the two). Creates one tag per element and returns the created tag IDs in createdElementIds.\nElements that already have a tag in the view are left alone unless skip_tagged is false. Inputs Revit cannot tag are listed in skipped with a reason.\ntag_type is optional and matches a tag type name, a family name or \"Family: Type\"; without it the default tag type of each category is used. Room tags need a plan view and ignore orientation.\ndry_run executes and rolls back, returning the tags that would be created."
+    },
+    {
+      "name": "revit_create_schedule",
+      "description": "Create a schedule for one category with the named fields, in the order given. Field names are the Revit UI names such as Mark, Level or Count.\nfilters keep rows by field, operator and value; sort orders rows and, with header or footer, groups them. A field used only by a filter or sort is added hidden.\nNumeric filter values use millimetres for lengths, m2 for areas and m3 for volumes. itemized=false collapses identical rows.\nReturns the schedule view ID in viewId and the resolved fields; names Revit does not know are listed in skipped, and the call fails when no field resolves.\ndry_run executes and rolls back, returning the same resolved fields."
+    },
+    {
       "name": "revit_set_parameter",
       "description": "Set exactly one instance or type parameter. parameter_id selects by BuiltInParameter name, shared GUID or positive ParameterElement ID.\nWithout parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.\nvalue type: JSON string for String, integer for Integer, number for Double. Lengths use mm, areas m2 and other doubles internal units.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nGroup members that Revit refuses to change fail with a clear message, including in dry_run.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
     },

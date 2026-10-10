@@ -1077,6 +1077,178 @@
     ],
     "type": "object"
   },
+  "revit_create_schedule": {
+    "$defs": {
+      "ScheduleFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "operator": {
+            "enum": [
+              "equal",
+              "not_equal",
+              "greater_than",
+              "greater_than_or_equal",
+              "less_than",
+              "less_than_or_equal",
+              "contains",
+              "not_contains",
+              "begins_with",
+              "not_begins_with",
+              "ends_with",
+              "not_ends_with",
+              "has_value",
+              "has_no_value"
+            ],
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "field",
+          "operator"
+        ],
+        "type": "object"
+      },
+      "ScheduleSort": {
+        "additionalProperties": false,
+        "properties": {
+          "blank_line": {
+            "default": false,
+            "type": "boolean"
+          },
+          "descending": {
+            "default": false,
+            "type": "boolean"
+          },
+          "field": {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          "footer": {
+            "default": false,
+            "type": "boolean"
+          },
+          "header": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "field"
+        ],
+        "type": "object"
+      }
+    },
+    "properties": {
+      "category": {
+        "minLength": 1,
+        "pattern": "\\S",
+        "type": "string"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "fields": {
+        "items": {
+          "minLength": 1,
+          "pattern": "\\S",
+          "type": "string"
+        },
+        "maxItems": 100,
+        "minItems": 1,
+        "type": "array"
+      },
+      "filters": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ScheduleFilter"
+            },
+            "maxItems": 20,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "itemized": {
+        "default": true,
+        "type": "boolean"
+      },
+      "name": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "sort": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/ScheduleSort"
+            },
+            "maxItems": 10,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "category",
+      "fields"
+    ],
+    "type": "object"
+  },
   "revit_create_sheet": {
     "properties": {
       "document": {
@@ -5131,6 +5303,112 @@
     "required": [
       "comment",
       "document"
+    ],
+    "type": "object"
+  },
+  "revit_tag_elements": {
+    "properties": {
+      "categories": {
+        "anyOf": [
+          {
+            "items": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "element_ids": {
+        "anyOf": [
+          {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9223372036854775807,
+              "type": "integer"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "leader": {
+        "default": false,
+        "type": "boolean"
+      },
+      "max_elements": {
+        "default": 5000,
+        "maximum": 20000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "orientation": {
+        "default": "horizontal",
+        "enum": [
+          "horizontal",
+          "vertical"
+        ],
+        "type": "string"
+      },
+      "skip_tagged": {
+        "default": true,
+        "type": "boolean"
+      },
+      "tag_type": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "view": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "exclusiveMinimum": 0,
+            "maximum": 9223372036854775807,
+            "type": "integer"
+          }
+        ]
+      }
+    },
+    "required": [
+      "view"
     ],
     "type": "object"
   },

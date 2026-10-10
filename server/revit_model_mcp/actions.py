@@ -111,6 +111,59 @@ class SheetPlacement(BaseModel):
         return self
 
 
+ScheduleFilterOperator = Literal[
+    "equal",
+    "not_equal",
+    "greater_than",
+    "greater_than_or_equal",
+    "less_than",
+    "less_than_or_equal",
+    "contains",
+    "not_contains",
+    "begins_with",
+    "not_begins_with",
+    "ends_with",
+    "not_ends_with",
+    "has_value",
+    "has_no_value",
+]
+
+
+class ScheduleFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: Name
+    operator: ScheduleFilterOperator
+    value: str | bool | int | float | None = None
+
+    @model_validator(mode="after")
+    def value_matches_operator(self):
+        needs_value = self.operator not in {"has_value", "has_no_value"}
+        if needs_value and self.value is None:
+            raise ValueError(f"operator {self.operator} requires a value.")
+        if not needs_value and self.value is not None:
+            raise ValueError(f"operator {self.operator} takes no value.")
+        if isinstance(self.value, float) and not math.isfinite(self.value):
+            raise ValueError("value must be finite.")
+        return self
+
+    def payload(self) -> dict[str, Any]:
+        value = self.value
+        if isinstance(value, bool):
+            value = "1" if value else "0"
+        elif value is not None:
+            value = str(value)
+        return {"field": self.field, "operator": self.operator, "value": value}
+
+
+class ScheduleSort(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    field: Name
+    descending: bool = False
+    header: bool = False
+    footer: bool = False
+    blank_line: bool = False
+
+
 _BATCH_FIELDS = {
     "select": {"element_ids": (ElementIds, ...)},
     "isolate": {"element_ids": (ElementIds, ...), "reset": (bool, False)},
@@ -732,6 +785,8 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_apply_view_template": "Apply View Template",
             "revit_create_sheet": "Create Sheet",
             "revit_place_views_on_sheet": "Place Views on Sheet",
+            "revit_tag_elements": "Tag Elements",
+            "revit_create_schedule": "Create Schedule",
             "revit_set_parameter": "Set Parameter",
             "revit_delete": "Delete Elements",
             "revit_run_actions": "Run Actions",
@@ -1622,6 +1677,78 @@ def register_actions(mcp, execute, host_provider) -> None:
             "place-views-on-sheet",
             sheet=sheet,
             placements=placements,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_tag_elements(
+        view: Name | ElementId,
+        categories: Annotated[list[Name], Field(min_length=1)] | None = None,
+        element_ids: NonEmptyIds | None = None,
+        leader: bool = False,
+        orientation: Literal["horizontal", "vertical"] = "horizontal",
+        tag_type: Name | None = None,
+        skip_tagged: bool = True,
+        max_elements: MaxElements = 5000,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Tag elements in a view, chosen by category names or by element IDs (exactly one of the two). Creates one tag per element and returns the created tag IDs in createdElementIds.
+        Elements that already have a tag in the view are left alone unless skip_tagged is false. Inputs Revit cannot tag are listed in skipped with a reason.
+        tag_type is optional and matches a tag type name, a family name or "Family: Type"; without it the default tag type of each category is used. Room tags need a plan view and ignore orientation.
+        dry_run executes and rolls back, returning the tags that would be created.
+        """
+        if (categories is None) == (element_ids is None):
+            raise ToolError("Supply exactly one of categories or element_ids.")
+        return await send(
+            "tag-elements",
+            view=str(view),
+            categories=categories,
+            elementIds=element_ids,
+            leader=leader,
+            orientation=orientation,
+            typeName=tag_type,
+            skipTagged=skip_tagged,
+            maxElements=max_elements,
+            dryRun=dry_run,
+            document=document,
+        )
+
+    @action
+    async def revit_create_schedule(
+        category: Name,
+        fields: Annotated[list[Name], Field(min_length=1, max_length=100)],
+        name: Name | None = None,
+        filters: Annotated[list[ScheduleFilter], Field(max_length=20)] | None = None,
+        sort: Annotated[list[ScheduleSort], Field(max_length=10)] | None = None,
+        itemized: bool = True,
+        dry_run: bool = False,
+        document: Document = None,
+    ) -> dict[str, Any]:
+        """Create a schedule for one category with the named fields, in the order given. Field names are the Revit UI names such as Mark, Level or Count.
+        filters keep rows by field, operator and value; sort orders rows and, with header or footer, groups them. A field used only by a filter or sort is added hidden.
+        Numeric filter values use millimetres for lengths, m2 for areas and m3 for volumes. itemized=false collapses identical rows.
+        Returns the schedule view ID in viewId and the resolved fields; names Revit does not know are listed in skipped, and the call fails when no field resolves.
+        dry_run executes and rolls back, returning the same resolved fields.
+        """
+        return await send(
+            "create-schedule",
+            category=category,
+            scheduleFields=fields,
+            scheduleFilters=[item.payload() for item in filters or []],
+            scheduleSort=[
+                {
+                    "field": item.field,
+                    "descending": item.descending,
+                    "header": item.header,
+                    "footer": item.footer,
+                    "blankLine": item.blank_line,
+                }
+                for item in sort or []
+            ],
+            name=name,
+            itemized=itemized,
             dryRun=dry_run,
             document=document,
         )

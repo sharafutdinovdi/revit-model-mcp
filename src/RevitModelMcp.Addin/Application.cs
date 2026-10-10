@@ -36,7 +36,7 @@ public sealed class Application : ExternalApplication
         "view-info", "view-elements", "element-details", "view-warnings", "export-view", "capture-elements", "schedule-data",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",
         "list-relations", "family-audit", "nwc-settings-check", "compare-link-datums",
-        "select", "show", "isolate", "override-graphics", "move", "rotate", "copy", "mirror", "change-type", "update-parameters", "place-family", "load-family", "place-families", "create-wall", "link-cad", "walls-from-cad", "create-mep-run", "create-view", "duplicate-view", "apply-view-template", "create-sheet", "place-views-on-sheet",
+        "select", "show", "isolate", "override-graphics", "move", "rotate", "copy", "mirror", "change-type", "update-parameters", "place-family", "load-family", "place-families", "create-wall", "link-cad", "walls-from-cad", "create-mep-run", "create-view", "duplicate-view", "apply-view-template", "create-sheet", "place-views-on-sheet", "tag-elements", "create-schedule",
         "set-parameter", "delete", "batch", "process-models", "export-nwc", "export", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "activate-document", "activate-view", "close-views", "new-document",
