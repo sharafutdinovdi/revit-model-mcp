@@ -515,6 +515,8 @@ internal static class DocumentActions
         }
         else if (IsCentral(document))
             throw new InvalidOperationException("Saving an open central model is refused.");
+        if (action.SaveAs is null && string.IsNullOrEmpty(document.PathName))
+            throw new InvalidOperationException($"'{document.Title}' has never been saved; supply save_as.");
         var description = action.SaveAs is null ? $"Save '{document.Title}' to {document.PathName}, compact={action.Compact}." :
             $"Save '{document.Title}' as {action.SaveAs}, overwrite={action.Overwrite}, compact={action.Compact}.";
         if (requireConfirmation)
