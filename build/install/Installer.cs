@@ -122,7 +122,10 @@ void BuildMultiUserMsi()
             Impersonate = false
         },
         .. MachinePolicyValues.RememberActions(),
+        CheckProgramDataFolderAction(),
         EnsureProgramDataFolderAction(),
+        ClearMsiReadOnlyAction(),
+        RemoveProgramDataFolderAction(),
         .. UpdateSettingActions("ProgramData", true)
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
@@ -186,6 +189,38 @@ PathFileAction EnsureProgramDataFolderAction()
         Impersonate = false
     };
 }
+
+// Immediate pre-check of the same folder test, so a refusal comes with a sentence in the MSI log and in the UI
+// instead of a bare 1722/1603 from the elevated script. It runs before InstallInitialize: nothing to roll back.
+ScriptAction CheckProgramDataFolderAction() =>
+    new(new Id("MachineCheckProgramDataFolder"), InstallerScripts.CheckProgramDataFolderVbScript(),
+        Return.check, When.Before, Step.InstallInitialize, new Condition("NOT REMOVE~=\"ALL\""));
+
+// READONLY=0 on a maintenance run (REINSTALL=ALL): the ReadOnly component condition turns false, but Windows Installer
+// keeps a value of an installed component, so this removes the value the installer wrote, as an upgrade does.
+PathFileAction ClearMsiReadOnlyAction() =>
+    new(new Id("MachineClearMsiReadOnly"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.ClearMsiReadOnlyScript)}",
+        "SystemFolder", Return.check, When.After, Step.WriteRegistryValues,
+        new Condition(InstallerScripts.ClearMsiReadOnlyCondition))
+    {
+        Execute = Execute.deferred,
+        Impersonate = false
+    };
+
+// Uninstall (not the removal step of an upgrade) deletes the MSI-written settings.json and then the empty folder.
+// policy.json or any other file keeps the folder.
+PathFileAction RemoveProgramDataFolderAction() =>
+    new(new Id("MachineRemoveProgramDataFolder"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.RemoveProgramDataFolderScript)}",
+        "SystemFolder", Return.ignore, When.After, Step.RemoveFiles,
+        new Condition("REMOVE~=\"ALL\" AND NOT UPGRADINGPRODUCTCODE"))
+    {
+        Execute = Execute.deferred,
+        Impersonate = false
+    };
 
 PathFileAction UpdateSettingAction(string environmentFolder, bool elevated, string id, string key, string value, string condition)
 {

@@ -155,6 +155,19 @@ public sealed class UpdatePolicyTests
     }
 
     [Test]
+    public async Task RejectedDownloadHostIsNamedInTheRefusal()
+    {
+        var github = new Uri("https://api.github.com");
+        var exception = Assert.Throws<UpdateDownloadRefusedException>(() =>
+            UpdatePolicy.EnsureAllowedDownloadUrl("https://evil.example/a.msi?token=secret", github));
+        await Assert.That(exception.Host).IsEqualTo("evil.example");
+        await Assert.That(exception.Message).IsEqualTo("Update download refused: host evil.example is not allowed.");
+        UpdatePolicy.EnsureAllowedDownloadUrl("https://github.com/o/r/releases/download/v1/a.msi", github);
+        var unparsable = Assert.Throws<UpdateDownloadRefusedException>(() => UpdatePolicy.EnsureAllowedDownloadUrl("not a url", github));
+        await Assert.That(unparsable.Message).IsEqualTo("Update download refused: host (unknown) is not allowed.");
+    }
+
+    [Test]
     public async Task BlockedVersionsExpire()
     {
         var now = DateTimeOffset.Parse("2026-10-10T12:00:00Z");

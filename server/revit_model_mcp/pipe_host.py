@@ -18,11 +18,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from revit_model_mcp.policy import POLICY_REFUSAL_PREFIX
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     CLIENT_ID,
     Job,
     JobPickupStatus,
+    PolicyRefusedError,
     ReadOnlyRefusedError,
     RemoteHost,
     ResponseParseError,
@@ -259,8 +261,34 @@ def _protocols(instance: dict[str, Any]) -> list[Any]:
     return protocols if isinstance(protocols, list) else []
 
 
+def _policy_text(reply: dict[str, Any]) -> str | None:
+    message = reply.get("message")
+    return (
+        message
+        if reply.get("error") in ("read_only", "policy_blocked")
+        and isinstance(message, str)
+        and message.startswith(POLICY_REFUSAL_PREFIX)
+        else None
+    )
+
+
+def _refusal_error(reply: dict[str, Any]) -> RevitChannelError:
+    """The exception for an error reply: policy text kept as the add-in sent it, user gate as read-only."""
+    if (text := _policy_text(reply)) is not None:
+        return (
+            PolicyRefusedError(text)
+            if reply.get("error") == "read_only"
+            else RevitChannelError(text)
+        )
+    if reply.get("error") == "read_only":
+        return ReadOnlyRefusedError(_error_text(reply))
+    return RevitChannelError(_error_text(reply))
+
+
 def _error_text(reply: dict[str, Any]) -> str:
     code = reply.get("error")
+    if (text := _policy_text(reply)) is not None:
+        return text
     messages = {
         "queue_full": "Revit job queue is full for this client; retry after a short wait.",
         "read_only": "Revit denied this request. The workstation is in read-only mode.",
@@ -454,9 +482,7 @@ class PipeJobHost:
         connection = await self._parent.connection(self._instance)
         reply = await connection.request({"type": "status", "jobId": job_id})
         if reply.get("type") == "error":
-            raise (
-                ReadOnlyRefusedError if reply.get("error") == "read_only" else RevitChannelError
-            )(_error_text(reply))
+            raise _refusal_error(reply)
         result = reply.get("result")
         if isinstance(result, dict):
             return result
@@ -472,9 +498,7 @@ class PipeJobHost:
         connection = await self._parent.connection(self._instance)
         reply = await connection.request({"type": "cancel", "jobId": job_id})
         if reply.get("type") == "error":
-            raise (
-                ReadOnlyRefusedError if reply.get("error") == "read_only" else RevitChannelError
-            )(_error_text(reply))
+            raise _refusal_error(reply)
         return reply
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:
@@ -499,7 +523,7 @@ class PipeJobHost:
             status_reply = await self._connection.request({"type": "status", "jobId": job_id})
             if status_reply.get("type") == "error" and status_reply.get("error") == "read_only":
                 self._connection.forget(job_id)
-                raise ReadOnlyRefusedError(_error_text(status_reply))
+                raise _refusal_error(status_reply)
             if status_reply.get("type") == "status":
                 if status_reply.get("state") in FINISHED_STATES and "result" in status_reply:
                     self._connection.forget(job_id)
@@ -512,9 +536,7 @@ class PipeJobHost:
             reply = await self._connection.request({"type": "submit", "job": payload})
         if reply.get("type") == "error":
             self._connection.forget(job_id)
-            raise (
-                ReadOnlyRefusedError if reply.get("error") == "read_only" else RevitChannelError
-            )(_error_text(reply))
+            raise _refusal_error(reply)
         if reply.get("type") != "submitted" or reply.get("jobId") != job_id:
             raise ResponseParseError("Revit sent an unexpected reply to a pipe submit.")
         return set()

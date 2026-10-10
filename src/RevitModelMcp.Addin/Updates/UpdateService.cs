@@ -32,6 +32,11 @@ internal static class UpdateService
             try { Check(); }
             finally { mutex.ReleaseMutex(); }
         }
+        catch (UpdateDownloadRefusedException exception)
+        {
+            PluginLog.Warn(exception.Message);
+            ActivityRecorder.RecordSystemNotice(exception.Message, failed: true);
+        }
         catch (Exception exception)
         {
             PluginLog.Warn($"Update check failed. Type='{exception.GetType().Name}'.");
@@ -108,12 +113,13 @@ internal static class UpdateService
         var assetName = UpdatePolicy.SelectSingleUserAsset(release.Assets.Select(asset => asset.Name), release.TagName);
         var msiAsset = release.Assets.FirstOrDefault(asset => asset.Name == assetName);
         var checksumAsset = release.Assets.FirstOrDefault(asset => asset.Name == "SHA256SUMS.txt");
-        if (msiAsset is null || checksumAsset is null ||
-            !UpdatePolicy.IsAllowedDownloadUrl(msiAsset.Url, feed) || !UpdatePolicy.IsAllowedDownloadUrl(checksumAsset.Url, feed))
+        if (msiAsset is null || checksumAsset is null)
         {
-            ActivityRecorder.RecordSystemNotice($"Update to {release.TagName} failed: release assets are missing or not on an allowed download host.", releaseUrl, true);
+            ActivityRecorder.RecordSystemNotice($"Update to {release.TagName} failed: release assets are missing.", releaseUrl, true);
             return;
         }
+        UpdatePolicy.EnsureAllowedDownloadUrl(msiAsset.Url, feed);
+        UpdatePolicy.EnsureAllowedDownloadUrl(checksumAsset.Url, feed);
 
         var version = release.TagName.TrimStart('v', 'V');
         var directory = Path.Combine(LocalDirectory, "updates", version);
@@ -219,10 +225,16 @@ internal static class UpdateService
     private static WebResponse AllowedResponse(Uri uri, Uri feed)
     {
         var response = Request(uri).GetResponse();
-        if (UpdatePolicy.IsAllowedDownloadUrl(response.ResponseUri.AbsoluteUri, feed)) return response;
-        var host = response.ResponseUri.Host;
-        response.Dispose();
-        throw new InvalidDataException($"Download redirected to a host that is not allowed: {host}.");
+        try
+        {
+            UpdatePolicy.EnsureAllowedDownloadUrl(response.ResponseUri.AbsoluteUri, feed);
+            return response;
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
     }
 
     private static HttpWebRequest Request(Uri uri)

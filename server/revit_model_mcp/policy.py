@@ -260,8 +260,8 @@ def policy_gate(
             return refusal(shown, READ_ONLY, READ_ONLY_MESSAGE)
         if UNREADABLE_KEY in values:
             return refusal(shown, POLICY_BLOCKED, POLICY_UNREADABLE_MESSAGE)
-        if values.get("ReadOnly") is True:
-            return refusal(shown, READ_ONLY, READ_ONLY_MESSAGE)
+        if (text := policy_read_only_refusal(values)) is not None:
+            return refusal(shown, POLICY_BLOCKED, text)
     if (blocked := policy_refusal(command, values)) is not None:
         return refusal(shown, POLICY_BLOCKED, blocked)
     return None

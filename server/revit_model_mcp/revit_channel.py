@@ -14,7 +14,13 @@ from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
-from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
+from revit_model_mcp.errors import (
+    POLICY_BLOCKED,
+    READ_ONLY,
+    READ_ONLY_MESSAGE,
+    refusal,
+    with_error_code,
+)
 from revit_model_mcp.universal_jobs import aggregate_payload, query_payload
 
 LOGGER = logging.getLogger(__name__)
@@ -155,6 +161,17 @@ class RevitChannelError(RuntimeError):
 
 class ReadOnlyRefusedError(RevitChannelError):
     """The transport refused a request because the workstation is read-only."""
+
+
+class PolicyRefusedError(ReadOnlyRefusedError):
+    """The add-in refused a request because of the machine policy; the text is the add-in's own."""
+
+
+def refused_response(command: str, error: ReadOnlyRefusedError) -> dict[str, Any]:
+    """The refusal for a transport refusal: organization policy text, else the user read-only gate."""
+    if isinstance(error, PolicyRefusedError):
+        return refusal(command, POLICY_BLOCKED, str(error))
+    return refusal(command, READ_ONLY, READ_ONLY_MESSAGE)
 
 
 class ResultExpiredError(RevitChannelError):
@@ -590,11 +607,11 @@ class RevitChannel:
     ) -> dict[str, Any]:
         try:
             return await self._execute(job, timeout_seconds, pickup_timeout_seconds)
-        except ReadOnlyRefusedError:
+        except ReadOnlyRefusedError as error:
             if job.command in ACTION_COMMANDS or (
                 job.command == "jobs" and job.payload.get("requestCancellation")
             ):
-                return refusal(job.command, READ_ONLY, READ_ONLY_MESSAGE)
+                return refused_response(job.command, error)
             raise
 
     async def _execute(

@@ -277,3 +277,20 @@ def test_policy_covers_tag_elements_and_create_schedule(tmp_path, monkeypatch):
     assert policy.policy_refusal("tag-elements").startswith(policy.POLICY_REFUSAL_PREFIX)
     assert policy.policy_refusal("revit_create_schedule").startswith(policy.POLICY_REFUSAL_PREFIX)
     assert policy.policy_refusal("create-view") is None
+
+
+def test_gate_read_only_policy_uses_the_organization_text(tmp_path, monkeypatch):
+    folder = tmp_path / "RevitModelMcp"
+    folder.mkdir()
+    (folder / "policy.json").write_text('{"ReadOnly": true}', encoding="utf-8")
+    monkeypatch.setenv("PROGRAMDATA", str(tmp_path))
+    _no_registry(monkeypatch)
+    assert policy.policy_gate("revit_delete") == {
+        "success": False,
+        "command": "revit_delete",
+        "error": "Blocked by organization policy: the workstation is read-only.",
+        "errorCode": "policy_blocked",
+    }
+    # The user gate and the environment flag keep the plain text.
+    assert policy.policy_gate("revit_delete", True)["error"] == "read-only mode"
+    assert policy.policy_gate("revit_delete", True)["errorCode"] == "read_only"

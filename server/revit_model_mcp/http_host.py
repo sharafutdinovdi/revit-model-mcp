@@ -16,11 +16,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from revit_model_mcp.errors import POLICY_READ_ONLY_MESSAGE
 from revit_model_mcp.policy import POLICY_REFUSAL_PREFIX
 from revit_model_mcp.revit_channel import (
     Job,
     JobPickupStatus,
+    PolicyRefusedError,
     ReadOnlyRefusedError,
     ResponseParseError,
     ResponseTimeoutError,
@@ -332,11 +332,7 @@ class HttpHost:
                 policy_text = _policy_refusal_text(error) if error.code == 403 else None
                 error.close()
                 if policy_text is not None:
-                    raise (
-                        ReadOnlyRefusedError
-                        if policy_text == POLICY_READ_ONLY_MESSAGE
-                        else RevitChannelError
-                    )(policy_text) from None
+                    raise PolicyRefusedError(policy_text) from None
                 if error.code == 401:
                     self._verified_token = None
                 if error.code == 410:
