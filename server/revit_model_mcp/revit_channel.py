@@ -654,6 +654,13 @@ class RevitChannel:
     async def _execute_serial(
         self, job: Job, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
+        if job.command in ("export-view", "capture-elements"):
+            from revit_model_mcp.artifact_download import preflight_artifact_target
+
+            try:
+                preflight_artifact_target(job.output_path)
+            except ValueError as error:
+                raise RevitChannelError(str(error)) from error
         candidate = (
             job.command in LONG_ACTION_COMMANDS
             or (job.command == "open-document" and job.payload.get("audit") is True)
@@ -821,13 +828,13 @@ class RevitChannel:
                 )
 
             if job.command in ("export-view", "capture-elements") and result.get("success") is True:
-                finish_attempted = True
                 content, local_path = await self.remote.finish_job(
                     response_name,
                     [temporary_name, response_name],
                     True,
                     job.output_path,
                 )
+                finish_attempted = True
                 result = _complete_image_result(parse_response(content, job.command), job.command)
                 if local_path is not None:
                     result["data"]["localPath"] = local_path

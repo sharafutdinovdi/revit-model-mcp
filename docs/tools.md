@@ -27,7 +27,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
 | `revit_ui_state` | None | Read the active document and view, open UI views, up to 500 selected elements, and all open documents. |
 | `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
-| `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields; return counts and optional sum/average. |
+| `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
@@ -36,7 +36,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
-| `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID. |
+| `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID; `element_id` must be at least 1. |
 | `revit_view_warnings` | `view` | Read warnings involving elements in a view. |
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
@@ -95,7 +95,7 @@ Parameter names resolve through `LookupParameter(name)`, which returns the first
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
 Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `output_path` is honored; the client/response timeout still applies.
 
-Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
+Offsets are zero-based row counts (at least 0); limits are positive row counts (at least 1). `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
 Other numeric filter values follow document display units; returned query values carry a `unit` field when available.
 See the [feed format](feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.

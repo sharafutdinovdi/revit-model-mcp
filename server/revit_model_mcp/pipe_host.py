@@ -597,19 +597,24 @@ class PipeJobHost:
         if root is None:
             raise RevitChannelError("The local channel directory is unknown; set LOCALAPPDATA.")
         source = root / "instances" / str(self._instance["processId"]) / name
-        target = (
-            Path(output_path).expanduser().resolve()
-            if output_path
-            else Path(tempfile.mkdtemp(prefix="revit-view-")) / name
-        )
-        target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            with source.open("rb") as image, target.open("xb") as output:
-                shutil.copyfileobj(image, output)
-        except FileExistsError as error:
-            raise RevitChannelError(f"Local file already exists: {target}") from error
-        except OSError as error:
-            raise RevitChannelError(f"Could not copy the exported image: {error}") from error
+            target = (
+                Path(output_path).expanduser().resolve()
+                if output_path
+                else Path(tempfile.mkdtemp(prefix="revit-view-")) / name
+            )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                with source.open("rb") as image, target.open("xb") as output:
+                    shutil.copyfileobj(image, output)
+            except FileExistsError as error:
+                raise RevitChannelError(f"Local file already exists: {target}") from error
+            except OSError as error:
+                raise RevitChannelError(f"Could not copy the exported image: {error}") from error
+        except Exception:
+            # The exported image is only useful once copied; do not leave it in the channel directory.
+            source.unlink(missing_ok=True)
+            raise
         source.unlink(missing_ok=True)
         return str(target)
 

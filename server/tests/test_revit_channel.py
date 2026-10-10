@@ -2712,3 +2712,35 @@ def test_ssh_heartbeat_preserves_http_listener_status():
     assert instance["httpPort"] == 53110
     assert instance["httpState"] == "failed"
     assert instance["httpReason"] == "Access denied."
+
+
+@pytest.mark.parametrize("command", ["export-view", "capture-elements"])
+def test_existing_image_destination_fails_before_any_job_is_written(command, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": package_version(), "commands": [command]}
+    target = tmp_path / "image.png"
+    target.write_bytes(b"original")
+    with pytest.raises(RevitChannelError, match="Local file already exists"):
+        asyncio.run(RevitChannel(remote).execute(Job(command, {"command": command}, str(target))))
+    assert remote.written_name is None
+    assert remote.events == []
+
+
+@pytest.mark.parametrize("command", ["export-view", "capture-elements"])
+def test_failed_image_download_removes_remote_files(command, tmp_path):
+    remote = FakeRemoteHost()
+    remote.instance_info = {"addinVersion": package_version(), "commands": [command]}
+    response = json.dumps({"command": command, "success": True, "data": {"fileName": "view.png"}})
+    remote.finish_job = AsyncMock(
+        side_effect=[(response, None), RevitChannelError("Cannot save image: disk full")]
+    )
+    remote.delete_files = AsyncMock()
+    with pytest.raises(RevitChannelError, match="disk full"):
+        asyncio.run(
+            RevitChannel(remote).execute(
+                Job(command, {"command": command}, str(tmp_path / "image.png"))
+            )
+        )
+    deleted = remote.delete_files.await_args.args[0]
+    assert remote.written_name in deleted
+    assert remote.response_name in deleted

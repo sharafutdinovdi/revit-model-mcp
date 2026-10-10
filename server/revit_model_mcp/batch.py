@@ -202,6 +202,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         file_host = _file_host(host)
         try:
+            await file_host.batch_assert_writable()
             discovered = (
                 await file_host.batch_discover(folder, recursive) if folder is not None else paths
             )
@@ -245,6 +246,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         except ReadOnlyRefusedError:
             return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         except RevitChannelError as error:
+            if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):
+                return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
     @mcp.tool(
