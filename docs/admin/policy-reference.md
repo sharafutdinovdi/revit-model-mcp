@@ -2,8 +2,7 @@
 
 This page lists every setting that controls Model MCP, where it lives, and which one wins when two disagree.
 
-<!-- depends: night/enterprise -->
-The machine policy layer below is added with the enterprise policy change. The keys and the refusal text follow one fixed contract. Settings that exist today are listed separately under [user settings](#user-settings-and-environment).
+Machine policy settings are listed first. Settings that a user can change are listed under [user settings](#user-settings-and-environment).
 
 ## Machine policy
 
@@ -14,7 +13,8 @@ A machine policy is set by an administrator and cannot be changed by a standard 
 | Registry | `HKLM\Software\Policies\RevitModelMcp` | Preferred. Works with Group Policy and Intune. |
 | File | `%ProgramData%\RevitModelMcp\policy.json` | Give Administrators write access and Users read access only. |
 
-If both exist, the registry wins for every value it sets. Values not set in the registry are taken from the file.
+If both exist, the registry wins for every value it sets. Values not set in the registry are taken from the file. An unreadable or malformed source counts as not set.
+The add-in rereads both stores about every ten seconds, so a change applies without restarting Revit. `TrustedNetworkRoots`, `RedactPaths` and `HttpEnabled` apply at the next Revit start.
 
 | Value | Registry type | `policy.json` type | Meaning |
 | --- | --- | --- | --- |
@@ -22,19 +22,21 @@ If both exist, the registry wins for every value it sets. Values not set in the 
 | `ToolDeny` | REG_MULTI_SZ | array of strings | Tool names that are refused. |
 | `ToolAllow` | REG_MULTI_SZ | array of strings | Tool names that are allowed. Empty or absent means all tools. |
 | `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` refuses `revit_execute_code` and code in `revit_process_models`. `confirm` keeps the confirmation token flow. |
-| `UpdateMode` | REG_SZ `off`, `notify` or `auto` | string | `off` makes no update request. `notify` only shows a notice. `auto` installs a per-user update. |
-| `TrustedNetworkRoots` | REG_MULTI_SZ | array of strings | UNC roots (`\\server\share`) that export, save and open may use. |
-| `LogDir` | REG_SZ | string | Folder for add-in logs. |
-| `LogRetentionDays` | DWORD | number | Age limit for log files in days. |
+| `UpdateMode` | REG_SZ `off`, `notify` or `auto` | string | `off` makes no update request. `notify` only shows a notice. `auto` installs a per-user update. An unknown value counts as `off`. See [automatic updates](../updates.md#modes). |
+| `TrustedNetworkRoots` | REG_MULTI_SZ | array of strings | UNC roots (`\\server\share`) that export, save and open may use. A configured list replaces the per-user list, including an empty list. |
+| `LogDir` | REG_SZ | string | Folder for the add-in log and `activity.log`. |
+| `LogRetentionDays` | DWORD 1 to 3650 | number | Add-in log files older than this are deleted at start and on rotation. |
 | `RedactPaths` | DWORD 0 or 1 | boolean | `1` redacts paths in add-in logs and audit files. |
 | `HttpEnabled` | DWORD 0 or 1 | boolean | `0` switches the HTTP listener off and the user cannot switch it on. |
 
 Rules:
 
-- Names are tool names such as `revit_delete`; the full list is in the [tool manifest](../tool-manifest.md) and each tool is marked `read_only` or `modifying`.
+- Names are tool names such as `revit_delete` or command names such as `execute-code`. They are not case sensitive: `revit_delete`, `delete` and `Revit-Delete` mean the same tool. The full list is in the [tool manifest](../tool-manifest.md) and each tool is marked `read_only` or `modifying`.
 - A tool in `ToolDeny` is refused even when it is in `ToolAllow`.
 - When `ToolAllow` is not empty, every tool that is not listed is refused.
-- A refusal is a normal tool result with `success: false`. Its message starts with `Blocked by organization policy:`.
+- `revit_ping` and `revit_jobs` are never blocked, so a client can always read the effective policy.
+- `revit_tag_elements` and `revit_create_schedule` are modifying tools: `ReadOnly`, `ToolDeny` and `ToolAllow` apply to them like to every other action tool.
+- A refusal is a normal tool result with `success: false`. Its message starts with `Blocked by organization policy:`. The server adds `errorCode: "policy_blocked"`; `ReadOnly` keeps `errorCode: "read_only"`. A blocked call is refused before the command runs, also inside `revit_batch` steps.
 - Policy applies to the pipe, the file channel and the HTTP listener alike, because it is checked in the add-in.
 - Read tools that are not denied keep working in read-only mode.
 
@@ -66,11 +68,19 @@ Windows Registry Editor Version 5.00
 "ToolDeny"=hex(7):72,00,65,00,76,00,69,00,74,00,5f,00,64,00,65,00,6c,00,65,00,74,00,65,00,00,00,00,00
 ```
 
-The MSI public properties `READONLY`, `EXECUTECODE` and `UPDATEMODE` write the matching values; see the [deployment guide](deployment.md#silent-install).
+The MultiUser MSI properties `READONLY` and `EXECUTECODE` write the matching registry values; see the [deployment guide](deployment.md#silent-install). `ToolDeny` and `ToolAllow` cannot be set through the MSI. The MSI property `UPDATEMODE` does not write the policy store: it writes `updateMode` to `settings.json`, below the machine policy `UpdateMode` in precedence.
+
+### Reading the effective policy
+
+`revit_ping` returns a `policy` object with the effective values. The pipe handshake behind `revit_list_instances` and the HTTP `/health` response carry the same object. Values are strings, lists are comma-separated, and network roots appear only as a count. The object contains no paths and no secrets.
 
 ### ADMX templates
 
-Group Policy administrative templates for these values are not part of the current release. Until they ship, deploy the registry values with a Group Policy Registry preference item or an Intune custom OMA-URI setting that targets `HKLM\Software\Policies\RevitModelMcp`.
+`build/policy/RevitModelMcp.admx` and `build/policy/en-US/RevitModelMcp.adml` in the source repository define every value above. They are not installed by the MSI. Copy them to `%SystemRoot%\PolicyDefinitions` (or your central store); the policies appear under Computer Configuration, Administrative Templates, Model MCP for Revit. Without the templates, deploy the registry values with a Group Policy Registry preference item or an Intune custom OMA-URI setting that targets `HKLM\Software\Policies\RevitModelMcp`.
+
+### Logging and Documents redirection
+
+The add-in log is in `%USERPROFILE%\Documents\RevitModelMcp\Logs` and `activity.log` is in `%LOCALAPPDATA%\RevitModelMcp`. Documents is often redirected to OneDrive: set `LogDir` to a local folder if logs must not sync. `RedactPaths=1` removes model paths from responses, logs and the stored code files.
 
 ## Precedence
 
@@ -84,7 +94,7 @@ For each setting, the first source that has a value wins.
 Two exceptions keep the safer value:
 
 - Read-only is on if the machine policy, the workstation file `%LOCALAPPDATA%\RevitModelMcp\read-only` or the server variable `REVIT_MCP_READ_ONLY=1` says so. No lower layer can turn policy read-only off.
-- An update check is off if any layer turns it off. No lower layer can raise `notify` to `auto`.
+- An update check is off if any layer turns it off (`UpdateMode=off`, `updateCheck: false`, `REVIT_MCP_NO_UPDATE_CHECK=1`). Per-machine installs and `dev` builds are capped at `notify`, and the `store` and `managed` channels never check. See [automatic updates](../updates.md#modes).
 
 ## User settings and environment
 

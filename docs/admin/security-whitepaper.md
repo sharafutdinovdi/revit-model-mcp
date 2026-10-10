@@ -64,11 +64,10 @@ Not provided: single sign-on, per-client identities, token rotation, rate limiti
 
 ### Read-only mode
 
-Read-only mode refuses every action tool and keeps read tools. It can come from the server variable `REVIT_MCP_READ_ONLY`, from the workstation file `%LOCALAPPDATA%\RevitModelMcp\read-only`, and, with the machine policy, from the `ReadOnly` value that a user cannot change. <!-- depends: night/enterprise --> The user file and the server variable can be removed by the user who owns them, so they are a safety switch and not an enforcement control. Use the machine policy for enforcement.
+Read-only mode refuses every action tool and keeps read tools. It can come from the server variable `REVIT_MCP_READ_ONLY`, from the workstation file `%LOCALAPPDATA%\RevitModelMcp\read-only`, and, with the machine policy, from the `ReadOnly` value that a user cannot change. The user file and the server variable can be removed by the user who owns them, so they are a safety switch and not an enforcement control. Use the machine policy for enforcement.
 
 ### Machine policy
 
-<!-- depends: night/enterprise -->
 An administrator can set read-only mode, allow and deny lists for tools, whether C# execution is available, the update mode, trusted network roots, log location and retention, path redaction and the HTTP listener. Registry values win over the policy file, and policy wins over user settings. A blocked call returns a message that starts with `Blocked by organization policy:`. See the [policy reference](policy-reference.md).
 
 ### Confirmations, dry runs and undo
@@ -81,7 +80,7 @@ An administrator can set read-only mode, allow and deny lists for tools, whether
 
 ### Code execution
 
-`revit_execute_code` compiles and runs C# with the Revit user's rights. It is not sandboxed and can read and write files and call network APIs. Controls: refused in read-only mode, token bound to the code hash, transaction mode and document, `transaction="none"` refused, source saved for audit. The machine policy can turn the tool off. <!-- depends: night/enterprise --> Treat enabling it as granting the Revit user's rights to the MCP client.
+`revit_execute_code` compiles and runs C# with the Revit user's rights. It is not sandboxed and can read and write files and call network APIs. Controls: refused in read-only mode, token bound to the code hash, transaction mode and document, `transaction="none"` refused, source saved for audit. The machine policy can turn the tool off. Treat enabling it as granting the Revit user's rights to the MCP client.
 
 ### Network paths
 
@@ -116,14 +115,14 @@ GitHub and PyPI see the network address of a request as for any web request. The
 | Files you ask for | The path you or the client gives | Not managed by the project |
 
 Data is stored in plain files. Use disk encryption such as BitLocker for protection at rest. The project adds no encryption of its own.
-With the `LogDir`, `LogRetentionDays` and `RedactPaths` policy values an administrator can move logs, bound their age and redact paths. <!-- depends: night/enterprise -->
+With the `LogDir`, `LogRetentionDays` and `RedactPaths` policy values an administrator can move logs, bound their age and redact paths.
 
 ## Logging and redaction
 
 - The activity pane and activity log record each request and action with the command and client name. They do not record all arguments.
 - The add-in log records jobs received, errors and lifecycle events. The HTTP token is never logged.
 - Revit's undo list carries one entry named `MCP (<client>): <summary>` for every change.
-- Path redaction (`REVIT_MCP_REDACT_PATHS=1`) shortens paths in Python responses. For add-in logs and audit files, the variable must be set in the Revit process environment, or by the `RedactPaths` policy. <!-- depends: night/enterprise --> Model names and parameter values stay visible.
+- Path redaction (`REVIT_MCP_REDACT_PATHS=1`) shortens paths in Python responses. For add-in logs and audit files, the variable must be set in the Revit process environment, or by the `RedactPaths` policy. Model names and parameter values stay visible.
 - There is no Windows Event Log or SIEM sink and no tamper protection for the files. Forward the log folders with your own agent if you need that.
 
 ## Supply chain

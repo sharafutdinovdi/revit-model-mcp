@@ -92,6 +92,17 @@ public sealed class MachinePolicyTests
     }
 
     [Test]
+    public async Task Refusal_CoversTagElementsAndCreateSchedule()
+    {
+        var policy = new MachinePolicy { ToolDeny = ["revit_tag_elements", "create-schedule"] };
+        await Assert.That(policy.Refusal("tag-elements")).StartsWith(MachinePolicy.RefusalPrefix);
+        await Assert.That(policy.Refusal("create-schedule")).StartsWith(MachinePolicy.RefusalPrefix);
+        var allow = new MachinePolicy { ToolAllow = ["tag-elements"] };
+        await Assert.That(allow.Refusal("tag-elements")).IsNull();
+        await Assert.That(allow.Refusal("create-schedule")).StartsWith(MachinePolicy.RefusalPrefix);
+    }
+
+    [Test]
     public async Task ReadOnlyRefusal_OnlyWhenEnforced()
     {
         await Assert.That(new MachinePolicy { ReadOnly = true }.ReadOnlyRefusal()).StartsWith(MachinePolicy.RefusalPrefix);

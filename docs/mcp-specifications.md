@@ -11,7 +11,7 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 | Server name | `revit-model-mcp` |
 | Transport | `stdio` |
 | MCP specification version | `2025-11-25` |
-| Tools | 77 (34 read-only, 43 modifying) |
+| Tools | 79 (34 read-only, 45 modifying) |
 | Resources | 1 (`revit://guides/coordinator`) |
 | Prompts | 5 |
 
@@ -26,7 +26,7 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 
 ## External endpoints
 
-All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store`: updates come from the store, and the add-in does not check GitHub or download an installer. <!-- depends: night/updates -->
+All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store`: updates come from the store, and the add-in does not check GitHub or download an installer.
 
 | Domain | Component | Purpose | Present in the store build |
 | --- | --- | --- | --- |

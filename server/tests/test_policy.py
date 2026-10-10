@@ -53,3 +53,10 @@ def test_malformed_file_is_ignored(tmp_path, monkeypatch):
     monkeypatch.setenv("PROGRAMDATA", str(tmp_path))
     monkeypatch.setattr(policy, "_registry_values", lambda: {})
     assert policy.load_policy() == {}
+
+
+def test_policy_covers_tag_elements_and_create_schedule(tmp_path, monkeypatch):
+    _write(tmp_path, monkeypatch, {"ToolDeny": ["revit_tag_elements", "create-schedule"]})
+    assert policy.policy_refusal("tag-elements").startswith(policy.POLICY_REFUSAL_PREFIX)
+    assert policy.policy_refusal("revit_create_schedule").startswith(policy.POLICY_REFUSAL_PREFIX)
+    assert policy.policy_refusal("create-view") is None

@@ -897,8 +897,8 @@ internal static class ActionCommandExecutor
             changedElementCount += arguments.GetAddedElementIds().Count + arguments.GetModifiedElementIds().Count
                 + arguments.GetDeletedElementIds().Count;
         }
-        // Isolation is a temporary view mode and never changes elements.
-        var counting = group is not null && !action.DryRun && command != "isolate";
+        // UI-only commands (isolation, graphic overrides) never change elements, so an empty commit is normal for them.
+        var counting = NoChangeGuardPolicy.Applies(command, action.DryRun, group is not null);
         if (counting) document.Application.DocumentChanged += CountChanges;
         try
         {

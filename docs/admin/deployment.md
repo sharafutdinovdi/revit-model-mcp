@@ -3,7 +3,7 @@
 This guide covers rolling out Model MCP to many Windows workstations. It has two parts: the add-in inside Revit and the Python server next to the MCP client.
 For a single machine, use [requirements and installation](../install.md).
 
-Sections marked in the source with `depends: night/enterprise` describe features that follow the [policy reference](policy-reference.md). Check the release notes of your version before you rely on them.
+Machine policy, the policy installer properties and the policy templates are described in the [policy reference](policy-reference.md).
 
 ## Choose an install scope
 
@@ -41,9 +41,11 @@ Switches and properties:
 | `UPDATECHECK=0` | Turn off the add-in update check. Writes `{"updateCheck":false}` to the settings file of the scope. Both MSIs. |
 | `HTTP_ENABLED=1` | Reserve an HTTP URL for the optional loopback listener. MultiUser MSI only. Default `0`. |
 | `HTTP_URL_PREFIX=<url>` | URL to reserve, default `http://127.0.0.1:53110/`. MultiUser MSI only. |
-| `UPDATEMODE=off\|notify\|auto` | Machine update mode. <!-- depends: night/enterprise --> Written to the machine policy store; see the [policy reference](policy-reference.md). |
-| `READONLY=1` | Refuse every action tool on this machine. <!-- depends: night/enterprise --> |
-| `EXECUTECODE=off\|confirm` | `off` refuses `revit_execute_code` and code in `revit_process_models`. <!-- depends: night/enterprise --> |
+| `UPDATEMODE=off\|notify\|auto` | Update mode. Writes `updateMode` to the settings file of the scope, so it is below a machine policy `UpdateMode`. Both MSIs; `UPDATECHECK=0` is the legacy alias for `off`. See [automatic updates](../updates.md#modes). |
+| `READONLY=1` | Refuse every action tool on this machine. Writes `ReadOnly=1` (DWORD) under `HKLM\Software\Policies\RevitModelMcp`. MultiUser MSI only. |
+| `EXECUTECODE=off\|confirm` | `off` refuses `revit_execute_code` and code in `revit_process_models`. Writes `ExecuteCode` to the same key. MultiUser MSI only. |
+
+An install without `READONLY` or `EXECUTECODE` leaves the matching registry value out, and an uninstall removes the values the MSI wrote. Pass the properties again on every upgrade. `ToolDeny`, `ToolAllow` and the other policy values cannot be set through the MSI: use Group Policy, Intune or `policy.json`.
 
 Example for a locked-down fleet:
 
@@ -126,7 +128,7 @@ claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CH
 
 The repository also keeps a hash-pinned dependency list for the container image, `server/requirements.docker.txt`. You can use it as the seed for `pip download --require-hashes`.
 [INFERENCE] The exact uv flags above follow the uv documentation and have not been exercised on an air-gapped machine for this project. Test them in your environment first. The add-in needs no wheelhouse.
-To check an internal release mirror instead of GitHub, set `REVIT_MCP_UPDATE_FEED`; see [updates](../updates.md#managed-installs-and-mirrors).
+To check an internal release mirror instead of GitHub, set `REVIT_MCP_UPDATE_FEED`; see [updates](../updates.md#channels).
 
 ### Proxy and custom certificates
 
@@ -149,4 +151,4 @@ The complete list of outbound hosts is in the [security whitepaper](security-whi
 ## Verify the rollout
 
 On a pilot machine, start Revit, open a model, and ask the client to call `revit_ping`. A `success: true` result means the add-in and the server are connected.
-Then check the effective settings: with the machine policy present, an action tool that policy blocks must return a result that starts with `Blocked by organization policy:`. <!-- depends: night/enterprise -->
+Then check the effective settings: with the machine policy present, an action tool that policy blocks must return a result that starts with `Blocked by organization policy:`.

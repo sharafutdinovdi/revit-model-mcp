@@ -14,7 +14,7 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 | `read` | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations`, `revit_model_health`, `revit_list_warnings`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check`, `revit_model_snapshot`, `revit_schedule_data` |
 | `actions` | `revit_set_parameter`, `revit_update_parameters`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_delete`, `revit_run_actions` |
 | `documents` | `revit_open_document`, `revit_activate_document`, `revit_new_document`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
-| `views-sheets` | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| `views-sheets` | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_tag_elements`, `revit_create_schedule`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
 | `family` | `revit_family_audit`, `revit_edit_families`, `revit_load_family`, `revit_place_family`, `revit_place_families` |
 | `links` | `revit_compare_link_datums`, `revit_align_link_datums`, `revit_remove_links` |
 | `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
@@ -30,18 +30,18 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
 | `core` | 8 | 7,464 | 1,866 |
-| `read` | 12 | 19,224 | 4,806 |
+| `read` | 12 | 19,286 | 4,821 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,952 | 1,238 |
-| `views-sheets` | 19 | 21,363 | 5,340 |
+| `views-sheets` | 21 | 25,559 | 6,389 |
 | `family` | 5 | 8,591 | 2,147 |
 | `links` | 3 | 4,261 | 1,065 |
 | `cad-mep` | 4 | 5,663 | 1,415 |
 | `export` | 4 | 7,288 | 1,822 |
 | `batch` | 6 | 7,459 | 1,864 |
 | `code` | 1 | 1,326 | 331 |
-| `all` (default) | 77 | 98,694 | 24,673 |
-| `core,read` | 20 | 26,688 | 6,672 |
+| `all` (default) | 79 | 102,952 | 25,738 |
+| `core,read` | 20 | 26,750 | 6,687 |
 
 Before this change all 77 tools measured 156,658 bytes (about 39,164 tokens).
 
@@ -231,7 +231,7 @@ Read `errorCode`, not the text of `error`. The wording of messages is not part o
 | `errorCode` | Meaning |
 | --- | --- |
 | `read_only` | Refused because the server runs with `REVIT_MCP_READ_ONLY=1`, the workstation `read-only` file exists, or the transport reported a read-only refusal. `error` is `read-only mode`. |
-| `policy_blocked` | Refused by the machine policy an administrator set, for example a denied tool or disabled code execution. `error` starts with `Blocked by organization policy:`. See the [Administrator guide](admin.md). |
+| `policy_blocked` | Refused by the machine policy an administrator set, for example a denied tool or disabled code execution. `error` starts with `Blocked by organization policy:`. See the [policy reference](admin/policy-reference.md). |
 | `action_failed` | The add-in tried the action and reported a failure. `error` holds the add-in's message. |
 
 New codes can appear in a minor release; treat an unknown code as a failed action.

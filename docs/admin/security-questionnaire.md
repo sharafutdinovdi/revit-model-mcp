@@ -2,7 +2,7 @@
 
 Short answers for vendor security reviews in the style of CAIQ and SIG Lite. Each answer states a status and points to evidence. "Gap" means the control does not exist today. Details are in the [security whitepaper](security-whitepaper.md).
 
-Model MCP is an open-source add-in and a local server. There is no hosted service, so questions about a provider's data center, tenants or staff do not apply. Where a control depends on the machine policy, the answer is marked with `depends: night/enterprise` in the page source and has to be confirmed against the release you deploy.
+Model MCP is an open-source add-in and a local server. There is no hosted service, so questions about a provider's data center, tenants or staff do not apply. Controls that depend on the machine policy are described in the [policy reference](policy-reference.md).
 
 ## Data classification and flow
 
@@ -30,7 +30,7 @@ Model MCP is an open-source add-in and a local server. There is no hosted servic
 | --- | --- | --- |
 | Authentication | Pipe: Windows user ACL. HTTP: bearer token with a nonce proof. SSH: customer's OpenSSH setup. No single sign-on. | Partial |
 | Least privilege | The add-in runs as the Revit user and gains no rights. The per-user MSI needs no administrator rights. | Met |
-| Administrator-enforced restrictions | Machine policy for read-only, tool deny and allow lists, code execution, HTTP and update mode. <!-- depends: night/enterprise --> | Met after the policy release |
+| Administrator-enforced restrictions | Machine policy for read-only, tool deny and allow lists, code execution, HTTP and update mode. | Met |
 | Separation of duties for risky actions | Confirmation token per risky call. A client can confirm on its own, so use read-only or policy for unattended use. | Partial |
 | Remote and multi-user access | The pipe is per user; the HTTP token is per user. Remote use goes through SSH or an HTTP host that the customer configures. | Documented |
 
@@ -40,7 +40,7 @@ Model MCP is an open-source add-in and a local server. There is no hosted servic
 | --- | --- | --- |
 | Are actions logged? | Yes: activity pane and log with command and client; add-in log; one named undo entry per change; audit file with SHA-256 for executed code. | Met |
 | Are logs tamper-proof or forwarded? | No. No Event Log or SIEM sink. Local files owned by the user. | Gap |
-| Log retention | Count-based: 14 add-in log files, 5 MiB activity log with one copy, 500 code audit files. Age-based retention through the `LogRetentionDays` policy value. <!-- depends: night/enterprise --> | Partial |
+| Log retention | Count-based: 14 add-in log files, 5 MiB activity log with one copy, 500 code audit files. Age-based retention through the `LogRetentionDays` policy value. | Partial |
 | Is sensitive data in logs? | Logs can contain model names, paths and error text. Redaction needs the Revit-side setting or the `RedactPaths` policy value. | Documented |
 
 ## Vulnerability and change management
@@ -90,4 +90,4 @@ Model MCP is an open-source add-in and a local server. There is no hosted servic
 | --- | --- | --- |
 | Can the tool change models? | Yes by default. Read-only mode and policy turn this off. | Documented |
 | Can changes be undone? | Each change is one named undo entry, and `revit_undo_last` exists. Link removal and document-level operations (open, close, save, synchronize) have no undo entry. | Documented |
-| Can arbitrary code run? | Yes through `revit_execute_code`, unsandboxed, with a confirmation token. Policy can disable it. <!-- depends: night/enterprise --> | Documented |
+| Can arbitrary code run? | Yes through `revit_execute_code`, unsandboxed, with a confirmation token. Policy can disable it. | Documented |

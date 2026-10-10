@@ -1246,7 +1246,8 @@
     },
     {
       "name": "revit_tag_elements",
-      "description": "Tag elements in a view, chosen by category names or by element IDs (exactly one of the two). Creates one tag per element and returns the created tag IDs in createdElementIds.\nElements that already have a tag in the view are left alone unless skip_tagged is false. Inputs Revit cannot tag are listed in skipped with a reason.\ntag_type is optional and matches a tag type name, a family name or \"Family: Type\"; without it the default tag type of each category is used. Room tags need a plan view and ignore orientation.\ndry_run executes and rolls back, returning the tags that would be created.",
+      "description": "Tag elements in a view, chosen by category names or by element IDs (exactly one of the two). Returns created tag IDs in createdElementIds; already tagged elements are skipped unless skip_tagged is false, and untaggable inputs are listed in skipped. tag_type matches a tag type name, a family name or \"Family: Type\"; the default tag type is used otherwise. Room tags need a plan view. dry_run rolls back and returns the tags that would be created.",
+      "toolset": "views-sheets",
       "access": "modifying",
       "annotations": {
         "readOnlyHint": false,
@@ -1264,7 +1265,8 @@
     },
     {
       "name": "revit_create_schedule",
-      "description": "Create a schedule for one category with the named fields, in the order given. Field names are the Revit UI names such as Mark, Level or Count.\nfilters keep rows by field, operator and value; sort orders rows and, with header or footer, groups them. A field used only by a filter or sort is added hidden.\nNumeric filter values use millimetres for lengths, m2 for areas and m3 for volumes. itemized=false collapses identical rows.\nReturns the schedule view ID in viewId and the resolved fields; names Revit does not know are listed in skipped, and the call fails when no field resolves.\ndry_run executes and rolls back, returning the same resolved fields.",
+      "description": "Create a schedule for one category with the named fields in the given order, using Revit UI names such as Mark, Level or Count. filters keep rows by field, operator and value; sort orders and, with header or footer, groups rows. Lengths in mm, areas in m2, volumes in m3. itemized=false collapses identical rows. Returns viewId and the resolved fields; unknown names are listed in skipped. dry_run rolls back.",
+      "toolset": "views-sheets",
       "access": "modifying",
       "annotations": {
         "readOnlyHint": false,

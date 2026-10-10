@@ -88,7 +88,7 @@ The **Claude Code** row has a **Copy command** button for the `claude mcp add` c
 
 ### Managed installs
 
-Managed installs do not check for updates. If your organization delivers add-in updates itself, use `revit-model-mcp-<version>-managed.bundle.zip` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest). It is the same bundle, built with `ManagedInstall=true`; see [automatic updates](updates.md#managed-installs-and-mirrors). You can also build it yourself with that property.
+Managed installs do not check for updates. If your organization delivers add-in updates itself, use `revit-model-mcp-<version>-managed.bundle.zip` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest). It is the same bundle, built with `ManagedInstall=true`; see [automatic updates](updates.md#channels). You can also build it yourself with that property.
 
 The bundle does not contain the server. Pin the server launcher to the exact release version and turn off its daily check for a newer package on PyPI:
 
