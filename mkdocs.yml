@@ -89,6 +89,10 @@ plugins:
           - security.md
           - architecture.md
           - updates.md
+          - admin/deployment.md
+          - admin/policy-reference.md
+          - admin/security-whitepaper.md
+          - admin/security-questionnaire.md
           - design/model-audit.md
         Reference:
           - tools.md
@@ -97,6 +101,9 @@ plugins:
           - actions.md
           - validation.md
           - feed-format.md
+          - mcp-specifications.md
+          - tested-clients.md
+          - not-doing.md
           - roadmap.md
           - changelog.md
           - security-policy.md
@@ -113,6 +120,11 @@ nav:
       - Administrator guide: admin.md
       - Architecture: architecture.md
       - Automatic updates: updates.md
+  - Administrators:
+      - Deployment: admin/deployment.md
+      - Policy reference: admin/policy-reference.md
+      - Security whitepaper: admin/security-whitepaper.md
+      - Security questionnaire: admin/security-questionnaire.md
   - Design:
       - Model audit: design/model-audit.md
   - Reference:
@@ -123,6 +135,9 @@ nav:
       - Actions: actions.md
       - Validation: validation.md
       - Feed format: feed-format.md
+      - MCP specifications: mcp-specifications.md
+      - Tested clients: tested-clients.md
+      - What it does not do: not-doing.md
       - Roadmap: roadmap.md
   - Project:
       - Privacy: privacy.md
