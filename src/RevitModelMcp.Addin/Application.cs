@@ -11,6 +11,7 @@ using Nice3point.Revit.Extensions;
 using Nice3point.Revit.Toolkit;
 using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
+using RevitModelMcp.Connect;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
@@ -228,6 +229,11 @@ public sealed class Application : ExternalApplication
             .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Activity32.png")
             .SetToolTip(PaneText.RibbonToolTip);
         button.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, HelpLinks.AddinHelpUrl));
+        var connect = panel.AddPushButton<ConnectAiCommand>(ConnectText.RibbonButton)
+            .SetImage("/RevitModelMcp;component/Resources/Icons/Connect16.png")
+            .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Connect32.png")
+            .SetToolTip(ConnectText.RibbonToolTip);
+        connect.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, HelpLinks.AddinHelpUrl));
     }
 
     private void OnViewActivated(object? sender, ViewActivatedEventArgs args)
