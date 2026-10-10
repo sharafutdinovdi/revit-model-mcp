@@ -80,6 +80,7 @@ void BuildMultiUserMsi()
     [
         .. OtherScopeProperties("User", year => $@"[AppDataFolder]Autodesk\Revit\Addins\{year}"),
         new Property("HTTP_ENABLED", "0") { Secure = true },
+        .. MachinePolicyValues.Properties(),
         new Property("UPDATECHECK", "1") { Secure = true },
         new Property("HTTP_URL_PREFIX", "http://127.0.0.1:53110/") { Secure = true },
         new RegValueProperty("HTTP_OWNED_PREFIX", RegistryHive.LocalMachine,
@@ -91,8 +92,10 @@ void BuildMultiUserMsi()
             "Prefix", "[HTTP_OWNED_PREFIX]")
         {
             ComponentCondition = "HTTP_ENABLED=\"1\" AND NOT Installed"
-        }
+        },
+        .. MachinePolicyValues.RegValues()
     ];
+    project.WixSourceGenerated += MachinePolicyValues.MarkReadOnlyAsDword;
     project.Actions =
     [
         new SetPropertyAction("HTTP_OWNED_PREFIX", "[HTTP_URL_PREFIX]", Return.check,
