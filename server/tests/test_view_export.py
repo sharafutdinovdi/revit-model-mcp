@@ -121,6 +121,28 @@ class ViewExportTests(unittest.IsolatedAsyncioTestCase):
                             str(destination),
                         )
 
+    async def test_finish_job_deletes_remote_files_when_local_save_fails(self) -> None:
+        host = SshPowerShellHost()
+        host._run = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "response": base64.b64encode(EXPORT_RESPONSE.encode()).decode(),
+                    "artifactName": "view.png",
+                    "artifact": base64.b64encode(b"not a PNG").decode(),
+                }
+            )
+        )
+        host.delete_files = AsyncMock()
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(RevitChannelError):
+                await host.finish_job(
+                    "response_20260916_120000_000_export-view.json",
+                    ["mcp.tmp"],
+                    True,
+                    str(Path(directory) / "invalid.png"),
+                )
+        host.delete_files.assert_awaited_once_with(["mcp.tmp", "view.png"])
+
     async def test_finish_job_wraps_invalid_artifact_base64_as_parse_error(self) -> None:
         host = SshPowerShellHost()
         host._run = AsyncMock(

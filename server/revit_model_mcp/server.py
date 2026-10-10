@@ -88,6 +88,8 @@ PickupTimeoutSeconds = Annotated[
 GroupBy = Annotated[
     list[str],
     Field(
+        min_length=1,
+        max_length=2,
         validation_alias=AliasChoices("group_by", "groupBy"),
         description="Required list of one or two distinct system fields (e.g. category, family, type, level) or exact localized parameter names from the catalog; no default. Each combination produces a count, with numeric totals added by sum_field.",
     ),
@@ -181,6 +183,7 @@ OptionalViewName = Annotated[
 ElementId = Annotated[
     int,
     Field(
+        ge=1,
         validation_alias=AliasChoices("element_id", "elementId", "id"),
         description="Required positive integer Revit element ID from revit_query_elements or revit_view_elements; no default. The ID must exist in the target document.",
     ),
@@ -507,6 +510,8 @@ def addressed_tool(function):
         token = _addressed_process_id.set(process_id)
         try:
             return await function(*args, **kwargs)
+        except RevitChannelError as error:
+            raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
         finally:
             _addressed_process_id.reset(token)
 
@@ -974,8 +979,8 @@ async def revit_query_elements(
     area_scheme: AreaScheme = None,
     parameter_filters: ParameterFilters = None,
     fields: list[str] | None = None,
-    offset: int = 0,
-    limit: int = 100,
+    offset: Annotated[int, Field(ge=0)] = 0,
+    limit: Annotated[int, Field(ge=1)] = 100,
     sort_field: SortField = "id",
     sort_direction: SortDirection = "asc",
     include_geometry: IncludeGeometry = False,
@@ -1150,8 +1155,8 @@ async def revit_export_view(
 async def revit_view_elements(
     view: ViewName,
     categories: list[str] | None = None,
-    offset: int = 0,
-    limit: int = 100,
+    offset: Annotated[int, Field(ge=0)] = 0,
+    limit: Annotated[int, Field(ge=1)] = 100,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,

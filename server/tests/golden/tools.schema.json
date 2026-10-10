@@ -149,6 +149,8 @@
         "items": {
           "type": "string"
         },
+        "maxItems": 2,
+        "minItems": 1,
         "type": "array"
       },
       "level": {
@@ -1770,6 +1772,7 @@
         "default": null
       },
       "element_id": {
+        "minimum": 1,
         "type": "integer"
       },
       "pickup_timeout_seconds": {
@@ -4366,10 +4369,12 @@
       },
       "limit": {
         "default": 100,
+        "minimum": 1,
         "type": "integer"
       },
       "offset": {
         "default": 0,
+        "minimum": 0,
         "type": "integer"
       },
       "parameter_filters": {
@@ -5377,10 +5382,12 @@
       },
       "limit": {
         "default": 100,
+        "minimum": 1,
         "type": "integer"
       },
       "offset": {
         "default": 0,
+        "minimum": 0,
         "type": "integer"
       },
       "pickup_timeout_seconds": {

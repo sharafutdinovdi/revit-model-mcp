@@ -81,6 +81,12 @@ class RemoteCommandError(RevitChannelError):
         self.returncode = returncode
 
 
+_READ_ONLY_GATE_SCRIPT = (
+    "if (Test-Path -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA 'RevitModelMcp') 'read-only')) "
+    "{ throw 'read-only mode' }; "
+)
+
+
 class SshPowerShellHost:
     def __init__(
         self, host: str = "localhost", connect_timeout_seconds: int = 45, *, local: bool = False
@@ -194,13 +200,16 @@ class SshPowerShellHost:
             state["cancelRequested"] = True
         return state
 
+    async def batch_assert_writable(self) -> None:
+        """Raise RemoteCommandError('read-only mode') when the per-user gate file exists."""
+        await self._run(_READ_ONLY_GATE_SCRIPT)
+
     async def batch_cancel(self, run_id: str) -> None:
         if not re.fullmatch(r"[0-9a-f]{32}", run_id):
             raise RevitChannelError("Invalid batch run id.")
         output = await self._run(
-            "if (Test-Path -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA 'RevitModelMcp') 'read-only')) "
-            "{ throw 'read-only mode' }; "
-            f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
+            _READ_ONLY_GATE_SCRIPT
+            + f"$run = Join-Path (Join-Path ({self._root_directory}) 'runs') '{run_id}'; "
             "if (!(Test-Path -LiteralPath (Join-Path $run 'run.json'))) { 'RMM_RUN_NOT_FOUND' } else { "
             "$target = Join-Path $run 'cancel.json'; "
             "if (!(Test-Path -LiteralPath $target)) { "
@@ -640,20 +649,27 @@ class SshPowerShellHost:
             ) from error
         if not download_artifact:
             return content, None
+        names = list(dict.fromkeys(item for item in cleanup_names + [name] if item))
         try:
             local_path = save_artifact(result, output_path)
-        except binascii.Error as error:
-            raise ResponseParseError(
-                f"Could not parse response and image after remote read: {error}"
-            ) from error
-        except ValueError as error:
+        except (binascii.Error, ValueError, OSError) as error:
+            await self._delete_after_failure(names)
+            if isinstance(error, binascii.Error):
+                raise ResponseParseError(
+                    f"Could not parse response and image after remote read: {error}"
+                ) from error
             raise RevitChannelError(str(error)) from error
-        names = list(dict.fromkeys(item for item in cleanup_names + [name] if item))
         try:
             await self.delete_files(names)
         except RevitChannelError:
             LOGGER.warning("Image saved, but remote capture cleanup failed.")
         return content, local_path
+
+    async def _delete_after_failure(self, names: list[str]) -> None:
+        try:
+            await self.delete_files(names)
+        except RevitChannelError:
+            LOGGER.warning("Remote capture cleanup failed after a local save error.")
 
     async def delete_files(self, names: list[str]) -> None:
         if not names:

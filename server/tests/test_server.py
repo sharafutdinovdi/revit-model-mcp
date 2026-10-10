@@ -936,3 +936,39 @@ def test_client_name_comes_from_initialize_context():
         asyncio.run(revit_server.mcp.call_tool("revit_ping", {}, context=context))
     assert host.payload["clientName"] == "codex"
     assert len(host.payload["clientId"]) == 32
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("tool", "arguments", "text"),
+    [
+        ("revit_element_details", {"element_id": 0}, "element_id"),
+        ("revit_element_details", {"element_id": -1}, "element_id"),
+        ("revit_view_elements", {"view": "Plan", "limit": 0}, "limit"),
+        ("revit_view_elements", {"view": "Plan", "offset": -1}, "offset"),
+        ("revit_query_elements", {"limit": 0}, "limit"),
+        ("revit_list_relations", {"relation": "group-elements", "source_id": 0}, "source"),
+        (
+            "revit_aggregate_elements",
+            {"group_by": ["category", "family", "type"]},
+            "group_by",
+        ),
+    ],
+)
+async def test_invalid_arguments_name_the_bad_argument(tool, arguments, text):
+    with pytest.raises(ToolError) as caught:
+        await revit_server.mcp.call_tool(tool, arguments)
+    assert text in str(caught.value)
+    assert str(caught.value) != f"Error executing tool {tool}"
+
+
+@pytest.mark.anyio
+async def test_job_validation_errors_become_tool_errors():
+    from revit_model_mcp.revit_channel import RevitChannelError
+
+    @revit_server.addressed_tool
+    async def revit_ping() -> dict:
+        raise RevitChannelError("bad argument: limit")
+
+    with pytest.raises(ToolError, match="bad argument: limit"):
+        await revit_ping()
