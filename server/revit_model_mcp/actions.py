@@ -88,7 +88,7 @@ Document = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("document", "targetDocument"),
-        description="Case-insensitive substring of the target open document's title or file name. Required to disambiguate when the Revit process has more than one document open; omit only when a single document is open (the active document is used). An unknown or ambiguous reference is rejected before any change.",
+        description="Title or file name substring of the target open document; needed when several are open.",
     ),
 ]
 
@@ -768,7 +768,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         }:
             function.__doc__ = (
                 inspect.cleandoc(function.__doc__ or "")
-                + "\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+                + " A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
             )
         title = {
             "revit_cancel_job": "Cancel Action Job",
@@ -840,7 +840,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         audit: bool = False,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported."""
+        """Open a local, UNC or RSN model. Central models open detached by default. Cloud paths are unsupported."""
         if isinstance(worksets, dict) and (
             len(worksets) != 1
             or next(iter(worksets)) not in {"open", "close"}
@@ -929,7 +929,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Close a background document. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the close."""
+        """Close a background document. Needs confirm_token from a first call, which changes nothing."""
         return await send(
             "close-document",
             document=document,
@@ -947,7 +947,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Save a document. Returns needsConfirmation, confirmationText and confirmToken; a second call with identical arguments plus confirm_token performs the save."""
+        """Save a document. Needs confirm_token from a first call, which changes nothing."""
         return await send(
             "save-document",
             document=document,
@@ -969,7 +969,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Synchronize a workshared document with central. Returns needsConfirmation, confirmationText and confirmToken; a second call with identical arguments plus confirm_token performs the sync."""
+        """Synchronize a workshared document with central. Needs confirm_token from a first call, which changes nothing."""
         allowed = {
             "borrowed",
             "user_worksets",
@@ -1005,9 +1005,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Change category, workset and filter visibility in one view; preview with dry_run.
-        Categories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID.
-        """
+        """Change category, workset and filter visibility in one view; dry_run previews. Categories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID."""
         return await send(
             "set-view-visibility",
             view=view,
@@ -1036,7 +1034,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the removal."""
+        """Delete selected link types and their instances; dry_run previews. Cannot be undone in Revit. Needs confirm_token from a first call, which changes nothing."""
         return await send(
             "remove-links",
             links=[str(value) for value in ([links] if isinstance(links, str) else links)],
@@ -1056,15 +1054,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Compile and run C# against the live Revit API on the Revit thread.
-
-        Accepts a method body or a public static Script class with Execute(ScriptContext ctx).
-        Auto mode owns one transaction and undo entry. transaction="none" is refused by
-        default. Every call except dry_run first returns needsConfirmation,
-        confirmationText (code hash, length, mode, document) and confirmToken without running
-        the code. A second call with identical arguments plus confirm_token runs it.
-        dry_run needs no token.
-        """
+        """Compile and run C# against the live Revit API on the Revit thread. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction="none" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none."""
         if transaction == "none" and dry_run:
             return refusal("execute-code", ACTION_FAILED, "dry_run requires transaction='auto'.")
         return await send(
@@ -1079,13 +1069,7 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_undo_last(document: Document = None) -> dict[str, Any]:
-        """Undo the last MCP action in Revit, through Revit's own undo command.
-
-        Allowed only when the target document is active, no command is pending in Revit, and
-        Revit's last undo entry is still the one this session recorded. Otherwise the action
-        result carries a clear refusal reason instead of running.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Undo the last MCP action through Revit's own undo command. Runs only when the target document is active, no command is pending and Revit's last undo entry is the one this session recorded; otherwise the result carries a refusal reason."""
         return await send("undo-last", document=document)
 
     @action
@@ -1108,10 +1092,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Align host grids and levels to a loaded link, with optional creation and rollback preview.
-
-        Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
-        """
+        """Align host grids and levels to a loaded link, with optional creation and rollback preview. Does not create a monitor relationship."""
         return await send(
             "align-link-datums",
             link=link,
@@ -1139,12 +1120,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Request cancellation of an action jobId.
-
-        Process-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.
-        A single running Revit operation finishes without interruption.
-        revit_jobs returns the final result; completed changes remain committed.
-        """
+        """Request cancellation of an action jobId. Process-models stops before the next model and marks unstarted models cancelled; a single running Revit operation finishes, and completed changes stay committed."""
         if read_only or policy_read_only():
             return refusal("jobs", READ_ONLY, READ_ONLY_MESSAGE)
         job = (
@@ -1164,27 +1140,21 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_select(element_ids: ElementIds, document: Document = None) -> dict[str, Any]:
-        """Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Select element IDs for inspection in Revit; an empty list clears the selection."""
         return await send("select", elementIds=element_ids, document=document)
 
     @action
     async def revit_show(
         element_ids: NonEmptyIds, select: bool = True, document: Document = None
     ) -> dict[str, Any]:
-        """Display elements in Revit, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Display elements in Revit, optionally selecting them; opens a level plan or 3D view when needed."""
         return await send("show", elementIds=element_ids, select=select, document=document)
 
     @action
     async def revit_isolate(
         element_ids: ElementIds, reset: bool = False, document: Document = None
     ) -> dict[str, Any]:
-        """Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Temporarily isolate element IDs in the active view; an empty list resets."""
         if not reset and not element_ids:
             raise ToolError("element_ids must not be empty unless reset is true.")
         return await send("isolate", elementIds=element_ids, reset=reset, document=document)
@@ -1198,12 +1168,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Move elements; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.
-        dry_run executes and rolls back, returning the same verification block without changing the model.
-        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
-        Pinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Move elements by dx_mm, dy_mm and dz_mm on model axes. dry_run rolls back and returns the verification block. Group members, pinned, hosted and constrained elements are reported in skipped.inGroup, skipped.pinned, skipped.hosted and skipped.constrained and are not changed; the call is refused if every element is a group member."""
         return await send(
             "move",
             elementIds=element_ids,
@@ -1251,10 +1216,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Rotate elements about a vertical axis through center_mm, or their combined bounding box center.
-        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
-        Pinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.
-        """
+        """Rotate elements about a vertical axis through center_mm, or through their combined bounding box center. dry_run rolls back. Group members, pinned, hosted and constrained elements are reported in skipped.inGroup, skipped.pinned, skipped.hosted and skipped.constrained and are not changed; the call is refused if every element is a group member."""
         return await send(
             "rotate",
             elementIds=element_ids,
@@ -1274,9 +1236,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Create 1 to 100 successive copies at multiples of the model-axis offset in mm.
-        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
-        """
+        """Create 1 to 100 successive copies at multiples of the model-axis offset in mm. dry_run rolls back. Group members are reported in skipped.inGroup; the call is refused if every element is a group member."""
         return await send(
             "copy",
             elementIds=element_ids,
@@ -1297,10 +1257,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Mirror across a model X or Y parallel line through point_mm; copy keeps originals.
-        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
-        Pinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.
-        """
+        """Mirror across a model X or Y parallel line through point_mm; copy keeps originals. dry_run rolls back. Group members, pinned, hosted and constrained elements are reported in skipped.inGroup, skipped.pinned, skipped.hosted and skipped.constrained and are not changed; the call is refused if every element is a group member."""
         return await send(
             "mirror",
             elementIds=element_ids,
@@ -1319,9 +1276,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Change each element to one compatible type; family resolves duplicate type names.
-        Members of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.
-        """
+        """Change each element to one compatible type; family resolves duplicate type names. dry_run rolls back. Group members are reported in skipped.inGroup; the call is refused if every element is a group member."""
         return await send(
             "change-type",
             elementIds=element_ids,
@@ -1342,9 +1297,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Update a parameter on elements matching the same filters as revit_query_elements.
-        Members of groups that Revit refuses to change are reported in skipped.inGroup instead of failing the call; dry_run predicts this.
-        """
+        """Update a parameter on elements matching the same filters as revit_query_elements. Group members are reported in skipped.inGroup instead of failing the call; dry_run predicts this."""
         return await send(
             "update-parameters",
             queryFilters=query_filter_payload(filters),
@@ -1368,17 +1321,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Place a loaded unhosted family on a named level for layout.
-
-        family accepts a family name or Family: Type, case-insensitively.
-        null type_name uses the embedded type or the first type. Conflicting types
-        are rejected. Missing families return similar names with categories.
-        Model XY is in millimetres and Z rotation in degrees.
-        roomCenterMm gives a point inside the room; a bounding-box centre can lie outside a nonrectangular room.
-
-        dry_run executes and rolls back, returning the same verification block without changing the model.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Place a loaded unhosted family on a named level. family is a name or Family: Type; a null type_name uses the embedded or first type. XY is in mm, rotation in degrees."""
         return await send(
             "place-family",
             family=family,
@@ -1458,10 +1401,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.
-        dry_run executes and rolls back, returning the same verification block without changing the model.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Create a straight wall on a named level. XY endpoints and height are in mm; a null wall_type uses the first basic type."""
         if start_mm == end_mm:
             raise ToolError("Wall endpoints must differ.")
         return await send(
@@ -1490,7 +1430,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         dry_run: bool = False,
     ) -> dict[str, Any]:
-        """Create connected duct, pipe, cable tray or conduit segments from model millimetre points. Missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs."""
+        """Create connected duct, pipe, cable tray or conduit segments from model mm points. A missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs."""
         try:
             validate_mep_run(
                 kind,
@@ -1562,9 +1502,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm.
-        With join=true joins Revit would reject are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers.
-        """
+        """Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm. Joins Revit rejects are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers."""
         if max_thickness_mm < min_thickness_mm:
             raise ToolError("max_thickness_mm must be at least min_thickness_mm.")
         return await send(
@@ -1600,7 +1538,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model with shaded, fine defaults. Box coordinates use model millimetres."""
+        """Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model, shaded, fine detail. Box coordinates are model mm."""
         try:
             step = ActionStep(
                 action="create_view",
@@ -1638,7 +1576,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Duplicate a view, optionally including detailing or creating a dependent view."""
+        """Duplicate a view, optionally with detailing or as a dependent view."""
         return await send(
             "duplicate-view", view=view, mode=mode, name=name, dryRun=dry_run, document=document
         )
@@ -1680,7 +1618,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Place views and schedules on a sheet. Coordinates use sheet millimetres."""
+        """Place views and schedules on a sheet. Coordinates are sheet mm."""
         placements = [{"view": item.view, "xMm": item.x_mm, "yMm": item.y_mm} for item in views]
         return await send(
             "place-views-on-sheet",
@@ -1703,11 +1641,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Tag elements in a view, chosen by category names or by element IDs (exactly one of the two). Creates one tag per element and returns the created tag IDs in createdElementIds.
-        Elements that already have a tag in the view are left alone unless skip_tagged is false. Inputs Revit cannot tag are listed in skipped with a reason.
-        tag_type is optional and matches a tag type name, a family name or "Family: Type"; without it the default tag type of each category is used. Room tags need a plan view and ignore orientation.
-        dry_run executes and rolls back, returning the tags that would be created.
-        """
+        """Tag elements in a view, chosen by category names or by element IDs (exactly one of the two). Returns created tag IDs in createdElementIds; already tagged elements are skipped unless skip_tagged is false, and untaggable inputs are listed in skipped. tag_type matches a tag type name, a family name or "Family: Type"; the default tag type is used otherwise. Room tags need a plan view. dry_run rolls back and returns the tags that would be created."""
         if (categories is None) == (element_ids is None):
             raise ToolError("Supply exactly one of categories or element_ids.")
         return await send(
@@ -1735,12 +1669,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Create a schedule for one category with the named fields, in the order given. Field names are the Revit UI names such as Mark, Level or Count.
-        filters keep rows by field, operator and value; sort orders rows and, with header or footer, groups them. A field used only by a filter or sort is added hidden.
-        Numeric filter values use millimetres for lengths, m2 for areas and m3 for volumes. itemized=false collapses identical rows.
-        Returns the schedule view ID in viewId and the resolved fields; names Revit does not know are listed in skipped, and the call fails when no field resolves.
-        dry_run executes and rolls back, returning the same resolved fields.
-        """
+        """Create a schedule for one category with the named fields in the given order, using Revit UI names such as Mark, Level or Count. filters keep rows by field, operator and value; sort orders and, with header or footer, groups rows. Lengths in mm, areas in m2, volumes in m3. itemized=false collapses identical rows. Returns viewId and the resolved fields; unknown names are listed in skipped. dry_run rolls back."""
         return await send(
             "create-schedule",
             category=category,
@@ -1771,13 +1700,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         parameter_id: ParameterId | None = None,
     ) -> dict[str, Any]:
-        """Set exactly one instance or type parameter. parameter_id selects by BuiltInParameter name, shared GUID or positive ParameterElement ID.
-        Without parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.
-        value type: JSON string for String, integer for Integer, number for Double. Lengths use mm, areas m2 and other doubles internal units.
-        dry_run executes and rolls back, returning the same verification block without changing the model.
-        Group members that Revit refuses to change fail with a clear message, including in dry_run.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Set one instance or type parameter. parameter_id selects by BuiltInParameter name, shared GUID or ParameterElement ID; otherwise parameter takes a localized UI name, BuiltInParameter name or English alias, and ambiguous matches are refused. Value is a string, integer or number by storage type; lengths in mm, areas in m2. Group members fail with a clear message. dry_run rolls back and returns the verification block."""
         return await send(
             "set-parameter",
             elementId=element_id,
@@ -1795,11 +1718,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Delete elements and their Revit dependencies; IDs are unitless and the returned count includes dependents.
-        dry_run executes and rolls back, returning the same verification block without changing the model.
-        Deletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the deletion. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Delete elements and their Revit dependencies; the count includes dependents. dry_run returns the count. Above 500 elements including dependents a confirm_token from a first call is needed; revit_run_actions refuses such deletions."""
         return await send(
             "delete",
             elementIds=element_ids,
@@ -1823,7 +1742,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; a second call with identical arguments plus confirm_token replaces them. No token when no target exists or with dry_run."""
+        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call."""
         return await send(
             "export",
             format=format,
@@ -1867,7 +1786,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; a second call with identical arguments plus confirm_token replaces it. No token when the path does not exist or with dry_run."""
+        """Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call."""
         if scope == "view" and not view:
             raise ToolError("view is required for scope=view.")
         if scope == "selection" and not element_ids:
@@ -1909,11 +1828,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Execute up to 50 actions with one undo step; roll back the batch on its first failure.
-
-        dry_run executes and rolls back, returning the same verification block without changing the model.
-        document selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected.
-        """
+        """Execute up to 50 actions with one undo step; the whole batch rolls back on its first failure. dry_run rolls back and returns the verification block."""
         return await send(
             "batch", steps=[step.payload() for step in steps], dryRun=dry_run, document=document
         )
@@ -1935,7 +1850,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=14400)] = 14400,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code require a confirmation token from the preview response."""
+        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response."""
         if (paths is None) == (folder is None):
             raise ToolError("Provide paths or folder, but not both.")
         try:
@@ -2017,11 +1932,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Edit an open family in place or named project families in one load cycle each.
-
-        Project mode takes exact family names or ["*"]. A dry run rolls back all changes.
-        Refused in read-only mode.
-        """
+        """Edit an open family in place, or named project families (exact names or ["*"]), one load cycle each. A dry run rolls back all changes."""
         if families is not None and "*" in families and families != ["*"]:
             raise ToolError("The '*' family selector must be alone.")
         return await send(

@@ -179,10 +179,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         years: list[int] | None = None,
         open_timeout_minutes: int | None = None,
     ) -> dict[str, Any]:
-        """Start a persistent, read-only run over local, UNC, or RSN models.
-
-        open_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory).
-        """
+        """Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."""
         if read_only or policy_read_only():
             return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         if (paths is None) == (folder is None):

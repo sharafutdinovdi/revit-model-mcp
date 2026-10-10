@@ -51,119 +51,119 @@
   "tools": [
     {
       "name": "revit_jobs",
-      "description": "List recent jobs, or wait up to wait_seconds seconds for an action jobId.\n\nwait_seconds accepts 0 through 50 seconds (default 40) and the call returns when the job finishes or the wait ends.\nA running job returns progress and partial per-model results.\nA finished job returns the original action response, including verification warnings.\nResults remain on the workstation for 24 hours, across MCP server restarts.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "List recent jobs, or wait up to wait_seconds (0 to 50, default 40) for the result of an action jobId. Results stay on the workstation for 24 hours, across server restarts. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_compare_link_datums",
-      "description": "Compare host grids and levels with one loaded Revit link. No model change is made.\n\nA geometric match does not create a monitor relationship or later Coordination Review warnings.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Compare host grids and levels with one loaded Revit link. Changes nothing. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_ping",
-      "description": "Check the RevitModelMcp connection without reading the model.\n\nReturns a response with data=\"pong\", even when no document is active.\nIncludes httpListener state and reason when reported by the instance heartbeat.\nConnection failures and timeouts raise errors; no partial result is returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Check the connection to Revit without reading the model. Returns data=\"pong\", even when no document is active. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_nwc_settings_check",
-      "description": "Parse a Navisworks exporter XML file on the Revit workstation without exporting.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Parse a Navisworks exporter XML file on the Revit workstation without exporting. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_document_info",
-      "description": "Read general information about the active Revit model.\n\nReturns data with file name, Revit version, levels (elevations in mm), area schemes, worksets and view count.\nAbsent collections are empty; non-workshared models have no worksets.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_documents",
-      "description": "List every open document in one Revit process, including background documents.\n\nLinked documents are excluded unless include_linked is set. Returns title, path, isActive,\nisLinked, isFamilyDocument, isWorkshared, isDetached, isModified, openedByMcp and centralPath\nwhen available. An empty process returns [].\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "List every open document in one Revit process, including background documents. Linked documents are listed only when include_linked is set. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_ui_state",
-      "description": "Read the active document, open views, selection and open documents.\n\nIf more than one Revit instance is running, process_id selects one; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read the active document, open views, selection and open documents. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_model_snapshot",
-      "description": "Read a schema version 1 project snapshot for batch audits.\n\nEach parameter rule pairs one category with one parameter. Warning groups include\nat most 200 affected element IDs. Closed worksets can make the result incomplete.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_model_health",
-      "description": "Read model quality counts.\n\nReturns data with project metadata, file size in bytes, counts, unit settings and the ten most frequent warning groups.\nAbsent objects have zero counts; unavailable metrics are null and described in top-level skipped entries.\noutput_path writes an .xlsx health report. The workbook includes health checks, all warning groups, counts and up to five snapshots\nwithin a 60-second capture budget. Failed or skipped snapshots become workbook warnings.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read model quality counts: project metadata, file size, counts, units and the ten most frequent warning groups. Unavailable metrics are null and listed in skipped. output_path also writes an .xlsx health report with up to five snapshots. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_links_status",
-      "description": "Read RVT, CAD and image link status.\n\nReturns data with summary counts and rvtLinks, cadLinks and images lists containing status, paths and instance counts.\nEach list is capped at 100 entries by ID without pagination; summary counts cover all entries.\nNo links produce empty lists; per-entry failures appear in error with status Other.\nA missing active document, overall read failure or timeout raises an error; timeout partials are not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read RVT, CAD and image link status. Each list is capped at 100 entries; summary counts cover all links. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_shared_coordinates",
-      "description": "Read project and survey coordinates.\n\nReturns data with base/survey points, the active site, project locations and link offsets in mm and rotations in degrees, rounded to one decimal.\nLocation and link lists are capped at 100 without pagination, with total counts; no links produce an empty sharedSiteFromLinks list.\nA missing active document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read project and survey coordinates: base and survey points, active site, project locations and link offsets (mm, degrees). Lists are capped at 100 with total counts. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_parameter_fill_check",
-      "description": "Count filled, empty and missing parameters.\n\nReturns data with scope, per-parameter and per-category counts, instance/type ownership, storage types and empty/missing element ID samples.\nNo matching elements produce zero counts and empty samples; absent parameters count as missing, and numeric zero counts as filled.\nA missing document, invalid scope or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Count filled, empty and missing parameters per parameter and category, with samples of empty and missing element IDs. Numeric zero counts as filled. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_list_catalog",
-      "description": "List catalog names: categories, family types, levels, area schemes, views, worksets, phases and parameters.\n\nReturns data with section and items containing names and section-specific IDs, categories, types or counts; an empty catalog returns items=[].\nsection is required: categories, family-types, levels, area-schemes, views, worksets, phases or parameters.\nThe parameters section reports localized names, categories and value types.\nAn unknown section, missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_aggregate_elements",
-      "description": "Summarize matching elements by one or two fields.\n\nReturns data with matchedElements and groups containing keys, count and optional numericCount, sum, average and unit.\nLengths use mm, areas m2 and volumes m3; groups without numeric values have null sum and average.\nNo matches return groups=[]; invalid field or filter names raise errors even for empty results.\nFor area totals, group by level and select the area scheme.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Summarize matching elements by one or two fields, with optional sum and average. Lengths use mm, areas m2, volumes m3. For area totals, group by level and select the area scheme. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_query_elements",
-      "description": "Read a page of matching element rows.\n\nReturns data with elements (id and values), fields, total, offset, limit and hasMore; values include availability, source and units when available.\nLengths use mm, areas m2 and volumes m3; optional geometry uses model mm rounded to one decimal, and unavailable geometry is omitted.\nroomCenterMm gives a point inside the room; a bounding-box centre can lie outside a nonrectangular room.\nNo matches or an offset beyond the result return elements=[]; hasMore=true means further pages exist.\nInvalid fields or filters, a missing document, read failure or timeout raise errors; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_list_views",
-      "description": "List non-template views.\n\nReturns data with views containing id, name, type, level, scale and template, plus total and processed counts for scanned non-template views.\nNo filter matches return views=[].\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "List non-template views with id, name, type, level, scale and template. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_view_info",
-      "description": "Inspect one view's template, display, categories, worksets, filters and links.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Inspect one view's template, display, categories, worksets, filters and links. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_view_summary",
-      "description": "Read element categories and counts for a selected view.\n\nReturns data with header metadata and categories containing count and differentTypes; an empty view returns categories=[].\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read element categories and counts for a selected view. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_schedule_data",
-      "description": "Read displayed schedule header and body cell text, with paging.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read displayed schedule header and body cell text, with paging. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_capture_elements",
-      "description": "Render a highlighted PNG that marks specific elements, for issue evidence.\n\nReturns PNG image content and data.localPath on the server machine.\nSupports 1 to 500 element IDs, 3d or plan mode, and local or SSH transport.\nThe temporary view is rolled back without changing the active view or model.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_export_view",
-      "description": "Export a selected view to PNG.\n\nReturns data with localPath on the MCP client, image width/height in pixels, sizeBytes and view metadata, without base64.\nThe export does not change the active view or write to the model.\nA missing document, unknown or unsupported view, existing destination, missing PNG or download failure raises an error.\nUses the default 120-second response and 300-second pickup budgets; timeouts raise errors without partial data.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Export a selected view to a PNG file on the MCP client. Does not change the active view or the model. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_view_elements",
-      "description": "Read one page of elements in a selected view.\n\nReturns data with elements, total, offset, limit and hasMore; rows include IDs, category, family, type, level and available measurements in mm, m2 and m3.\nNo matches or an offset beyond the result return elements=[]; hasMore=true means further pages exist.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read one page of elements in a selected view, with IDs, category, family, type, level and measurements (mm, m2, m3). A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_element_details",
-      "description": "Read parameters and geometry of an element by Revit ID.\n\nReturns data with element, instance parameters, available typeElement parameters and related warnings; no warnings return an empty list.\nRooms include level, area in m2, volume in m3 and boundaries in mm; parameter values include display/internal values and metric units when available.\nLocation and boundingBox use model mm rounded to one decimal; unavailable geometry is omitted.\nroomCenterMm gives a point inside the room; boundingBox.centerMm may lie outside a nonrectangular room.\nAn absent element or document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read parameters and geometry of an element by Revit ID, with its type parameters and related warnings. Geometry is in model mm; roomCenterMm is a point inside the room. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_view_warnings",
-      "description": "Read warnings involving elements present in a selected view.\n\nReturns data with view and warnings containing text, severity and element IDs with presentOnView flags; no related warnings return warnings=[].\nA warning may also involve elements outside the view.\nA missing document, unknown or unsupported view, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read warnings involving elements present in a selected view. A warning may also involve elements outside the view. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_list_warnings",
-      "description": "Group model warnings by description text.\n\nReturns data with totalWarnings and groups containing text, severity, count, affectedElementCount and optional element rows.\nWithout filters all groups are returned; warning_text with include_elements=true returns the elements of one group.\nNo model warnings return groups=[]; an unmatched warning_text raises an error.\nA missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Group model warnings by description text. warning_text with include_elements=true returns the elements of one group. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_list_relations",
-      "description": "Read model object membership or dependencies.\n\nReturns data with relation, source and elements containing IDs, names, categories, families and types; no related objects return elements=[].\nrelation is required: level-rooms, area-scheme-elements or view-template-dependents with source_name, or group-elements or nested-family with source_id.\nAn invalid relation, missing or wrong source, missing document, read failure or timeout raises an error; partial data is not returned.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Read model object membership or dependencies. relation is level-rooms, area-scheme-elements or view-template-dependents (with source_name), or group-elements or nested-family (with source_id). A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_list_instances",
-      "description": "List Revit processes and their active documents.\n\nReturns instances with documentName, documentPath, revitVersion, processId and pluginResponding; heartbeats also expose fileChannelVersion, startedUtc, httpPort, httpState and httpReason when available.\nFor file channel v2, pluginResponding means a bounded correlated ping confirmed the PID and startup identity.\nBusy or unresponsive processes remain listed with pluginResponding=false; processes without a fresh heartbeat remain visible when no document filter is given.\nFile channel version 2 heartbeat presence is only a pre-check. No matching instances return instances=[].\nLocal and SSH modes use add-in heartbeats with process fallback; fallback records have an empty document and pluginResponding=false.\nHTTP mode reports only its connected process; transport failures raise errors.\nEvery successful result has skipped=[] and skippedCount=0; non-empty skipped means the answer is incomplete."
+      "description": "List Revit processes with documentName, documentPath, revitVersion, processId and pluginResponding. Busy or unresponsive processes stay listed with pluginResponding=false. HTTP mode reports only its connected process."
     },
     {
       "name": "revit_family_audit",
-      "description": "Audit an open family or named project families without saving or loading changes.\n\nProject mode takes exact family names or [\"*\"]. Family mode takes no families.\nUnused shared parameters may still carry schedule or tag data in the project.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or [\"*\"]; family mode takes none. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_open_document",
-      "description": "Open a local, UNC or RSN model. Central models default to detached. Cloud paths are unsupported.\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+      "description": "Open a local, UNC or RSN model. Central models open detached by default. Cloud paths are unsupported. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_activate_document",
@@ -183,55 +183,55 @@
     },
     {
       "name": "revit_close_document",
-      "description": "Close a background document. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the close."
+      "description": "Close a background document. Needs confirm_token from a first call, which changes nothing."
     },
     {
       "name": "revit_save_document",
-      "description": "Save a document. Returns needsConfirmation, confirmationText and confirmToken; a second call with identical arguments plus confirm_token performs the save."
+      "description": "Save a document. Needs confirm_token from a first call, which changes nothing."
     },
     {
       "name": "revit_sync_document",
-      "description": "Synchronize a workshared document with central. Returns needsConfirmation, confirmationText and confirmToken; a second call with identical arguments plus confirm_token performs the sync."
+      "description": "Synchronize a workshared document with central. Needs confirm_token from a first call, which changes nothing."
     },
     {
       "name": "revit_set_view_visibility",
-      "description": "Change category, workset and filter visibility in one view; preview with dry_run.\nCategories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID."
+      "description": "Change category, workset and filter visibility in one view; dry_run previews. Categories accept the Revit UI name, the BuiltInCategory name (OST_StructuralColumns), the English name or an ID."
     },
     {
       "name": "revit_remove_links",
-      "description": "Delete selected link types and their instances; preview with dry_run. A real removal cannot be undone in Revit. The first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the removal."
+      "description": "Delete selected link types and their instances; dry_run previews. Cannot be undone in Revit. Needs confirm_token from a first call, which changes nothing."
     },
     {
       "name": "revit_execute_code",
-      "description": "Compile and run C# against the live Revit API on the Revit thread.\n\nAccepts a method body or a public static Script class with Execute(ScriptContext ctx).\nAuto mode owns one transaction and undo entry. transaction=\"none\" is refused by\ndefault. Every call except dry_run first returns needsConfirmation,\nconfirmationText (code hash, length, mode, document) and confirmToken without running\nthe code. A second call with identical arguments plus confirm_token runs it.\ndry_run needs no token.\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+      "description": "Compile and run C# against the live Revit API on the Revit thread. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction=\"none\" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_undo_last",
-      "description": "Undo the last MCP action in Revit, through Revit's own undo command.\n\nAllowed only when the target document is active, no command is pending in Revit, and\nRevit's last undo entry is still the one this session recorded. Otherwise the action\nresult carries a clear refusal reason instead of running.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Undo the last MCP action through Revit's own undo command. Runs only when the target document is active, no command is pending and Revit's last undo entry is the one this session recorded; otherwise the result carries a refusal reason."
     },
     {
       "name": "revit_align_link_datums",
-      "description": "Align host grids and levels to a loaded link, with optional creation and rollback preview.\n\nGeometric alignment does not create a monitor relationship or later Coordination Review warnings."
+      "description": "Align host grids and levels to a loaded link, with optional creation and rollback preview. Does not create a monitor relationship."
     },
     {
       "name": "revit_cancel_job",
-      "description": "Request cancellation of an action jobId.\n\nProcess-models stops before the next model, lists every unstarted model in data.models with status cancelled, and returns data.cancelled:true with completed results.\nA single running Revit operation finishes without interruption.\nrevit_jobs returns the final result; completed changes remain committed."
+      "description": "Request cancellation of an action jobId. Process-models stops before the next model and marks unstarted models cancelled; a single running Revit operation finishes, and completed changes stay committed."
     },
     {
       "name": "revit_select",
-      "description": "Select element IDs for inspection in Revit; an empty list clears selection; IDs are unitless.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Select element IDs for inspection in Revit; an empty list clears the selection."
     },
     {
       "name": "revit_show",
-      "description": "Display elements in Revit, optionally selecting them; open a level plan or 3D view when needed. Returns activeView, viewOpened and dialogsSuppressed; IDs are unitless.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Display elements in Revit, optionally selecting them; opens a level plan or 3D view when needed."
     },
     {
       "name": "revit_isolate",
-      "description": "Temporarily isolate IDs for visual review in the active view, or reset with an empty list; IDs are unitless.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Temporarily isolate element IDs in the active view; an empty list resets."
     },
     {
       "name": "revit_move",
-      "description": "Move elements; dx_mm, dy_mm and dz_mm are offsets in millimetres on model axes.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Move elements by dx_mm, dy_mm and dz_mm on model axes. dry_run rolls back and returns the verification block. Group members, pinned, hosted and constrained elements are reported in skipped.inGroup, skipped.pinned, skipped.hosted and skipped.constrained and are not changed; the call is refused if every element is a group member."
     },
     {
       "name": "revit_override_graphics",
@@ -239,27 +239,27 @@
     },
     {
       "name": "revit_rotate",
-      "description": "Rotate elements about a vertical axis through center_mm, or their combined bounding box center.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you."
+      "description": "Rotate elements about a vertical axis through center_mm, or through their combined bounding box center. dry_run rolls back. Group members, pinned, hosted and constrained elements are reported in skipped.inGroup, skipped.pinned, skipped.hosted and skipped.constrained and are not changed; the call is refused if every element is a group member."
     },
     {
       "name": "revit_copy",
-      "description": "Create 1 to 100 successive copies at multiples of the model-axis offset in mm.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member."
+      "description": "Create 1 to 100 successive copies at multiples of the model-axis offset in mm. dry_run rolls back. Group members are reported in skipped.inGroup; the call is refused if every element is a group member."
     },
     {
       "name": "revit_mirror",
-      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member.\nPinned elements, and elements that stay unchanged because they are hosted or constrained, are listed in skipped.pinned, skipped.hosted or skipped.constrained and are not counted; unpinning is left to you."
+      "description": "Mirror across a model X or Y parallel line through point_mm; copy keeps originals. dry_run rolls back. Group members, pinned, hosted and constrained elements are reported in skipped.inGroup, skipped.pinned, skipped.hosted and skipped.constrained and are not changed; the call is refused if every element is a group member."
     },
     {
       "name": "revit_change_type",
-      "description": "Change each element to one compatible type; family resolves duplicate type names.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup and skipped; dry_run predicts this, and the call is refused if every element is such a member."
+      "description": "Change each element to one compatible type; family resolves duplicate type names. dry_run rolls back. Group members are reported in skipped.inGroup; the call is refused if every element is a group member."
     },
     {
       "name": "revit_update_parameters",
-      "description": "Update a parameter on elements matching the same filters as revit_query_elements.\nMembers of groups that Revit refuses to change are reported in skipped.inGroup instead of failing the call; dry_run predicts this."
+      "description": "Update a parameter on elements matching the same filters as revit_query_elements. Group members are reported in skipped.inGroup instead of failing the call; dry_run predicts this."
     },
     {
       "name": "revit_place_family",
-      "description": "Place a loaded unhosted family on a named level for layout.\n\nfamily accepts a family name or Family: Type, case-insensitively.\nnull type_name uses the embedded type or the first type. Conflicting types\nare rejected. Missing families return similar names with categories.\nModel XY is in millimetres and Z rotation in degrees.\nroomCenterMm gives a point inside the room; a bounding-box centre can lie outside a nonrectangular room.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Place a loaded unhosted family on a named level. family is a name or Family: Type; a null type_name uses the embedded or first type. XY is in mm, rotation in degrees."
     },
     {
       "name": "revit_load_family",
@@ -271,11 +271,11 @@
     },
     {
       "name": "revit_create_wall",
-      "description": "Create a straight wall for layout on a named level; model XY endpoints and height are millimetres; null wall_type chooses the first basic type.\ndry_run executes and rolls back, returning the same verification block without changing the model.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Create a straight wall on a named level. XY endpoints and height are in mm; a null wall_type uses the first basic type."
     },
     {
       "name": "revit_create_mep_run",
-      "description": "Create connected duct, pipe, cable tray or conduit segments from model millimetre points. Missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs."
+      "description": "Create connected duct, pipe, cable tray or conduit segments from model mm points. A missing Z uses the level elevation plus the kind's default offset. Unplaceable elbows are reported as unjoined pairs."
     },
     {
       "name": "revit_link_cad",
@@ -283,15 +283,15 @@
     },
     {
       "name": "revit_walls_from_cad",
-      "description": "Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm.\nWith join=true joins Revit would reject are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers."
+      "description": "Bridge openings, pair parallel CAD lines and join basic walls in one undo entry. Dimensions are mm. Joins Revit rejects are left out and reported as unjoinedEnds with unjoinedReasons; dry_run reports the same join numbers."
     },
     {
       "name": "revit_create_view",
-      "description": "Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model with shaded, fine defaults. Box coordinates use model millimetres."
+      "description": "Create a plan, section, 3D or drafting view. Unbounded 3D views show the whole model, shaded, fine detail. Box coordinates are model mm."
     },
     {
       "name": "revit_duplicate_view",
-      "description": "Duplicate a view, optionally including detailing or creating a dependent view."
+      "description": "Duplicate a view, optionally with detailing or as a dependent view."
     },
     {
       "name": "revit_apply_view_template",
@@ -303,7 +303,7 @@
     },
     {
       "name": "revit_place_views_on_sheet",
-      "description": "Place views and schedules on a sheet. Coordinates use sheet millimetres."
+      "description": "Place views and schedules on a sheet. Coordinates are sheet mm."
     },
     {
       "name": "revit_tag_elements",
@@ -315,35 +315,35 @@
     },
     {
       "name": "revit_set_parameter",
-      "description": "Set exactly one instance or type parameter. parameter_id selects by BuiltInParameter name, shared GUID or positive ParameterElement ID.\nWithout parameter_id, parameter accepts a localized Revit UI name, BuiltInParameter name or supported English alias; ambiguous matches are refused with candidate details.\nvalue type: JSON string for String, integer for Integer, number for Double. Lengths use mm, areas m2 and other doubles internal units.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nGroup members that Revit refuses to change fail with a clear message, including in dry_run.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Set one instance or type parameter. parameter_id selects by BuiltInParameter name, shared GUID or ParameterElement ID; otherwise parameter takes a localized UI name, BuiltInParameter name or English alias, and ambiguous matches are refused. Value is a string, integer or number by storage type; lengths in mm, areas in m2. Group members fail with a clear message. dry_run rolls back and returns the verification block."
     },
     {
       "name": "revit_delete",
-      "description": "Delete elements and their Revit dependencies; IDs are unitless and the returned count includes dependents.\ndry_run executes and rolls back, returning the same verification block without changing the model.\nDeletions above 500 elements including dependents need confirmation: the first call without confirm_token changes nothing and returns needsConfirmation, confirmationText and confirmToken. A second call with identical arguments plus confirm_token performs the deletion. dry_run returns the count and never needs a token. In revit_run_actions, a deletion above 500 elements is refused.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Delete elements and their Revit dependencies; the count includes dependents. dry_run returns the count. Above 500 elements including dependents a confirm_token from a first call is needed; revit_run_actions refuses such deletions."
     },
     {
       "name": "revit_export",
-      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation. Refused in read-only mode. dry_run returns planned file names. With overwrite=true and at least one existing target file, the first call returns needsConfirmation with the files that would be replaced; a second call with identical arguments plus confirm_token replaces them. No token when no target exists or with dry_run.\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_export_nwc",
-      "description": "Export NWC on the Revit workstation. Requires the Navisworks exporter; refused in read-only mode. The file stays on the workstation; settings_xml applies exporter XML values; explicit arguments take precedence. With overwrite=true and an existing path, the first call returns needsConfirmation with the file that would be replaced; a second call with identical arguments plus confirm_token replaces it. No token when the path does not exist or with dry_run.\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+      "description": "Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_run_actions",
-      "description": "Execute up to 50 actions with one undo step; roll back the batch on its first failure.\n\ndry_run executes and rolls back, returning the same verification block without changing the model.\ndocument selects an open model by title substring when several are open; an unknown or ambiguous reference is rejected."
+      "description": "Execute up to 50 actions with one undo step; the whole batch rolls back on its first failure. dry_run rolls back and returns the verification block."
     },
     {
       "name": "revit_process_models",
-      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code require a confirmation token from the preview response.\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_edit_families",
-      "description": "Edit an open family in place or named project families in one load cycle each.\n\nProject mode takes exact family names or [\"*\"]. A dry run rolls back all changes.\nRefused in read-only mode.\n\nLong actions may return status=running and jobId when the wait budget expires. The action may already have changed the model. revit_jobs returns the original action result for that jobId; resubmitting would repeat the action."
+      "description": "Edit an open family in place, or named project families (exact names or [\"*\"]), one load cycle each. A dry run rolls back all changes. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_batch_start",
-      "description": "Start a persistent, read-only run over local, UNC, or RSN models.\n\nopen_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory)."
+      "description": "Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."
     },
     {
       "name": "revit_batch_status",
@@ -363,7 +363,7 @@
     },
     {
       "name": "revit_issue_register",
-      "description": "Write a new local .xlsx issue register with element snapshots and review documents.\n\nAccepts 1 to 60 issues with title, category, finding and severity (critical, major, minor, info).\nOptional issue fields: id, requirement_source, requirement, recommendation, status, responsible,\ndue, element_ids, snapshot (3d, plan, none). Project fields: name, model, reviewer, client,\nstage, date, documents (title, reference, revision). Existing output files are refused.\nCaptures at most 25 snapshots, ordered by severity then input order, within a 210-second\ncapture budget. Failed or skipped snapshots become cell notes and result warnings.\nSnapshot capture requires local or SSH transport; workbook creation needs no model changes.\n\nIf more than one Revit instance is running, document is required; otherwise any instance may respond. A non-empty skipped list means the result is incomplete; skippedCount includes entries beyond the first 100."
+      "description": "Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     }
   ],
   "tools_generated": true,
