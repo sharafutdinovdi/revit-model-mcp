@@ -959,6 +959,8 @@ internal static class ActionCommandExecutor
                     if (transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
                     data.Verification.After = null;
+                    if (!action.DryRun && data.Copies is not null && (command == "copy" || command == "mirror" && action.Copy))
+                        ReconcileCopies(document, command, action, data, changedIds);
                     try
                     {
                         ActionVerifier.CaptureAfter(document, command, action, data);
@@ -998,6 +1000,20 @@ internal static class ActionCommandExecutor
         {
             group?.Dispose();
         }
+    }
+
+    /// <summary>Revit deletes copies it cannot host at commit time; report only the copies that still exist.</summary>
+    private static void ReconcileCopies(Document document, string command, ActionJobContract action,
+        ActionResultData data, List<ElementId> ids)
+    {
+        var (copies, dropped) = CopyResultReconciler.Reconcile(data.Copies!, id => document.GetElement(CreateId(id)) is not null);
+        if (dropped == 0) return;
+        data.Copies = copies;
+        data.Count = copies.Sum(copy => copy.Count);
+        data.Verification!.Changed = copies.SelectMany(copy => copy).ToList();
+        var warning = CopyResultReconciler.Warning(dropped);
+        data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
+        data.Summary = BuildSummary(command, action, data, document.Title, ids);
     }
 
     internal static ActionResultData ExecuteUndoLast(Document document, UIDocument? uiDocument)
