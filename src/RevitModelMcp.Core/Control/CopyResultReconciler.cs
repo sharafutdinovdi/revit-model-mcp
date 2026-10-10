@@ -22,4 +22,12 @@ public static class CopyResultReconciler
 
     public static string Warning(int dropped) =>
         $"{dropped} {(dropped == 1 ? "copy was" : "copies were")} removed by Revit at commit (not hostable without the host element).";
+
+    /// <summary>Copies of a rolled-back action: every group stays in place but no id survives, because none was kept.</summary>
+    public static List<List<long>> EmptyGroups(IReadOnlyList<List<long>> copies) =>
+        copies.Select(_ => new List<long>()).ToList();
+
+    /// <summary>Summary for a copy or mirror whose copies were all removed or rolled back by Revit.</summary>
+    public static string NothingCreatedSummary(string command, string documentTitle) =>
+        $"{(command == "mirror" ? "Mirror" : "Copy")} created nothing in {documentTitle}: Revit removed every copy.";
 }

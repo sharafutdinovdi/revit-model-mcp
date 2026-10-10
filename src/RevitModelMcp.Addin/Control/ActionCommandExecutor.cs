@@ -988,6 +988,14 @@ internal static class ActionCommandExecutor
                             throw new InvalidOperationException("Could not roll back the empty action transaction group.");
                         data.RolledBack = true;
                         data.Committed = false;
+                        if (data.Copies is not null && (command == "copy" || command == "mirror" && action.Copy))
+                        {
+                            // Revit rolled the copies back: none of the reported ids exists.
+                            data.Copies = CopyResultReconciler.EmptyGroups(data.Copies);
+                            data.Count = 0;
+                            data.Verification.Changed = [];
+                            data.Summary = CopyResultReconciler.NothingCreatedSummary(command, document.Title);
+                        }
                         data.Summary += " It changed nothing, so no undo entry was kept.";
                         return data;
                     }
@@ -1069,7 +1077,9 @@ internal static class ActionCommandExecutor
         data.Verification!.Changed = copies.SelectMany(copy => copy).ToList();
         var warning = CopyResultReconciler.Warning(dropped);
         data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
-        data.Summary = BuildSummary(command, action, data, document.Title, ids);
+        data.Summary = data.Count == 0
+            ? CopyResultReconciler.NothingCreatedSummary(command, document.Title)
+            : BuildSummary(command, action, data, document.Title, ids);
     }
 
     internal static ActionResultData ExecuteUndoLast(Document document, UIDocument? uiDocument)
