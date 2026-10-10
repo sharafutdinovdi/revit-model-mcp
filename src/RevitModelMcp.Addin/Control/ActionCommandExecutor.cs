@@ -879,6 +879,17 @@ internal static class ActionCommandExecutor
         var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
         if (group is not null && group.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction group.");
+        var changedElementCount = 0;
+        void CountChanges(object? sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs arguments)
+        {
+            if (arguments.Operation != Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted) return;
+            if (!document.Equals(arguments.GetDocument())) return;
+            changedElementCount += arguments.GetAddedElementIds().Count + arguments.GetModifiedElementIds().Count
+                + arguments.GetDeletedElementIds().Count;
+        }
+        // Isolation is a temporary view mode and never changes elements.
+        var counting = group is not null && !action.DryRun && command != "isolate";
+        if (counting) document.Application.DocumentChanged += CountChanges;
         try
         {
             using var transaction = new Transaction(document, "revit_" + command.Replace('-', '_'));
@@ -958,6 +969,16 @@ internal static class ActionCommandExecutor
                 {
                     if (transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
+                    if (counting && changedElementCount == 0)
+                    {
+                        // The commit changed nothing, so Revit kept no undo entry: do not name one.
+                        if (group!.RollBack() != TransactionStatus.RolledBack)
+                            throw new InvalidOperationException("Could not roll back the empty action transaction group.");
+                        data.RolledBack = true;
+                        data.Committed = false;
+                        data.Summary += " It changed nothing, so no undo entry was kept.";
+                        return data;
+                    }
                     data.Verification.After = null;
                     if (!action.DryRun && data.Copies is not null && (command == "copy" || command == "mirror" && action.Copy))
                         ReconcileCopies(document, command, action, data, changedIds);
@@ -998,6 +1019,7 @@ internal static class ActionCommandExecutor
         }
         finally
         {
+            if (counting) document.Application.DocumentChanged -= CountChanges;
             group?.Dispose();
         }
     }

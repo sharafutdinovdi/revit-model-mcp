@@ -742,8 +742,16 @@ internal static class ActionMutations
         var instance = document.GetElement(CreateId(action.CadId)) as ImportInstance
             ?? throw new ArgumentException($"CAD import instance {action.CadId} was not found.");
         var level = FindLevel(document, action.Level!);
+        var allSegments = ReadCadSegments(document, instance);
+        var availableLayers = allSegments.Select(segment => segment.Layer).ToList();
+        if (instance.Category?.SubCategories is not null)
+            foreach (Category layer in instance.Category.SubCategories)
+                availableLayers.Add(layer.Name);
+        var missingLayers = CadLayerSelection.Missing(action.Layers!, availableLayers);
+        if (missingLayers.Count > 0)
+            throw new ArgumentException(CadLayerSelection.UnknownMessage(missingLayers, availableLayers));
         var selectedLayers = new HashSet<string>(action.Layers!, StringComparer.OrdinalIgnoreCase);
-        var source = ReadCadSegments(document, instance).Where(segment => selectedLayers.Contains(segment.Layer)).ToList();
+        var source = allSegments.Where(segment => selectedLayers.Contains(segment.Layer)).ToList();
         var geometry = CadWallPlanner.Build(source.Select(segment => new CadPlanSegment(
                 new CadPlanPoint(segment.Start.X.ToMillimeters(), segment.Start.Y.ToMillimeters()),
                 new CadPlanPoint(segment.End.X.ToMillimeters(), segment.End.Y.ToMillimeters()), segment.Layer)),
@@ -783,6 +791,10 @@ internal static class ActionMutations
         var geometry = plan.Geometry;
         var planned = plan.Planned;
         var created = new List<Wall>();
+        if (!action.DryRun && planned.Count == 0)
+            throw new InvalidOperationException(plan.NoBasicTypes
+                ? "No basic wall type exists in this project. Nothing was created."
+                : CadLayerSelection.NoWallsMessage(geometry.UnpairedLines));
         if (!action.DryRun)
         {
             foreach (var wall in planned)
