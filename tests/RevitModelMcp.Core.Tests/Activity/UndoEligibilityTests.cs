@@ -83,4 +83,15 @@ public sealed class UndoEligibilityTests
         await Assert.That(allowed).IsFalse();
         await Assert.That(reason).IsEqualTo("Revit reports no undo entry that belongs to this MCP action; only the newest MCP action can be undone");
     }
+
+    [Test]
+    public async Task IsAllowed_NewestChangeIsTemporaryIsolate_RefusesWithIsolateMessage()
+    {
+        var allowed = UndoEligibility.IsAllowed(
+            isActiveDocument: true, hasPendingCommand: false,
+            recordedUndoName: "MCP (claude-code): Moved 3 elements in Project1.rvt",
+            lastTransactionName: "revit_isolate", out var reason);
+        await Assert.That(allowed).IsFalse();
+        await Assert.That(reason).IsEqualTo("The newest change in Revit is a temporary isolate (revit_isolate). Reset it with revit_isolate and an empty list, or undo it in Revit, before undoing earlier actions.");
+    }
 }

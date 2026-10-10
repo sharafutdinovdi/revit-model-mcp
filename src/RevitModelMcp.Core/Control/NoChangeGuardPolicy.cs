@@ -32,10 +32,11 @@ public static class NoChangeGuardPolicy
 
     /// <summary>
     /// True when a finished job of this command that kept no undo entry must put undo tracking back to its state
-    /// before the job. The command's own commit still fires <c>DocumentChanged</c> under its transaction name
-    /// (<c>revit_isolate</c>), which would otherwise hide the previous real action from <c>revit_undo_last</c>.
-    /// Excludes commands whose undo-stack effect arrives later (undo-last) or concerns another document.
+    /// before the job. Only commands that commit no Revit transaction qualify (select, show, activate-view,
+    /// close-views). Isolate, graphic overrides and view visibility run a real transaction whose commit can leave a
+    /// Revit undo entry on top of the stack; restoring would hide it, and undo_last would then report success while
+    /// Revit pops that entry instead of the targeted action.
     /// </summary>
     public static bool RestoresUndoStateWithoutEntry(string command) =>
-        IsUiOnly(command) && command is not ("undo-last" or "open-document" or "activate-document" or "close-document");
+        command is "select" or "show" or "activate-view" or "close-views";
 }
