@@ -6,6 +6,7 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <ManagedInstall Condition="'$(ManagedInstall)' == ''">false</ManagedInstall>
+    <UpdateChannel Condition="'$(UpdateChannel)' == ''">release</UpdateChannel>
     <DeployAddin>true</DeployAddin>
     <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
@@ -63,6 +64,7 @@
 
   <ItemGroup>
     <AssemblyMetadata Include="ManagedInstall" Value="$(ManagedInstall)"/>
+    <AssemblyMetadata Include="UpdateChannel" Value="$(UpdateChannel)"/>
   </ItemGroup>
 
   <ItemGroup>
@@ -77,7 +79,8 @@
                       SetTargetFramework="TargetFramework=net48"/>
   </ItemGroup>
 
-  <Target Name="CopyUpdater" AfterTargets="Build">
+  <Target Name="CopyUpdater" AfterTargets="Build"
+          Condition="'$(ManagedInstall)' != 'true' And '$(UpdateChannel)' != 'managed' And '$(UpdateChannel)' != 'store'">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
           DestinationFolder="$(TargetDir)"/>
   </Target>
