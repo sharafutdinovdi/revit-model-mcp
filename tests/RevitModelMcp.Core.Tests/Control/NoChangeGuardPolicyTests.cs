@@ -63,16 +63,16 @@ public sealed class NoChangeGuardPolicyTests
     }
 
     [Test]
-    [Arguments("isolate", true)]
+    [Arguments("isolate", false)]
     [Arguments("select", true)]
     [Arguments("show", true)]
-    [Arguments("override-graphics", true)]
-    [Arguments("set-view-visibility", true)]
+    [Arguments("override-graphics", false)]
+    [Arguments("set-view-visibility", false)]
     [Arguments("activate-view", true)]
     [Arguments("close-views", true)]
     [Arguments("undo-last", false)]
     [Arguments("open-document", false)]
     [Arguments("move", false)]
-    public async Task UndoStateIsRestoredOnlyForUndoNeutralUiCommands(string command, bool expected) =>
+    public async Task UndoStateIsRestoredOnlyForCommandsThatCommitNoTransaction(string command, bool expected) =>
         await Assert.That(NoChangeGuardPolicy.RestoresUndoStateWithoutEntry(command)).IsEqualTo(expected);
 }
