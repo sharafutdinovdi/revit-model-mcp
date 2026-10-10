@@ -29,4 +29,13 @@ public static class NoChangeGuardPolicy
 
     /// <summary>True when a UI-only command still counts commit changes to decide whether it left an undo entry.</summary>
     public static bool TracksUndoByChanges(string command) => command is "override-graphics" or "set-view-visibility";
+
+    /// <summary>
+    /// True when a finished job of this command that kept no undo entry must put undo tracking back to its state
+    /// before the job. The command's own commit still fires <c>DocumentChanged</c> under its transaction name
+    /// (<c>revit_isolate</c>), which would otherwise hide the previous real action from <c>revit_undo_last</c>.
+    /// Excludes commands whose undo-stack effect arrives later (undo-last) or concerns another document.
+    /// </summary>
+    public static bool RestoresUndoStateWithoutEntry(string command) =>
+        IsUiOnly(command) && command is not ("undo-last" or "open-document" or "activate-document" or "close-document");
 }

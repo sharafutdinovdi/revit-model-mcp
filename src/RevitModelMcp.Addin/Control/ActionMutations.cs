@@ -1194,8 +1194,7 @@ internal static class ActionMutations
             foreach (Parameter parameter in owner.Parameters)
             {
                 var id = RevitValueReader.GetId(parameter.Id);
-                var builtInName = id is >= int.MinValue and < 0
-                    ? Enum.GetName(typeof(BuiltInParameter), (int)id) : null;
+                var builtInName = RevitValueReader.ToBuiltInParameter(id)?.ToString();
                 var kind = parameter.IsShared ? "shared" : builtInName is not null ? "built-in" : "project";
                 var stableId = parameter.IsShared ? parameter.GUID.ToString("D")
                     : builtInName ?? id.ToString(CultureInfo.InvariantCulture);

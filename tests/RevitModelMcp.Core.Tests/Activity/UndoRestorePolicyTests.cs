@@ -18,4 +18,11 @@ public sealed class UndoRestorePolicyTests
         bool needsConfirmation, bool expected) =>
         await Assert.That(UndoRestorePolicy.ShouldRestore(success, partial, rolledBack, undoName, needsConfirmation))
             .IsEqualTo(expected);
+
+    [Test]
+    public async Task ShouldRestore_UndoNeutralSuccessWithoutEntry_Restores()
+    {
+        await Assert.That(UndoRestorePolicy.ShouldRestore(true, false, false, null, false, true)).IsTrue();
+        await Assert.That(UndoRestorePolicy.ShouldRestore(true, false, false, "MCP: Override", false, true)).IsFalse();
+    }
 }

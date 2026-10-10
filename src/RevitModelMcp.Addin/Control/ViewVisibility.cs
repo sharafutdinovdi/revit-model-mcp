@@ -206,7 +206,7 @@ internal static class ViewVisibility
     {
         var nonControlled = template.GetNonControlledTemplateParameterIds().ToHashSet();
         return template.GetTemplateParameterIds().Where(id => !nonControlled.Contains(id))
-            .Select(id => Enum.GetName(typeof(BuiltInParameter), RevitValueReader.GetId(id)) ?? "")
+            .Select(id => RevitValueReader.ToBuiltInParameter(RevitValueReader.GetId(id))?.ToString() ?? "")
             .Any(name => name.Contains("VIS_GRAPHICS") || name.Contains("WORKSET") || name.Contains("FILTER"));
     }
 }

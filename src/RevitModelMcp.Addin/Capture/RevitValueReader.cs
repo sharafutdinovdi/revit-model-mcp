@@ -15,6 +15,24 @@ internal static class RevitValueReader
 #endif
     }
 
+    /// <summary>
+    /// The defined <see cref="BuiltInParameter"/> for a negative element id, or null. Safe on every Revit version:
+    /// the enum is backed by int before 2024 and by long since, and <c>Enum.IsDefined</c> rejects a mismatched integer type.
+    /// </summary>
+    public static BuiltInParameter? ToBuiltInParameter(long id) => ToDefinedEnum<BuiltInParameter>(id);
+
+    /// <summary>The defined <see cref="BuiltInCategory"/> for a negative element id, or null; safe on every Revit version.</summary>
+    public static BuiltInCategory? ToBuiltInCategory(long id) => ToDefinedEnum<BuiltInCategory>(id);
+
+    private static T? ToDefinedEnum<T>(long id) where T : struct, Enum
+    {
+        if (id >= 0) return null;
+        var value = Enum.ToObject(typeof(T), id);
+        // ToObject truncates to the underlying type; a changed value means the id cannot be this enum.
+        if (Convert.ToInt64(value) != id || !Enum.IsDefined(typeof(T), value)) return null;
+        return (T)value;
+    }
+
     public static bool IsValidId(ElementId? id)
     {
         return id is not null && id != ElementId.InvalidElementId;

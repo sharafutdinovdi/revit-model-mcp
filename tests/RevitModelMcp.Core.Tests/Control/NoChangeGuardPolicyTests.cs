@@ -61,4 +61,18 @@ public sealed class NoChangeGuardPolicyTests
     {
         await Assert.That(NoChangeGuardPolicy.KeepsUndoEntry(command, changed)).IsTrue();
     }
+
+    [Test]
+    [Arguments("isolate", true)]
+    [Arguments("select", true)]
+    [Arguments("show", true)]
+    [Arguments("override-graphics", true)]
+    [Arguments("set-view-visibility", true)]
+    [Arguments("activate-view", true)]
+    [Arguments("close-views", true)]
+    [Arguments("undo-last", false)]
+    [Arguments("open-document", false)]
+    [Arguments("move", false)]
+    public async Task UndoStateIsRestoredOnlyForUndoNeutralUiCommands(string command, bool expected) =>
+        await Assert.That(NoChangeGuardPolicy.RestoresUndoStateWithoutEntry(command)).IsEqualTo(expected);
 }

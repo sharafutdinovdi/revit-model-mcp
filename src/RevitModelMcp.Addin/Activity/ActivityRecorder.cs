@@ -88,7 +88,8 @@ internal static class ActivityRecorder
         ActivityLog.Record(entry);
         if (document is not null && undoName is { Length: > 0 })
             UndoTracker.RecordOwnCommit(document.Title, undoName);
-        else if (changes is not null && UndoRestorePolicy.ShouldRestore(success, partial, rolledBack, undoName, false))
+        else if (changes is not null && UndoRestorePolicy.ShouldRestore(success, partial, rolledBack, undoName, false,
+            NoChangeGuardPolicy.RestoresUndoStateWithoutEntry(entry.Command)))
             // A rolled-back or failed job leaves the undo stack where it was before the job.
             UndoTracker.Restore(changes.UndoStateAtStart);
     }
