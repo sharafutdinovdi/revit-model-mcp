@@ -24,10 +24,21 @@ public sealed class UpdatePolicyTests
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0", true, false)).IsFalse();
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0", false, true)).IsFalse();
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.4.0", false, false)).IsFalse();
-        await Assert.That(UpdatePolicy.IsNewerStable("0.5.0-rc.1+abc", "v0.5.0", false, false)).IsTrue();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.5.0-rc.1+abc", "v0.5.0", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.5.0-rc.1", "v0.5.1", false, false)).IsTrue();
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0/../payload", false, false)).IsFalse();
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0.1", false, false)).IsFalse();
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "V0.5.0", false, false)).IsFalse();
+    }
+
+    [Test]
+    public async Task DevAndPrereleaseBuildsAreNeverReplacedBySameOrOlderRelease()
+    {
+        await Assert.That(UpdatePolicy.IsNewerStable("0.9.1-dev+d51f403", "v0.9.1", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.9.1-dev", "v0.9.1", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.9.2-dev", "v0.9.1", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.9.1+abc", "v0.9.1", false, false)).IsFalse();
+        await Assert.That(UpdatePolicy.IsNewerStable("0.9.1-dev", "v0.9.2", false, false)).IsTrue();
     }
 
     [Test]
