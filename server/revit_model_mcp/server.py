@@ -34,6 +34,7 @@ from revit_model_mcp.issue_register import (
     write_register,
 )
 from revit_model_mcp.pipe_host import LocalPipeHost
+from revit_model_mcp.policy import policy_refusal
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     DEFAULT_HOST,
@@ -471,6 +472,8 @@ async def _execute(
     pickup_timeout_seconds: int,
     document: str | None,
 ) -> dict[str, Any]:
+    if (blocked := policy_refusal(job.command)) is not None:
+        raise ToolError(blocked)
     try:
         result = await channel.execute(
             job.for_document(document).for_process(_addressed_process_id.get()),
@@ -1168,6 +1171,8 @@ async def revit_list_relations(
 )
 async def revit_list_instances(document: Document = None) -> dict[str, Any]:
     """List Revit processes with documentName, documentPath, revitVersion, processId and pluginResponding. Busy or unresponsive processes stay listed with pluginResponding=false. HTTP mode reports only its connected process."""
+    if (blocked := policy_refusal("revit_list_instances")) is not None:
+        raise ToolError(blocked)
     try:
         return redact_model_paths(
             {
@@ -1237,6 +1242,8 @@ def revit_build_report(
     ] = None,
 ) -> dict[str, Any]:
     """Build a local Excel report from snapshots without contacting Revit."""
+    if (blocked := policy_refusal("revit_build_report")) is not None:
+        raise ToolError(blocked)
     try:
         return build_report(snapshots_dir, output_path, previous_dir, findings)
     except (OSError, ValueError, TypeError) as error:
@@ -1252,6 +1259,8 @@ async def revit_issue_register(
     document: Document = None,
 ) -> dict[str, Any]:
     """Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused."""
+    if (blocked := policy_refusal("revit_issue_register")) is not None:
+        raise ToolError(blocked)
     try:
         target, project, issues = validate_register(output_path, project, issues, pixel_size)
         selected, skipped = snapshot_indices(issues)
