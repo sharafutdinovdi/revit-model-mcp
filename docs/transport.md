@@ -616,7 +616,7 @@ Use `-Uninstall -Year 2026` to remove that year's add-in; local settings remain 
 The script refuses to run while Revit is open unless `-Force` is supplied.
 Start Revit and open a model after installation, or restart it if it was already running.
 The add-in creates `%LOCALAPPDATA%\RevitModelMcp\instance_<processId>.json` and updates it every five seconds.
-It adds one "Activity" button in the MCP panel on the Add-Ins tab, which opens the MCP activity pane.
+It adds an "Activity" button (opens the MCP activity pane) and a "Connect AI app" button (registers the server in installed AI apps) in the MCP panel on the Add-Ins tab.
 
 ## Batch transport
 

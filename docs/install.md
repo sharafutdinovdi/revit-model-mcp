@@ -27,7 +27,7 @@ Signing starts with the first release after the project's application is approve
 1. Get the add-in package from your BIM manager or IT team, or build it from the repository. It is an Autodesk `.bundle` folder with a `PackageContents.xml` file.
 2. Close Revit and copy the folder to `%APPDATA%\Autodesk\ApplicationPlugins` (current user) or `%ProgramData%\Autodesk\ApplicationPlugins` (all users).
 3. Start Revit and open a model. The first time, Revit asks whether to load the add-in. Choose **Always Load** after you check the publisher and path. Release builds are not code-signed yet; see [code signing](code-signing.md).
-4. Find the **MCP** panel on the **Add-Ins** tab. Its **Activity** button opens the activity pane, which lists every request and action.
+4. Find the **MCP** panel on the **Add-Ins** tab. Its **Activity** button opens the activity pane, which lists every request and action, and its **Connect AI app** button registers the server in your AI apps (see [Connect an AI app](#connect-an-ai-app)).
 5. Install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 6. Register the server in your MCP client.
 
@@ -58,7 +58,33 @@ Signing starts with the first release after the project's application is approve
 
 ### The MCP ribbon panel
 
-The **MCP** panel on the **Add-Ins** tab has one button, **Activity**. It shows or hides the activity pane. Press F1 while the pointer is on the button to open this page.
+The **MCP** panel on the **Add-Ins** tab has two buttons. Press F1 while the pointer is on either button to open this page.
+
+- **Activity** shows or hides the activity pane.
+- **Connect AI app** opens a small dialog that registers the server in the AI apps on this computer; see [Connect an AI app](#connect-an-ai-app).
+
+### Connect an AI app
+
+**Connect AI app** writes the same local registration as step 6 above (`uvx revit-model-mcp` with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`) into the configuration of each app it finds on the Revit workstation. It does not install uv or the apps; uv must be on the PATH.
+
+| App | Configuration file |
+|---|---|
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Claude Desktop (Microsoft Store) | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json` |
+| Cursor | `%USERPROFILE%\.cursor\mcp.json` |
+| Visual Studio Code | `%APPDATA%\Code\User\mcp.json` |
+| Codex | `%USERPROFILE%\.codex\config.toml` |
+
+Each app shows one state:
+
+- **Not installed**: the app's folder does not exist. Nothing can be changed.
+- **Not configured**: the app is there and has no `revit-model-mcp` entry. **Add** creates it.
+- **Configured**: the entry exists. **Remove** deletes it. An entry you edited yourself is shown as configured and is never overwritten.
+- **Config unreadable**: the file cannot be read or is not valid JSON or TOML, or the entry uses a layout the add-in does not edit (for example an inline TOML table). The file is left untouched; fix it by hand.
+
+Add and Remove change only the `revit-model-mcp` entry. Other servers, comments, unknown keys and indentation stay as they were. Before every change the add-in copies the old file next to it as `<file>.<yyyyMMdd-HHmmss>.bak`, then replaces the file in one step. Restart the app to load the change.
+
+The **Claude Code** row has a **Copy command** button for the `claude mcp add` command from step 6; paste it into a terminal. For a remote workstation, a managed install pinned to a release, or settings the dialog does not write, edit the configuration by hand as described above.
 
 ### Managed installs
 
