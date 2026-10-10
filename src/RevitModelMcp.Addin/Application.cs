@@ -54,6 +54,7 @@ public sealed class Application : ExternalApplication
     private PipeChannel? _pipeChannel;
     private volatile IReadOnlyList<InstanceDocument> _documents = Array.Empty<InstanceDocument>();
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
+    private static Application? _instance;
 
     public override void OnStartup()
     {
@@ -62,6 +63,7 @@ public sealed class Application : ExternalApplication
 #endif
         Policy.PolicyProvider.ApplyProcessEnvironment();
         PluginLog.Start();
+        _instance = this;
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         var (fileChannelEnabled, fileChannelWarning) = Output.ChannelDirectory.InitializeChannel();
         if (fileChannelWarning is not null)
@@ -177,6 +179,7 @@ public sealed class Application : ExternalApplication
 
     public override void OnShutdown()
     {
+        _instance = null;
 #if NETFRAMEWORK
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveCodeDependency;
 #endif
@@ -230,6 +233,15 @@ public sealed class Application : ExternalApplication
             .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Activity32.png")
             .SetToolTip(PaneText.RibbonToolTip);
         button.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, HelpLinks.AddinHelpUrl));
+    }
+
+    /// <summary>Re-reads document titles, for example after a detached open appended "_detached" with no later event.</summary>
+    internal static void RefreshDocumentList()
+    {
+        var instance = _instance;
+        if (instance is null) return;
+        instance.RefreshDocuments(null);
+        instance._httpChannel?.UpdateDocument(instance._activeDocument?.Title);
     }
 
     private void OnViewActivated(object? sender, ViewActivatedEventArgs args)

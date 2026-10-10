@@ -24,7 +24,8 @@ internal static class ViewInfoReader
     {
         using var collector = new FilteredElementCollector(document).OfClass(typeof(View));
         return ViewReferenceMatcher.Find(collector.Cast<View>(), reference,
-            view => RevitValueReader.GetId(view.Id), view => view.Name);
+            view => RevitValueReader.GetId(view.Id), view => view.Name, null,
+            view => view.IsTemplate ? view.ViewType + " (template)" : view.ViewType.ToString());
     }
 
     public static ViewInfoData Read(Document document, View view)

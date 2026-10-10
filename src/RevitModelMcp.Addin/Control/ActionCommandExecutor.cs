@@ -68,6 +68,7 @@ internal static class ActionCommandExecutor
                 documentAction.Document ??= job.TargetDocument;
                 if (job.Command == "open-document") openAttempted = true;
                 var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
+                RevitModelMcp.Application.RefreshDocumentList();
                 documentResult.Summary = BuildDocumentSummary(job.Command, documentAction, documentResult);
                 response = CommandResponse<ActionResultData>.Ok(job.Command, documentResult, stopwatch.ElapsedMilliseconds);
                 response.DialogsSuppressed = dialogsSuppressed;
@@ -155,6 +156,9 @@ internal static class ActionCommandExecutor
             ActivityRecorder.RecordAction(job,
                 job.Command == "execute-code" && job.Action?.TransactionMode == "none" ? null : document,
                 data, response, changes);
+        else if (changes is not null && UndoRestorePolicy.ShouldRestore(true, false, false, null, true))
+            // A confirmation preview rolls its transactions back, so the previous undo entry stays on top.
+            UndoTracker.Restore(changes.UndoStateAtStart);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
@@ -850,8 +854,9 @@ internal static class ActionCommandExecutor
                 uiDocument!.ShowElements(ids);
                 if (viewOpened) DocumentActions.ZoomActiveView(uiDocument);
             }
-            if (command == "select" || action.Select) uiDocument!.Selection.SetElementIds(ids);
-            var viewData = new ActionResultData { Count = uiDocument!.Selection.GetElementIds().Count };
+            var selecting = command == "select" || action.Select;
+            if (selecting) uiDocument!.Selection.SetElementIds(ids);
+            var viewData = new ActionResultData { Count = selecting ? uiDocument!.Selection.GetElementIds().Count : ids.Count };
             viewData.Summary = BuildSummary(command, action, viewData, document.Title, ids);
             return viewData;
         }
@@ -884,6 +889,17 @@ internal static class ActionCommandExecutor
         var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
         if (group is not null && group.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction group.");
+        var changedElementCount = 0;
+        void CountChanges(object? sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs arguments)
+        {
+            if (arguments.Operation != Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted) return;
+            if (!document.Equals(arguments.GetDocument())) return;
+            changedElementCount += arguments.GetAddedElementIds().Count + arguments.GetModifiedElementIds().Count
+                + arguments.GetDeletedElementIds().Count;
+        }
+        // Isolation is a temporary view mode and never changes elements.
+        var counting = group is not null && !action.DryRun && command != "isolate";
+        if (counting) document.Application.DocumentChanged += CountChanges;
         try
         {
             using var transaction = new Transaction(document, "revit_" + command.Replace('-', '_'));
@@ -895,6 +911,8 @@ internal static class ActionCommandExecutor
             {
                 var before = ActionVerifier.CaptureBefore(document, command, action, ids);
                 var poses = transform ? ids.Select(id => ActionVerifier.Pose(document.GetElement(id)!)).ToList() : null;
+                // Revit removes more elements at commit (empty groups, dimensions) than Delete returns.
+                var deletionSnapshot = command == "delete" && !action.DryRun ? SnapshotElementIds(document) : null;
                 var data = Mutate(document, command, action, ids, preflight);
                 var changedIds = ids;
                 if (poses is not null)
@@ -939,7 +957,7 @@ internal static class ActionCommandExecutor
                             throw new InvalidOperationException(failures.Message ?? "Could not roll back the deletion preview.");
                         group?.RollBack();
                         return ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document), null,
-                            $"Delete {deletedCount} elements ({before.Requested!.Count} requested, {before.Dependents!.Count} dependents) from {document.Title}. One undo entry restores them.",
+                            DeletionSummary.PreviewText(deletedCount, before.Requested!.Count, before.Dependents!.Count, document.Title),
                             $"Needs confirmation to delete {deletedCount} elements from {document.Title}.", changedMessage)!;
                     }
                     ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document),
@@ -963,7 +981,21 @@ internal static class ActionCommandExecutor
                 {
                     if (transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
+                    if (counting && changedElementCount == 0)
+                    {
+                        // The commit changed nothing, so Revit kept no undo entry: do not name one.
+                        if (group!.RollBack() != TransactionStatus.RolledBack)
+                            throw new InvalidOperationException("Could not roll back the empty action transaction group.");
+                        data.RolledBack = true;
+                        data.Committed = false;
+                        data.Summary += " It changed nothing, so no undo entry was kept.";
+                        return data;
+                    }
                     data.Verification.After = null;
+                    if (!action.DryRun && data.Copies is not null && (command == "copy" || command == "mirror" && action.Copy))
+                        ReconcileCopies(document, command, action, data, changedIds);
+                    if (deletionSnapshot is not null)
+                        ReconcileDeletion(document, command, action, data, before!, deletionSnapshot, changedIds);
                     try
                     {
                         ActionVerifier.CaptureAfter(document, command, action, data);
@@ -1001,8 +1033,43 @@ internal static class ActionCommandExecutor
         }
         finally
         {
+            if (counting) document.Application.DocumentChanged -= CountChanges;
             group?.Dispose();
         }
+    }
+
+    private static List<long> SnapshotElementIds(Document document)
+    {
+        using var collector = new FilteredElementCollector(document).WhereElementIsNotElementType();
+        return collector.ToElementIds().Select(RevitValueReader.GetId).ToList();
+    }
+
+    /// <summary>Adds the elements Revit removed on its own at commit to the reported deletion.</summary>
+    private static void ReconcileDeletion(Document document, string command, ActionJobContract action,
+        ActionResultData data, ActionFacts before, List<long> snapshot, List<ElementId> ids)
+    {
+        var extra = DeletionSummary.ExtraRemoved(snapshot, SnapshotElementIds(document), data.Verification!.Changed!);
+        if (extra.Count == 0) return;
+        data.Verification.Changed = data.Verification.Changed!.Concat(extra).OrderBy(id => id).ToList();
+        data.Count = data.Verification.Changed.Count;
+        before.Dependents = (before.Dependents ?? []).Concat(extra).OrderBy(id => id).ToList();
+        var warning = DeletionSummary.ExtraWarning(extra.Count);
+        data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
+        data.Summary = BuildSummary(command, action, data, document.Title, ids);
+    }
+
+    /// <summary>Revit deletes copies it cannot host at commit time; report only the copies that still exist.</summary>
+    private static void ReconcileCopies(Document document, string command, ActionJobContract action,
+        ActionResultData data, List<ElementId> ids)
+    {
+        var (copies, dropped) = CopyResultReconciler.Reconcile(data.Copies!, id => document.GetElement(CreateId(id)) is not null);
+        if (dropped == 0) return;
+        data.Copies = copies;
+        data.Count = copies.Sum(copy => copy.Count);
+        data.Verification!.Changed = copies.SelectMany(copy => copy).ToList();
+        var warning = CopyResultReconciler.Warning(dropped);
+        data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
+        data.Summary = BuildSummary(command, action, data, document.Title, ids);
     }
 
     internal static ActionResultData ExecuteUndoLast(Document document, UIDocument? uiDocument)

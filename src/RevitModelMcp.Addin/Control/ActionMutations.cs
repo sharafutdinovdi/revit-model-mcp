@@ -742,8 +742,16 @@ internal static class ActionMutations
         var instance = document.GetElement(CreateId(action.CadId)) as ImportInstance
             ?? throw new ArgumentException($"CAD import instance {action.CadId} was not found.");
         var level = FindLevel(document, action.Level!);
+        var allSegments = ReadCadSegments(document, instance);
+        var availableLayers = allSegments.Select(segment => segment.Layer).ToList();
+        if (instance.Category?.SubCategories is not null)
+            foreach (Category layer in instance.Category.SubCategories)
+                availableLayers.Add(layer.Name);
+        var missingLayers = CadLayerSelection.Missing(action.Layers!, availableLayers);
+        if (missingLayers.Count > 0)
+            throw new ArgumentException(CadLayerSelection.UnknownMessage(missingLayers, availableLayers));
         var selectedLayers = new HashSet<string>(action.Layers!, StringComparer.OrdinalIgnoreCase);
-        var source = ReadCadSegments(document, instance).Where(segment => selectedLayers.Contains(segment.Layer)).ToList();
+        var source = allSegments.Where(segment => selectedLayers.Contains(segment.Layer)).ToList();
         var geometry = CadWallPlanner.Build(source.Select(segment => new CadPlanSegment(
                 new CadPlanPoint(segment.Start.X.ToMillimeters(), segment.Start.Y.ToMillimeters()),
                 new CadPlanPoint(segment.End.X.ToMillimeters(), segment.End.Y.ToMillimeters()), segment.Layer)),
@@ -783,6 +791,10 @@ internal static class ActionMutations
         var geometry = plan.Geometry;
         var planned = plan.Planned;
         var created = new List<Wall>();
+        if (!action.DryRun && planned.Count == 0)
+            throw new InvalidOperationException(plan.NoBasicTypes
+                ? "No basic wall type exists in this project. Nothing was created."
+                : CadLayerSelection.NoWallsMessage(geometry.UnpairedLines));
         if (!action.DryRun)
         {
             foreach (var wall in planned)
@@ -1010,6 +1022,20 @@ internal static class ActionMutations
         };
     }
 
+    /// <summary>Paper-space size of a view, or null when the view has no extent yet (for example an empty drafting view).</summary>
+    private static (double Width, double Height)? ViewExtent(View view)
+    {
+        try
+        {
+            var outline = view.Outline;
+            return outline is null ? null : (outline.Max.U - outline.Min.U, outline.Max.V - outline.Min.V);
+        }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     internal static ActionResultData PlaceViewsOnSheet(Document document, ActionJobContract action)
     {
         using var sheets = document.CollectElements().OfClass<ViewSheet>();
@@ -1019,6 +1045,13 @@ internal static class ActionMutations
             ?? throw new ArgumentException($"Sheet '{action.Sheet}' was not found.");
         var outline = sheet.Outline;
         var gap = Millimeters(20);
+        // Refuse empty views before any viewport exists, so no partial placement is created.
+        foreach (var placement in action.Placements!)
+        {
+            var candidate = FindView(document, placement.View);
+            if (candidate is not ViewSchedule && ViewExtent(candidate) is null)
+                throw new ArgumentException($"View '{candidate.Name}' has no content yet; add elements before placing it on a sheet.");
+        }
         var cursorX = outline.Min.U + gap;
         var cursorY = outline.Max.V - gap;
         var rowHeight = 0.0;
@@ -1038,8 +1071,9 @@ internal static class ActionMutations
             }
             else if (!Viewport.CanAddViewToSheet(document, sheet.Id, view.Id))
                 throw new ArgumentException($"View '{view.Name}' cannot be placed or is already on another sheet.");
-            var width = Math.Max(gap, view.Outline.Max.U - view.Outline.Min.U);
-            var height = Math.Max(gap, view.Outline.Max.V - view.Outline.Min.V);
+            var extent = ViewExtent(view);
+            var width = Math.Max(gap, extent?.Width ?? 0);
+            var height = Math.Max(gap, extent?.Height ?? 0);
             if (!placement.XMm.HasValue && cursorX + width > outline.Max.U - gap)
             {
                 cursorX = outline.Min.U + gap;

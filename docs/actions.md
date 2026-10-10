@@ -94,6 +94,8 @@ Cancellation is refused in server or workstation read-only mode.
 
 `revit_walls_from_cad` uses the imported instance geometry and selected CAD layers. It merges collinear segments on each layer within 0.5 degree and 5 mm across gaps up to `max_gap_mm`. Short pieces participate in merging before the length filter. It pairs overlapping intervals within the thickness range. Unused intervals can pair with another partner. Bridged openings remain continuous. Each wall uses the requested basic type or the closest basic type by width. With `join=true`, centerlines extend or trim to L, T and X intersections within `max_thickness_mm`, and Revit joins are enabled there. `dry_run=true` returns the same planned walls and join numbers without model changes. Joins Revit would reject are left out and reported as `unjoinedEnds` with `unjoinedReasons`. `unpairedLines` counts merged lines with no paired interval; `mergedSegments` counts source segments absorbed by merging.
 
+An unknown layer name is refused with the list of available layers, for a dry run and a real run. A real run that pairs no walls fails with the count of unpaired lines and creates nothing, so no empty undo entry is recorded.
+
 Category names in `hide_categories` and `show_categories` accept the Revit UI name, the `BuiltInCategory` name (`OST_StructuralColumns`, with or without the prefix), the English name (`Structural Columns`) or the category ID, independent of the Revit UI language. An unknown name is rejected with close matches drawn from all three forms. `revit_view_elements` and the universal query filters resolve category names the same way.
 
 `category_classes` maps `model`, `annotation`, `analytical`, `import` and `point_clouds` to booleans (`true` means hidden). `hide_categories_by_type` accepts those class names and hides each matching category. `worksets` has `hide_mask` and `show_mask` lists; masks are case-insensitive globs (`*`, `?`) or regular expressions prefixed with `regex:`. The response lists matched worksets, before/after values and categories Revit could not hide. `filters` contains `{name, visible}` records. When a template is applied, choose `template_mode`: `detach` clears it on this view, `edit_template` changes it for all views using the template and lists them, or `duplicate_view` creates a copy without it. A missing mode is rejected.
@@ -226,6 +228,7 @@ Successful real writes return `data.dryRun:false` and re-read the affected eleme
 `verification.error` reports a failed post-commit re-read; the change is committed.
 Single-action responses include `failedStep:null`.
 The `verification` block contains model facts: bounding boxes for moves, parameter values and ownership for parameter edits, element metadata for creation, and deleted/dependent IDs with a survival check for deletion.
+A real deletion compares the model before and after the commit: elements Revit removed on its own (empty groups, dimensions) join `verification.changed` and `before.dependents`, `count` covers them and a `warning` gives their number. The confirmation preview states "at least" because it cannot see them. After a real `revit_copy` or `revit_mirror` with `copy=true`, copies that Revit removed at commit (for example a door whose host was not mirrored) are dropped from `copies`, `verification.changed` and `count`, and a `warning` states how many. A dry run cannot know this and reports the provisional IDs.
 Bounding boxes use model XYZ in mm rounded to one decimal; unavailable bounding boxes are omitted.
 For example, setting Comments on element 123 returns:
 
@@ -326,6 +329,7 @@ A committed single action or batch runs inside a `TransactionGroup` assimilated 
 `MCP (<clientName>): <short summary>`, truncated to 60 characters; `clientName` comes from the calling MCP
 client's `initialize` handshake, or `unknown`. `select`, `show`, `export-nwc` and `revit_compare_link_datums`
 make no document change and open no such group.
+A real action that commits without changing any element is rolled back: the result has `committed: false` and `rolledBack: true`, and no `undoName`. `revit_undo_last` then still targets the previous MCP action.
 Warnings at commit are dismissed and reported on successful actions.
 Errors permit one `FixElements` or `SetValue` resolution when Revit allows it; unresolved or repeated errors roll back the transaction.
 Selection and navigation use UI calls without model transactions.
