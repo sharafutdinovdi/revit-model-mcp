@@ -161,7 +161,7 @@ internal sealed class HttpChannel : IDisposable
                         context.Response.Close();
                     }
                     catch (Exception) { context.Response.Abort(); }
-                    return;
+                    continue;
                 }
                 _ = Task.Run(async () =>
                 {
@@ -264,9 +264,9 @@ internal sealed class HttpChannel : IDisposable
             {
                 var pixel = 1600;
                 var parameter = context.Request.QueryString["pixel"];
-                if (parameter is not null && (!int.TryParse(parameter, out pixel) || pixel is < 1 or > 4000))
+                if (parameter is not null && (!int.TryParse(parameter, out pixel) || pixel is < 32 or > 4000))
                 {
-                    await JsonAsync(context, 400, new() { ["error"] = "pixel must be between 1 and 4000." }).ConfigureAwait(false);
+                    await JsonAsync(context, 400, new() { ["error"] = "pixel must be between 32 and 4000; Revit rejects smaller images." }).ConfigureAwait(false);
                     return;
                 }
                 var name = Uri.UnescapeDataString(path.Substring(7, path.Length - 13));
@@ -365,7 +365,16 @@ internal sealed class HttpChannel : IDisposable
             }).ConfigureAwait(false);
             return null;
         }
-        return Encoding.UTF8.GetString(result.Body);
+        if (!StrictUtf8.TryDecode(result.Body, out var text))
+        {
+            await JsonAsync(context, 400, new()
+            {
+                ["error"] = "invalid_request",
+                ["message"] = "The request body is not valid UTF-8."
+            }).ConfigureAwait(false);
+            return null;
+        }
+        return text;
     }
 
     private Task ExpiredAsync(HttpListenerContext context, string jobId)
@@ -521,11 +530,13 @@ internal sealed class HttpChannel : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _closing = true;
         _gate.Close();
-        try { if (_listener.IsListening) _listener.Stop(); }
-        catch (ObjectDisposedException) { }
+        // Queued jobs become cancelled ("Revit is closing") and waiting long-polls are released with their job state
+        // while the listener still accepts connections, so every open request is answered before the listener stops.
         _channel.Shutdown();
         var drained = _gate.WaitDrained(TimeSpan.FromSeconds(_settings.ShutdownDrainSeconds));
         if (!drained) PluginLog.Warn($"HTTP shutdown drain timed out with {_gate.Active} handlers remaining.");
+        try { if (_listener.IsListening) _listener.Stop(); }
+        catch (ObjectDisposedException) { }
         _shutdown.Cancel();
         _cleanup?.Dispose();
         _listener.Close();

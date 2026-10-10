@@ -49,8 +49,10 @@ def validate_capture(element_ids, pixel_size=1600, padding_mm=1500, mode="3d"):
         raise ValueError("element_ids must contain 1 to 500 IDs.")
     if any(type(value) is not int or value <= 0 for value in element_ids):
         raise ValueError("element_ids must contain positive integers.")
-    if type(pixel_size) is not int or not 1 <= pixel_size <= 4000:
-        raise ValueError("pixel_size must be an integer from 1 to 4000.")
+    if type(pixel_size) is not int or not 32 <= pixel_size <= 4000:
+        raise ValueError(
+            "pixel_size must be an integer from 32 to 4000 (Revit rejects smaller images)."
+        )
     if type(padding_mm) not in (int, float) or not 0 <= padding_mm <= 20000:
         raise ValueError("padding_mm must be from 0 to 20000.")
     if mode not in ("3d", "plan"):
@@ -78,8 +80,10 @@ def validate_register(output_path, project, issues, pixel_size=900):
         for field in ("title", "reference", "revision"):
             if field in document and not isinstance(document[field], str):
                 raise ValueError(f"project.documents[{index}].{field} must be a string.")
-    if type(pixel_size) is not int or not 1 <= pixel_size <= 4000:
-        raise ValueError("pixel_size must be an integer from 1 to 4000.")
+    if type(pixel_size) is not int or not 32 <= pixel_size <= 4000:
+        raise ValueError(
+            "pixel_size must be an integer from 32 to 4000 (Revit rejects smaller images)."
+        )
     if not isinstance(issues, list) or not 1 <= len(issues) <= 60:
         raise ValueError("issues must contain 1 to 60 objects.")
 

@@ -244,6 +244,7 @@ HTTP 410 with `"error":"expired"` and `"retryable":false` means the result expir
 It is final: do not poll it again, and inspect the model before resubmitting an action.
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
+HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
 MCP action tools return `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` when `REVIT_MCP_READ_ONLY=1` in the Python process. A read-only refusal from the pipe or HTTP transport (pipe error `read_only`, HTTP 403) is returned the same way for actions.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
@@ -253,11 +254,11 @@ streaming bodies without a declared length.
 The same limits and the read deadline apply to the cancel request body.
 
 When Revit shuts down, the add-in stops accepting connections, then finishes in-flight requests for up to `shutdownDrainSeconds`.
-Queued jobs end as `cancelled`.
+Queued jobs end as `cancelled` with the error `Revit is closing.`, and requests waiting on them receive that job state before the listener stops.
 A job that was already running ends as `abandoned`, not `failed`, because Revit cannot interrupt it and the change may still have been applied.
 The result of an abandoned job has `"abandoned":true`; inspect the model before retrying it.
 
-View names must be URL-encoded; `pixel` accepts 1-4000.
+View names must be URL-encoded; `pixel` accepts 32-4000.
 Image requests can return HTTP 202 with `jobId` after 120 seconds.
 Poll `/jobs/{id}`, then append `jobId={id}` to the image URL to fetch that export without executing it again.
 The optional `document` query must match the job's `targetDocument`.

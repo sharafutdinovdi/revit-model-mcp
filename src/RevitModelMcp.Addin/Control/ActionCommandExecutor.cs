@@ -899,7 +899,8 @@ internal static class ActionCommandExecutor
         }
         // UI-only commands (isolation, graphic overrides) never change elements, so an empty commit is normal for them.
         var counting = NoChangeGuardPolicy.Applies(command, action.DryRun, group is not null);
-        if (counting) document.Application.DocumentChanged += CountChanges;
+        var trackingUndo = group is not null && !action.DryRun && NoChangeGuardPolicy.TracksUndoByChanges(command);
+        if (counting || trackingUndo) document.Application.DocumentChanged += CountChanges;
         try
         {
             using var transaction = new Transaction(document, "revit_" + command.Replace('-', '_'));
@@ -1023,7 +1024,8 @@ internal static class ActionCommandExecutor
                         group.SetName(groupName);
                         if (group.Assimilate() != TransactionStatus.Committed)
                             throw new InvalidOperationException("Could not assimilate the action transaction group.");
-                        data.UndoName = groupName;
+                        // A UI-only step that changed no element left no Revit undo entry: do not name one.
+                        if (NoChangeGuardPolicy.KeepsUndoEntry(command, changedElementCount)) data.UndoName = groupName;
                     }
                 }
                 return data;
@@ -1041,7 +1043,7 @@ internal static class ActionCommandExecutor
         }
         finally
         {
-            if (counting) document.Application.DocumentChanged -= CountChanges;
+            if (counting || trackingUndo) document.Application.DocumentChanged -= CountChanges;
             group?.Dispose();
         }
     }
