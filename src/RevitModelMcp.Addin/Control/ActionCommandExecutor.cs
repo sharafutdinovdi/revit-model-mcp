@@ -14,12 +14,13 @@ using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
 internal static class ActionCommandExecutor
 {
-    internal static bool ReadOnlyMode => File.Exists(Path.Combine(
+    internal static bool ReadOnlyMode => PolicyProvider.Current.IsReadOnly || File.Exists(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "read-only"));
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
@@ -58,7 +59,8 @@ internal static class ActionCommandExecutor
         if (job.Command == "open-document") application.Application.FailuresProcessing += SuppressOpenWarnings;
         try
         {
-            if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1") throw new InvalidOperationException("read-only mode");
+            if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1") throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
+            if (PolicyProvider.Refusal(job.Command) is { } policyRefusal) throw new InvalidOperationException(policyRefusal);
             if (job.Error is not null) throw new ArgumentException(job.Error);
             if (job.Command is "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
             {
@@ -179,9 +181,13 @@ internal static class ActionCommandExecutor
         try
         {
             if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
-                throw new InvalidOperationException("read-only mode");
+                throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
             if (job.Error is not null) throw new ArgumentException(job.Error);
             var request = job.Action?.ProcessModels ?? throw new ArgumentException("process is required.");
+            if (PolicyProvider.Refusal("process-models") is { } processRefusal) throw new InvalidOperationException(processRefusal);
+            if (request.Code is not null && PolicyProvider.Refusal("execute-code") is { } codeRefusal) throw new InvalidOperationException(codeRefusal);
+            foreach (var stepRefusal in (request.Steps ?? []).Select(step => PolicyProvider.Refusal(step.Command)))
+                if (stepRefusal is not null) throw new InvalidOperationException(stepRefusal);
             var paths = request.Paths ?? Directory.EnumerateFiles(request.Folder!, request.Pattern ?? "*.rvt",
                 request.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToList();
@@ -566,7 +572,8 @@ internal static class ActionCommandExecutor
         try
         {
             if (ReadOnlyMode || Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
-                throw new InvalidOperationException("read-only mode");
+                throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
+            if (PolicyProvider.Refusal("edit-families") is { } familiesRefusal) throw new InvalidOperationException(familiesRefusal);
             if (job.Error is not null) throw new ArgumentException(job.Error);
             document = ResolveDocument(application, job.TargetDocument);
             changes = ChangeCapture.Start(application.Application, document);
@@ -816,6 +823,7 @@ internal static class ActionCommandExecutor
         bool wrapGroup = true)
     {
         viewOpened = false;
+        if (PolicyProvider.Refusal(command) is { } refusal) throw new InvalidOperationException(refusal);
         if (command == "undo-last") return ExecuteUndoLast(document, uiDocument);
         if (command == "export-nwc")
         {
@@ -1073,7 +1081,7 @@ internal static class ActionCommandExecutor
 
     public static void WriteError(UIApplication application, string command, string message, DateTimeOffset startedAt, string? correlationId = null)
     {
-        var error = ReadOnlyMode ? "read-only mode" : message;
+        var error = ReadOnlyMode ? PolicyProvider.ReadOnlyMessage : message;
         var response = CommandResponse<ActionResultData>.Fail(command, error, 0);
         response.Error = error;
         response.DialogsSuppressed = [];

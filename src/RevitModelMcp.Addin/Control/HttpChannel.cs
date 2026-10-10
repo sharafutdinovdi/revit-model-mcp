@@ -15,6 +15,7 @@ using System.Xml.Linq;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Output;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
@@ -202,7 +203,8 @@ internal sealed class HttpChannel : IDisposable
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
                     ["startedUtc"] = ChannelDirectory.StartedUtc,
-                    ["readOnly"] = ActionCommandExecutor.ReadOnlyMode
+                    ["readOnly"] = ActionCommandExecutor.ReadOnlyMode,
+                    ["policy"] = PolicyProvider.Current.ToSummary()
                 }).ConfigureAwait(false);
                 return;
             }
@@ -237,7 +239,7 @@ internal sealed class HttpChannel : IDisposable
                 var request = ControlJobParser.Parse(payload);
                 if (ActionCommandExecutor.ReadOnlyMode)
                 {
-                    await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = request.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+                    await JsonAsync(context, 403, new() { ["error"] = PolicyProvider.ReadOnlyMessage, ["correlationId"] = request.CorrelationId ?? string.Empty }).ConfigureAwait(false);
                     return;
                 }
                 var cancellation = _channel.CancelJob(jobId, request.ClientId);
@@ -407,7 +409,12 @@ internal sealed class HttpChannel : IDisposable
         RemoveExpiredResults();
         if (ReadOnlyGatePolicy.RefusesSubmission(command.Command) && ActionCommandExecutor.ReadOnlyMode)
         {
-            await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+            await JsonAsync(context, 403, new() { ["error"] = PolicyProvider.ReadOnlyMessage, ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+            return null;
+        }
+        if (PolicyProvider.Refusal(command.Command) is { } policyRefusal)
+        {
+            await JsonAsync(context, 403, new() { ["error"] = policyRefusal, ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
             return null;
         }
         var submitted = _channel.SubmitHttp(command, payload, out var completion);

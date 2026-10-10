@@ -25,6 +25,18 @@ public sealed class PipeProtocolTests
         await Assert.That(SameJson(expected.RootElement, actual.RootElement)).IsTrue();
     }
 
+    [Test]
+    public async Task HelloRoundTripsItsPolicyObject()
+    {
+        var hello = new PipeMessage { Type = "hello", Policy = "{\"readOnly\":\"true\",\"toolDeny\":\"delete\"}" };
+
+        var reparsed = PipeProtocol.Parse(PipeProtocol.Serialize(hello));
+
+        using var actual = JsonDocument.Parse(reparsed.Policy!);
+        await Assert.That(actual.RootElement.GetProperty("readOnly").GetString()).IsEqualTo("true");
+        await Assert.That(actual.RootElement.GetProperty("toolDeny").GetString()).IsEqualTo("delete");
+    }
+
     private static bool SameJson(JsonElement left, JsonElement right) =>
         left.ValueKind == right.ValueKind && left.ValueKind switch
         {

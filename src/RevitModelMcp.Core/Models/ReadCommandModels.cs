@@ -66,6 +66,10 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "skippedCount", Order = 19, EmitDefaultValue = false)]
     public int? SkippedCount { get; set; }
 
+    /// <summary>Effective machine policy, set on ping only. Values hold no paths or secrets.</summary>
+    [DataMember(Name = "policy", Order = 20, EmitDefaultValue = false)]
+    public Dictionary<string, string>? Policy { get; set; }
+
     [OnSerializing]
     private void AddJobMetadata(StreamingContext context)
     {
@@ -183,9 +187,11 @@ public sealed record ScheduleDataResult
 
 public static class ReadCommandResponseFactory
 {
-    public static CommandResponse<string> Ping(long elapsedMs)
+    public static CommandResponse<string> Ping(long elapsedMs, Dictionary<string, string>? policy = null)
     {
-        return CommandResponse<string>.Ok("ping", "pong", elapsedMs);
+        var response = CommandResponse<string>.Ok("ping", "pong", elapsedMs);
+        if (policy is { Count: > 0 }) response.Policy = policy;
+        return response;
     }
 }
 

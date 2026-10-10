@@ -79,6 +79,8 @@ public sealed class MachinePolicyTests
         await Assert.That(policy.Refusal("move")).IsNull();
         await Assert.That(policy.Refusal("copy")).StartsWith(MachinePolicy.RefusalPrefix);
         await Assert.That(policy.Refusal("execute-code")).StartsWith(MachinePolicy.RefusalPrefix);
+        await Assert.That(new MachinePolicy { ToolAllow = ["move"] }.Refusal("ping")).IsNull();
+        await Assert.That(new MachinePolicy { ToolDeny = ["jobs"] }.Refusal("jobs")).IsNull();
         await Assert.That(MachinePolicy.Empty.Refusal("delete")).IsNull();
         await Assert.That(MachinePolicy.Empty.Refusal(null)).IsNull();
     }
@@ -95,7 +97,7 @@ public sealed class MachinePolicyTests
     {
         var summary = new MachinePolicy { LogDir = @"C:\secret", TrustedNetworkRoots = [@"\\a\b"], ToolDeny = ["revit_delete"] }.ToSummary();
         await Assert.That(summary.ContainsKey("logDir")).IsFalse();
-        await Assert.That(summary["trustedNetworkRootCount"]).IsEqualTo(1);
-        await Assert.That(((string[])summary["toolDeny"]).Single()).IsEqualTo("delete");
+        await Assert.That(summary["trustedNetworkRootCount"]).IsEqualTo("1");
+        await Assert.That(summary["toolDeny"]).IsEqualTo("delete");
     }
 }

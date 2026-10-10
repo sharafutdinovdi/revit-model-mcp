@@ -12,6 +12,8 @@ using System.Threading.Tasks;
 using Microsoft.Win32.SafeHandles;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Serialization;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
@@ -282,7 +284,9 @@ internal sealed class PipeChannel : IDisposable
             AddinVersion = Application.AddinVersion,
             ProtocolVersion = Application.ProtocolVersion,
             Commands = Application.SupportedCommands.ToList(),
-            Documents = _documents().ToList()
+            Documents = _documents().ToList(),
+            Policy = ControlPayloadJsonSerializer.Serialize(PolicyProvider.Current.ToSummary()
+                .ToDictionary(pair => pair.Key, pair => (object)pair.Value))
         };
     }
 
@@ -295,7 +299,9 @@ internal sealed class PipeChannel : IDisposable
                 ? Error(request.Id, "invalid_job", command.Error ?? "Invalid job.")
                 : Error(request.Id, "client_mismatch", "The job clientId must match the hello clientId.");
         if (ReadOnlyGatePolicy.RefusesSubmission(command.Command) && ActionCommandExecutor.ReadOnlyMode)
-            return Error(request.Id, "read_only", "read-only mode");
+            return Error(request.Id, "read_only", PolicyProvider.ReadOnlyMessage);
+        if (PolicyProvider.Refusal(command.Command) is { } policyRefusal)
+            return Error(request.Id, "policy_blocked", policyRefusal);
         var submitted = _channel.SubmitHttp(command, request.Job, out var completion);
         if (submitted.Job is null || completion is null)
         {
@@ -346,7 +352,7 @@ internal sealed class PipeChannel : IDisposable
     private PipeMessage Cancel(Connection connection, PipeMessage request)
     {
         if (request.JobId is null) return Error(request.Id, "job_id_required", "cancel requires jobId.");
-        if (ActionCommandExecutor.ReadOnlyMode) return Error(request.Id, "read_only", "read-only mode");
+        if (ActionCommandExecutor.ReadOnlyMode) return Error(request.Id, "read_only", PolicyProvider.ReadOnlyMessage);
         var cancellation = _channel.CancelJob(request.JobId, connection.ClientId!);
         return new PipeMessage
         {

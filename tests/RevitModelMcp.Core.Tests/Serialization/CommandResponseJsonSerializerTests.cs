@@ -653,6 +653,16 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    public async Task Ping_ReportsEffectivePolicyOnlyWhenPresent()
+    {
+        using var withPolicy = Parse(ReadCommandResponseFactory.Ping(1, new Dictionary<string, string> { ["readOnly"] = "true" }));
+        using var withoutPolicy = Parse(ReadCommandResponseFactory.Ping(1, new Dictionary<string, string>()));
+
+        await Assert.That(withPolicy.RootElement.GetProperty("policy").GetProperty("readOnly").GetString()).IsEqualTo("true");
+        await Assert.That(withoutPolicy.RootElement.TryGetProperty("policy", out _)).IsFalse();
+    }
+
+    [Test]
     public async Task Serialize_ViewSummary_PreservesCategoriesWithoutElements()
     {
         var response = CommandResponse<ViewSummaryData>.Ok(

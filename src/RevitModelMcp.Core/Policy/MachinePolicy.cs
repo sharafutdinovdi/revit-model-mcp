@@ -17,6 +17,7 @@ public sealed class MachinePolicy
     public static readonly MachinePolicy Empty = new();
 
     private static readonly string[] CodeCommands = ["execute-code"];
+    private static readonly string[] ExemptCommands = ["ping", "jobs", "jobs/persisted"];
 
     public bool? ReadOnly { get; init; }
     public IReadOnlyList<string>? ToolDeny { get; init; }
@@ -121,11 +122,12 @@ public sealed class MachinePolicy
         return value.StartsWith("revit-", StringComparison.Ordinal) ? value.Substring(6) : value;
     }
 
-    /// <summary>Returns the refusal text when the policy blocks the command, otherwise null. ToolDeny wins over ToolAllow.</summary>
+    /// <summary>Returns the refusal text when the policy blocks the command, otherwise null. ToolDeny wins over ToolAllow. ping and jobs are never blocked.</summary>
     public string? Refusal(string? command)
     {
         if (string.IsNullOrEmpty(command)) return null;
         var name = NormalizeToolName(command!);
+        if (ExemptCommands.Contains(name, StringComparer.Ordinal)) return null;
         if (ToolDeny is not null && ToolDeny.Any(entry => NormalizeToolName(entry) == name))
             return $"{RefusalPrefix} the tool '{name}' is denied.";
         if (ToolAllow is { Count: > 0 } && ToolAllow.All(entry => NormalizeToolName(entry) != name))
@@ -143,21 +145,23 @@ public sealed class MachinePolicy
     public string? ReadOnlyRefusal() =>
         IsReadOnly ? $"{RefusalPrefix} the workstation is read-only." : null;
 
-    /// <summary>Values safe to show to clients: no paths, no secrets.</summary>
-    public IReadOnlyDictionary<string, object> ToSummary()
+    /// <summary>Values safe to show to clients: no paths, no secrets. Lists are comma-joined strings.</summary>
+    public Dictionary<string, string> ToSummary()
     {
-        var summary = new Dictionary<string, object>();
-        if (ReadOnly is { } readOnly) summary["readOnly"] = readOnly;
-        if (ToolDeny is { Count: > 0 }) summary["toolDeny"] = ToolDeny.Select(NormalizeToolName).ToArray();
-        if (ToolAllow is { Count: > 0 }) summary["toolAllow"] = ToolAllow.Select(NormalizeToolName).ToArray();
+        var summary = new Dictionary<string, string>();
+        if (ReadOnly is { } readOnly) summary["readOnly"] = Bool(readOnly);
+        if (ToolDeny is { Count: > 0 }) summary["toolDeny"] = string.Join(",", ToolDeny.Select(NormalizeToolName));
+        if (ToolAllow is { Count: > 0 }) summary["toolAllow"] = string.Join(",", ToolAllow.Select(NormalizeToolName));
         if (ExecuteCode is not null) summary["executeCode"] = ExecuteCode;
         if (UpdateMode is not null) summary["updateMode"] = UpdateMode;
-        if (TrustedNetworkRoots is not null) summary["trustedNetworkRootCount"] = TrustedNetworkRoots.Count;
-        if (RedactPaths is { } redact) summary["redactPaths"] = redact;
-        if (HttpEnabled is { } http) summary["httpEnabled"] = http;
-        if (LogRetentionDays is { } days) summary["logRetentionDays"] = days;
+        if (TrustedNetworkRoots is not null) summary["trustedNetworkRootCount"] = TrustedNetworkRoots.Count.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (RedactPaths is { } redact) summary["redactPaths"] = Bool(redact);
+        if (HttpEnabled is { } http) summary["httpEnabled"] = Bool(http);
+        if (LogRetentionDays is { } days) summary["logRetentionDays"] = days.ToString(System.Globalization.CultureInfo.InvariantCulture);
         return summary;
     }
+
+    private static string Bool(bool value) => value ? "true" : "false";
 
     private static bool? Flag(object? value) => value switch
     {

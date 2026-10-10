@@ -2,6 +2,9 @@
 
 READ_ONLY = "read_only"
 """The server or workstation refused an action in read-only mode."""
+POLICY_BLOCKED = "policy_blocked"
+"""The add-in refused the call because of the machine policy set by an administrator."""
+POLICY_BLOCKED_PREFIX = "Blocked by organization policy:"
 ACTION_FAILED = "action_failed"
 """The add-in tried an action and returned an error."""
 READ_ONLY_MESSAGE = "read-only mode"
@@ -20,7 +23,11 @@ def with_error_code(response: dict) -> dict:
         and "errorCode" not in response
         and not _is_intermediate_response(response)
     ):
-        response["errorCode"] = (
-            READ_ONLY if response["error"] == READ_ONLY_MESSAGE else ACTION_FAILED
-        )
+        error = response["error"]
+        if error == READ_ONLY_MESSAGE:
+            response["errorCode"] = READ_ONLY
+        elif error.startswith(POLICY_BLOCKED_PREFIX):
+            response["errorCode"] = POLICY_BLOCKED
+        else:
+            response["errorCode"] = ACTION_FAILED
     return response

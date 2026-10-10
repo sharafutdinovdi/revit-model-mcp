@@ -25,6 +25,9 @@ public sealed class PipeMessage
     public string? Message { get; set; }
     public int? RetryAfterMs { get; set; }
 
+    /// <summary>Raw JSON object with the effective machine policy, sent in hello. No paths or secrets.</summary>
+    public string? Policy { get; set; }
+
     /// <summary>Raw JSON object of a submitted job.</summary>
     public string? Job { get; set; }
 

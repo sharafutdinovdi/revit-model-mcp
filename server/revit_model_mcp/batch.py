@@ -16,6 +16,7 @@ from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
 from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
 from revit_model_mcp.http_host import HttpHost
+from revit_model_mcp.policy import policy_read_only
 from revit_model_mcp.revit_channel import (
     Job,
     ReadOnlyRefusedError,
@@ -182,7 +183,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
 
         open_timeout_minutes sets the per-model open deadline (default 30, 45 when the model is upgraded in memory).
         """
-        if read_only:
+        if read_only or policy_read_only():
             return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
         if (paths is None) == (folder is None):
             raise ToolError("Supply exactly one of paths or folder.")
@@ -265,7 +266,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     )
     async def revit_batch_cancel(run_id: str) -> dict[str, Any]:
         """Persist cancellation and prevent unstarted models from running."""
-        if read_only:
+        if read_only or policy_read_only():
             return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
         try:
             run_id = _run_id(run_id)

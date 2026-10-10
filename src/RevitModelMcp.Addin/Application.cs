@@ -60,6 +60,7 @@ public sealed class Application : ExternalApplication
 #if NETFRAMEWORK
         AppDomain.CurrentDomain.AssemblyResolve += ResolveCodeDependency;
 #endif
+        Policy.PolicyProvider.ApplyProcessEnvironment();
         PluginLog.Start();
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         var (fileChannelEnabled, fileChannelWarning) = Output.ChannelDirectory.InitializeChannel();
@@ -86,10 +87,11 @@ public sealed class Application : ExternalApplication
         try
         {
             httpSettings = HttpSettings.Load();
+            if (Policy.PolicyProvider.Current.HttpEnabled is { } policyHttp) httpSettings.HttpEnabled = policyHttp;
             showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
             try
             {
-                NwcPathValidator.ConfigureTrustedNetworkRoots(httpSettings.TrustedNetworkRoots);
+                NwcPathValidator.ConfigureTrustedNetworkRoots(Policy.PolicyProvider.Current.TrustedNetworkRoots ?? httpSettings.TrustedNetworkRoots);
             }
             catch (ArgumentException)
             {
