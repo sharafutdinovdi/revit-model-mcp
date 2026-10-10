@@ -610,11 +610,13 @@ internal sealed record HttpSettings
         return settings;
     }
 
-    public void ApplyHttpOverrides()
+    /// <summary>Applies the environment variables, then the machine policy, so a policy HttpEnabled value always wins over the environment.</summary>
+    public void ApplyHttpOverrides(RevitModelMcp.Core.Policy.MachinePolicy policy)
     {
         var enabled = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_ENABLED");
         if (!string.IsNullOrWhiteSpace(enabled))
             HttpEnabled = enabled switch { "0" => false, "1" => true, _ => throw new InvalidDataException("REVIT_MCP_HTTP_ENABLED must be 0 or 1.") };
+        HttpEnabled = policy.EffectiveHttpEnabled(HttpEnabled);
         var bind = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_BIND");
         if (!string.IsNullOrWhiteSpace(bind))
             HttpBind = bind;

@@ -29,29 +29,43 @@ public sealed class MachinePolicyTests
     }
 
     [Test]
-    public async Task Parse_IgnoresInvalidValues()
+    [Arguments("ExecuteCode", "maybe")]
+    [Arguments("LogRetentionDays", -4)]
+    [Arguments("LogRetentionDays", 99999)]
+    [Arguments("ReadOnly", 2)]
+    [Arguments("ReadOnly", "yes")]
+    [Arguments("UpdateMode", "Sometimes")]
+    [Arguments("ToolDeny", 5)]
+    public async Task Parse_InvalidValueFailsClosed(string name, object value)
     {
-        var policy = MachinePolicy.Parse(new Dictionary<string, object>
-        {
-            ["ExecuteCode"] = "maybe",
-            ["LogRetentionDays"] = -4,
-            ["ReadOnly"] = new object(),
-            ["Unknown"] = 1
-        });
-        await Assert.That(policy.IsEmpty).IsTrue();
+        var policy = MachinePolicy.Parse(new Dictionary<string, object> { ["ReadOnly"] = 0, [name] = value });
+        await AssertFailClosed(policy);
     }
 
     [Test]
-    public async Task Parse_KeepsUnknownUpdateModeLowercased()
+    public async Task Parse_ReadOnlyObjectFailsClosed()
     {
-        var policy = MachinePolicy.Parse(new Dictionary<string, object> { ["UpdateMode"] = "Sometimes" });
-        await Assert.That(policy.UpdateMode).IsEqualTo("sometimes");
+        await AssertFailClosed(MachinePolicy.Parse(new Dictionary<string, object> { ["ReadOnly"] = new object() }));
+    }
+
+    [Test]
+    public async Task Parse_DuplicateNamesDifferingInCaseFailClosed()
+    {
+        await AssertFailClosed(MachinePolicy.Parse(new Dictionary<string, object> { ["ReadOnly"] = 0, ["readonly"] = 1 }));
+    }
+
+    [Test]
+    public async Task Parse_BlankTextMeansUnset()
+    {
+        var policy = MachinePolicy.Parse(new Dictionary<string, object> { ["ExecuteCode"] = " ", ["LogDir"] = "" });
+        await Assert.That(policy.IsEmpty).IsTrue();
     }
 
     [Test]
     public async Task ParseJson_ReadsFile()
     {
         var policy = MachinePolicy.ParseJson("""{"ReadOnly":true,"ToolDeny":["execute-code"],"UpdateMode":"off","LogDir":"D:\\logs"}""");
+        await Assert.That(policy.Unreadable).IsFalse();
         await Assert.That(policy.IsReadOnly).IsTrue();
         await Assert.That(policy.ToolDeny!.Single()).IsEqualTo("execute-code");
         await Assert.That(policy.UpdateMode).IsEqualTo("off");
@@ -59,11 +73,110 @@ public sealed class MachinePolicyTests
     }
 
     [Test]
-    public async Task ParseJson_InvalidIsEmpty()
+    public async Task ParseJson_AcceptsCamelCaseKeysAndSingleStringLists()
     {
-        await Assert.That(MachinePolicy.ParseJson("{nope").IsEmpty).IsTrue();
-        await Assert.That(MachinePolicy.ParseJson(null).IsEmpty).IsTrue();
-        await Assert.That(MachinePolicy.ParseJson("""{"ReadOnly":"yes"}""").IsEmpty).IsTrue();
+        var policy = MachinePolicy.ParseJson("""{"readOnly":true,"toolDeny":"revit_delete","toolAllow":["move"],"executeCode":"OFF","httpEnabled":false,"logRetentionDays":30}""");
+        await Assert.That(policy.Unreadable).IsFalse();
+        await Assert.That(policy.IsReadOnly).IsTrue();
+        await Assert.That(policy.ToolDeny!.Single()).IsEqualTo("revit_delete");
+        await Assert.That(policy.ToolAllow!.Single()).IsEqualTo("move");
+        await Assert.That(policy.ExecuteCode).IsEqualTo("off");
+        await Assert.That(policy.HttpEnabled).IsFalse();
+        await Assert.That(policy.LogRetentionDays).IsEqualTo(30);
+    }
+
+    [Test]
+    [Arguments("{nope")]
+    [Arguments("")]
+    [Arguments("   ")]
+    [Arguments(null)]
+    [Arguments("[]")]
+    [Arguments("null")]
+    [Arguments("""{"ReadOnly":"yes"}""")]
+    [Arguments("""{"ReadOnly":false,"ToolDeny":5}""")]
+    [Arguments("""{"ReadOnly":false,"ToolDeny":[1,2]}""")]
+    [Arguments("""{"ReadOnly":false,"ExecuteCode":"sometimes"}""")]
+    [Arguments("""{"ReadOnly":false,"ReadOnly":true}""")]
+    [Arguments("""{"ReadOnly":null}""")]
+    public async Task ParseJson_AnyProblemFailsClosed(string? json)
+    {
+        await AssertFailClosed(MachinePolicy.ParseJson(json));
+    }
+
+    [Test]
+    public async Task Parse_UnknownNamesAreIgnoredAndReported()
+    {
+        var policy = MachinePolicy.Parse(new Dictionary<string, object> { ["ReadOnly"] = 1, ["FutureSetting"] = 5, ["another"] = "x" });
+        await Assert.That(policy.Unreadable).IsFalse();
+        await Assert.That(policy.IsReadOnly).IsTrue();
+        await Assert.That(policy.IgnoredKeys!.OrderBy(name => name)).IsEquivalentTo(new[] { "FutureSetting", "another" }.OrderBy(name => name));
+        await Assert.That(policy.ToSummary()["ignoredKeys"]).Contains("FutureSetting");
+        await Assert.That(policy.IsEmpty).IsFalse();
+    }
+
+    [Test]
+    public async Task ParseJson_UnknownNameIsIgnoredButKnownValuesStillEnforced()
+    {
+        var policy = MachinePolicy.ParseJson("""{"ReadOnly":false,"ToolDeny":["revit_delete"],"NewThing":{"a":1}}""");
+        await Assert.That(policy.Unreadable).IsFalse();
+        await Assert.That(policy.Refusal("delete")).StartsWith(MachinePolicy.RefusalPrefix);
+        await Assert.That(policy.IgnoredKeys!.Single()).IsEqualTo("NewThing");
+    }
+
+    [Test]
+    public async Task ParseJson_UnknownNameNextToWrongTypeStillFailsClosed()
+    {
+        await AssertFailClosed(MachinePolicy.ParseJson("""{"NewThing":1,"ReadOnly":"maybe"}"""));
+    }
+
+    [Test]
+    public async Task Merge_UnionsIgnoredKeys()
+    {
+        var merged = MachinePolicy.Merge(
+            new MachinePolicy { IgnoredKeys = ["A"] },
+            new MachinePolicy { IgnoredKeys = ["a", "B"] });
+        await Assert.That(merged.IgnoredKeys!.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task FailClosed_RefusesCodeAndNamesTheProblem()
+    {
+        var policy = MachinePolicy.ParseJson("{nope");
+        var expected = "Blocked by organization policy: the policy file could not be read.";
+        await Assert.That(policy.ReadOnlyRefusal()).IsEqualTo(expected);
+        await Assert.That(policy.Refusal("execute-code")).IsEqualTo(expected);
+        await Assert.That(policy.CodeStepRefusal()).IsEqualTo(expected);
+        await Assert.That(policy.Refusal("ping")).IsNull();
+        await Assert.That(policy.Refusal("document-info")).IsNull();
+        await Assert.That(policy.ToSummary()["policyUnreadable"]).IsEqualTo("true");
+    }
+
+    [Test]
+    public async Task Merge_UnreadableSourceWinsOverEverything()
+    {
+        var good = new MachinePolicy { ReadOnly = false, ExecuteCode = "confirm", HttpEnabled = true };
+        await AssertFailClosed(MachinePolicy.Merge(good, MachinePolicy.FailClosed("x")));
+        await AssertFailClosed(MachinePolicy.Merge(MachinePolicy.FailClosed("x"), good));
+    }
+
+    [Test]
+    public async Task EffectiveHttpEnabled_PolicyBeatsRequestedValue()
+    {
+        await Assert.That(new MachinePolicy { HttpEnabled = false }.EffectiveHttpEnabled(true)).IsFalse();
+        await Assert.That(new MachinePolicy { HttpEnabled = true }.EffectiveHttpEnabled(false)).IsTrue();
+        await Assert.That(MachinePolicy.Empty.EffectiveHttpEnabled(true)).IsTrue();
+        await Assert.That(MachinePolicy.FailClosed("x").EffectiveHttpEnabled(true)).IsFalse();
+    }
+
+    private static async Task AssertFailClosed(MachinePolicy policy)
+    {
+        await Assert.That(policy.Unreadable).IsTrue();
+        await Assert.That(policy.IsEmpty).IsFalse();
+        await Assert.That(policy.IsReadOnly).IsTrue();
+        await Assert.That(policy.CodeExecutionOff).IsTrue();
+        await Assert.That(policy.UpdateMode).IsEqualTo("off");
+        await Assert.That(policy.HttpEnabled).IsFalse();
+        await Assert.That(policy.ReadOnlyRefusal()).IsEqualTo(MachinePolicy.UnreadableRefusal);
     }
 
     [Test]
@@ -89,6 +202,55 @@ public sealed class MachinePolicyTests
         await Assert.That(new MachinePolicy { ToolDeny = ["jobs"] }.Refusal("jobs")).IsNull();
         await Assert.That(MachinePolicy.Empty.Refusal("delete")).IsNull();
         await Assert.That(MachinePolicy.Empty.Refusal(null)).IsNull();
+    }
+
+    [Test]
+    public async Task Refusal_AliasesMapToolNamesToCommands()
+    {
+        await Assert.That(MachinePolicy.NormalizeToolName("revit_run_actions")).IsEqualTo("batch");
+        await Assert.That(MachinePolicy.NormalizeToolName("revit_batch_start")).IsEqualTo("batch-supervisor-start");
+        var denyTool = new MachinePolicy { ToolDeny = ["revit_batch_start", "revit_run_actions"] };
+        await Assert.That(denyTool.Refusal("batch-supervisor-start")).StartsWith(MachinePolicy.RefusalPrefix);
+        await Assert.That(denyTool.Refusal("batch")).StartsWith(MachinePolicy.RefusalPrefix);
+        var denyCommand = new MachinePolicy { ToolDeny = ["batch-supervisor-start", "batch"] };
+        await Assert.That(denyCommand.Refusal("revit_batch_start")).StartsWith(MachinePolicy.RefusalPrefix);
+        await Assert.That(denyCommand.Refusal("revit_run_actions")).StartsWith(MachinePolicy.RefusalPrefix);
+        var allow = new MachinePolicy { ToolAllow = ["revit_run_actions"] };
+        await Assert.That(allow.Refusal("batch")).IsNull();
+        await Assert.That(allow.Refusal("batch-supervisor-start")).StartsWith(MachinePolicy.RefusalPrefix);
+    }
+
+    private static readonly HashSet<string> ExemptTools = ["revit_ping", "revit_jobs"];
+
+    [Test]
+    public async Task ToolDeny_RefusesEveryManifestTool()
+    {
+        var tools = ManifestToolNames();
+        await Assert.That(tools.Count).IsGreaterThan(70);
+        foreach (var tool in tools)
+        {
+            var policy = new MachinePolicy { ToolDeny = [tool] };
+            var sent = tool switch { "revit_run_actions" => "batch", "revit_batch_start" => "batch-supervisor-start", _ => tool.Substring("revit_".Length).Replace('_', '-') };
+            if (ExemptTools.Contains(tool))
+            {
+                await Assert.That(policy.Refusal(tool)).IsNull();
+                await Assert.That(policy.Refusal(sent)).IsNull();
+                continue;
+            }
+            await Assert.That(policy.Refusal(tool)).IsNotNull().Because(tool);
+            await Assert.That(policy.Refusal(sent)).IsNotNull().Because(sent);
+            var allow = new MachinePolicy { ToolAllow = ["revit_ping"] };
+            await Assert.That(allow.Refusal(tool)).IsNotNull().Because(tool);
+        }
+    }
+
+    private static List<string> ManifestToolNames()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "docs", "tool-manifest.json"))) directory = directory.Parent;
+        if (directory is null) throw new FileNotFoundException("docs/tool-manifest.json was not found above the test output.");
+        using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(directory.FullName, "docs", "tool-manifest.json")));
+        return document.RootElement.GetProperty("tools").EnumerateArray().Select(tool => tool.GetProperty("name").GetString()!).ToList();
     }
 
     [Test]

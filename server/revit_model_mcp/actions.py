@@ -13,12 +13,9 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, m
 
 from revit_model_mcp.errors import (
     ACTION_FAILED,
-    POLICY_BLOCKED,
-    READ_ONLY,
-    READ_ONLY_MESSAGE,
     refusal,
 )
-from revit_model_mcp.policy import policy_read_only, policy_refusal
+from revit_model_mcp.policy import policy_gate
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
@@ -743,10 +740,8 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         **payload,
     ) -> dict[str, Any]:
-        if read_only or policy_read_only():
-            return refusal(command, READ_ONLY, READ_ONLY_MESSAGE)
-        if (blocked := policy_refusal(command)) is not None:
-            return refusal(command, POLICY_BLOCKED, blocked)
+        if (gate := policy_gate(command, read_only)) is not None:
+            return gate
         return await _send_action(
             execute,
             host_provider,
@@ -1121,8 +1116,8 @@ def register_actions(mcp, execute, host_provider) -> None:
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Request cancellation of an action jobId. Process-models stops before the next model and marks unstarted models cancelled; a single running Revit operation finishes, and completed changes stay committed."""
-        if read_only or policy_read_only():
-            return refusal("jobs", READ_ONLY, READ_ONLY_MESSAGE)
+        if (gate := policy_gate("revit_cancel_job", read_only, label="jobs")) is not None:
+            return gate
         job = (
             Job(
                 "jobs",

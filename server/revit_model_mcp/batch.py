@@ -16,7 +16,7 @@ from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
 from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
 from revit_model_mcp.http_host import HttpHost
-from revit_model_mcp.policy import policy_read_only
+from revit_model_mcp.policy import policy_gate, policy_refusal
 from revit_model_mcp.revit_channel import (
     Job,
     ReadOnlyRefusedError,
@@ -164,6 +164,11 @@ async def _wait_for_responsive_instance(host: object) -> list[dict[str, Any]]:
     return []
 
 
+def _deny_by_policy(tool: str) -> None:
+    if (blocked := policy_refusal(tool)) is not None:
+        raise ToolError(blocked)
+
+
 def register_batch(mcp, host_provider, channel_provider) -> None:
     read_only = env_flag("REVIT_MCP_READ_ONLY", False)
 
@@ -180,8 +185,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         open_timeout_minutes: int | None = None,
     ) -> dict[str, Any]:
         """Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."""
-        if read_only or policy_read_only():
-            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
+        if (gate := policy_gate("revit_batch_start", read_only, label="batch-start")) is not None:
+            return gate
         if (paths is None) == (folder is None):
             raise ToolError("Supply exactly one of paths or folder.")
         if folder is not None and (not isinstance(folder, str) or not folder.strip()):
@@ -255,6 +260,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     )
     async def revit_batch_status(run_id: str) -> dict[str, Any]:
         """Read durable run and model status after the initiating client exits."""
+        _deny_by_policy("revit_batch_status")
         try:
             return _public(await _file_host(host_provider()).batch_status(_run_id(run_id)))
         except RevitChannelError as error:
@@ -266,8 +272,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     )
     async def revit_batch_cancel(run_id: str) -> dict[str, Any]:
         """Persist cancellation and prevent unstarted models from running."""
-        if read_only or policy_read_only():
-            return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
+        if (gate := policy_gate("revit_batch_cancel", read_only, label="batch-cancel")) is not None:
+            return gate
         try:
             run_id = _run_id(run_id)
             file_host = _file_host(host_provider())
@@ -287,6 +293,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     )
     async def revit_batch_fetch(run_id: str, output_dir: str) -> dict[str, Any]:
         """Download completed snapshots to new local files without overwriting."""
+        _deny_by_policy("revit_batch_fetch")
         if not isinstance(output_dir, str) or not output_dir.strip():
             raise ToolError("output_dir must be a nonblank local directory.")
         try:

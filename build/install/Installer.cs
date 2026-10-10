@@ -121,6 +121,7 @@ void BuildMultiUserMsi()
             Execute = Execute.deferred,
             Impersonate = false
         },
+        EnsureProgramDataFolderAction(),
         .. UpdateSettingActions("ProgramData", true)
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
@@ -169,9 +170,27 @@ IEnumerable<PathFileAction> UpdateSettingActions(string environmentFolder, bool 
             "updateMode", $"'{mode}'", $"UPDATEMODE~=\"{mode}\"");
 }
 
+// Always creates %ProgramData%\RevitModelMcp with a protected ACL, so an administrator who later drops policy.json
+// there gets a folder a standard user cannot have created or changed. Fails the install if the folder is untrustworthy.
+PathFileAction EnsureProgramDataFolderAction()
+{
+    var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(MachinePolicyValues.EnsureProgramDataFolderScript));
+    return new PathFileAction(new Id("MachineEnsureProgramDataFolder"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+        "SystemFolder", Return.check, When.After, Step.InstallFiles,
+        new Condition("NOT REMOVE~=\"ALL\""))
+    {
+        Execute = Execute.deferred,
+        Impersonate = false
+    };
+}
+
 PathFileAction UpdateSettingAction(string environmentFolder, bool elevated, string id, string key, string value, string condition)
 {
-    var script = $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
+    // The elevated script first makes the machine folder admin-only, so SYSTEM never writes into a folder a user owns.
+    var script = (elevated ? MachinePolicyValues.EnsureProgramDataFolderScript : "") +
+        $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
         "$directory = Split-Path $path; New-Item -ItemType Directory -Path $directory -Force | Out-Null; " +
         "$settings = if (Test-Path $path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }; " +
         $"$settings | Add-Member -NotePropertyName {key} -NotePropertyValue {value} -Force; " +
