@@ -257,14 +257,14 @@ internal static class ReadCommandExecutor
         }
         var totalRows = Math.Max(0, body.LastRowNumber - dataStart + 1);
         var rows = new List<List<string>>();
-        for (var row = dataStart + offset; row <= body.LastRowNumber && rows.Count < maxRows; row++)
+        for (var row = ScheduleDataResult.FirstRow(dataStart, offset, body.LastRowNumber); row <= body.LastRowNumber && rows.Count < maxRows; row++)
             rows.Add(columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList());
         return new ScheduleDataResult
         {
             Columns = columns,
             Rows = rows,
             TotalRows = totalRows,
-            Truncated = offset + rows.Count < totalRows
+            Truncated = ScheduleDataResult.IsTruncated(offset, rows.Count, totalRows)
         };
     }
 

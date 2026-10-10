@@ -179,6 +179,12 @@ public sealed record ScheduleDataResult
                 .Where(text => !string.IsNullOrWhiteSpace(text))))
             .ToList();
     }
+
+    /// <summary>First body row to read; one past <paramref name="lastRow"/> when the offset is beyond the last data row.</summary>
+    public static int FirstRow(int dataStart, int offset, int lastRow) =>
+        (long)offset > (long)lastRow - dataStart ? lastRow + 1 : dataStart + offset;
+
+    public static bool IsTruncated(int offset, int rowCount, int totalRows) => (long)offset + rowCount < totalRows;
 }
 
 public static class ReadCommandResponseFactory
