@@ -901,6 +901,8 @@ internal static class ActionCommandExecutor
             {
                 var before = ActionVerifier.CaptureBefore(document, command, action, ids);
                 var poses = transform ? ids.Select(id => ActionVerifier.Pose(document.GetElement(id)!)).ToList() : null;
+                // Revit removes more elements at commit (empty groups, dimensions) than Delete returns.
+                var deletionSnapshot = command == "delete" && !action.DryRun ? SnapshotElementIds(document) : null;
                 var data = Mutate(document, command, action, ids, preflight);
                 var changedIds = ids;
                 if (poses is not null)
@@ -945,7 +947,7 @@ internal static class ActionCommandExecutor
                             throw new InvalidOperationException(failures.Message ?? "Could not roll back the deletion preview.");
                         group?.RollBack();
                         return ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document), null,
-                            $"Delete {deletedCount} elements ({before.Requested!.Count} requested, {before.Dependents!.Count} dependents) from {document.Title}. One undo entry restores them.",
+                            DeletionSummary.PreviewText(deletedCount, before.Requested!.Count, before.Dependents!.Count, document.Title),
                             $"Needs confirmation to delete {deletedCount} elements from {document.Title}.", changedMessage)!;
                     }
                     ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document),
@@ -982,6 +984,8 @@ internal static class ActionCommandExecutor
                     data.Verification.After = null;
                     if (!action.DryRun && data.Copies is not null && (command == "copy" || command == "mirror" && action.Copy))
                         ReconcileCopies(document, command, action, data, changedIds);
+                    if (deletionSnapshot is not null)
+                        ReconcileDeletion(document, command, action, data, before!, deletionSnapshot, changedIds);
                     try
                     {
                         ActionVerifier.CaptureAfter(document, command, action, data);
@@ -1022,6 +1026,26 @@ internal static class ActionCommandExecutor
             if (counting) document.Application.DocumentChanged -= CountChanges;
             group?.Dispose();
         }
+    }
+
+    private static List<long> SnapshotElementIds(Document document)
+    {
+        using var collector = new FilteredElementCollector(document).WhereElementIsNotElementType();
+        return collector.ToElementIds().Select(RevitValueReader.GetId).ToList();
+    }
+
+    /// <summary>Adds the elements Revit removed on its own at commit to the reported deletion.</summary>
+    private static void ReconcileDeletion(Document document, string command, ActionJobContract action,
+        ActionResultData data, ActionFacts before, List<long> snapshot, List<ElementId> ids)
+    {
+        var extra = DeletionSummary.ExtraRemoved(snapshot, SnapshotElementIds(document), data.Verification!.Changed!);
+        if (extra.Count == 0) return;
+        data.Verification.Changed = data.Verification.Changed!.Concat(extra).OrderBy(id => id).ToList();
+        data.Count = data.Verification.Changed.Count;
+        before.Dependents = (before.Dependents ?? []).Concat(extra).OrderBy(id => id).ToList();
+        var warning = DeletionSummary.ExtraWarning(extra.Count);
+        data.Warning = data.Warning is null ? warning : data.Warning + " " + warning;
+        data.Summary = BuildSummary(command, action, data, document.Title, ids);
     }
 
     /// <summary>Revit deletes copies it cannot host at commit time; report only the copies that still exist.</summary>

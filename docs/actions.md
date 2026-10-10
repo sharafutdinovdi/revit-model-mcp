@@ -228,6 +228,7 @@ Successful real writes return `data.dryRun:false` and re-read the affected eleme
 `verification.error` reports a failed post-commit re-read; the change is committed.
 Single-action responses include `failedStep:null`.
 The `verification` block contains model facts: bounding boxes for moves, parameter values and ownership for parameter edits, element metadata for creation, and deleted/dependent IDs with a survival check for deletion.
+A real deletion compares the model before and after the commit: elements Revit removed on its own (empty groups, dimensions) join `verification.changed` and `before.dependents`, `count` covers them and a `warning` gives their number. The confirmation preview states "at least" because it cannot see them. After a real `revit_copy` or `revit_mirror` with `copy=true`, copies that Revit removed at commit (for example a door whose host was not mirrored) are dropped from `copies`, `verification.changed` and `count`, and a `warning` states how many. A dry run cannot know this and reports the provisional IDs.
 Bounding boxes use model XYZ in mm rounded to one decimal; unavailable bounding boxes are omitted.
 For example, setting Comments on element 123 returns:
 
