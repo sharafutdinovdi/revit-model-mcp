@@ -37,4 +37,20 @@ public sealed class PolicyFileTrustTests
     {
         await Assert.That(PolicyFileTrust.Check("the policy file", Admins, [], true)).Contains("link");
     }
+
+    [Test]
+    [Arguments(0x40000000u, true)]
+    [Arguments(0x10000000u, true)]
+    [Arguments(0x2u, true)]
+    [Arguments(0x4u, true)]
+    [Arguments(0x10000u, true)]
+    [Arguments(0x40u, true)]
+    [Arguments(0x40000u, true)]
+    [Arguments(0x80000u, true)]
+    [Arguments(0x1200A9u, false)]
+    [Arguments(0x80000000u, false)]
+    public async Task GrantsWrite_MapsWriteEquivalentBits(uint mask, bool expected)
+    {
+        await Assert.That(PolicyFileTrust.GrantsWrite(mask)).IsEqualTo(expected);
+    }
 }

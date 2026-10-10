@@ -42,6 +42,8 @@ Refused calls return `Blocked by organization policy: the policy file could not 
 
 The last good policy is not kept. A stale copy can be looser than what the administrator wrote since, and an attacker who can force a read error would otherwise choose when the stale copy applies. A user who holds the file open can therefore only make the workstation read-only, not free.
 
+Availability caveat: a standard user can force the fail-closed state by locking `policy.json` (opening it exclusively). That is intended: the failure mode is a read-only workstation, never a looser one.
+
 Tolerated input: names are not case sensitive, so `readOnly` (the form `revit_ping` prints) and `ReadOnly` both work; a list setting accepts a single string instead of an array; a blank text value counts as not set. Everything else that is wrong fails closed instead of being skipped.
 
 Unknown setting names are the exception: a newer `policy.json` can carry settings an older add-in does not know, and that must not block the machine. They are ignored, logged once as a warning, and listed in the `revit_ping` `policy` object as `ignoredKeys` (names only, comma-separated). A typo in a name therefore does not enforce anything: check `ignoredKeys` after you edit the policy. The Python server reads the same sources with the same rules and refuses fast with the same text.

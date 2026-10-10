@@ -27,5 +27,12 @@ public static class PolicyFileTrust
         return writer.Sid is null ? null : $"{what} can be changed by a non-administrator ({writer.Sid})";
     }
 
+    // Raw access mask bits (winnt.h): write and append data, delete, delete child, change permissions, take ownership,
+    // plus the generic bits, which can appear unmapped in an ACE.
+    private const uint WriteEquivalentMask = 0x2 | 0x4 | 0x40 | 0x10000 | 0x40000 | 0x80000 | 0x40000000 | 0x10000000;
+
+    /// <summary>True when an access mask allows changing the item: any write-equivalent right, including GENERIC_WRITE and GENERIC_ALL.</summary>
+    public static bool GrantsWrite(uint accessMask) => (accessMask & WriteEquivalentMask) != 0;
+
     public static bool IsTrusted(string sid) => TrustedSids.Contains(sid, StringComparer.OrdinalIgnoreCase);
 }

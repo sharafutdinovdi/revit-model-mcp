@@ -121,6 +121,7 @@ void BuildMultiUserMsi()
             Execute = Execute.deferred,
             Impersonate = false
         },
+        .. MachinePolicyValues.RememberActions(),
         EnsureProgramDataFolderAction(),
         .. UpdateSettingActions("ProgramData", true)
     ];

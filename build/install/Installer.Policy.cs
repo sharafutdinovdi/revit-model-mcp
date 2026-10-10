@@ -12,7 +12,7 @@ namespace Installer;
 ///         key under HKLM\Software\RevitModelMcp\MsiPolicy, never by reading the policy key, so a value that Group
 ///         Policy or Intune owns is never rewritten, reset by repair, or removed by upgrade or uninstall.
 ///         ReadOnly is written as the literal 1, so a repair can never write 0.
-///         Pass READONLY=0 or EXECUTECODE=confirm on an upgrade to take back a value the installer wrote earlier.
+///         A value on the command line always wins over the remembered one. Pass READONLY=0 or EXECUTECODE=confirm on an upgrade to take back a value the installer wrote earlier.
 ///     </para>
 /// </summary>
 static class MachinePolicyValues
@@ -25,8 +25,22 @@ static class MachinePolicyValues
 
     public static IEnumerable<Property> Properties() =>
     [
-        new RegValueProperty("READONLY", RegistryHive.LocalMachine, MarkerKey, "ReadOnly", "") { Secure = true },
-        new RegValueProperty("EXECUTECODE", RegistryHive.LocalMachine, MarkerKey, "ExecuteCode", "") { Secure = true }
+        new Property("READONLY", "") { Secure = true },
+        new Property("EXECUTECODE", "") { Secure = true },
+        new RegValueProperty("RMM_REMEMBERED_READONLY", RegistryHive.LocalMachine, MarkerKey, "ReadOnly", "") { Secure = true },
+        new RegValueProperty("RMM_REMEMBERED_EXECUTECODE", RegistryHive.LocalMachine, MarkerKey, "ExecuteCode", "") { Secure = true }
+    ];
+
+    /// <summary>
+    ///     The search result goes into private properties, so AppSearch cannot overwrite a value given on the command line.
+    ///     Only an empty READONLY or EXECUTECODE takes the remembered value.
+    /// </summary>
+    public static IEnumerable<WixSharp.Action> RememberActions() =>
+    [
+        new SetPropertyAction("READONLY", "[RMM_REMEMBERED_READONLY]", Return.check, When.After, Step.AppSearch,
+            new Condition("READONLY=\"\" AND RMM_REMEMBERED_READONLY<>\"\"")),
+        new SetPropertyAction("EXECUTECODE", "[RMM_REMEMBERED_EXECUTECODE]", Return.check, When.After, Step.AppSearch,
+            new Condition("EXECUTECODE=\"\" AND RMM_REMEMBERED_EXECUTECODE<>\"\""))
     ];
 
     public static IEnumerable<RegValue> RegValues() =>
