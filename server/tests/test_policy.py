@@ -65,7 +65,6 @@ def _no_registry(monkeypatch):
         '{"ReadOnly": false, "ToolDeny": [1]}',
         '{"ReadOnly": false, "ExecuteCode": "sometimes"}',
         '{"ReadOnly": false, "UpdateMode": "sometimes"}',
-        '{"ReadOnly": false, "ReadOnlyy": true}',
         '{"ReadOnly": false, "readonly": true}',
         '{"ReadOnly": false, "LogRetentionDays": 0}',
     ],
@@ -84,6 +83,28 @@ def test_unreadable_file_fails_closed(tmp_path, monkeypatch, text):
     )
     assert policy.policy_read_only_refusal() == policy.POLICY_UNREADABLE_MESSAGE
     assert loaded["UpdateMode"] == "off" and loaded["HttpEnabled"] is False
+
+
+def test_unknown_names_are_ignored_and_reported(tmp_path, monkeypatch, caplog):
+    _write(
+        tmp_path,
+        monkeypatch,
+        {"ReadOnly": True, "ToolDeny": ["revit_delete"], "FutureSetting": {"a": 1}},
+    )
+    monkeypatch.setattr(policy, "_logged_ignored", ())
+    with caplog.at_level("WARNING"):
+        loaded = policy.load_policy()
+        policy.load_policy()
+    assert policy.UNREADABLE_KEY not in loaded
+    assert loaded[policy.IGNORED_KEY] == ["FutureSetting"]
+    assert policy.policy_read_only() is True
+    assert policy.policy_refusal("delete") is not None
+    assert len([r for r in caplog.records if "does not know" in r.message]) == 1
+
+
+def test_unknown_name_next_to_wrong_type_still_fails_closed(tmp_path, monkeypatch):
+    _write(tmp_path, monkeypatch, {"FutureSetting": 1, "ReadOnly": "maybe"})
+    assert policy.UNREADABLE_KEY in policy.load_policy()
 
 
 def test_unopenable_file_fails_closed(tmp_path, monkeypatch):

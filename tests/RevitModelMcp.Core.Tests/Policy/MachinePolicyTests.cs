@@ -35,7 +35,6 @@ public sealed class MachinePolicyTests
     [Arguments("ReadOnly", 2)]
     [Arguments("ReadOnly", "yes")]
     [Arguments("UpdateMode", "Sometimes")]
-    [Arguments("Unknown", 1)]
     [Arguments("ToolDeny", 5)]
     public async Task Parse_InvalidValueFailsClosed(string name, object value)
     {
@@ -97,12 +96,46 @@ public sealed class MachinePolicyTests
     [Arguments("""{"ReadOnly":false,"ToolDeny":5}""")]
     [Arguments("""{"ReadOnly":false,"ToolDeny":[1,2]}""")]
     [Arguments("""{"ReadOnly":false,"ExecuteCode":"sometimes"}""")]
-    [Arguments("""{"ReadOnly":false,"ReadOnlyy":true}""")]
     [Arguments("""{"ReadOnly":false,"ReadOnly":true}""")]
     [Arguments("""{"ReadOnly":null}""")]
     public async Task ParseJson_AnyProblemFailsClosed(string? json)
     {
         await AssertFailClosed(MachinePolicy.ParseJson(json));
+    }
+
+    [Test]
+    public async Task Parse_UnknownNamesAreIgnoredAndReported()
+    {
+        var policy = MachinePolicy.Parse(new Dictionary<string, object> { ["ReadOnly"] = 1, ["FutureSetting"] = 5, ["another"] = "x" });
+        await Assert.That(policy.Unreadable).IsFalse();
+        await Assert.That(policy.IsReadOnly).IsTrue();
+        await Assert.That(policy.IgnoredKeys!.OrderBy(name => name)).IsEquivalentTo(new[] { "FutureSetting", "another" }.OrderBy(name => name));
+        await Assert.That(policy.ToSummary()["ignoredKeys"]).Contains("FutureSetting");
+        await Assert.That(policy.IsEmpty).IsFalse();
+    }
+
+    [Test]
+    public async Task ParseJson_UnknownNameIsIgnoredButKnownValuesStillEnforced()
+    {
+        var policy = MachinePolicy.ParseJson("""{"ReadOnly":false,"ToolDeny":["revit_delete"],"NewThing":{"a":1}}""");
+        await Assert.That(policy.Unreadable).IsFalse();
+        await Assert.That(policy.Refusal("delete")).StartsWith(MachinePolicy.RefusalPrefix);
+        await Assert.That(policy.IgnoredKeys!.Single()).IsEqualTo("NewThing");
+    }
+
+    [Test]
+    public async Task ParseJson_UnknownNameNextToWrongTypeStillFailsClosed()
+    {
+        await AssertFailClosed(MachinePolicy.ParseJson("""{"NewThing":1,"ReadOnly":"maybe"}"""));
+    }
+
+    [Test]
+    public async Task Merge_UnionsIgnoredKeys()
+    {
+        var merged = MachinePolicy.Merge(
+            new MachinePolicy { IgnoredKeys = ["A"] },
+            new MachinePolicy { IgnoredKeys = ["a", "B"] });
+        await Assert.That(merged.IgnoredKeys!.Count).IsEqualTo(2);
     }
 
     [Test]

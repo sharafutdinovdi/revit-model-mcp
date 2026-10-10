@@ -68,8 +68,10 @@ _FLAGS = {"ReadOnly", "RedactPaths", "HttpEnabled"}
 _LISTS = {"ToolDeny", "ToolAllow", "TrustedNetworkRoots"}
 _CHOICES = {"ExecuteCode": ("off", "confirm"), "UpdateMode": ("off", "notify", "auto")}
 UNREADABLE_KEY = "_Unreadable"
+IGNORED_KEY = "_IgnoredKeys"
 POLICY_UNREADABLE_MESSAGE = f"{POLICY_REFUSAL_PREFIX} the policy file could not be read."
 _logged_problem: str | None = None
+_logged_ignored: tuple[str, ...] = ()
 
 # Tool names whose add-in command differs, mirrored from MachinePolicy.CommandAliases.
 _COMMAND_ALIASES = {"run-actions": "batch", "batch-start": "batch-supervisor-start"}
@@ -94,7 +96,9 @@ def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
             continue
         name = _KNOWN.get(key.strip().lower())
         if name is None:
-            raise PolicyUnreadableError(f"unknown setting '{key}'")
+            # A newer policy file can carry settings this version does not know: report, never enforce.
+            result.setdefault(IGNORED_KEY, []).append(key.strip())
+            continue
         if name in result:
             raise PolicyUnreadableError(f"{name} is set more than once")
         if name in _FLAGS:
@@ -165,12 +169,16 @@ def _file_values() -> dict[str, Any]:
 def load_policy() -> dict[str, Any]:
     """Merge registry over file per value, with the PascalCase policy names.
 
-    Any read error, parse error, wrong type or unknown name or enum value returns the fail-closed
+    Any read error, parse error, wrong type or unknown enum value returns the fail-closed
     policy (the last good policy is not kept, because it can be looser than the current intent).
     """
-    global _logged_problem
+    global _logged_problem, _logged_ignored
     try:
-        merged = {**_normalize(_file_values()), **_normalize(_registry_values())}
+        file_values, registry_values = _normalize(_file_values()), _normalize(_registry_values())
+        merged = {**file_values, **registry_values}
+        ignored = [*file_values.get(IGNORED_KEY, []), *registry_values.get(IGNORED_KEY, [])]
+        if ignored:
+            merged[IGNORED_KEY] = ignored
     except PolicyUnreadableError as error:
         problem = str(error)
         if problem != _logged_problem:
@@ -180,6 +188,14 @@ def load_policy() -> dict[str, Any]:
             )
         return fail_closed(problem)
     _logged_problem = None
+    names = tuple(merged.get(IGNORED_KEY, ()))
+    if names != _logged_ignored:
+        _logged_ignored = names
+        if names:
+            logging.getLogger(__name__).warning(
+                "Organization policy has settings this version does not know and ignores: %s.",
+                ", ".join(names),
+            )
     return merged
 
 

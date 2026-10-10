@@ -31,7 +31,7 @@ The add-in rereads both stores about every ten seconds, so a change applies with
 
 ### Unreadable policy fails closed
 
-A policy that exists but cannot be trusted never means "no policy". If the add-in cannot read the registry key or `policy.json` (a read error, a file lock, a file that is empty or not valid JSON, a value of the wrong type, an unknown setting name, an unknown `ExecuteCode` or `UpdateMode` value, a number out of range, or a name that appears twice), or if the file or its folder fails the [ownership check](#the-policy-folder), the whole policy turns into the fail-closed state:
+A policy that exists but cannot be trusted never means "no policy". If the add-in cannot read the registry key or `policy.json` (a read error, a file lock, a file that is empty or not valid JSON, a value of the wrong type, an unknown `ExecuteCode` or `UpdateMode` value, a number out of range, or a known name that appears twice), or if the file or its folder fails the [ownership check](#the-policy-folder), the whole policy turns into the fail-closed state:
 
 - `ReadOnly=1`: every action tool is refused.
 - `ExecuteCode=off`: `revit_execute_code` and code in `revit_process_models` are refused.
@@ -42,7 +42,9 @@ Refused calls return `Blocked by organization policy: the policy file could not 
 
 The last good policy is not kept. A stale copy can be looser than what the administrator wrote since, and an attacker who can force a read error would otherwise choose when the stale copy applies. A user who holds the file open can therefore only make the workstation read-only, not free.
 
-Tolerated input: names are not case sensitive, so `readOnly` (the form `revit_ping` prints) and `ReadOnly` both work; a list setting accepts a single string instead of an array; a blank text value counts as not set. Everything else that is wrong fails closed instead of being skipped. The Python server reads the same sources with the same rules and refuses fast with the same text.
+Tolerated input: names are not case sensitive, so `readOnly` (the form `revit_ping` prints) and `ReadOnly` both work; a list setting accepts a single string instead of an array; a blank text value counts as not set. Everything else that is wrong fails closed instead of being skipped.
+
+Unknown setting names are the exception: a newer `policy.json` can carry settings an older add-in does not know, and that must not block the machine. They are ignored, logged once as a warning, and listed in the `revit_ping` `policy` object as `ignoredKeys` (names only, comma-separated). A typo in a name therefore does not enforce anything: check `ignoredKeys` after you edit the policy. The Python server reads the same sources with the same rules and refuses fast with the same text.
 
 ### The policy folder
 

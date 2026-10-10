@@ -22,6 +22,7 @@ internal static class PolicyProvider
     private static MachinePolicy _current = MachinePolicy.Empty;
     private static long _loadedAt = -CacheMilliseconds - 1;
     private static string? _loggedProblem;
+    private static string? _loggedIgnored;
 
     public static string PolicyFilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RevitModelMcp", "policy.json");
@@ -120,6 +121,12 @@ internal static class PolicyProvider
     /// <summary>Logs a changed unreadable state once per distinct problem, after the cache is updated so the logger can read the policy without recursing.</summary>
     private static void LogOnce(MachinePolicy policy)
     {
+        var ignored = policy.IgnoredKeys is null ? null : string.Join(",", policy.IgnoredKeys);
+        if (ignored != _loggedIgnored)
+        {
+            _loggedIgnored = ignored;
+            if (ignored is not null) PluginLog.Warn($"Organization policy has settings this version does not know and ignores: {ignored}.");
+        }
         if (!policy.Unreadable)
         {
             _loggedProblem = null;

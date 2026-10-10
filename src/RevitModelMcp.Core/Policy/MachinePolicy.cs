@@ -56,16 +56,19 @@ public sealed class MachinePolicy
     /// <summary>What went wrong, for the log only. It can name settings, so it is never sent to clients.</summary>
     public string? Problem { get; init; }
 
+    /// <summary>Setting names this version does not know (a newer policy file). They are ignored, never enforced, and shown in ping. Null means none.</summary>
+    public IReadOnlyList<string>? IgnoredKeys { get; init; }
+
     public bool IsReadOnly => ReadOnly == true;
     public bool CodeExecutionOff => string.Equals(ExecuteCode, "off", StringComparison.OrdinalIgnoreCase);
     public bool IsEmpty => this == Empty || (ReadOnly is null && ToolDeny is null && ToolAllow is null && ExecuteCode is null
         && UpdateMode is null && TrustedNetworkRoots is null && LogDir is null && LogRetentionDays is null
-        && RedactPaths is null && HttpEnabled is null && !Unreadable);
+        && RedactPaths is null && HttpEnabled is null && !Unreadable && IgnoredKeys is null);
 
     /// <summary>
     /// Builds a policy from raw registry or file values. Names match case-insensitively (camelCase and PascalCase both work),
-    /// a single string is accepted for the list values, and anything else that is wrong (unknown name, wrong type, unknown
-    /// enum value, out-of-range number, duplicate name) yields <see cref="FailClosed"/> instead of a partial policy.
+    /// a single string is accepted for the list values, and anything else that is wrong (wrong type, unknown
+    /// enum value, out-of-range number, duplicate known name) yields <see cref="FailClosed"/> instead of a partial policy.
     /// </summary>
     public static MachinePolicy Parse(IReadOnlyDictionary<string, object> values)
     {
@@ -87,12 +90,18 @@ public sealed class MachinePolicy
     private static string? TryParse(IReadOnlyDictionary<string, object> values, out MachinePolicy policy)
     {
         policy = Empty;
+        var ignored = new List<string>();
         var seen = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in values)
         {
             if (string.IsNullOrWhiteSpace(pair.Key)) continue;
             var known = KnownNames.FirstOrDefault(name => string.Equals(name, pair.Key.Trim(), StringComparison.OrdinalIgnoreCase));
-            if (known is null) return $"unknown setting '{pair.Key}'";
+            if (known is null)
+            {
+                // A newer policy file can carry settings this version does not know. They are reported, not enforced.
+                ignored.Add(pair.Key.Trim());
+                continue;
+            }
             if (pair.Value is null) return $"{known} has no value";
             if (seen.ContainsKey(known)) return $"{known} is set more than once";
             seen[known] = pair.Value;
@@ -116,7 +125,7 @@ public sealed class MachinePolicy
                 "UpdateMode" => Choice(pair.Value, ["off", "notify", "auto"], out updateMode),
                 "LogDir" => Text(pair.Value, out logDir),
                 "LogRetentionDays" => Retention(pair.Value, out retention),
-                _ => $"unknown setting '{pair.Key}'"
+                _ => null
             };
             if (problem is not null) return $"{pair.Key}: {problem}";
         }
@@ -132,7 +141,8 @@ public sealed class MachinePolicy
             LogDir = logDir,
             LogRetentionDays = retention,
             RedactPaths = redactPaths,
-            HttpEnabled = httpEnabled
+            HttpEnabled = httpEnabled,
+            IgnoredKeys = ignored.Count == 0 ? null : ignored.ToArray()
         };
         return null;
     }
@@ -177,7 +187,10 @@ public sealed class MachinePolicy
                 LogDir = winner.LogDir ?? fallback.LogDir,
                 LogRetentionDays = winner.LogRetentionDays ?? fallback.LogRetentionDays,
                 RedactPaths = winner.RedactPaths ?? fallback.RedactPaths,
-                HttpEnabled = winner.HttpEnabled ?? fallback.HttpEnabled
+                HttpEnabled = winner.HttpEnabled ?? fallback.HttpEnabled,
+                IgnoredKeys = winner.IgnoredKeys is null ? fallback.IgnoredKeys
+                    : fallback.IgnoredKeys is null ? winner.IgnoredKeys
+                    : winner.IgnoredKeys.Union(fallback.IgnoredKeys, StringComparer.OrdinalIgnoreCase).ToArray()
             };
 
     /// <summary>Normalizes an MCP tool name or a command name to the command form: revit_execute_code and execute-code both become execute-code; revit_run_actions becomes batch and revit_batch_start becomes batch-supervisor-start.</summary>
@@ -219,6 +232,7 @@ public sealed class MachinePolicy
     {
         var summary = new Dictionary<string, string>();
         if (Unreadable) summary["policyUnreadable"] = "true";
+        if (IgnoredKeys is { Count: > 0 }) summary["ignoredKeys"] = string.Join(",", IgnoredKeys);
         if (ReadOnly is { } readOnly) summary["readOnly"] = Bool(readOnly);
         if (ToolDeny is { Count: > 0 }) summary["toolDeny"] = string.Join(",", ToolDeny.Select(NormalizeToolName));
         if (ToolAllow is { Count: > 0 }) summary["toolAllow"] = string.Join(",", ToolAllow.Select(NormalizeToolName));
