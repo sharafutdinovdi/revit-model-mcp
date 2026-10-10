@@ -88,6 +88,8 @@ ACTION_COMMANDS = frozenset(
         "apply-view-template",
         "create-sheet",
         "place-views-on-sheet",
+        "tag-elements",
+        "create-schedule",
         "set-parameter",
         "delete",
         "batch",

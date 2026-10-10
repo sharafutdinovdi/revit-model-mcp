@@ -87,6 +87,8 @@ ACTION_TOOL_NAMES = {
     "revit_apply_view_template",
     "revit_create_sheet",
     "revit_place_views_on_sheet",
+    "revit_tag_elements",
+    "revit_create_schedule",
     "revit_set_parameter",
     "revit_delete",
     "revit_run_actions",
@@ -487,6 +489,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             "revit_apply_view_template": {"views", "template"},
             "revit_create_sheet": {"number", "name"},
             "revit_place_views_on_sheet": {"sheet", "views"},
+            "revit_tag_elements": {"view"},
+            "revit_create_schedule": {"category", "fields"},
         }.items():
             properties = action_tools[name].input_schema["properties"]
             self.assertTrue(required.issubset(action_tools[name].input_schema["required"]))

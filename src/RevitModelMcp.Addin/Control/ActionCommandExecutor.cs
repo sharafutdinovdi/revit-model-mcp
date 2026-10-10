@@ -845,7 +845,7 @@ internal static class ActionCommandExecutor
             return LinkRemoval.Execute(document, action.LinkRemoval!, action.DryRun, failures, clientName, action.ConfirmToken);
         if (command is "select" or "show" or "isolate" && uiDocument is null)
             throw new InvalidOperationException($"Cannot run '{command}' on '{document.Title}' because it is not the active document; activate it in Revit first.");
-        var ids = command == "isolate" && action.Reset ? [] : ResolveIds(document, action.ElementIds);
+        var ids = (command == "isolate" && action.Reset) || (command is "tag-elements" or "create-schedule") ? [] : ResolveIds(document, action.ElementIds);
         if (command is "select" or "show")
         {
             if (command == "show")
@@ -1107,7 +1107,7 @@ internal static class ActionCommandExecutor
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
             "load-family" or "place-families" or "create-mep-run" => data.Count ?? 0,
             "walls-from-cad" => data.Count ?? 0,
-            "apply-view-template" or "place-views-on-sheet" => data.Count ?? 0,
+            "apply-view-template" or "place-views-on-sheet" or "tag-elements" or "create-schedule" => data.Count ?? 0,
             _ => 0
         };
         return ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -1207,6 +1207,7 @@ internal static class ActionCommandExecutor
         {
             case "create-view":
             case "duplicate-view":
+            case "create-schedule":
             case "create-sheet":
                 var created = document.GetElement(CreateId(result.Id!.Value))
                     ?? throw new InvalidOperationException($"Verification could not find element {result.Id.Value}.");
@@ -1218,6 +1219,7 @@ internal static class ActionCommandExecutor
                     ?? throw new InvalidOperationException($"View '{reference}' was not found after applying template.")).ToList();
                 verification.After = new ActionFacts { Elements = affected.Select(view => new ActionFacts { Id = RevitValueReader.GetId(view.Id) }).ToList() };
                 break;
+            case "tag-elements":
             case "place-views-on-sheet":
                 verification.After = new ActionFacts
                 {
@@ -1287,6 +1289,10 @@ internal static class ActionCommandExecutor
                 return ActionMutations.CreateSheet(document, action);
             case "place-views-on-sheet":
                 return ActionMutations.PlaceViewsOnSheet(document, action);
+            case "tag-elements":
+                return AnnotationActions.TagElements(document, action);
+            case "create-schedule":
+                return ScheduleActions.Create(document, action);
             default:
                 throw new ArgumentException($"Unknown action: {command}.");
         }

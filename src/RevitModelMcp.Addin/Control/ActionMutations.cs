@@ -1126,7 +1126,7 @@ internal static class ActionMutations
     private static View FindView(Document document, string reference) =>
         ReadCommandReader.FindView(document, reference) ?? throw new ArgumentException($"View '{reference}' was not found.");
 
-    private static void SetViewName(Document document, View view, string? name)
+    internal static void SetViewName(Document document, View view, string? name)
     {
         if (name is null) return;
         using var views = document.CollectElements().OfClass<View>();
