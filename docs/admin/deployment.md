@@ -75,7 +75,7 @@ Uninstall leaves settings, logs and the channel folder; see [data retention](../
 The installer treats `HKLM\Software\Policies\RevitModelMcp` as owned by Group Policy or Intune. It follows three rules:
 
 - It writes `ReadOnly` or `ExecuteCode` only when you set `READONLY=1` or `EXECUTECODE=off|confirm` on the command line, or when an earlier run of the installer wrote that value. `ReadOnly` is always written as `1`, so a repair can never write `0`.
-- It remembers what it wrote in `HKLM\Software\RevitModelMcp\MsiPolicy`, not by reading the policy key. An upgrade, a repair (`msiexec /fa`) and Modify therefore keep the values without passing the properties again, and a value that Group Policy set is never rewritten, reset or deleted by the installer.
+- It remembers what it wrote in `HKLM\Software\RevitModelMcp\MsiPolicy`, not by reading the policy key. An upgrade, a repair (`msiexec /fa`) and Modify therefore keep the values without passing the properties again, and a value that Group Policy set is never rewritten, reset or deleted by the installer. A value on the command line always wins over the remembered one.
 - Uninstall removes only the values the installer wrote. To take a value back on an upgrade, pass `READONLY=0` or `EXECUTECODE=confirm`.
 
 If Group Policy and the installer both write the same value, Group Policy refresh restores its own value. A broken or unreadable policy is never the result of an installer run: it fails closed, see [unreadable policy](policy-reference.md#unreadable-policy-fails-closed).

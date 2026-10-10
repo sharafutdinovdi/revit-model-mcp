@@ -21,8 +21,7 @@ internal static class PolicyProvider
     private static readonly object SyncRoot = new();
     private static MachinePolicy _current = MachinePolicy.Empty;
     private static long _loadedAt = -CacheMilliseconds - 1;
-    private static string? _loggedProblem;
-    private static string? _loggedIgnored;
+    private static readonly PolicyLogState LogState = new();
 
     public static string PolicyFilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "RevitModelMcp", "policy.json");
@@ -31,16 +30,21 @@ internal static class PolicyProvider
     {
         get
         {
+            IReadOnlyList<string> messages = [];
+            MachinePolicy current;
             lock (SyncRoot)
             {
                 if (Now() - _loadedAt > CacheMilliseconds)
                 {
                     _current = MachinePolicy.Merge(ReadRegistry(), ReadFile());
                     _loadedAt = Now();
-                    LogOnce(_current);
+                    messages = LogState.NewMessages(_current);
                 }
-                return _current;
+                current = _current;
             }
+            // The logger rotates files and reads the policy, so it must run outside the lock.
+            foreach (var message in messages) PluginLog.Warn(message);
+            return current;
         }
     }
 
@@ -65,7 +69,17 @@ internal static class PolicyProvider
         {
             var path = PolicyFilePath;
             var folder = Path.GetDirectoryName(path)!;
-            if (!Directory.Exists(folder) || !File.Exists(path)) return MachinePolicy.Empty;
+            // File.Exists answers false when access is denied, which would read as "no policy". Listing the folder tells the cases apart.
+            string[] found;
+            try
+            {
+                found = Directory.GetFiles(folder, Path.GetFileName(path));
+            }
+            catch (DirectoryNotFoundException)
+            {
+                return MachinePolicy.Empty;
+            }
+            if (found.Length == 0) return MachinePolicy.Empty;
             if (UntrustedLocation(folder, path) is { } untrusted) return MachinePolicy.FailClosed(untrusted);
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             using var reader = new StreamReader(stream, Encoding.UTF8, true);
@@ -90,13 +104,11 @@ internal static class PolicyProvider
 
     private static string? Check(string what, FileSystemSecurity security, FileAttributes attributes)
     {
-        const FileSystemRights writeRights = FileSystemRights.WriteData | FileSystemRights.AppendData | FileSystemRights.Delete
-            | FileSystemRights.DeleteSubdirectoriesAndFiles | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership;
         var owner = (security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier)?.Value;
         var entries = new List<AccessEntry>();
         foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
             if (rule.AccessControlType == AccessControlType.Allow)
-                entries.Add(new AccessEntry(rule.IdentityReference.Value, (rule.FileSystemRights & writeRights) != 0));
+                entries.Add(new AccessEntry(rule.IdentityReference.Value, PolicyFileTrust.GrantsWrite((uint)rule.FileSystemRights)));
         return PolicyFileTrust.Check(what, owner, entries, (attributes & FileAttributes.ReparsePoint) != 0);
     }
 
@@ -116,24 +128,5 @@ internal static class PolicyProvider
         {
             return MachinePolicy.FailClosed($"the registry policy could not be read ({exception.GetType().Name})");
         }
-    }
-
-    /// <summary>Logs a changed unreadable state once per distinct problem, after the cache is updated so the logger can read the policy without recursing.</summary>
-    private static void LogOnce(MachinePolicy policy)
-    {
-        var ignored = policy.IgnoredKeys is null ? null : string.Join(",", policy.IgnoredKeys);
-        if (ignored != _loggedIgnored)
-        {
-            _loggedIgnored = ignored;
-            if (ignored is not null) PluginLog.Warn($"Organization policy has settings this version does not know and ignores: {ignored}.");
-        }
-        if (!policy.Unreadable)
-        {
-            _loggedProblem = null;
-            return;
-        }
-        if (_loggedProblem == policy.Problem) return;
-        _loggedProblem = policy.Problem;
-        PluginLog.Warn($"Organization policy could not be read, so the add-in is read-only, code execution is off and updates are off: {policy.Problem}.");
     }
 }
