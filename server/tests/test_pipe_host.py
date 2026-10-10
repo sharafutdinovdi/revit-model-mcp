@@ -476,3 +476,27 @@ def test_pipe_read_only_cancel_returns_refusal():
         }
 
     asyncio.run(check())
+
+
+def test_pipe_move_failure_deletes_source_image(tmp_path):
+    async def scenario():
+        parent = MagicMock()
+        parent.root = tmp_path
+        host = PipeJobHost(parent, {"processId": PID}, AsyncMock())
+        directory = tmp_path / "instances" / str(PID)
+        directory.mkdir(parents=True)
+        source = directory / "view.png"
+        source.write_bytes(b"png")
+        target = tmp_path / "existing.png"
+        target.write_bytes(b"original")
+        host._result = json.dumps({"success": True, "data": {"fileName": "view.png"}})
+        try:
+            await host.finish_job("", [], True, str(target))
+        except Exception as error:
+            assert "already exists" in str(error)
+        else:
+            raise AssertionError("finish_job must fail for an existing destination")
+        assert not source.exists()
+        assert target.read_bytes() == b"original"
+
+    asyncio.run(scenario())
