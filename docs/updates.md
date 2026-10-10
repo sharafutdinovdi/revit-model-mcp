@@ -36,7 +36,7 @@ Example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:UpdateChannel=m
 
 ## Dev and prerelease builds
 
-A newer release replaces an installed build only when its `X.Y.Z` is strictly greater than the installed `X.Y.Z`. A `0.9.1-dev` or `0.9.1-rc.1` build is never replaced by release `0.9.1`, and never by an older one. Dev builds also default to mode `off` and are capped at `notify`.
+A published prerelease such as `0.9.1-rc.1` is replaced by the stable release `0.9.1` or any newer stable release. A dev build (version label `-dev`, for example `0.9.1-dev+abc1234`) is never replaced by the same or an older `X.Y.Z`; only a strictly newer stable release counts as an update. Dev builds also default to mode `off`, and even with a policy or setting they are capped at `notify`, so they never install anything.
 
 ## Enterprise notes
 

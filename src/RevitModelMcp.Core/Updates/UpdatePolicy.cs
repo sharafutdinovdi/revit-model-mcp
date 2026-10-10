@@ -14,11 +14,14 @@ public static class UpdatePolicy
     public static bool IsNewerStable(string installed, string candidate, bool draft, bool prerelease)
     {
         if (draft || prerelease || !Regex.IsMatch(candidate, @"\Av?\d+\.\d+\.\d+\z", RegexOptions.CultureInvariant)) return false;
-        var current = installed.TrimStart('v', 'V').Split('+')[0].Split('-')[0];
+        var installedVersion = installed.TrimStart('v', 'V').Split('+')[0];
+        var installedPrerelease = installedVersion.Contains('-');
+        var installedDev = installedVersion.Contains("-dev", StringComparison.OrdinalIgnoreCase);
+        var current = installedVersion.Split('-')[0];
         var available = candidate.TrimStart('v', 'V').Split('+')[0];
         return Version.TryParse(current, out var currentVersion) &&
                Version.TryParse(available, out var availableVersion) &&
-               availableVersion > currentVersion;
+               (availableVersion > currentVersion || installedPrerelease && !installedDev && availableVersion == currentVersion);
     }
 
     public static bool ShouldCheck(DateTimeOffset now, DateTimeOffset? lastCheck) =>
