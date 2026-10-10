@@ -61,7 +61,7 @@ internal static class ScheduleActions
                 skipped.Add($"Filter on '{filter.Field}': no schedulable field with this name.");
                 continue;
             }
-            var failure = TryAddFilter(definition, field, filter);
+            var failure = TryAddFilter(document, category, definition, field, filter);
             if (failure is null) filtersApplied++;
             else skipped.Add($"Filter on '{filter.Field}': {failure}");
         }
@@ -109,27 +109,86 @@ internal static class ScheduleActions
         return result;
     }
 
-    private static string? TryAddFilter(ScheduleDefinition definition, ScheduleField field, ScheduleFilterContract filter)
+    private static string? TryAddFilter(Document document, Category category, ScheduleDefinition definition,
+        ScheduleField field, ScheduleFilterContract filter)
     {
         var type = FilterType(filter.Operator!);
         if (!ScheduleFilterOperators.RequiresValue(filter.Operator!))
             return TryAdd(definition, new ScheduleFilter(field.FieldId, type));
 
         var text = filter.Value!;
-        var candidates = new List<Func<ScheduleFilter>> { () => new ScheduleFilter(field.FieldId, type, text) };
-        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
-        {
-            candidates.Add(() => new ScheduleFilter(field.FieldId, type, ToInternal(field, number)));
-            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var whole))
-                candidates.Add(() => new ScheduleFilter(field.FieldId, type, whole));
-        }
+        var samples = SampleParameters(document, category, field);
+        var storage = samples.Count == 0 ? null : samples[0].StorageType.ToString();
         string? lastFailure = null;
-        foreach (var candidate in candidates)
+        foreach (var kind in ScheduleFilterValuePlan.Plan(storage, text))
         {
-            lastFailure = TryAdd(definition, candidate());
+            ScheduleFilter? candidate = null;
+            switch (kind)
+            {
+                case ScheduleFilterValueKind.Text:
+                    candidate = new ScheduleFilter(field.FieldId, type, text);
+                    break;
+                case ScheduleFilterValueKind.Number:
+                    candidate = new ScheduleFilter(field.FieldId, type,
+                        ToInternal(field, double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture)));
+                    break;
+                case ScheduleFilterValueKind.Integer:
+                    candidate = new ScheduleFilter(field.FieldId, type, int.Parse(text, NumberStyles.Integer, CultureInfo.InvariantCulture));
+                    break;
+                case ScheduleFilterValueKind.ElementIdLiteral:
+                    candidate = new ScheduleFilter(field.FieldId, type, CreateId(long.Parse(text, CultureInfo.InvariantCulture)));
+                    break;
+                case ScheduleFilterValueKind.ElementName:
+                    var resolution = ScheduleFilterValuePlan.ResolveName(ReferencedElements(document, samples), text);
+                    if (resolution.Id is null) { lastFailure = resolution.Error; continue; }
+                    candidate = new ScheduleFilter(field.FieldId, type, CreateId(resolution.Id.Value));
+                    break;
+            }
+            lastFailure = TryAdd(definition, candidate!);
             if (lastFailure is null) return null;
         }
         return lastFailure;
+    }
+
+    private static ElementId CreateId(long value) => ActionCommandExecutor.CreateId(value);
+
+    /// <summary>The field's parameter on up to 200 category elements, used to read the storage type and referenced elements.</summary>
+    private static List<Parameter> SampleParameters(Document document, Category category, ScheduleField field)
+    {
+        var result = new List<Parameter>();
+        var builtIn = RevitValueReader.GetId(field.ParameterId);
+        var name = field.GetName();
+        using var collector = new FilteredElementCollector(document).OfCategoryId(category.Id).WhereElementIsNotElementType();
+        foreach (var element in collector)
+        {
+            var parameter = builtIn < 0 && Enum.IsDefined(typeof(BuiltInParameter), (int)builtIn)
+                ? element.get_Parameter((BuiltInParameter)(int)builtIn)
+                : null;
+            parameter ??= element.LookupParameter(name);
+            if (parameter is not null) result.Add(parameter);
+            if (result.Count >= 200) break;
+        }
+        return result;
+    }
+
+    /// <summary>Elements the sampled ElementId parameters point at, plus all levels and phases.</summary>
+    private static IEnumerable<(long Id, string Name)> ReferencedElements(Document document, List<Parameter> samples)
+    {
+        var seen = new HashSet<long>();
+        foreach (var parameter in samples)
+        {
+            if (parameter.StorageType != StorageType.ElementId) continue;
+            var referenced = document.GetElement(parameter.AsElementId());
+            if (referenced is not null && seen.Add(RevitValueReader.GetId(referenced.Id)))
+                yield return (RevitValueReader.GetId(referenced.Id), referenced.Name);
+        }
+        foreach (var type in new[] { typeof(Level), typeof(Phase) })
+        {
+            using var collector = new FilteredElementCollector(document).OfClass(type);
+            foreach (var element in collector)
+                if (seen.Add(RevitValueReader.GetId(element.Id)))
+                    yield return (RevitValueReader.GetId(element.Id), element.Name);
+        }
     }
 
     private static string? TryAdd(ScheduleDefinition definition, ScheduleFilter filter)

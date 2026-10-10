@@ -34,4 +34,31 @@ public sealed class NoChangeGuardPolicyTests
         await Assert.That(NoChangeGuardPolicy.Applies(command, true, true)).IsFalse();
         await Assert.That(NoChangeGuardPolicy.Applies(command, false, false)).IsFalse();
     }
+
+    [Test]
+    [Arguments("select", 0)]
+    [Arguments("isolate", 0)]
+    [Arguments("isolate", 3)]
+    [Arguments("override-graphics", 0)]
+    [Arguments("set-view-visibility", 0)]
+    public async Task UiOnlyStepsWithoutChangesKeepNoUndoEntry(string command, int changed)
+    {
+        await Assert.That(NoChangeGuardPolicy.KeepsUndoEntry(command, changed)).IsFalse();
+    }
+
+    [Test]
+    [Arguments("override-graphics")]
+    [Arguments("set-view-visibility")]
+    public async Task ViewOverridesThatChangedAnElementKeepTheUndoEntry(string command)
+    {
+        await Assert.That(NoChangeGuardPolicy.KeepsUndoEntry(command, 1)).IsTrue();
+    }
+
+    [Test]
+    [Arguments("move", 0)]
+    [Arguments("delete", 4)]
+    public async Task ModelChangingCommandsKeepTheUndoEntry(string command, int changed)
+    {
+        await Assert.That(NoChangeGuardPolicy.KeepsUndoEntry(command, changed)).IsTrue();
+    }
 }

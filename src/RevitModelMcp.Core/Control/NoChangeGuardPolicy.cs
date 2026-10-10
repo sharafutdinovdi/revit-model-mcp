@@ -18,4 +18,15 @@ public static class NoChangeGuardPolicy
 
     /// <summary>True when the step runs inside its own transaction group, is not a dry run and may change elements.</summary>
     public static bool Applies(string command, bool dryRun, bool hasGroup) => hasGroup && !dryRun && !IsUiOnly(command);
+
+    /// <summary>
+    /// True when a committed step may be recorded as the newest undoable action. UI-only commands never create a Revit
+    /// undo entry, except graphic overrides and view visibility, which do only when the commit changed an element.
+    /// Recording a phantom entry would make undo_last target it and strand the previous real action.
+    /// </summary>
+    public static bool KeepsUndoEntry(string command, int changedElementCount) =>
+        !IsUiOnly(command) || (TracksUndoByChanges(command) && changedElementCount > 0);
+
+    /// <summary>True when a UI-only command still counts commit changes to decide whether it left an undo entry.</summary>
+    public static bool TracksUndoByChanges(string command) => command is "override-graphics" or "set-view-visibility";
 }

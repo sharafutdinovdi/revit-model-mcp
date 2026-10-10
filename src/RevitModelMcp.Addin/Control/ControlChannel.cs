@@ -371,13 +371,11 @@ internal sealed class ControlChannel
         _stopped = true;
         lock (_httpCompletions)
         {
-            var abandoned = _scheduler.AbandonUnfinished(
-                "{\"success\":false,\"abandoned\":true,\"error\":\"Revit shut down while this job was running. The change may still have been applied; inspect the model before retrying.\"}",
-                "{\"success\":false,\"cancelled\":true,\"error\":\"Revit shut down before this job started.\"}");
+            var abandoned = _scheduler.AbandonUnfinished(ShutdownResults.Running, ShutdownResults.Queued);
             foreach (var completion in _httpCompletions)
             {
                 var job = abandoned.FirstOrDefault(item => item.JobId == completion.Key);
-                completion.Value.TrySetResult(job?.Result ?? "{\"success\":false,\"error\":\"Revit is shutting down.\"}");
+                completion.Value.TrySetResult(job?.Result ?? ShutdownResults.Unknown);
             }
             _httpCompletions.Clear();
         }

@@ -243,8 +243,10 @@ class Job:
 
     @classmethod
     def export_view(cls, view: str, pixel_size: int = 1600, output_path: str | None = None) -> Job:
-        if pixel_size < 1 or pixel_size > 4000:
-            raise RevitChannelError("pixel_size must be between 1 and 4000.")
+        if pixel_size < 32 or pixel_size > 4000:
+            raise RevitChannelError(
+                "pixel_size must be between 32 and 4000 (Revit rejects smaller images)."
+            )
         payload = {
             "command": "export-view",
             "view": _required_text(view, "view"),

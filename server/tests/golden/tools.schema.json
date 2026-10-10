@@ -654,7 +654,7 @@
       "pixel_size": {
         "default": 1600,
         "maximum": 4000,
-        "minimum": 1,
+        "minimum": 32,
         "type": "integer"
       },
       "process_id": {
@@ -2464,7 +2464,7 @@
       "pixel_size": {
         "default": 1600,
         "maximum": 4000,
-        "minimum": 1,
+        "minimum": 32,
         "type": "integer"
       },
       "process_id": {
@@ -2593,7 +2593,7 @@
       "pixel_size": {
         "default": 900,
         "maximum": 4000,
-        "minimum": 1,
+        "minimum": 32,
         "type": "integer"
       },
       "process_id": {

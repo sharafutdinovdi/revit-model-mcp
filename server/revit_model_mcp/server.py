@@ -163,9 +163,9 @@ PixelSize = Annotated[
     int,
     Field(
         validation_alias=AliasChoices("pixel_size", "pixelSize"),
-        ge=1,
+        ge=32,
         le=4000,
-        description="PNG size in pixels along the fitted dimension, 1 to 4000 (default 1600).",
+        description="PNG size in pixels along the fitted dimension, 32 to 4000 (default 1600); Revit rejects smaller images.",
     ),
 ]
 SaveTo = Annotated[
