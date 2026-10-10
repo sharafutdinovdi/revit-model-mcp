@@ -34,12 +34,18 @@ public sealed class MachinePolicyTests
         var policy = MachinePolicy.Parse(new Dictionary<string, object>
         {
             ["ExecuteCode"] = "maybe",
-            ["UpdateMode"] = "sometimes",
             ["LogRetentionDays"] = -4,
             ["ReadOnly"] = new object(),
             ["Unknown"] = 1
         });
         await Assert.That(policy.IsEmpty).IsTrue();
+    }
+
+    [Test]
+    public async Task Parse_KeepsUnknownUpdateModeLowercased()
+    {
+        var policy = MachinePolicy.Parse(new Dictionary<string, object> { ["UpdateMode"] = "Sometimes" });
+        await Assert.That(policy.UpdateMode).IsEqualTo("sometimes");
     }
 
     [Test]

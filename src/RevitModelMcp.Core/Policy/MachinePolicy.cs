@@ -26,7 +26,7 @@ public sealed class MachinePolicy
     /// <summary>"off" or "confirm". Null means unset (confirm).</summary>
     public string? ExecuteCode { get; init; }
 
-    /// <summary>"off", "notify" or "auto". Null means unset.</summary>
+    /// <summary>Lowercased as written: "off", "notify" or "auto" are valid, any other text is kept so the consumer can fail closed. Null means unset.</summary>
     public string? UpdateMode { get; init; }
 
     public IReadOnlyList<string>? TrustedNetworkRoots { get; init; }
@@ -59,7 +59,7 @@ public sealed class MachinePolicy
             ToolDeny = List(Get("ToolDeny")),
             ToolAllow = List(Get("ToolAllow")),
             ExecuteCode = executeCode is "off" or "confirm" ? executeCode : null,
-            UpdateMode = updateMode is "off" or "notify" or "auto" ? updateMode : null,
+            UpdateMode = updateMode,
             TrustedNetworkRoots = List(Get("TrustedNetworkRoots")),
             LogDir = Text(Get("LogDir")),
             LogRetentionDays = retention is >= 1 and <= 3650 ? retention : null,
