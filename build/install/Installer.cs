@@ -6,6 +6,7 @@ using WixSharp.Controls;
 
 const string outputName = "RevitModelMcp";
 const string productName = "Model MCP";
+const string serverSourceFolder = @"output\server-exe\revit-model-mcp";
 
 var versioning = Versioning.CreateFromVersionString(args[0]);
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
@@ -63,7 +64,8 @@ void BuildSingleUserMsi()
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
     project.Dirs =
     [
-        new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
+        new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)]),
+        ServerDir(@"%LocalAppDataFolder%\Programs")
     ];
     project.BuildMsi();
 }
@@ -132,12 +134,31 @@ void BuildMultiUserMsi()
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
-    project.Dirs = wixEntities
-        .GroupBy(entity => MachineAddinsRoot(entity.Version).Dir)
-        .Select(root => new Dir(root.Key, [.. root.Select(entity => entity.Directory)]))
-        .ToArray();
+    project.Dirs =
+    [
+        .. wixEntities
+            .GroupBy(entity => MachineAddinsRoot(entity.Version).Dir)
+            .Select(root => new Dir(root.Key, [.. root.Select(entity => entity.Directory)])),
+        ServerDir("%ProgramFiles%")
+    ];
 
     project.BuildMsi();
+}
+
+// The self-contained server (PyInstaller onedir, built by build/server-exe/build.py): one copy per machine or user,
+// shared by every Revit year, so the 228 files are not repeated six times. The Connect AI dialog finds it at
+// <root>\Model MCP\server\revit-model-mcp.exe. It needs neither uv nor Python.
+Dir ServerDir(string root)
+{
+    if (!Directory.Exists(serverSourceFolder) || !System.IO.File.Exists(Path.Combine(serverSourceFolder, "revit-model-mcp.exe")))
+        throw new Exception($"The bundled server is missing: run `python build/server-exe/build.py` first ({serverSourceFolder}).");
+    var feature = new Feature
+    {
+        Name = "Bundled MCP server",
+        Description = "The Model MCP server (no Python or uv needed) that AI apps start",
+        AllowChange = false
+    };
+    return new Dir($@"{root}\{productName}\server", new Files(feature, $@"{serverSourceFolder}\*.*"));
 }
 
 // The machine add-in roots: the Dir form for packaging and the property form for file searches.

@@ -4,8 +4,9 @@ using System.Text;
 namespace RevitModelMcp.Core.Connect;
 
 /// <summary>Inspects, adds and removes the server entry in AI app configuration files.</summary>
-public sealed class McpClientConfigurator(Func<DateTime>? clock = null)
+public sealed class McpClientConfigurator(Func<DateTime>? clock = null, McpServerSpec? spec = null)
 {
+    private readonly McpServerSpec _spec = spec ?? McpServerSpec.Uvx;
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
     private readonly Func<DateTime> _clock = clock ?? (() => DateTime.Now);
 
@@ -58,10 +59,10 @@ public sealed class McpClientConfigurator(Func<DateTime>? clock = null)
     private static McpClientStatus InspectText(McpClientTarget target, string text) =>
         target.Format == McpConfigFormat.Toml ? TomlConfigEditor.Inspect(target, text) : JsonConfigEditor.Inspect(target, text);
 
-    private static string? Edit(McpClientTarget target, string text, bool add) => target.Format switch
+    private string? Edit(McpClientTarget target, string text, bool add) => target.Format switch
     {
-        McpConfigFormat.Toml => add ? TomlConfigEditor.Add(text) : TomlConfigEditor.Remove(text),
-        _ => add ? JsonConfigEditor.Add(target, text) : JsonConfigEditor.Remove(target, text)
+        McpConfigFormat.Toml => add ? TomlConfigEditor.Add(text, _spec) : TomlConfigEditor.Remove(text),
+        _ => add ? JsonConfigEditor.Add(target, text, _spec) : JsonConfigEditor.Remove(target, text)
     };
 
     private static bool IsFileError(Exception exception) =>

@@ -8,7 +8,7 @@ Model MCP has two parts. The add-in runs inside Revit on Windows. The server run
 | --- | --- |
 | Revit | Revit 2022, 2023, 2024, 2025, 2026 or 2027 on Windows 10 or 11. |
 | Add-in | Installed on the Windows machine where Revit runs. No administrator rights are needed for the per-user installation. |
-| Python and uv | Python 3.11 or newer, started through [uv](https://docs.astral.sh/uv/getting-started/installation/). uv downloads the server package and, if needed, a matching Python. |
+| Server runtime | The MSI installers carry a self-contained server (`revit-model-mcp.exe`, with its own Python): no Python and no uv are needed. The add-in bundle and the Claude Desktop `.mcpb` start the server through [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python 3.11 or newer; uv downloads the server package and, if needed, a matching Python). |
 | MCP client | An MCP client such as Claude Desktop or Claude Code. It can run on the same Windows machine, or on macOS or Linux with a [remote workstation](transport.md). |
 | Network | Local use needs no open ports. Update checks and the first server download need internet access; see the [privacy policy](privacy.md). |
 
@@ -28,7 +28,7 @@ Signing starts with the first release after the project's application is approve
 2. Close Revit and copy the folder to `%APPDATA%\Autodesk\ApplicationPlugins` (current user) or `%ProgramData%\Autodesk\ApplicationPlugins` (all users).
 3. Start Revit and open a model. The first time, Revit asks whether to load the add-in. Choose **Always Load** after you check the publisher and path. Release builds are not code-signed yet; see [code signing](code-signing.md).
 4. Find the **MCP** panel on the **Add-Ins** tab. Its **Activity** button opens the activity pane, which lists every request and action, and its **Connect AI app** button registers the server in your AI apps (see [Connect an AI app](#connect-an-ai-app)).
-5. Install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+5. Unless you installed an MSI (which bundles the server, see [Connect an AI app](#connect-an-ai-app)), install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 6. Register the server in your MCP client.
 
    For Claude Code on the same Windows machine:
@@ -65,7 +65,7 @@ The **MCP** panel on the **Add-Ins** tab has two buttons. Press F1 while the poi
 
 ### Connect an AI app
 
-**Connect AI app** writes the same local registration as step 6 above (`uvx revit-model-mcp` with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`) into the configuration of each app it finds on the Revit workstation. It does not install uv or the apps; uv must be on the PATH.
+**Connect AI app** writes the same local registration as step 6 above, with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`, into the configuration of each app it finds on the Revit workstation. When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed. Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH. The dialog shows which one it will write. It does not install the apps.
 
 | App | Configuration file |
 |---|---|

@@ -132,6 +132,10 @@ jobs:
         run: |
           uv export --frozen --no-dev --no-emit-project --no-header --quiet -o "$RUNNER_TEMP/requirements.docker.txt"
           diff -u --strip-trailing-cr requirements.docker.txt "$RUNNER_TEMP/requirements.docker.txt"
+      - name: Build bundled server executable
+        run: python build/server-exe/build.py
+      - name: Smoke-test bundled server executable
+        run: python build/server-exe/smoke.py
       - name: Build installers
         shell: pwsh
         env:
@@ -156,6 +160,9 @@ jobs:
               ($_.Extension -eq '.dll' -and $_.VersionInfo.CompanyName -match 'Autodesk')
             })
             if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
+            $servers = @($files | Where-Object Name -EQ 'revit-model-mcp.exe')
+            if ($servers.Count -ne 1) { throw "Expected one bundled server executable in $($msi.Name), found $($servers.Count)" }
+            if (!(Test-Path (Join-Path $servers[0].DirectoryName 'licenses/PYTHON-LICENSE.txt'))) { throw "Missing Python license in $($msi.Name)" }
             $manifests = @($files | Where-Object Name -EQ 'RevitModelMcp.addin')
             if ($manifests.Count -ne 6) { throw 'Unexpected Revit year count in MSI' }
             foreach ($year in '22', '23', '24', '25', '26', '27') {

@@ -10,7 +10,13 @@ namespace RevitModelMcp.Connect;
 /// <summary>Small modal dialog listing the supported AI apps with an honest state and an Add or Remove button each.</summary>
 internal sealed class ConnectAiWindow : Window
 {
-    private readonly McpClientConfigurator _configurator = new();
+    private readonly McpServerSpec _spec = McpServerSpec.Resolve(
+        McpServerSpec.BundledCandidates(
+            System.IO.Path.GetDirectoryName(typeof(ConnectAiWindow).Assembly.Location),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
+        System.IO.File.Exists);
+    private readonly McpClientConfigurator _configurator;
     private readonly IReadOnlyList<McpClientTarget> _targets = McpClientLocator.Discover(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -20,6 +26,7 @@ internal sealed class ConnectAiWindow : Window
 
     public ConnectAiWindow()
     {
+        _configurator = new McpClientConfigurator(spec: _spec);
         Title = ConnectText.Title;
         Width = 600;
         SizeToContent = SizeToContent.Height;
@@ -31,7 +38,7 @@ internal sealed class ConnectAiWindow : Window
         Background = Brushes.White;
 
         var root = new StackPanel { Margin = new Thickness(16) };
-        root.Children.Add(new TextBlock { Text = ConnectText.Intro, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
+        root.Children.Add(new TextBlock { Text = ConnectText.Intro(_spec), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         root.Children.Add(_rows);
         root.Children.Add(_message);
         var close = new Button { Content = ConnectText.Close, MinWidth = 80, Padding = new Thickness(12, 4, 12, 4), IsCancel = true, IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
@@ -82,7 +89,7 @@ internal sealed class ConnectAiWindow : Window
         details.Children.Add(new TextBlock { Text = ConnectText.ClaudeCodeHint, Foreground = Brushes.Gray });
         details.Children.Add(new TextBox
         {
-            Text = McpServerSpec.ClaudeCodeCommand,
+            Text = _spec.ClaudeCodeCommand,
             IsReadOnly = true,
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             FontSize = 10.5,
@@ -130,7 +137,7 @@ internal sealed class ConnectAiWindow : Window
     {
         try
         {
-            Clipboard.SetText(McpServerSpec.ClaudeCodeCommand);
+            Clipboard.SetText(_spec.ClaudeCodeCommand);
             _message.Foreground = Brushes.Black;
             _message.Text = ConnectText.Copied;
         }

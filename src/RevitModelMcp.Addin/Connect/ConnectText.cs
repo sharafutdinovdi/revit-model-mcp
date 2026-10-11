@@ -9,10 +9,14 @@ internal static class ConnectText
     public const string RibbonToolTip =
         "Add or remove the Revit Model MCP server in Claude Desktop, Cursor, Visual Studio Code and Codex on this computer, or copy the Claude Code command.";
     public const string Title = "Connect AI app";
-    public const string Intro =
-        "Adds the \"revit-model-mcp\" server (uvx revit-model-mcp, this Revit workstation) to an app's MCP settings. " +
+
+    public static string Intro(McpServerSpec spec) =>
+        $"Adds the \"revit-model-mcp\" server ({spec.Display}, this Revit workstation) to an app's MCP settings. " +
         "Only that entry is changed, and the previous file is saved next to it first. Restart the app afterwards. " +
-        "The apps start the server with uv, so uv must be installed.";
+        (spec == McpServerSpec.Uvx
+            ? "The apps start the server with uv, so uv must be installed."
+            : "The apps start the server installed with this add-in, so neither uv nor Python is needed.");
+
     public const string ClaudeCode = "Claude Code";
     public const string ClaudeCodeHint = "Run this in a terminal.";
     public const string CopyCommand = "Copy command";

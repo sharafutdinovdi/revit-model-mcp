@@ -786,6 +786,26 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(os.environ["REVIT_MCP_REDACT_PATHS"], "1")
             run.assert_called_once_with(transport="stdio")
 
+    def test_cli_version_prints_package_version_without_starting_transport(self) -> None:
+        import contextlib
+        import io
+
+        from revit_model_mcp import package_version
+
+        output = io.StringIO()
+        with (
+            patch("sys.argv", [r"C:\server\revit-model-mcp.exe", "--version"]),
+            patch.object(revit_server, "create_host") as create_host,
+            patch.object(revit_server.mcp, "run") as run,
+            contextlib.redirect_stdout(output),
+            self.assertRaises(SystemExit) as raised,
+        ):
+            revit_server.main()
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(output.getvalue().strip(), f"revit-model-mcp {package_version()}")
+        create_host.assert_not_called()
+        run.assert_not_called()
+
     def test_cli_help_reports_environment_without_starting_transport(self) -> None:
         import contextlib
         import io
