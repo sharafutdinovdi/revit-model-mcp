@@ -39,7 +39,7 @@ No other domain is contacted. The committed manifest lists the domains of the re
 
 ## Code execution in the store build
 
-`revit_execute_code`, and the code steps of `revit_process_models`, are **off by default in the store build**. A refusal names how to enable it. The user turns it on with `"executeCode": "confirm"` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`; every run still needs a confirmation token. An administrator can set the `ExecuteCode` machine policy to `confirm` (enabled for everyone) or `off` (disabled, and the user setting is ignored). `revit_ping` shows the effective state in its `policy` object (`executeCode`, `executeCodeSource`: `policy`, `settings` or `store-default`). All other tools are available.
+`revit_execute_code`, and the code steps of `revit_process_models`, are **off by default in the store build**. A refusal names how to enable it. The user turns it on with `"executeCode": "confirm"` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`; every run still needs a confirmation token. An administrator can set the `ExecuteCode` machine policy to `confirm` (enabled for everyone) or `off` (disabled, and the user setting is ignored). `revit_ping` shows the effective state in its `policy` object (`executeCode`, `executeCodeSource`: `policy`, `settings` or `store-default`). A dry run (`dry_run=true`) of `revit_execute_code` is refused the same way, because the code would still run in Revit. All other tools are available.
 
 ## Autodesk data access
 
