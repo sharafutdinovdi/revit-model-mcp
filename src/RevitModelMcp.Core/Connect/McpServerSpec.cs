@@ -26,34 +26,49 @@ public sealed record McpServerSpec(string Command, IReadOnlyList<string> Args)
     public static McpServerSpec ForExecutable(string path) => new(path, []);
 
     /// <summary>
-    ///     Picks the first candidate path of the bundled executable that exists, or the uvx fallback.
+    ///     Picks the first candidate path of the bundled executable that exists. Without one the uvx fallback is used,
+    ///     except in the store channel, which never starts a package download: there the result is <see langword="null" />.
     /// </summary>
     /// <param name="candidates">Absolute executable paths in order of preference.</param>
     /// <param name="fileExists">Tests whether a file exists.</param>
-    public static McpServerSpec Resolve(IEnumerable<string> candidates, Func<string, bool> fileExists)
+    /// <param name="storeChannel">Whether this is the store build, which has no uvx fallback.</param>
+    public static McpServerSpec? Resolve(IEnumerable<string> candidates, Func<string, bool> fileExists, bool storeChannel = false)
     {
         foreach (var candidate in candidates)
         {
             if (!string.IsNullOrWhiteSpace(candidate) && fileExists(candidate)) return ForExecutable(candidate);
         }
 
-        return Uvx;
+        return storeChannel ? null : Uvx;
     }
 
     /// <summary>
-    ///     The places the MSI puts the bundled executable, for an add-in assembly in <paramref name="addinDirectory" />:
-    ///     next to the add-in, then the machine-wide and per-user install folders.
+    ///     The places the bundled executable can be, for an add-in assembly in <paramref name="addinDirectory" />:
+    ///     the store bundle (<c>Contents\server</c>, two levels above <c>Contents\&lt;year&gt;\RevitModelMcp</c>),
+    ///     then the machine-wide and per-user MSI install folders.
     /// </summary>
     public static IReadOnlyList<string> BundledCandidates(string? addinDirectory, string? programFiles, string? localAppData)
     {
         var candidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(addinDirectory))
-            candidates.Add(Combine(addinDirectory, "server", ExecutableName));
+        var contents = BundleContentsFolder(addinDirectory);
+        if (contents is not null)
+            candidates.Add(Combine(contents, "server", ExecutableName));
         if (!string.IsNullOrWhiteSpace(programFiles))
             candidates.Add(Combine(programFiles, "Model MCP", "server", ExecutableName));
         if (!string.IsNullOrWhiteSpace(localAppData))
             candidates.Add(Combine(localAppData, "Programs", "Model MCP", "server", ExecutableName));
         return candidates;
+    }
+
+    // <bundle>\Contents\<year>\RevitModelMcp -> <bundle>\Contents. Only a folder really named Contents counts, so
+    // a server planted next to a machine-wide Addins folder is never picked up.
+    private static string? BundleContentsFolder(string? addinDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(addinDirectory)) return null;
+        var parts = addinDirectory!.TrimEnd('\\', '/').Split('\\', '/');
+        if (parts.Length < 3) return null;
+        var contents = parts.Take(parts.Length - 2).ToArray();
+        return string.Equals(contents[contents.Length - 1], "Contents", StringComparison.OrdinalIgnoreCase) ? string.Join("\\", contents) : null;
     }
 
     /// <summary>The Claude Code registration command, as documented in the README.</summary>

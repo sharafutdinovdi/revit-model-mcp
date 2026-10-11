@@ -22,8 +22,8 @@ public sealed class McpServerSpecTests
     {
         var spec = McpServerSpec.Resolve([@"C:\a\revit-model-mcp.exe", @"C:\b\revit-model-mcp.exe", @"C:\c\revit-model-mcp.exe"],
             path => path != @"C:\a\revit-model-mcp.exe");
-        await Assert.That(spec.Command).IsEqualTo(@"C:\b\revit-model-mcp.exe");
-        await Assert.That(spec.Args).IsEmpty();
+        await Assert.That(spec!.Command).IsEqualTo(@"C:\b\revit-model-mcp.exe");
+        await Assert.That(spec!.Args).IsEmpty();
     }
 
     [Test]
@@ -39,22 +39,57 @@ public sealed class McpServerSpecTests
         await Assert.That(McpServerSpec.Resolve([" ", ""], _ => true)).IsEqualTo(McpServerSpec.Uvx);
 
     [Test]
-    public async Task BundledCandidatesListAddinThenMachineThenUserFolders()
+    public async Task BundledCandidatesListBundleThenMachineThenUserFolders()
     {
         var candidates = McpServerSpec.BundledCandidates(
-            @"C:\ProgramData\Autodesk\Revit\Addins\2025\RevitModelMcp", @"C:\Program Files", @"C:\Users\Ann\AppData\Local");
+            @"C:\Users\Ann\AppData\Roaming\Autodesk\ApplicationPlugins\Model MCP.bundle\Contents\2025\RevitModelMcp",
+            @"C:\Program Files", @"C:\Users\Ann\AppData\Local");
         await Assert.That(candidates).IsEquivalentTo(
         [
-            @"C:\ProgramData\Autodesk\Revit\Addins\2025\RevitModelMcp\server\revit-model-mcp.exe",
+            @"C:\Users\Ann\AppData\Roaming\Autodesk\ApplicationPlugins\Model MCP.bundle\Contents\server\revit-model-mcp.exe",
             @"C:\Program Files\Model MCP\server\revit-model-mcp.exe",
             @"C:\Users\Ann\AppData\Local\Programs\Model MCP\server\revit-model-mcp.exe"
         ]);
     }
 
     [Test]
+    public async Task BundleLayoutResolvesToTheServerInTheBundle()
+    {
+        const string server = @"C:\B\Model MCP.bundle\Contents\server\revit-model-mcp.exe";
+        var spec = McpServerSpec.Resolve(
+            McpServerSpec.BundledCandidates(@"C:\B\Model MCP.bundle\Contents\2026\RevitModelMcp", @"C:\Program Files", null),
+            path => path == server, storeChannel: true);
+        await Assert.That(spec!.Command).IsEqualTo(server);
+    }
+
+    [Test]
+    public async Task MsiInstallFoldersResolve()
+    {
+        const string machine = @"C:\Program Files\Model MCP\server\revit-model-mcp.exe";
+        const string user = @"C:\Users\Ann\AppData\Local\Programs\Model MCP\server\revit-model-mcp.exe";
+        var candidates = McpServerSpec.BundledCandidates(@"C:\ProgramData\Autodesk\Revit\Addins\2025\RevitModelMcp", @"C:\Program Files", @"C:\Users\Ann\AppData\Local");
+        await Assert.That(McpServerSpec.Resolve(candidates, path => path == machine, storeChannel: true)!.Command).IsEqualTo(machine);
+        await Assert.That(McpServerSpec.Resolve(candidates, path => path == user, storeChannel: true)!.Command).IsEqualTo(user);
+    }
+
+    [Test]
+    public async Task ServerPlantedBesideTheAddinsFolderIsNeverACandidate()
+    {
+        var candidates = McpServerSpec.BundledCandidates(@"C:\ProgramData\Autodesk\Revit\Addins\2025\RevitModelMcp", null, null);
+        await Assert.That(candidates).IsEmpty();
+    }
+
+    [Test]
+    public async Task StoreChannelWithNothingFoundReturnsNoSpec()
+    {
+        await Assert.That(McpServerSpec.Resolve(["x.exe"], _ => false, storeChannel: true)).IsNull();
+        await Assert.That(McpServerSpec.Resolve(["x.exe"], _ => false)).IsEqualTo(McpServerSpec.Uvx);
+    }
+
+    [Test]
     public async Task BundledCandidatesTolerateTrailingSeparatorsAndMissingRoots()
     {
-        await Assert.That(McpServerSpec.BundledCandidates(@"C:\x\", null, "")).IsEquivalentTo([@"C:\x\server\revit-model-mcp.exe"]);
+        await Assert.That(McpServerSpec.BundledCandidates(@"C:\x\Contents\2025\RevitModelMcp\", null, "")).IsEquivalentTo([@"C:\x\Contents\server\revit-model-mcp.exe"]);
         await Assert.That(McpServerSpec.BundledCandidates(null, null, null)).IsEmpty();
     }
 
