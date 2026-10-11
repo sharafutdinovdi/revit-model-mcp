@@ -61,6 +61,20 @@ def test_update_opt_out_does_not_spawn_or_request(tmp_path, monkeypatch):
     assert updates.update_status()["updateCheck"] == "disabled"
 
 
+def test_bundled_executable_never_checks_for_updates(tmp_path, monkeypatch):
+    monkeypatch.delenv("REVIT_MCP_NO_UPDATE_CHECK", raising=False)
+    monkeypatch.setattr(updates.sys, "frozen", True, raising=False)
+    with (
+        patch.object(updates.subprocess, "Popen") as spawn,
+        patch.object(updates.urllib.request, "urlopen") as request,
+    ):
+        updates.check_for_updates(tmp_path / "update.json")
+    spawn.assert_not_called()
+    request.assert_not_called()
+    assert not (tmp_path / "update.json").exists()
+    assert updates.update_status()["updateCheck"] == "disabled"
+
+
 def test_windows_refresh_starts_hidden_process(tmp_path, monkeypatch):
     monkeypatch.delenv("REVIT_MCP_NO_UPDATE_CHECK", raising=False)
     with (

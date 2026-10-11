@@ -21,8 +21,9 @@ public static class TomlConfigEditor
 
     /// <summary>Returns the text with the entry appended, or null when it is already there.</summary>
     /// <exception cref="McpConfigException">The text is not a usable configuration.</exception>
-    public static string? Add(string text)
+    public static string? Add(string text, McpServerSpec? spec = null)
     {
+        spec ??= McpServerSpec.Uvx;
         var newline = text.Contains("\r\n") ? "\r\n" : "\n";
         var scan = Require(text);
         if (scan.Sections.Count > 0) return null;
@@ -35,8 +36,8 @@ public static class TomlConfigEditor
         }
         var table = TablesKey + "." + McpServerSpec.Name;
         builder.Append('[').Append(table).Append(']').Append(newline);
-        builder.Append("command = ").Append(Quote(McpServerSpec.Command)).Append(newline);
-        builder.Append("args = [").Append(string.Join(", ", McpServerSpec.Args.Select(Quote))).Append(']').Append(newline);
+        builder.Append("command = ").Append(Quote(spec.Command)).Append(newline);
+        builder.Append("args = [").Append(string.Join(", ", spec.Args.Select(Quote))).Append(']').Append(newline);
         builder.Append(newline);
         builder.Append('[').Append(table).Append(".env]").Append(newline);
         foreach (var pair in McpServerSpec.Env)

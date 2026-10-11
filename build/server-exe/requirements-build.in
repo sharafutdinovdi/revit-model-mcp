@@ -1,0 +1,2 @@
+pyinstaller==6.20.0
+hatchling==1.30.0

@@ -76,3 +76,8 @@ Every tool is listed in the [tool reference](tools.md) with its access class, fi
 | Code execution | `execute_code` | Covers tasks that no fixed tool handles. Unsandboxed, token-gated, refused in read-only mode, and removable by policy. |
 
 All modifying tools are refused in read-only mode. Tool names and descriptions do not change after installation; the server registers a fixed list.
+
+## Server runtime
+
+The MSI installers ship the server as a self-contained Windows executable (`revit-model-mcp.exe`, a PyInstaller folder with its own Python runtime and the locked dependencies) under `%ProgramFiles%\Model MCP\server` (multi-user) or `%LocalAppData%\Programs\Model MCP\server` (single-user). The user needs no Python and no uv, and the executable never starts uv or contacts PyPI. The bundled Python and package licenses are in the `licenses` folder next to the executable and in [THIRD-PARTY-NOTICES](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/THIRD-PARTY-NOTICES.md).
+The add-in bundle and the Claude Desktop `.mcpb` still start the server through uv.

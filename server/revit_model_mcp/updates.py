@@ -75,6 +75,11 @@ def _write_state(path: Path, state: dict[str, str]) -> None:
     temporary.replace(path)
 
 
+def update_check_disabled() -> bool:
+    """The opt-out variable, or the bundled executable, which is updated only by its installer."""
+    return os.environ.get("REVIT_MCP_NO_UPDATE_CHECK") == "1" or bool(getattr(sys, "frozen", False))
+
+
 def update_status(current: str | None = None) -> dict[str, str | None]:
     state = read_state()
     latest = state.get("latestKnown")
@@ -87,9 +92,7 @@ def update_status(current: str | None = None) -> dict[str, str | None]:
         latest = current
     return {
         "latestKnownVersion": latest,
-        "updateCheck": "disabled"
-        if os.environ.get("REVIT_MCP_NO_UPDATE_CHECK") == "1"
-        else state.get("lastChecked"),
+        "updateCheck": "disabled" if update_check_disabled() else state.get("lastChecked"),
     }
 
 
@@ -120,7 +123,7 @@ def _fetch_latest(path: Path) -> None:
 
 
 def check_for_updates(path: Path | None = None, now: datetime | None = None) -> None:
-    if os.environ.get("REVIT_MCP_NO_UPDATE_CHECK") == "1":
+    if update_check_disabled():
         return
     path = path or state_path()
     now = now or datetime.now(timezone.utc)

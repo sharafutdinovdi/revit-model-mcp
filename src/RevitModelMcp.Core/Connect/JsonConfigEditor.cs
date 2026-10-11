@@ -24,19 +24,20 @@ public static class JsonConfigEditor
 
     /// <summary>Returns the text with the entry added, or null when it is already there.</summary>
     /// <exception cref="McpConfigException">The text is not a usable configuration.</exception>
-    public static string? Add(McpClientTarget target, string text)
+    public static string? Add(McpClientTarget target, string text, McpServerSpec? spec = null)
     {
+        spec ??= McpServerSpec.Uvx;
         var newline = text.Contains("\r\n") ? "\r\n" : "\n";
         if (string.IsNullOrWhiteSpace(text))
-            return "{" + newline + "  " + RootMember(target, "  ", "  ", newline) + newline + "}" + newline;
+            return "{" + newline + "  " + RootMember(target, spec, "  ", "  ", newline) + newline + "}" + newline;
         var root = ParseObject(text);
         var unit = IndentUnit(text, root);
         var servers = Find(root, target.RootKey);
         if (servers is null)
-            return InsertMember(text, root, indent => RootMember(target, unit, indent, newline), unit, newline, 0);
+            return InsertMember(text, root, indent => RootMember(target, spec, unit, indent, newline), unit, newline, 0);
         if (servers.Value.Kind != NodeKind.Object) throw new McpConfigException($"\"{target.RootKey}\" is not an object.");
         if (Find(servers.Value, McpServerSpec.Name) is not null) return null;
-        return InsertMember(text, servers.Value, indent => Entry(target, unit, indent, newline), unit, newline, 1);
+        return InsertMember(text, servers.Value, indent => Entry(target, spec, unit, indent, newline), unit, newline, 1);
     }
 
     /// <summary>Returns the text with the entry removed, or null when it is not there.</summary>
@@ -170,19 +171,19 @@ public static class JsonConfigEditor
     private static string Repeat(string unit, int count) =>
         count <= 0 ? string.Empty : new StringBuilder().Insert(0, unit, count).ToString();
 
-    private static string RootMember(McpClientTarget target, string unit, string indent, string newline) =>
-        Quote(target.RootKey) + ": {" + newline + indent + unit + Entry(target, unit, indent + unit, newline) + newline +
+    private static string RootMember(McpClientTarget target, McpServerSpec spec, string unit, string indent, string newline) =>
+        Quote(target.RootKey) + ": {" + newline + indent + unit + Entry(target, spec, unit, indent + unit, newline) + newline +
         indent + "}";
 
     /// <summary>Renders the entry for a line that starts at <paramref name="indent" />.</summary>
-    private static string Entry(McpClientTarget target, string unit, string indent, string newline)
+    private static string Entry(McpClientTarget target, McpServerSpec spec, string unit, string indent, string newline)
     {
         var inner = indent + unit;
         var envInner = inner + unit;
         var properties = new List<string>();
         if (target.IncludeType) properties.Add(Member("type", Quote("stdio")));
-        properties.Add(Member("command", Quote(McpServerSpec.Command)));
-        properties.Add(Member("args", "[" + string.Join(", ", McpServerSpec.Args.Select(Quote)) + "]"));
+        properties.Add(Member("command", Quote(spec.Command)));
+        properties.Add(Member("args", "[" + string.Join(", ", spec.Args.Select(Quote)) + "]"));
         var env = "{" + newline +
                   string.Join("," + newline, McpServerSpec.Env.Select(pair => envInner + Member(pair.Key, Quote(pair.Value)))) +
                   newline + inner + "}";

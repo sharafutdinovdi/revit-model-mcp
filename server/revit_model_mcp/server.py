@@ -1315,6 +1315,7 @@ def main() -> None:
     default_host = os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST)
     channel_dir = os.environ.get("REVIT_MCP_CHANNEL_DIR") or rf"%LOCALAPPDATA%\{CHANNEL_DIRECTORY}"
     parser = argparse.ArgumentParser(
+        prog="revit-model-mcp",
         description="Read a live Revit model through MCP.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -1325,6 +1326,7 @@ def main() -> None:
             f"  toolsets: {os.environ.get(ENVIRONMENT_VARIABLE) or 'all'}"
         ),
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version()}")
     parser.add_argument(
         "--host",
         default=default_host,
