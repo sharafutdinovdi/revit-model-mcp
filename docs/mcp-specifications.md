@@ -4,7 +4,7 @@ This page answers the structured questions that Autodesk Marketplace asks about 
 
 ## App model
 
-Model A: the server runs on the user's machine. It is a Python process that the user's MCP client starts over stdio. It talks to the add-in inside Revit through a named pipe or file channel on the same PC, a loopback HTTP listener, or a remote workstation that the user configures over SSH or HTTP(S). The project operates no hosted server.
+Model A: the server runs on the user's machine. It is a Python process that the user's MCP client starts over stdio. The Autodesk Marketplace build ships the server as a bundled executable, so no Python or uv installation is needed. It talks to the add-in inside Revit through a named pipe or file channel on the same PC, a loopback HTTP listener, or a remote workstation that the user configures over SSH or HTTP(S). The project operates no hosted server.
 
 | Field | Value |
 | --- | --- |
@@ -26,16 +26,20 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 
 ## External endpoints
 
-All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store`: updates come from the store, and the add-in does not check GitHub or download an installer.
+All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store` and the bundled server executable: updates come from the store, the add-in does not check GitHub or download an installer, and the server makes no PyPI request. **The store build makes no external request at all.** Its tool manifest declares no external endpoints.
 
 | Domain | Component | Purpose | Present in the store build |
 | --- | --- | --- | --- |
 | `api.github.com` | Add-in | Latest stable release check, at most every 24 hours | No |
 | `github.com`, `release-assets.githubusercontent.com` | Add-in | Release MSI and checksum download for per-user installs | No |
-| `pypi.org` | Python server | Optional check for a newer server release | Yes, unless `REVIT_MCP_NO_UPDATE_CHECK=1` |
-| `pypi.org`, `files.pythonhosted.org` | uv launcher | Package download when the server starts for the first time | Yes, unless the server is installed from a wheelhouse |
+| `pypi.org` | Python server | Optional check for a newer server release | No (the bundled executable never checks) |
+| `pypi.org`, `files.pythonhosted.org` | uv launcher | Package download when the server starts for the first time | No (the store build does not use the uv launcher) |
 
-No other domain is contacted. The committed manifest lists the add-in domains because other builds use them; the managed manifest (`--managed`) has none for the add-in. See the [full table](admin/security-whitepaper.md#outbound-network).
+No other domain is contacted. The committed manifest lists the domains of the regular build; the managed manifest (`--managed`) has none, and the release workflow attaches the store export `revit-model-mcp-<version>-store.mcp-manifest.json`, made from the managed manifest with `--export-snake-case`, with `external_endpoints` and `ai_llm_providers` empty. See the [full table](admin/security-whitepaper.md#outbound-network).
+
+## Code execution in the store build
+
+`revit_execute_code`, and the code steps of `revit_process_models`, are **off by default in the store build**. A refusal names how to enable it. The user turns it on with `"executeCode": "confirm"` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`; every run still needs a confirmation token. An administrator can set the `ExecuteCode` machine policy to `confirm` (enabled for everyone) or `off` (disabled, and the user setting is ignored). `revit_ping` shows the effective state in its `policy` object (`executeCode`, `executeCodeSource`: `policy`, `settings` or `store-default`). All other tools are available.
 
 ## Autodesk data access
 

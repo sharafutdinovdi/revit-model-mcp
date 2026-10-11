@@ -134,7 +134,7 @@ With the `LogDir`, `LogRetentionDays` and `RedactPaths` policy values an adminis
 | Build provenance | GitHub build provenance attestations on release assets built after provenance was enabled. Verify with `gh attestation verify`, see [verify downloads](../security.md#verify-downloads). |
 | Checksums | `SHA256SUMS.txt` on every release |
 | Code signing | **Not in place.** Release MSI, DLL and EXE files are not Authenticode-signed. Signing through SignPath is prepared and starts after the application is approved; see [code signing](../code-signing.md). The Claude Desktop bundle has no MCPB signature. |
-| SBOM | **Not published yet.** Lock files exist (NuGet lock files, `server/uv.lock`, hash-pinned requirements for the container image). A CycloneDX SBOM per release is planned. |
+| SBOM | Every release attaches two CycloneDX files, `revit-model-mcp-addin-<version>.cdx.json` (NuGet dependencies) and `revit-model-mcp-python-<version>.cdx.json` (Python dependencies). Lock files exist too (NuGet lock files, `server/uv.lock`, hash-pinned requirements for the container image). |
 | Dependency scanning gates | Dependabot only. No vulnerability scan blocks a release today. |
 | Third-party licenses | [Third-party notices](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/THIRD-PARTY-NOTICES.md) list direct dependencies. Transitive Python dependencies are not listed. |
 | Autodesk code | No Autodesk binaries are shipped; Revit API assemblies are referenced only. |

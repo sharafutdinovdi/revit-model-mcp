@@ -12,6 +12,7 @@ cd server && uv run python ../build/tool_manifest.py --check
 `--check` fails when the committed file is stale.
 
 `--managed` writes the manifest for the managed install variant to `output/tool-manifest-managed.json`, or to `--output`. That variant has no external endpoints, because the add-in makes no update check and the server runs with `REVIT_MCP_NO_UPDATE_CHECK=1`. The committed file describes the regular build.
+`--export-snake-case PATH` writes the Autodesk MCP manifest fields (`mcp_manifest_version`, `app_model`, `mcp_spec_version`, `server`, `tools`, `resources`, `prompts`, `external_endpoints`, `autodesk_apis_used`, `ai_llm_providers`) to PATH. The release workflow runs it with `--managed` for the store build, which makes no external request, and attaches `revit-model-mcp-<version>-store.mcp-manifest.json`.
 The server tests run the same comparison, so a PR that changes a tool without regenerating the manifest fails CI.
 Tool names and descriptions are identical to `bundle/manifest.json`.
 

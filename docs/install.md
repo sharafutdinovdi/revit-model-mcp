@@ -98,6 +98,15 @@ claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CH
 
 In a JSON configuration, use `"args": ["revit-model-mcp==<version>"]` and set `REVIT_MCP_NO_UPDATE_CHECK` to `1` in `env`. A `README.txt` in the bundle repeats these commands for its version. With both settings, neither part makes an update request.
 
+### Autodesk App Store build
+
+The store build is the same add-in with the update channel `store`, packaged with a bundled server executable (`revit-model-mcp.exe`), so no Python or uv is needed. It is free, and the releases carry `RevitModelMcp-<version>-SingleUser-store.msi` and `revit-model-mcp-<version>-store.bundle.zip` next to the other assets. Differences from the regular build:
+
+- No updater and no update check; updates arrive through the Autodesk App Manager. See [the store channel](updates.md#the-store-channel).
+- The server and the add-in make no external request.
+- `revit_execute_code` and the code steps of `revit_process_models` are off. To enable them for your account, add `"executeCode": "confirm"` to `%LOCALAPPDATA%\RevitModelMcp\settings.json` and restart your AI client. Every run still asks for confirmation. An administrator can enable or disable them for all users with the `ExecuteCode` [policy](admin/policy-reference.md); policy wins over the user setting. `revit_ping` shows the effective state.
+- The releases are not code-signed yet; see [code signing](code-signing.md).
+
 ## Install from the MSI or WinGet
 
 The installers published on the [releases page](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) install the same add-in with their own update path.
