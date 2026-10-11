@@ -31,25 +31,20 @@ internal static class Program
                 .Replace("RevitModelMcp-", string.Empty).Replace("-SingleUser", string.Empty);
             int exitCode;
             string? reason = null;
-            try { exitCode = Run(msiPath, expected, logPath); }
+            try { exitCode = Run(msiPath, expected, logPath, version, releaseTag); }
             catch (Exception exception)
             {
                 exitCode = 1;
                 reason = exception.GetType().Name;
             }
-            var result = new UpdateResult
+            WriteResult(new UpdateResult
             {
                 Version = version,
                 ReleaseTag = releaseTag,
                 ExitCode = exitCode,
                 Time = DateTimeOffset.UtcNow,
                 Reason = reason
-            };
-            var resultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "RevitModelMcp", "update-result.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(resultPath)!);
-            using var resultFile = File.Create(resultPath);
-            new DataContractJsonSerializer(typeof(UpdateResult)).WriteObject(resultFile, result);
+            });
             return exitCode;
         }
         catch (Exception)
@@ -62,20 +57,74 @@ internal static class Program
         }
     }
 
-    private static int Run(string msiPath, string expected, string logPath)
+    private static void WriteResult(UpdateResult result)
+    {
+        var resultPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "RevitModelMcp", "update-result.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(resultPath)!);
+        using var resultFile = File.Create(resultPath);
+        new DataContractJsonSerializer(typeof(UpdateResult)).WriteObject(resultFile, result);
+    }
+
+    // The bundled server (<root>\Model MCP\server) is in use while an AI app runs it; the MSI cannot replace it then.
+    private static bool BundledServerRunning()
+    {
+        var roots = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Model MCP", "server"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Model MCP", "server")
+        }.Select(root => root.TrimEnd('\\') + "\\").ToArray();
+        var servers = Process.GetProcessesByName("revit-model-mcp");
+        try
+        {
+            foreach (var process in servers)
+            {
+                string? path;
+                try { path = process.MainModule?.FileName; }
+                catch (Win32Exception) { continue; }
+                catch (InvalidOperationException) { continue; }
+                if (path is not null && roots.Any(root => path.StartsWith(root, StringComparison.OrdinalIgnoreCase))) return true;
+            }
+            return false;
+        }
+        finally
+        {
+            foreach (var process in servers) process.Dispose();
+        }
+    }
+
+    private static int Run(string msiPath, string expected, string logPath, string version, string releaseTag)
     {
         var deadline = DateTimeOffset.UtcNow.AddDays(7);
         var session = Process.GetCurrentProcess().SessionId;
+        var noticeWritten = false;
         while (DateTimeOffset.UtcNow < deadline)
         {
             var revitProcesses = Process.GetProcessesByName("Revit");
+            bool revitRunning;
             try
             {
-                if (!revitProcesses.Any(process => process.SessionId == session)) break;
+                revitRunning = revitProcesses.Any(process => process.SessionId == session);
             }
             finally
             {
                 foreach (var process in revitProcesses) process.Dispose();
+            }
+            if (!revitRunning)
+            {
+                if (!BundledServerRunning()) break;
+                if (!noticeWritten)
+                {
+                    noticeWritten = true;
+                    WriteResult(new UpdateResult
+                    {
+                        Version = version,
+                        ReleaseTag = releaseTag,
+                        Time = DateTimeOffset.UtcNow,
+                        Waiting = true,
+                        Notice = "Close your AI app to finish updating."
+                    });
+                }
             }
             Thread.Sleep(TimeSpan.FromSeconds(10));
         }
@@ -172,5 +221,7 @@ internal static class Program
         [DataMember(Name = "exitCode")] public int ExitCode { get; set; }
         [DataMember(Name = "time")] public DateTimeOffset Time { get; set; }
         [DataMember(Name = "reason", EmitDefaultValue = false)] public string? Reason { get; set; }
+        [DataMember(Name = "waiting", EmitDefaultValue = false)] public bool Waiting { get; set; }
+        [DataMember(Name = "notice", EmitDefaultValue = false)] public string? Notice { get; set; }
     }
 }

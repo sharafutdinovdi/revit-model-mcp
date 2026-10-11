@@ -33,6 +33,20 @@ public static class UpdatePolicy
     public static bool ShouldCheck(DateTimeOffset now, DateTimeOffset? lastCheck) =>
         lastCheck is null || now - lastCheck.Value >= TimeSpan.FromHours(24);
 
+    /// <summary>msiexec: the install succeeded but a restart is required (ERROR_SUCCESS_REBOOT_REQUIRED).</summary>
+    public const int RebootRequiredExit = 3010;
+
+    /// <summary>msiexec: the install succeeded and a restart was initiated (ERROR_SUCCESS_REBOOT_INITIATED).</summary>
+    public const int RebootInitiatedExit = 1641;
+
+    /// <summary>Classifies an installer exit code: 0 is success, 3010 and 1641 are success pending a restart.</summary>
+    public static InstallerOutcome ClassifyInstallerExit(int exitCode) => exitCode switch
+    {
+        0 => InstallerOutcome.Succeeded,
+        RebootRequiredExit or RebootInitiatedExit => InstallerOutcome.SucceededRestartRequired,
+        _ => InstallerOutcome.Failed
+    };
+
     public static readonly TimeSpan BlockDuration = TimeSpan.FromDays(7);
 
     private static readonly string[] DefaultDownloadHosts =
@@ -96,4 +110,12 @@ public static class UpdatePolicy
         var actual = BitConverter.ToString(sha256.ComputeHash(file)).Replace("-", string.Empty);
         return string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase);
     }
+}
+
+/// <summary>The meaning of an installer exit code for the update notice and the blocked-version list.</summary>
+public enum InstallerOutcome
+{
+    Succeeded,
+    SucceededRestartRequired,
+    Failed
 }
