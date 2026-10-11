@@ -44,6 +44,7 @@ Project CreateProject(InstallScope scope)
         }
     };
     project.WixSourceGenerated += Replacement.AddInstallTimeFileRemoval;
+    project.WixSourceGenerated += document => Replacement.AddServerFolderRemoval(document, productName);
     project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
     return project;
 }
