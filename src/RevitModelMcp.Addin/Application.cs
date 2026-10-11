@@ -157,7 +157,7 @@ public sealed class Application : ExternalApplication
         {
             try
             {
-                httpSettings.ApplyHttpOverrides(Policy.PolicyProvider.Current);
+                httpSettings.ApplyHttpOverrides(Policy.PolicyProvider.Current.HttpEnabled);
                 _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
                     Application.ControlledApplication.VersionNumber, httpSettings);
                 _httpChannel.UpdateDocument(_activeDocument?.Title);

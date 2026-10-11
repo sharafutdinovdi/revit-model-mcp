@@ -475,6 +475,10 @@ if ($env:OS -eq 'Windows_NT') {
         $settings = [HttpSettings]::Load($directory)
         $settings.ApplyHttpOverrides()
         if ($settings.HttpEnabled) { throw 'Disable override ignored' }
+        $env:REVIT_MCP_HTTP_ENABLED = '1'
+        $settings = [HttpSettings]::Load($directory)
+        $settings.ApplyHttpOverrides($false)
+        if ($settings.HttpEnabled) { throw 'Policy did not win over the environment' }
     }
     finally { Remove-Item $directory -Recurse -Force }
 }
