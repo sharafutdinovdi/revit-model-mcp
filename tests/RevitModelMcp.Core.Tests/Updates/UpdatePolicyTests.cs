@@ -17,6 +17,16 @@ public sealed class UpdatePolicyTests
     }
 
     [Test]
+    [Arguments(0, InstallerOutcome.Succeeded)]
+    [Arguments(3010, InstallerOutcome.SucceededRestartRequired)]
+    [Arguments(1641, InstallerOutcome.SucceededRestartRequired)]
+    [Arguments(1603, InstallerOutcome.Failed)]
+    [Arguments(1460, InstallerOutcome.Failed)]
+    [Arguments(13, InstallerOutcome.Failed)]
+    public async Task ClassifiesInstallerExitCodes(int exitCode, InstallerOutcome expected) =>
+        await Assert.That(UpdatePolicy.ClassifyInstallerExit(exitCode)).IsEqualTo(expected);
+
+    [Test]
     public async Task SelectsOnlyNewStableVersions()
     {
         await Assert.That(UpdatePolicy.IsNewerStable("0.4.0", "v0.5.0", false, false)).IsTrue();

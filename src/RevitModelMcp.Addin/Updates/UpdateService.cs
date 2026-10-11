@@ -52,19 +52,33 @@ internal static class UpdateService
         var result = ReadJson<UpdateResult>(Path.Combine(LocalDirectory, "update-result.json"));
         if (result is not null && result.Time > state.ReportedResultTime)
         {
-            var message = result.ExitCode == 0 ? $"Updated to {result.Version}" :
-                $"Update to {result.Version} failed: {result.Reason ?? FailureReason(result.ExitCode)}";
             var resultReleaseUrl = UpdatePolicy.BuildReleaseUrl(ReleasePage, result.ReleaseTag, result.Version);
-            ActivityRecorder.RecordSystemNotice(message, resultReleaseUrl, result.ExitCode != 0);
-            state.ReportedResultTime = result.Time;
-            state.QueuedVersion = null;
-            if (result.ExitCode != 0)
+            var outcome = UpdatePolicy.ClassifyInstallerExit(result.ExitCode);
+            if (result.Waiting)
             {
-                var failed = result.Version.TrimStart('v', 'V');
-                state.BlockedVersions.RemoveAll(item => item.Version == failed);
-                state.BlockedVersions.Add(new BlockedVersion { Version = failed, Until = DateTimeOffset.UtcNow + UpdatePolicy.BlockDuration });
+                ActivityRecorder.RecordSystemNotice(result.Notice ?? "Close your AI app to finish updating.", resultReleaseUrl);
+                state.ReportedResultTime = result.Time;
+                WriteJson(statePath, state);
             }
-            WriteJson(statePath, state);
+            else
+            {
+                var message = outcome switch
+                {
+                    InstallerOutcome.Succeeded => $"Updated to {result.Version}",
+                    InstallerOutcome.SucceededRestartRequired => $"Updated to {result.Version}. Restart the computer to finish the update.",
+                    _ => $"Update to {result.Version} failed: {result.Reason ?? FailureReason(result.ExitCode)}"
+                };
+                ActivityRecorder.RecordSystemNotice(message, resultReleaseUrl, outcome == InstallerOutcome.Failed);
+                state.ReportedResultTime = result.Time;
+                state.QueuedVersion = null;
+                if (outcome == InstallerOutcome.Failed)
+                {
+                    var failed = result.Version.TrimStart('v', 'V');
+                    state.BlockedVersions.RemoveAll(item => item.Version == failed);
+                    state.BlockedVersions.Add(new BlockedVersion { Version = failed, Until = DateTimeOffset.UtcNow + UpdatePolicy.BlockDuration });
+                }
+                WriteJson(statePath, state);
+            }
         }
 
         var assemblyPath = typeof(Application).Assembly.Location;
@@ -179,7 +193,7 @@ internal static class UpdateService
         return uri;
     }
 
-    private static UpdateChannel Channel()
+    internal static UpdateChannel Channel()
     {
         string? Metadata(string key) => typeof(Application).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(attribute => attribute.Key == key)?.Value;
@@ -194,7 +208,7 @@ internal static class UpdateService
     private static string FailureReason(int code) => code switch
     {
         13 => "SHA256 checksum mismatch",
-        1460 => "Revit was still running after seven days",
+        1460 => "Revit or the bundled server was still running after seven days",
         _ => $"installer exit code {code}"
     };
 
@@ -377,5 +391,7 @@ internal static class UpdateService
         [DataMember(Name = "exitCode")] public int ExitCode { get; set; }
         [DataMember(Name = "time")] public DateTimeOffset Time { get; set; }
         [DataMember(Name = "reason")] public string? Reason { get; set; }
+        [DataMember(Name = "waiting", EmitDefaultValue = false)] public bool Waiting { get; set; }
+        [DataMember(Name = "notice", EmitDefaultValue = false)] public string? Notice { get; set; }
     }
 }

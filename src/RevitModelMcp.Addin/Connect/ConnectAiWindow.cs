@@ -2,6 +2,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using RevitModelMcp.Core.Connect;
+using RevitModelMcp.Core.Updates;
+using RevitModelMcp.Updates;
 using Color = System.Windows.Media.Color;
 using Grid = System.Windows.Controls.Grid;
 
@@ -10,7 +12,14 @@ namespace RevitModelMcp.Connect;
 /// <summary>Small modal dialog listing the supported AI apps with an honest state and an Add or Remove button each.</summary>
 internal sealed class ConnectAiWindow : Window
 {
-    private readonly McpClientConfigurator _configurator = new();
+    private readonly McpServerSpec? _spec = McpServerSpec.Resolve(
+        McpServerSpec.BundledCandidates(
+            System.IO.Path.GetDirectoryName(typeof(ConnectAiWindow).Assembly.Location),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
+        System.IO.File.Exists,
+        UpdateService.Channel() == UpdateChannel.Store);
+    private readonly McpClientConfigurator? _configurator;
     private readonly IReadOnlyList<McpClientTarget> _targets = McpClientLocator.Discover(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -20,6 +29,7 @@ internal sealed class ConnectAiWindow : Window
 
     public ConnectAiWindow()
     {
+        _configurator = _spec is null ? null : new McpClientConfigurator(spec: _spec);
         Title = ConnectText.Title;
         Width = 600;
         SizeToContent = SizeToContent.Height;
@@ -31,7 +41,7 @@ internal sealed class ConnectAiWindow : Window
         Background = Brushes.White;
 
         var root = new StackPanel { Margin = new Thickness(16) };
-        root.Children.Add(new TextBlock { Text = ConnectText.Intro, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
+        root.Children.Add(new TextBlock { Text = _spec is null ? ConnectText.BundledServerMissing : ConnectText.Intro(_spec), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         root.Children.Add(_rows);
         root.Children.Add(_message);
         var close = new Button { Content = ConnectText.Close, MinWidth = 80, Padding = new Thickness(12, 4, 12, 4), IsCancel = true, IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
@@ -44,6 +54,7 @@ internal sealed class ConnectAiWindow : Window
     private void Refresh()
     {
         _rows.Children.Clear();
+        if (_spec is null || _configurator is null) return;
         foreach (var target in _targets) _rows.Children.Add(Row(_configurator.Inspect(target)));
         _rows.Children.Add(ClaudeCodeRow());
     }
@@ -62,17 +73,30 @@ internal sealed class ConnectAiWindow : Window
             TextTrimming = TextTrimming.CharacterEllipsis,
             ToolTip = target.ConfigPath
         });
-        var configured = status.State == McpClientState.Configured;
+        var configured = status.State is McpClientState.Configured or McpClientState.ConfiguredDifferentCommand;
         var button = new Button
         {
             Content = configured ? ConnectText.Remove : ConnectText.Add,
             MinWidth = 92,
             Padding = new Thickness(10, 4, 10, 4),
             VerticalAlignment = VerticalAlignment.Center,
-            IsEnabled = status.State is McpClientState.NotConfigured or McpClientState.Configured
+            IsEnabled = status.State is McpClientState.NotConfigured or McpClientState.Configured or McpClientState.ConfiguredDifferentCommand
         };
-        button.Click += (_, _) => Apply(target, add: !configured);
-        return Line(details, button);
+        button.Click += (_, _) => Apply(target, configured ? Change.Remove : Change.Add);
+        if (status.State != McpClientState.ConfiguredDifferentCommand) return Line(details, button);
+        var update = new Button
+        {
+            Content = ConnectText.Update,
+            MinWidth = 92,
+            Padding = new Thickness(10, 4, 10, 4),
+            Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        update.Click += (_, _) => Apply(target, Change.Update);
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        buttons.Children.Add(update);
+        buttons.Children.Add(button);
+        return Line(details, buttons);
     }
 
     private UIElement ClaudeCodeRow()
@@ -82,7 +106,7 @@ internal sealed class ConnectAiWindow : Window
         details.Children.Add(new TextBlock { Text = ConnectText.ClaudeCodeHint, Foreground = Brushes.Gray });
         details.Children.Add(new TextBox
         {
-            Text = McpServerSpec.ClaudeCodeCommand,
+            Text = _spec!.ClaudeCodeCommand,
             IsReadOnly = true,
             FontFamily = new FontFamily("Cascadia Mono, Consolas"),
             FontSize = 10.5,
@@ -106,16 +130,29 @@ internal sealed class ConnectAiWindow : Window
         return grid;
     }
 
-    private void Apply(McpClientTarget target, bool add)
+    private enum Change { Add, Update, Remove }
+
+    private void Apply(McpClientTarget target, Change kind)
     {
+        if (_configurator is null) return;
         try
         {
-            var change = add ? _configurator.Add(target) : _configurator.Remove(target);
+            var change = kind switch
+            {
+                Change.Add => _configurator.Add(target),
+                Change.Update => _configurator.Update(target),
+                _ => _configurator.Remove(target)
+            };
             _message.Foreground = Brushes.Black;
             _message.Text = !change.Changed
                 ? ConnectText.Unchanged(target.DisplayName)
-                : add ? ConnectText.Added(target.DisplayName, change.BackupPath) : ConnectText.Removed(target.DisplayName, change.BackupPath);
-            PluginLog.Info($"Connect AI app: {(add ? "added" : "removed")} for '{target.Id}'. Changed={change.Changed}.");
+                : kind switch
+                {
+                    Change.Add => ConnectText.Added(target.DisplayName, change.BackupPath),
+                    Change.Update => ConnectText.Updated(target.DisplayName, change.BackupPath),
+                    _ => ConnectText.Removed(target.DisplayName, change.BackupPath)
+                };
+            PluginLog.Info($"Connect AI app: {kind.ToString().ToLowerInvariant()} for '{target.Id}'. Changed={change.Changed}.");
         }
         catch (McpConfigException exception)
         {
@@ -130,7 +167,7 @@ internal sealed class ConnectAiWindow : Window
     {
         try
         {
-            Clipboard.SetText(McpServerSpec.ClaudeCodeCommand);
+            Clipboard.SetText(_spec!.ClaudeCodeCommand);
             _message.Foreground = Brushes.Black;
             _message.Text = ConnectText.Copied;
         }
@@ -144,6 +181,7 @@ internal sealed class ConnectAiWindow : Window
     private static Brush StateBrush(McpClientState state) => state switch
     {
         McpClientState.Configured => new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32)),
+        McpClientState.ConfiguredDifferentCommand => new SolidColorBrush(Color.FromRgb(0xB2, 0x6A, 0x00)),
         McpClientState.NotConfigured => new SolidColorBrush(Color.FromRgb(0xB2, 0x6A, 0x00)),
         McpClientState.Unreadable => new SolidColorBrush(Color.FromRgb(0xC6, 0x28, 0x28)),
         _ => Brushes.Gray

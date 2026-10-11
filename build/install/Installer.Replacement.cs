@@ -32,4 +32,36 @@ static class Replacement
             }
         }
     }
+
+    /// <summary>
+    ///     Removes the bundled server folder (and its parent when empty) on uninstall. The folder is created
+    ///     by the installer without a component of its own, so Windows Installer otherwise leaves it behind.
+    /// </summary>
+    /// <param name="document">The generated WiX document.</param>
+    /// <param name="productName">The product folder name that contains the server folder.</param>
+    public static void AddServerFolderRemoval(XDocument document, string productName)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        var xmlNamespace = document.Root!.Name.Namespace;
+        var serverFolders = document.Descendants(xmlNamespace + "Directory")
+            .Where(directory => (string?)directory.Attribute("Name") == "server"
+                && (string?)directory.Parent?.Attribute("Name") == productName)
+            .ToList();
+
+        foreach (var server in serverFolders)
+        {
+            var component = server.Elements(xmlNamespace + "Component").FirstOrDefault();
+            if (component is null) continue;
+            // Children go first: Windows Installer removes folders in the order of the RemoveFolder rows.
+            foreach (var folder in new[] { server, server.Parent! })
+            {
+                var folderId = (string?)folder.Attribute("Id");
+                if (folderId is null) continue;
+                component.Add(new XElement(xmlNamespace + "RemoveFolder",
+                    new XAttribute("Id", "RmDir" + Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(folderId)))),
+                    new XAttribute("Directory", folderId),
+                    new XAttribute("On", "uninstall")));
+            }
+        }
+    }
 }

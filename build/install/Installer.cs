@@ -6,12 +6,17 @@ using WixSharp.Controls;
 
 const string outputName = "RevitModelMcp";
 const string productName = "Model MCP";
+const string serverSourceFolder = @"output\server-exe\revit-model-mcp";
 
 var versioning = Versioning.CreateFromVersionString(args[0]);
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
 
+// INSTALLER_VARIANT=store builds only the SingleUser package of the Autodesk App Store build: the add-in carries
+// UpdateChannel=store, so there is no updater and no update setting to write.
+var store = string.Equals(Environment.GetEnvironmentVariable("INSTALLER_VARIANT"), "store", StringComparison.OrdinalIgnoreCase);
+
 BuildSingleUserMsi();
-BuildMultiUserMsi();
+if (!store) BuildMultiUserMsi();
 
 Project CreateProject(InstallScope scope)
 {
@@ -39,6 +44,7 @@ Project CreateProject(InstallScope scope)
         }
     };
     project.WixSourceGenerated += Replacement.AddInstallTimeFileRemoval;
+    project.WixSourceGenerated += document => Replacement.AddServerFolderRemoval(document, productName);
     project.RemoveDialogsBetween(NativeDialogs.WelcomeDlg, NativeDialogs.CustomizeDlg);
     return project;
 }
@@ -48,8 +54,11 @@ void BuildSingleUserMsi()
     var project = CreateProject(InstallScope.perUser);
     project.Properties =
     [
-        new Property("UPDATECHECK", "1") { Secure = true },
-        new Property("UPDATEMODE", "") { Secure = true },
+        .. store ? Array.Empty<Property>() : new[]
+        {
+            new Property("UPDATECHECK", "1") { Secure = true },
+            new Property("UPDATEMODE", "") { Secure = true }
+        },
         .. OtherScopeProperties("Machine", year => $@"{MachineAddinsRoot(year).Search}\{year}")
     ];
     project.LaunchConditions =
@@ -59,11 +68,12 @@ void BuildSingleUserMsi()
             "Uninstall it from Apps > Installed apps, then run this SingleUser installer again.")
     ];
     project.RegValues = [];
-    project.Actions = [.. UpdateSettingActions("LOCALAPPDATA", false)];
-    project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
+    project.Actions = store ? [] : [.. UpdateSettingActions("LOCALAPPDATA", false)];
+    project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser{(store ? "-store" : "")}";
     project.Dirs =
     [
-        new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
+        new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)]),
+        ServerDir(@"%LocalAppDataFolder%\Programs")
     ];
     project.BuildMsi();
 }
@@ -132,12 +142,31 @@ void BuildMultiUserMsi()
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
-    project.Dirs = wixEntities
-        .GroupBy(entity => MachineAddinsRoot(entity.Version).Dir)
-        .Select(root => new Dir(root.Key, [.. root.Select(entity => entity.Directory)]))
-        .ToArray();
+    project.Dirs =
+    [
+        .. wixEntities
+            .GroupBy(entity => MachineAddinsRoot(entity.Version).Dir)
+            .Select(root => new Dir(root.Key, [.. root.Select(entity => entity.Directory)])),
+        ServerDir("%ProgramFiles%")
+    ];
 
     project.BuildMsi();
+}
+
+// The self-contained server (PyInstaller onedir, built by build/server-exe/build.py): one copy per machine or user,
+// shared by every Revit year, so the 228 files are not repeated six times. The Connect AI dialog finds it at
+// <root>\Model MCP\server\revit-model-mcp.exe. It needs neither uv nor Python.
+Dir ServerDir(string root)
+{
+    if (!Directory.Exists(serverSourceFolder) || !System.IO.File.Exists(Path.Combine(serverSourceFolder, "revit-model-mcp.exe")))
+        throw new Exception($"The bundled server is missing: run `python build/server-exe/build.py` first ({serverSourceFolder}).");
+    var feature = new Feature
+    {
+        Name = "Bundled MCP server",
+        Description = "The Model MCP server (no Python or uv needed) that AI apps start",
+        AllowChange = false
+    };
+    return new Dir($@"{root}\{productName}\server", new Files(feature, $@"{serverSourceFolder}\*.*"));
 }
 
 // The machine add-in roots: the Dir form for packaging and the property form for file searches.

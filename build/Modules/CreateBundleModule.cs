@@ -48,6 +48,11 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
         var manifestFile = bundleFolder.GetFile("PackageContents.xml");
 
         PackFiles(targetDirectories, contentFolder);
+        if (bundleOptions.Value.Store)
+        {
+            bundleOptions.Value.Managed.ShouldBeFalse("A bundle is either managed or store, not both");
+            PackServer(outputFolder, contentFolder);
+        }
         GenerateManifest(targetDirectories, manifestFile, versioning);
 
         if (bundleOptions.Value.Managed)
@@ -77,7 +82,9 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
 
         var outputName = bundleOptions.Value.Managed
             ? $"revit-model-mcp-{versioning.Version}-managed.bundle.zip"
-            : $"{bundleFolder.Name}.zip";
+            : bundleOptions.Value.Store
+                ? $"revit-model-mcp-{versioning.Version}-store.bundle.zip"
+                : $"{bundleFolder.Name}.zip";
         var outputFile = outputFolder.GetFile(outputName);
         if (outputFile.Exists)
         {
@@ -88,6 +95,27 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
         await bundleFolder.DeleteAsync(cancellationToken);
 
         context.Summary.KeyValue("Artifacts", "Bundle", outputFile.Path);
+    }
+
+    /// <summary>
+    ///     Copy the bundled server executable (built by build/server-exe/build.py) to Contents/server.
+    /// </summary>
+    private static void PackServer(Folder outputFolder, Folder contentFolder)
+    {
+        var serverSource = outputFolder.GetFolder("server-exe").GetFolder("revit-model-mcp");
+        serverSource.GetFile("revit-model-mcp.exe").Exists
+            .ShouldBeTrue($"Missing bundled server: {serverSource.Path}. Run build/server-exe/build.py first.");
+        var serverFolder = contentFolder.CreateFolder("server");
+        foreach (var source in serverSource.GetFiles(file => file.Exists))
+        {
+            var destination = serverFolder.GetFile(Path.GetRelativePath(serverSource.Path, source.Path));
+            if (!destination.Folder!.Exists)
+            {
+                destination.Folder!.Create();
+            }
+
+            source.CopyTo(destination.Path);
+        }
     }
 
     private static void PackFiles(Folder[] targetDirectories, Folder contentFolder)

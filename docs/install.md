@@ -8,7 +8,7 @@ Model MCP has two parts. The add-in runs inside Revit on Windows. The server run
 | --- | --- |
 | Revit | Revit 2022, 2023, 2024, 2025, 2026 or 2027 on Windows 10 or 11. |
 | Add-in | Installed on the Windows machine where Revit runs. No administrator rights are needed for the per-user installation. |
-| Python and uv | Python 3.11 or newer, started through [uv](https://docs.astral.sh/uv/getting-started/installation/). uv downloads the server package and, if needed, a matching Python. |
+| Server runtime | The MSI installers carry a self-contained server (`revit-model-mcp.exe`, with its own Python): no Python and no uv are needed. The add-in bundle and the Claude Desktop `.mcpb` start the server through [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python 3.11 or newer; uv downloads the server package and, if needed, a matching Python). |
 | MCP client | An MCP client such as Claude Desktop or Claude Code. It can run on the same Windows machine, or on macOS or Linux with a [remote workstation](transport.md). |
 | Network | Local use needs no open ports. Update checks and the first server download need internet access; see the [privacy policy](privacy.md). |
 
@@ -28,7 +28,7 @@ Signing starts with the first release after the project's application is approve
 2. Close Revit and copy the folder to `%APPDATA%\Autodesk\ApplicationPlugins` (current user) or `%ProgramData%\Autodesk\ApplicationPlugins` (all users).
 3. Start Revit and open a model. The first time, Revit asks whether to load the add-in. Choose **Always Load** after you check the publisher and path. Release builds are not code-signed yet; see [code signing](code-signing.md).
 4. Find the **MCP** panel on the **Add-Ins** tab. Its **Activity** button opens the activity pane, which lists every request and action, and its **Connect AI app** button registers the server in your AI apps (see [Connect an AI app](#connect-an-ai-app)).
-5. Install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+5. Unless you installed an MSI (which bundles the server, see [Connect an AI app](#connect-an-ai-app)), install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 6. Register the server in your MCP client.
 
    For Claude Code on the same Windows machine:
@@ -65,7 +65,7 @@ The **MCP** panel on the **Add-Ins** tab has two buttons. Press F1 while the poi
 
 ### Connect an AI app
 
-**Connect AI app** writes the same local registration as step 6 above (`uvx revit-model-mcp` with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`) into the configuration of each app it finds on the Revit workstation. It does not install uv or the apps; uv must be on the PATH.
+**Connect AI app** writes the same local registration as step 6 above, with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`, into the configuration of each app it finds on the Revit workstation. When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed. Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH. The dialog shows which one it will write. It does not install the apps.
 
 | App | Configuration file |
 |---|---|
@@ -79,10 +79,11 @@ Each app shows one state:
 
 - **Not installed**: the app's folder does not exist. Nothing can be changed.
 - **Not configured**: the app is there and has no `revit-model-mcp` entry. **Add** creates it.
-- **Configured**: the entry exists. **Remove** deletes it. An entry you edited yourself is shown as configured and is never overwritten.
+- **Configured**: the entry exists and starts the server the dialog would write (same command and arguments; the environment is not compared). **Remove** deletes it. **Add** never overwrites an existing entry.
+- **Configured (different command)**: the entry exists but starts another command, for example `uvx revit-model-mcp==0.6.0` while the bundled executable is installed. **Update** replaces only that entry with the one the dialog would write, after a backup; **Remove** deletes it. Nothing is changed until you press a button.
 - **Config unreadable**: the file cannot be read or is not valid JSON or TOML, or the entry uses a layout the add-in does not edit (for example an inline TOML table). The file is left untouched; fix it by hand.
 
-Add and Remove change only the `revit-model-mcp` entry. Other servers, comments, unknown keys and indentation stay as they were. Before every change the add-in copies the old file next to it as `<file>.<yyyyMMdd-HHmmss>.bak`, then replaces the file in one step. Restart the app to load the change.
+Add, Update and Remove change only the `revit-model-mcp` entry. Other servers, comments, unknown keys and indentation stay as they were. Before every change the add-in copies the old file next to it as `<file>.<yyyyMMdd-HHmmss>.bak`, then replaces the file in one step. Restart the app to load the change.
 
 The **Claude Code** row has a **Copy command** button for the `claude mcp add` command from step 6; paste it into a terminal. For a remote workstation, a managed install pinned to a release, or settings the dialog does not write, edit the configuration by hand as described above.
 
@@ -97,6 +98,15 @@ claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CH
 ```
 
 In a JSON configuration, use `"args": ["revit-model-mcp==<version>"]` and set `REVIT_MCP_NO_UPDATE_CHECK` to `1` in `env`. A `README.txt` in the bundle repeats these commands for its version. With both settings, neither part makes an update request.
+
+### Autodesk App Store build
+
+The store build is the same add-in with the update channel `store`, packaged with a bundled server executable (`revit-model-mcp.exe`), so no Python or uv is needed. It is free, and the releases carry `RevitModelMcp-<version>-SingleUser-store.msi` and `revit-model-mcp-<version>-store.bundle.zip` next to the other assets. Differences from the regular build:
+
+- No updater and no update check; updates arrive through the Autodesk App Manager. See [the store channel](updates.md#the-store-channel).
+- The server and the add-in make no external request.
+- `revit_execute_code` and the code steps of `revit_process_models` are off. To enable them for your account, add `"executeCode": "confirm"` to `%LOCALAPPDATA%\RevitModelMcp\settings.json` and restart your AI client. Every run still asks for confirmation. An administrator can enable or disable them for all users with the `ExecuteCode` [policy](admin/policy-reference.md); policy wins over the user setting. `revit_ping` shows the effective state.
+- The releases are not code-signed yet; see [code signing](code-signing.md).
 
 ## Install from the MSI or WinGet
 

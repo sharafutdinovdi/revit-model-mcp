@@ -14,7 +14,7 @@ public static class UndoEligibility
     public const string IsolateTransactionName = "revit_isolate";
 
     public const string IsolateRefusal =
-        "The newest change in Revit is a temporary isolate (revit_isolate). Earlier MCP actions can no longer be undone with revit_undo_last; use Undo in Revit if you need to revert them.";
+        "The newest change in Revit is a temporary view change (revit_isolate). Earlier MCP actions can no longer be undone with revit_undo_last; use Undo in Revit if you need to revert them.";
 
     public static bool IsAllowed(
         bool isActiveDocument,

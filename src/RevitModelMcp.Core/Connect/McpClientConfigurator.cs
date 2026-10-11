@@ -3,9 +3,10 @@ using System.Text;
 
 namespace RevitModelMcp.Core.Connect;
 
-/// <summary>Inspects, adds and removes the server entry in AI app configuration files.</summary>
-public sealed class McpClientConfigurator(Func<DateTime>? clock = null)
+/// <summary>Inspects, adds, updates and removes the server entry in AI app configuration files.</summary>
+public sealed class McpClientConfigurator(Func<DateTime>? clock = null, McpServerSpec? spec = null)
 {
+    private readonly McpServerSpec _spec = spec ?? McpServerSpec.Uvx;
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
     private readonly Func<DateTime> _clock = clock ?? (() => DateTime.Now);
 
@@ -16,7 +17,7 @@ public sealed class McpClientConfigurator(Func<DateTime>? clock = null)
         {
             if (!Directory.Exists(target.InstallProbe)) return new McpClientStatus(target, McpClientState.NotInstalled);
             if (!File.Exists(target.ConfigPath)) return new McpClientStatus(target, McpClientState.NotConfigured);
-            return InspectText(target, Read(target.ConfigPath).Text);
+            return InspectText(target, Read(target.ConfigPath).Text, _spec);
         }
         catch (Exception exception) when (IsFileError(exception))
         {
@@ -26,24 +27,33 @@ public sealed class McpClientConfigurator(Func<DateTime>? clock = null)
 
     /// <summary>Adds the entry. Returns <c>Changed = false</c> when it is already there.</summary>
     /// <exception cref="McpConfigException">The app is missing, the file is unreadable or the write failed.</exception>
-    public McpConfigChange Add(McpClientTarget target) => Apply(target, add: true);
+    public McpConfigChange Add(McpClientTarget target) => Apply(target, Mode.Add);
+
+    /// <summary>
+    ///     Replaces only the existing entry with the resolved server command, after a backup. Returns
+    ///     <c>Changed = false</c> when there is no entry or it already starts the resolved command.
+    /// </summary>
+    /// <exception cref="McpConfigException">The app is missing, the file is unreadable or the write failed.</exception>
+    public McpConfigChange Update(McpClientTarget target) => Apply(target, Mode.Update);
 
     /// <summary>Removes the entry. Returns <c>Changed = false</c> when it is not there.</summary>
     /// <exception cref="McpConfigException">The app is missing, the file is unreadable or the write failed.</exception>
-    public McpConfigChange Remove(McpClientTarget target) => Apply(target, add: false);
+    public McpConfigChange Remove(McpClientTarget target) => Apply(target, Mode.Remove);
 
-    private McpConfigChange Apply(McpClientTarget target, bool add)
+    private enum Mode { Add, Update, Remove }
+
+    private McpConfigChange Apply(McpClientTarget target, Mode mode)
     {
         try
         {
             if (!Directory.Exists(target.InstallProbe)) throw new McpConfigException($"{target.DisplayName} is not installed.");
             var exists = File.Exists(target.ConfigPath);
-            if (!exists && !add) return new McpConfigChange(false, null);
+            if (!exists && mode != Mode.Add) return new McpConfigChange(false, null);
             var (text, hadBom) = exists ? Read(target.ConfigPath) : (string.Empty, false);
-            var updated = Edit(target, text, add);
+            var updated = mode == Mode.Update ? Replace(target, text) : Edit(target, text, mode == Mode.Add);
             if (updated is null) return new McpConfigChange(false, null);
-            var expected = add ? McpClientState.Configured : McpClientState.NotConfigured;
-            if (InspectText(target, updated).State != expected)
+            var expected = mode == Mode.Remove ? McpClientState.NotConfigured : McpClientState.Configured;
+            if (InspectText(target, updated, _spec).State != expected)
                 throw new McpConfigException("The edit did not produce a valid configuration, so nothing was written.");
             var backup = exists ? Backup(target.ConfigPath) : null;
             WriteAtomically(target.ConfigPath, updated, hadBom, exists);
@@ -55,13 +65,23 @@ public sealed class McpClientConfigurator(Func<DateTime>? clock = null)
         }
     }
 
-    private static McpClientStatus InspectText(McpClientTarget target, string text) =>
-        target.Format == McpConfigFormat.Toml ? TomlConfigEditor.Inspect(target, text) : JsonConfigEditor.Inspect(target, text);
+    private static McpClientStatus InspectText(McpClientTarget target, string text, McpServerSpec spec) =>
+        target.Format == McpConfigFormat.Toml
+            ? TomlConfigEditor.Inspect(target, text, spec)
+            : JsonConfigEditor.Inspect(target, text, spec);
 
-    private static string? Edit(McpClientTarget target, string text, bool add) => target.Format switch
+    // Remove then add touches nothing but our entry; null when there is none or it already matches.
+    private string? Replace(McpClientTarget target, string text)
     {
-        McpConfigFormat.Toml => add ? TomlConfigEditor.Add(text) : TomlConfigEditor.Remove(text),
-        _ => add ? JsonConfigEditor.Add(target, text) : JsonConfigEditor.Remove(target, text)
+        if (InspectText(target, text, _spec).State != McpClientState.ConfiguredDifferentCommand) return null;
+        var removed = Edit(target, text, add: false);
+        return removed is null ? null : Edit(target, removed, add: true);
+    }
+
+    private string? Edit(McpClientTarget target, string text, bool add) => target.Format switch
+    {
+        McpConfigFormat.Toml => add ? TomlConfigEditor.Add(text, _spec) : TomlConfigEditor.Remove(text),
+        _ => add ? JsonConfigEditor.Add(target, text, _spec) : JsonConfigEditor.Remove(target, text)
     };
 
     private static bool IsFileError(Exception exception) =>

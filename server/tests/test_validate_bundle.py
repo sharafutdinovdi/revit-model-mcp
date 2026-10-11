@@ -96,6 +96,44 @@ def test_managed_zip_needs_matching_server_version(tmp_path: Path) -> None:
     assert errors == ["README.txt does not pin revit-model-mcp==0.9.1"]
 
 
+def store_files() -> dict[str, str]:
+    files = bundle_files()
+    files["RevitModelMcp.bundle/Contents/server/revit-model-mcp.exe"] = "exe"
+    return files
+
+
+def test_valid_store_zip(tmp_path: Path) -> None:
+    assert validate(write_zip(tmp_path, store_files()), YEARS, store=True) == []
+
+
+def test_store_zip_needs_bundled_server(tmp_path: Path) -> None:
+    errors = validate(write_zip(tmp_path, bundle_files()), YEARS, store=True)
+    assert errors == ["Store bundle needs Contents/server/revit-model-mcp.exe"]
+
+
+def test_store_zip_must_not_ship_updater(tmp_path: Path) -> None:
+    files = store_files()
+    files["RevitModelMcp.bundle/Contents/2022/RevitModelMcp/RevitModelMcp.Updater.exe"] = "exe"
+    errors = validate(write_zip(tmp_path, files), YEARS, store=True)
+    assert errors == ["Store bundle must not ship RevitModelMcp.Updater.exe"]
+
+
+def test_store_and_managed_are_exclusive(tmp_path: Path) -> None:
+    files = store_files()
+    files["RevitModelMcp.bundle/README.txt"] = "uvx revit-model-mcp==0.9.1\n"
+    errors = validate(write_zip(tmp_path, files), YEARS, managed_version="0.9.1", store=True)
+    assert errors == ["A bundle is either managed or store, not both"]
+
+
+def test_main_store_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    archive = write_zip(tmp_path, bundle_files())
+    with patch("sys.argv", ["validate_bundle.py", str(archive), "--store"]):
+        with pytest.raises(SystemExit) as raised:
+            main()
+    assert raised.value.code == 1
+    assert "Store bundle needs Contents/server/revit-model-mcp.exe" in capsys.readouterr().out
+
+
 def test_valid_zip_with_manifest_at_root(tmp_path: Path) -> None:
     assert validate(write_zip(tmp_path, bundle_files(prefix="")), YEARS) == []
 

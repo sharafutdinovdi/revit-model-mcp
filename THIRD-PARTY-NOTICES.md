@@ -88,6 +88,14 @@ Versions are from `server/uv.lock` on 2026-10-10; license text is from the PyPI 
 | click | 8.5.0 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/click/8.5.0/json) |
 | et-xmlfile | 2.0.0 | MIT, [PyPI metadata](https://pypi.org/pypi/et-xmlfile/2.0.0/json) |
 
+## Bundled server executable
+
+The MSI installers ship the server as a self-contained Windows executable built with PyInstaller (`build/server-exe/build.py`).
+It contains the CPython runtime and the Python packages listed above, installed from hash-pinned requirements.
+Notice files travel with it in the `licenses` folder: `PYTHON-LICENSE.txt` (Python Software Foundation License, which covers the bundled CPython and its standard library), one folder per bundled Python package with the license files from its distribution metadata, and this file.
+PyInstaller is GPL-2.0-or-later with the bootloader exception, which permits distributing the executables it produces under any license; its bootloader is the only part of PyInstaller that ships.
+The runtime also carries libraries that CPython itself builds on (OpenSSL, SQLite, zlib, libffi and others); their licenses are listed in the CPython documentation under "Licenses and Acknowledgements".
+
 ## Release verification
 
 Sourcy.DotNet 1.1.1 has no license element in its NuGet metadata.

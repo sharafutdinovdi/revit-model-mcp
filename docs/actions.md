@@ -410,7 +410,7 @@ the following hold, tracked from Revit's `DocumentChanged` event:
 Otherwise it refuses with a clear reason, for example `the last change in Revit is not ours: Move Elements`
 when the user made an unrelated edit since the last MCP action, or `there is no recorded MCP action to
 undo` when nothing has run yet. When Revit reports no matching undo entry, for example after the newest action was already undone, the refusal says so. Only the single most recent action is covered; there is no redo and no
-undo of an older entry. After `revit_isolate` the newest change in Revit is the temporary isolate, so `revit_undo_last` refuses and earlier MCP actions can no longer be undone with it; use Undo in Revit to revert them. The same button appears on the newest row of the activity pane, disabled once it no
+undo of an older entry. After `revit_isolate`, including its reset, the newest change in Revit is a temporary view change, so `revit_undo_last` refuses with "The newest change in Revit is a temporary view change (revit_isolate)." and earlier MCP actions can no longer be undone with it; use Undo in Revit to revert them. The same button appears on the newest row of the activity pane, disabled once it no
 longer applies.
 
 ### MCP activity pane

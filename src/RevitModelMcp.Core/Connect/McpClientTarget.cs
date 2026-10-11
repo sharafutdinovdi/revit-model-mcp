@@ -19,8 +19,11 @@ public enum McpClientState
     /// <summary>The app is present and has no <c>revit-model-mcp</c> entry.</summary>
     NotConfigured,
 
-    /// <summary>The app's configuration has a <c>revit-model-mcp</c> entry.</summary>
+    /// <summary>The app's configuration has a <c>revit-model-mcp</c> entry that starts the server this add-in resolved.</summary>
     Configured,
+
+    /// <summary>The entry exists but starts the server with another command or arguments than this add-in resolved.</summary>
+    ConfiguredDifferentCommand,
 
     /// <summary>The configuration cannot be read or parsed, so the add-in leaves it alone.</summary>
     Unreadable
@@ -49,7 +52,7 @@ public sealed record McpClientTarget(
 /// <param name="Detail">Why the configuration is unreadable; otherwise null.</param>
 public sealed record McpClientStatus(McpClientTarget Target, McpClientState State, string? Detail = null);
 
-/// <summary>The outcome of adding or removing the entry.</summary>
+/// <summary>The outcome of adding, updating or removing the entry.</summary>
 /// <param name="Changed">False when the file already had the requested state and was not touched.</param>
 /// <param name="BackupPath">The backup of the previous file, or null when none existed or nothing changed.</param>
 public sealed record McpConfigChange(bool Changed, string? BackupPath);

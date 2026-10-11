@@ -10,6 +10,8 @@ from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile
 
 MANIFEST_NAME = "PackageContents.xml"
+UPDATER_NAME = "RevitModelMcp.Updater.exe"
+SERVER_MEMBER = "Contents/server/revit-model-mcp.exe"
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+(\.\d+)?$")
 GUID_PATTERN = re.compile(r"^\{[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}\}$")
 FORBIDDEN_PATTERN = re.compile(
@@ -188,7 +190,10 @@ def check_addin(
 
 
 def validate(
-    path: str | Path, years: list[int], managed_version: str | None = None
+    path: str | Path,
+    years: list[int],
+    managed_version: str | None = None,
+    store: bool = False,
 ) -> list[str]:
     """Return a list of error messages; an empty list means the bundle is valid."""
     path = Path(path)
@@ -211,6 +216,15 @@ def validate(
             f"{MANIFEST_NAME} not found at the root or in a single top-level .bundle folder"
         )
         return errors
+    if store:
+        if managed_version is not None:
+            errors.append("A bundle is either managed or store, not both")
+        if any(
+            PurePosixPath(name).name.lower() == UPDATER_NAME.lower() for name in names
+        ):
+            errors.append(f"Store bundle must not ship {UPDATER_NAME}")
+        if base + SERVER_MEMBER not in names:
+            errors.append(f"Store bundle needs {SERVER_MEMBER}")
     if managed_version is not None:
         readme_name = base + "README.txt"
         if readme_name not in names:
@@ -264,13 +278,18 @@ def main() -> None:
         "--years", default="2022-2027", help="Range 2022-2027 or list 2022,2023"
     )
     parser.add_argument(
+        "--store",
+        action="store_true",
+        help="Require the Autodesk App Store variant: no updater, bundled server executable",
+    )
+    parser.add_argument(
         "--managed-version",
         metavar="VERSION",
         help="Require a pinned server version in README.txt",
     )
     arguments = parser.parse_args()
     years = parse_years(arguments.years)
-    errors = validate(arguments.path, years, arguments.managed_version)
+    errors = validate(arguments.path, years, arguments.managed_version, arguments.store)
     if errors:
         for error in errors:
             print(f"ERROR: {error}")

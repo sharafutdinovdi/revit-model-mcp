@@ -21,7 +21,7 @@ The add-in rereads both stores about every ten seconds, so a change applies with
 | `ReadOnly` | DWORD 0 or 1 | boolean | `1` refuses every action tool. Read tools are not affected. |
 | `ToolDeny` | REG_MULTI_SZ | array of strings | Tool names that are refused. |
 | `ToolAllow` | REG_MULTI_SZ | array of strings | Tool names that are allowed. Empty or absent means all tools. |
-| `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` refuses `revit_execute_code` and code in `revit_process_models`. `confirm` keeps the confirmation token flow. |
+| `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` refuses `revit_execute_code` and code in `revit_process_models`. `confirm` keeps the confirmation token flow. In the Autodesk App Store build code execution is off unless the user sets `executeCode` to `confirm` in `settings.json`; `confirm` here enables it for everyone and `off` disables it whatever the user sets, see [the store channel](../updates.md#the-store-channel). |
 | `UpdateMode` | REG_SZ `off`, `notify` or `auto` | string | `off` makes no update request. `notify` only shows a notice. `auto` installs a per-user update. An unknown value makes the whole policy [unreadable](#unreadable-policy-fails-closed). See [automatic updates](../updates.md#modes). |
 | `TrustedNetworkRoots` | REG_MULTI_SZ | array of strings | UNC roots (`\\server\share`) that export, save and open may use. A configured list replaces the per-user list, including an empty list. |
 | `LogDir` | REG_SZ | string | Folder for the add-in log and `activity.log`. |
