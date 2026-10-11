@@ -201,6 +201,10 @@ public sealed class MachinePolicy
         return CommandAliases.TryGetValue(value, out var command) ? command : value;
     }
 
+    /// <summary>True for commands that compile and run C# code (revit_execute_code and execute-code).</summary>
+    public static bool IsCodeCommand(string? command) =>
+        !string.IsNullOrEmpty(command) && CodeCommands.Contains(NormalizeToolName(command!), StringComparer.Ordinal);
+
     /// <summary>Returns the refusal text when the policy blocks the command, otherwise null. ToolDeny wins over ToolAllow. ping and jobs are never blocked.</summary>
     public string? Refusal(string? command)
     {

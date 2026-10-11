@@ -285,7 +285,7 @@ internal sealed class PipeChannel : IDisposable
             ProtocolVersion = Application.ProtocolVersion,
             Commands = Application.SupportedCommands.ToList(),
             Documents = _documents().ToList(),
-            Policy = ControlPayloadJsonSerializer.Serialize(PolicyProvider.Current.ToSummary()
+            Policy = ControlPayloadJsonSerializer.Serialize(PolicyProvider.Summary()
                 .ToDictionary(pair => pair.Key, pair => (object)pair.Value))
         };
     }

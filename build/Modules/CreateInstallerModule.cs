@@ -95,8 +95,13 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
                 }
             }, cancellationToken: cancellationToken);
 
-        var outputFiles = outputFolder.GetFiles(file => file.Extension == ".msi").ToArray();
-        outputFiles.Length.ShouldBe(2, "Exactly two installers must be produced");
+        var store = string.Equals(Environment.GetEnvironmentVariable("INSTALLER_VARIANT"), "store", StringComparison.OrdinalIgnoreCase);
+        var outputFiles = outputFolder
+            .GetFiles(file => file.Extension == ".msi" && file.NameWithoutExtension.EndsWith("-store", StringComparison.Ordinal) == store)
+            .ToArray();
+        outputFiles.Length.ShouldBe(store ? 1 : 2, store
+            ? "Exactly one store installer must be produced"
+            : "Exactly two installers must be produced");
 
         foreach (var outputFile in outputFiles)
         {
