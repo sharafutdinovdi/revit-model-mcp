@@ -33,4 +33,9 @@ public sealed record BundleOptions
     ///     Build the managed install variant: no update check and a README that pins the server.
     /// </summary>
     public bool Managed { get; init; }
+
+    /// <summary>
+    ///     Build the Autodesk App Store variant: no updater, the bundled server executable under Contents/server.
+    /// </summary>
+    public bool Store { get; init; }
 }

@@ -102,6 +102,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Build project locked restore failed' }
           dotnet restore build/install/Installer.csproj --locked-mode -p:Configuration=Release
           if ($LASTEXITCODE -ne 0) { throw 'Installer locked restore failed' }
+      - name: Build and smoke-test the bundled server
+        shell: pwsh
+        run: |
+          # Built once here: the standard MSIs, the store MSI and the store bundle all embed output/server-exe.
+          python build/server-exe/build.py
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled server build failed' }
+          python build/server-exe/smoke.py
+          if ($LASTEXITCODE -ne 0) { throw 'Bundled server smoke test failed' }
       - name: Build installers
         shell: pwsh
         env:
@@ -162,6 +170,56 @@ jobs:
           python build/validate_bundle.py $bundle --years 2022-2027 --managed-version $env:RELEASE_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Managed bundle validation failed' }
           Copy-Item $bundle artifacts/release/
+      - name: Build and validate the store build
+        shell: pwsh
+        env:
+          Build__Version: ${{ env.RELEASE_VERSION }}
+        run: |
+          # The Autodesk App Store build: UpdateChannel=store, so no RevitModelMcp.Updater.exe and no update check.
+          foreach ($year in '22', '23', '24', '25', '26', '27') {
+            $bin = "src/RevitModelMcp.Addin/bin/Release.R$year"
+            # Start from an empty output folder so the store build cannot inherit the updater of the standard build.
+            Remove-Item $bin -Recurse -Force -ErrorAction SilentlyContinue
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
+            if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION" -p:UpdateChannel=store --no-restore
+            if ($LASTEXITCODE -ne 0) { throw "R$year store build failed" }
+            $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes("$bin/RevitModelMcp.dll"))
+            if ($text -notmatch 'UpdateChannel.store') { throw "R$year store build does not carry UpdateChannel=store" }
+            if (@(Get-ChildItem $bin -Recurse -Filter 'RevitModelMcp.Updater.exe' -File).Count) { throw "R$year store build contains the updater" }
+          }
+          $env:INSTALLER_VARIANT = 'store'
+          dotnet run --no-restore --project build -- pack --no-build
+          $packExit = $LASTEXITCODE
+          Remove-Item Env:INSTALLER_VARIANT
+          if ($packExit -ne 0) { throw 'Store installer build failed' }
+          $stores = @(Get-ChildItem output/*-store.msi)
+          if ($stores.Count -ne 1) { throw "Expected one store MSI, found $($stores.Count)" }
+          $msi = $stores[0]
+          Write-Host "MSI: $($msi.Name) ($($msi.Length) bytes)"
+          $target = Join-Path $env:RUNNER_TEMP "extract-$($msi.BaseName)"
+          $log = Join-Path $env:RUNNER_TEMP "$($msi.BaseName)-extract.log"
+          $process = Start-Process msiexec.exe -ArgumentList "/a `"$($msi.FullName)`" /qn /norestart TARGETDIR=`"$target`" /l*v `"$log`"" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Store MSI extraction failed: $($process.ExitCode)" }
+          $files = @(Get-ChildItem $target -Recurse -File)
+          if ($files | Where-Object Name -EQ 'RevitModelMcp.Updater.exe') { throw 'The store MSI must not contain the updater' }
+          if (!($files | Where-Object Name -EQ 'revit-model-mcp.exe')) { throw 'The store MSI must contain the bundled server' }
+          $blocked = @($files | Where-Object {
+            $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
+            ($_.Extension -eq '.dll' -and $_.VersionInfo.CompanyName -match 'Autodesk')
+          })
+          if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
+          if (@($files | Where-Object Name -EQ 'RevitModelMcp.addin').Count -ne 6) { throw 'Unexpected Revit year count in the store MSI' }
+          Write-Host "ASSERT: $($msi.Name) has no updater, has the bundled server and no Autodesk DLLs"
+          $env:Bundle__Store = 'true'
+          dotnet run --no-restore --project build -- bundle
+          $bundleExit = $LASTEXITCODE
+          Remove-Item Env:Bundle__Store
+          if ($bundleExit -ne 0) { throw 'Store bundle build failed' }
+          $bundle = "output/revit-model-mcp-$env:RELEASE_VERSION-store.bundle.zip"
+          python build/validate_bundle.py $bundle --years 2022-2027 --store
+          if ($LASTEXITCODE -ne 0) { throw 'Store bundle validation failed' }
+          Copy-Item $bundle artifacts/release/
       - name: Check SignPath configuration
         id: signpath
         shell: bash
@@ -186,7 +244,7 @@ jobs:
           $names = @(Get-ChildItem $stage -File).Name
           $zips = @($names | Where-Object { $_ -like '*.zip' })
           $msis = @($names | Where-Object { $_ -like '*.msi' })
-          if ($msis.Count -ne 2 -or $zips.Count -ne 7) { throw "Expected 2 MSIs and 7 ZIPs to sign, found $($msis.Count) and $($zips.Count)" }
+          if ($msis.Count -ne 3 -or $zips.Count -ne 8) { throw "Expected 3 MSIs and 8 ZIPs to sign, found $($msis.Count) and $($zips.Count)" }
           # The artifact configuration enforces these values, so fail here with a readable message.
           $productVersion = (Get-Item 'src/RevitModelMcp.Addin/bin/Release.R27/RevitModelMcp.dll').VersionInfo.ProductVersion
           foreach ($year in '22', '23', '24', '25', '26', '27') {
@@ -233,6 +291,7 @@ jobs:
           Copy-Item signing/signed/*.msi output/ -Force
           Copy-Item signing/signed/*.zip artifacts/release/ -Force
           Copy-Item "signing/signed/revit-model-mcp-$env:RELEASE_VERSION-managed.bundle.zip" output/ -Force
+          Copy-Item "signing/signed/revit-model-mcp-$env:RELEASE_VERSION-store.bundle.zip" output/ -Force
       - name: Verify signatures
         if: ${{ steps.signpath.outputs.enabled == 'true' }}
         shell: pwsh
@@ -260,12 +319,14 @@ jobs:
             Expand-Archive -LiteralPath $zip.FullName -DestinationPath $target
             Assert-OwnBinariesSigned $target $zip.Name
           }
-      - name: Validate signed managed bundle
+      - name: Validate signed managed and store bundles
         if: ${{ steps.signpath.outputs.enabled == 'true' }}
         shell: pwsh
         run: |
           python build/validate_bundle.py "output/revit-model-mcp-$env:RELEASE_VERSION-managed.bundle.zip" --years 2022-2027 --managed-version $env:RELEASE_VERSION
           if ($LASTEXITCODE -ne 0) { throw 'Signed managed bundle validation failed' }
+          python build/validate_bundle.py "output/revit-model-mcp-$env:RELEASE_VERSION-store.bundle.zip" --years 2022-2027 --store
+          if ($LASTEXITCODE -ne 0) { throw 'Signed store bundle validation failed' }
       - name: Upload MSI logs on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -328,6 +389,21 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Bundle validation failed' }
           npx --yes @anthropic-ai/mcpb@2.1.2 pack bundle "artifacts/release/revit-model-mcp-$env:RELEASE_VERSION.mcpb"
           if ($LASTEXITCODE -ne 0) { throw 'Bundle packing failed' }
+      - name: Export the MCP tool manifest for the Autodesk App Store
+        shell: pwsh
+        working-directory: server
+        run: |
+          # The store build makes no external request, so the managed manifest (no external endpoints) applies.
+          $manifest = "../artifacts/release/revit-model-mcp-$env:RELEASE_VERSION-store.mcp-manifest.json"
+          uv run --frozen python ../build/tool_manifest.py --managed --export-snake-case $manifest
+          if ($LASTEXITCODE -ne 0) { throw 'Tool manifest export failed' }
+          $json = Get-Content -Raw -LiteralPath $manifest | ConvertFrom-Json
+          foreach ($field in 'mcp_manifest_version', 'app_model', 'mcp_spec_version', 'server', 'tools', 'resources', 'prompts', 'external_endpoints', 'autodesk_apis_used', 'ai_llm_providers') {
+            if ($null -eq $json.PSObject.Properties[$field]) { throw "Tool manifest export misses $field" }
+          }
+          if (@($json.external_endpoints).Count -ne 0) { throw 'The store tool manifest must declare no external endpoints' }
+          if (@($json.ai_llm_providers).Count -ne 0) { throw 'The store tool manifest must declare no AI providers' }
+          if (@($json.tools).Count -eq 0) { throw 'The store tool manifest lists no tools' }
       - name: Generate CycloneDX SBOMs
         shell: pwsh
         run: |
@@ -339,7 +415,7 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item output/*.msi, server/dist/*.whl, server/dist/*.tar.gz artifacts/release/
-          $expected = @{ '*.zip' = 7; '*.msi' = 2; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1; '*.cdx.json' = 2 }
+          $expected = @{ '*.zip' = 8; '*.msi' = 3; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1; '*.cdx.json' = 2; '*.mcp-manifest.json' = 1 }
           foreach ($pattern in $expected.Keys) {
             $count = @(Get-ChildItem "artifacts/release/$pattern").Count
             if ($count -ne $expected[$pattern]) { throw "Unexpected $pattern count: $count" }
@@ -402,6 +478,7 @@ jobs:
             done
             echo
             echo "- [Python wheel]($base/$wheel)"
+            echo "- Autodesk App Store build (no updater, bundled server, C# code execution off by default): [store MSI]($base/RevitModelMcp-$version-SingleUser-store.msi), [store bundle]($base/revit-model-mcp-$version-store.bundle.zip), [MCP tool manifest]($base/revit-model-mcp-$version-store.mcp-manifest.json)."
             echo "- [SHA256SUMS.txt]($base/SHA256SUMS.txt) covers every release asset, including the CycloneDX SBOMs (\`*.cdx.json\`)."
             echo "- [Code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/)"
             echo

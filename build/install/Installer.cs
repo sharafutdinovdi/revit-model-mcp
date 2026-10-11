@@ -10,8 +10,12 @@ const string productName = "Model MCP";
 var versioning = Versioning.CreateFromVersionString(args[0]);
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
 
+// INSTALLER_VARIANT=store builds only the SingleUser package of the Autodesk App Store build: the add-in carries
+// UpdateChannel=store, so there is no updater and no update setting to write.
+var store = string.Equals(Environment.GetEnvironmentVariable("INSTALLER_VARIANT"), "store", StringComparison.OrdinalIgnoreCase);
+
 BuildSingleUserMsi();
-BuildMultiUserMsi();
+if (!store) BuildMultiUserMsi();
 
 Project CreateProject(InstallScope scope)
 {
@@ -48,8 +52,11 @@ void BuildSingleUserMsi()
     var project = CreateProject(InstallScope.perUser);
     project.Properties =
     [
-        new Property("UPDATECHECK", "1") { Secure = true },
-        new Property("UPDATEMODE", "") { Secure = true },
+        .. store ? Array.Empty<Property>() : new[]
+        {
+            new Property("UPDATECHECK", "1") { Secure = true },
+            new Property("UPDATEMODE", "") { Secure = true }
+        },
         .. OtherScopeProperties("Machine", year => $@"{MachineAddinsRoot(year).Search}\{year}")
     ];
     project.LaunchConditions =
@@ -59,8 +66,8 @@ void BuildSingleUserMsi()
             "Uninstall it from Apps > Installed apps, then run this SingleUser installer again.")
     ];
     project.RegValues = [];
-    project.Actions = [.. UpdateSettingActions("LOCALAPPDATA", false)];
-    project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
+    project.Actions = store ? [] : [.. UpdateSettingActions("LOCALAPPDATA", false)];
+    project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser{(store ? "-store" : "")}";
     project.Dirs =
     [
         new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)])
