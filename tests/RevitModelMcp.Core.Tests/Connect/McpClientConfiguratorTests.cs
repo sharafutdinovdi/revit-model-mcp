@@ -98,4 +98,92 @@ public sealed class McpClientConfiguratorTests
         await Assert.That(bytes[0]).IsEqualTo((byte)0xEF);
         await Assert.That(configurator.Inspect(target).State).IsEqualTo(McpClientState.Configured);
     }
+
+    private const string BundledPath = @"C:\Program Files\Model MCP\server\revit-model-mcp.exe";
+
+    private static readonly McpServerSpec Bundled = McpServerSpec.ForExecutable(BundledPath);
+
+    [Test]
+    public async Task JsonEntryWithAnotherCommandIsDifferentAndUpdateReplacesOnlyIt()
+    {
+        using var temp = new TempDirectory();
+        Directory.CreateDirectory(temp.Combine(".cursor"));
+        var target = Json(temp);
+        const string original =
+            "{\n  // mine\n  \"theme\": \"dark\",\n  \"mcpServers\": {\n    \"other\": { \"command\": \"npx\", \"args\": [\"x\"] },\n" +
+            "    \"revit-model-mcp\": { \"command\": \"uvx\", \"args\": [\"revit-model-mcp==0.6.0\"] }\n  }\n}\n";
+        File.WriteAllText(target.ConfigPath, original);
+        var configurator = new McpClientConfigurator(() => Now, Bundled);
+        await Assert.That(configurator.Inspect(target).State).IsEqualTo(McpClientState.ConfiguredDifferentCommand);
+        await Assert.That(configurator.Add(target).Changed).IsFalse();
+
+        var change = configurator.Update(target);
+        await Assert.That(change.Changed).IsTrue();
+        await Assert.That(File.ReadAllText(change.BackupPath!)).IsEqualTo(original);
+        var text = File.ReadAllText(target.ConfigPath);
+        await Assert.That(text).Contains("// mine");
+        await Assert.That(text).Contains("\"other\": { \"command\": \"npx\", \"args\": [\"x\"] }");
+        await Assert.That(text).Contains(BundledPath.Replace("\\", "\\\\"));
+        await Assert.That(text).DoesNotContain("0.6.0");
+        await Assert.That(configurator.Inspect(target).State).IsEqualTo(McpClientState.Configured);
+        await Assert.That(configurator.Update(target).Changed).IsFalse();
+    }
+
+    [Test]
+    public async Task TomlEntryWithAnotherCommandIsDifferentAndUpdateReplacesOnlyIt()
+    {
+        using var temp = new TempDirectory();
+        Directory.CreateDirectory(temp.Combine(".codex"));
+        var target = Toml(temp);
+        const string original =
+            "# mine\nmodel = \"x\"\n\n[mcp_servers.other]\ncommand = \"npx\"\nargs = [\"x\"]\n\n" +
+            "[mcp_servers.revit-model-mcp]\ncommand = \"uvx\"\nargs = [\"revit-model-mcp==0.6.0\"]\n\n" +
+            "[mcp_servers.revit-model-mcp.env]\nREVIT_MCP_HOST = \"local\"\n\n[tui]\nnotifications = true\n";
+        File.WriteAllText(target.ConfigPath, original);
+        var configurator = new McpClientConfigurator(() => Now, Bundled);
+        await Assert.That(configurator.Inspect(target).State).IsEqualTo(McpClientState.ConfiguredDifferentCommand);
+
+        var change = configurator.Update(target);
+        await Assert.That(change.Changed).IsTrue();
+        await Assert.That(File.ReadAllText(change.BackupPath!)).IsEqualTo(original);
+        var text = File.ReadAllText(target.ConfigPath);
+        await Assert.That(text).Contains("# mine\nmodel = \"x\"");
+        await Assert.That(text).Contains("[mcp_servers.other]\ncommand = \"npx\"\nargs = [\"x\"]");
+        await Assert.That(text).Contains("[tui]\nnotifications = true");
+        await Assert.That(text).DoesNotContain("0.6.0");
+        await Assert.That(configurator.Inspect(target).State).IsEqualTo(McpClientState.Configured);
+        await Assert.That(configurator.Update(target).Changed).IsFalse();
+    }
+
+    [Test]
+    public async Task UpdateDoesNothingWithoutAnEntryOrFile()
+    {
+        using var temp = new TempDirectory();
+        Directory.CreateDirectory(temp.Combine(".cursor"));
+        var target = Json(temp);
+        var configurator = new McpClientConfigurator(() => Now, Bundled);
+        await Assert.That(configurator.Update(target).Changed).IsFalse();
+        await Assert.That(File.Exists(target.ConfigPath)).IsFalse();
+        File.WriteAllText(target.ConfigPath, "{ \"mcpServers\": {} }");
+        await Assert.That(configurator.Update(target).Changed).IsFalse();
+    }
+
+    [Test]
+    public async Task TomlLiteralStringAndMultilineArgsAreRecognizedAsTheSameCommand()
+    {
+        var spec = McpServerSpec.Uvx;
+        var text = "[mcp_servers.revit-model-mcp]\ncommand = 'uvx'\nargs = [\n  \"revit-model-mcp\", # pinned by name\n]\n";
+        await Assert.That(TomlConfigEditor.Inspect(ConnectTestSupport.Codex, text, spec).State).IsEqualTo(McpClientState.Configured);
+        await Assert.That(TomlConfigEditor.Inspect(ConnectTestSupport.Codex, text, Bundled).State)
+            .IsEqualTo(McpClientState.ConfiguredDifferentCommand);
+    }
+
+    [Test]
+    public async Task JsonEntryWithoutCommandCountsAsDifferent()
+    {
+        const string text = "{ \"mcpServers\": { \"revit-model-mcp\": { \"url\": \"http://x\" } } }";
+        await Assert.That(JsonConfigEditor.Inspect(ConnectTestSupport.Desktop, text, McpServerSpec.Uvx).State)
+            .IsEqualTo(McpClientState.ConfiguredDifferentCommand);
+        await Assert.That(JsonConfigEditor.Inspect(ConnectTestSupport.Desktop, text).State).IsEqualTo(McpClientState.Configured);
+    }
 }

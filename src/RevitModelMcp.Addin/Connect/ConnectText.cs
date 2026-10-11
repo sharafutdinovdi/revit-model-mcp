@@ -25,11 +25,13 @@ internal static class ConnectText
     public const string Copied = "Command copied.";
     public const string CopyFailed = "The clipboard is busy. Select the command and copy it by hand.";
     public const string Add = "Add";
+    public const string Update = "Update";
     public const string Remove = "Remove";
     public const string Close = "Close";
     public const string NotInstalled = "Not installed";
     public const string NotConfigured = "Not configured";
     public const string Configured = "Configured";
+    public const string ConfiguredDifferentCommand = "Configured (different command)";
     public const string Unreadable = "Config unreadable";
 
     public static string State(McpClientState state) => state switch
@@ -37,6 +39,7 @@ internal static class ConnectText
         McpClientState.NotInstalled => NotInstalled,
         McpClientState.NotConfigured => NotConfigured,
         McpClientState.Configured => Configured,
+        McpClientState.ConfiguredDifferentCommand => ConfiguredDifferentCommand,
         _ => Unreadable
     };
 
@@ -45,6 +48,9 @@ internal static class ConnectText
 
     public static string Removed(string app, string? backup) =>
         $"Removed from {app}. Restart {app} to apply it." + BackupNote(backup);
+
+    public static string Updated(string app, string? backup) =>
+        $"Updated in {app}. Restart {app} to load it." + BackupNote(backup);
 
     public static string Unchanged(string app) => $"{app} already had that state; nothing was changed.";
 

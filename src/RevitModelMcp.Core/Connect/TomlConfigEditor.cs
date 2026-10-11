@@ -10,13 +10,148 @@ public static class TomlConfigEditor
 {
     private const string TablesKey = "mcp_servers";
 
-    /// <summary>Reads whether the entry exists.</summary>
-    public static McpClientStatus Inspect(McpClientTarget target, string text)
+    /// <summary>
+    ///     Reads whether the entry exists. With a <paramref name="spec" />, an entry that starts another command than the
+    ///     spec is reported as <see cref="McpClientState.ConfiguredDifferentCommand" />.
+    /// </summary>
+    public static McpClientStatus Inspect(McpClientTarget target, string text, McpServerSpec? spec = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return new McpClientStatus(target, McpClientState.NotConfigured);
         var scan = Scan(text);
         if (scan.Error is not null) return new McpClientStatus(target, McpClientState.Unreadable, scan.Error);
-        return new McpClientStatus(target, scan.Sections.Count == 0 ? McpClientState.NotConfigured : McpClientState.Configured);
+        if (scan.Sections.Count == 0) return new McpClientStatus(target, McpClientState.NotConfigured);
+        return new McpClientStatus(target,
+            spec is null || StartsSpec(scan, spec) ? McpClientState.Configured : McpClientState.ConfiguredDifferentCommand);
+    }
+
+    // Looks only at the entry's own table; its [..env] sub-table is not part of the launch.
+    private static bool StartsSpec(ScanResult scan, McpServerSpec spec)
+    {
+        foreach (var section in scan.Sections.Where(section => section.PathLength == 2))
+        {
+            string? command = null;
+            List<string>? args = null;
+            var end = Math.Min(section.EndLine, scan.Lines.Count);
+            for (var index = section.HeaderLine + 1; index < end; index++)
+            {
+                var line = scan.Lines[index].Text.TrimStart();
+                if (TryKeyValue(line, "command", out var rest)) command = ReadString(rest);
+                else if (TryKeyValue(line, "args", out rest))
+                {
+                    var value = new StringBuilder(rest);
+                    var state = new ValueState();
+                    ScanValue(rest, 0, state);
+                    while ((state.Depth > 0 || state.Multiline is not null) && ++index < end)
+                    {
+                        value.Append('\n').Append(scan.Lines[index].Text);
+                        ScanValue(scan.Lines[index].Text, 0, state);
+                    }
+                    args = ReadStrings(value.ToString());
+                }
+            }
+            return command is not null && args is not null && McpServerSpec.SameLaunch(command, args, spec);
+        }
+        return false;
+    }
+
+    private static bool TryKeyValue(string line, string key, out string rest)
+    {
+        rest = string.Empty;
+        if (!line.StartsWith(key, StringComparison.Ordinal)) return false;
+        var position = key.Length;
+        while (position < line.Length && (line[position] == ' ' || line[position] == '\t')) position++;
+        if (position >= line.Length || line[position] != '=') return false;
+        rest = line.Substring(position + 1).TrimStart();
+        return true;
+    }
+
+    private static string? ReadString(string text)
+    {
+        var position = 0;
+        return TryReadString(text, ref position, out var value) ? value : null;
+    }
+
+    private static List<string>? ReadStrings(string text)
+    {
+        var items = new List<string>();
+        var position = 0;
+        SkipSpaceAndComments(text, ref position);
+        if (position >= text.Length || text[position] != '[') return null;
+        position++;
+        while (true)
+        {
+            SkipSpaceAndComments(text, ref position);
+            if (position >= text.Length) return null;
+            if (text[position] == ']') return items;
+            if (!TryReadString(text, ref position, out var value)) return null;
+            items.Add(value);
+            SkipSpaceAndComments(text, ref position);
+            if (position < text.Length && text[position] == ',') position++;
+        }
+    }
+
+    private static void SkipSpaceAndComments(string text, ref int position)
+    {
+        while (position < text.Length)
+        {
+            if (char.IsWhiteSpace(text[position])) position++;
+            else if (text[position] == '#') while (position < text.Length && text[position] != '\n') position++;
+            else return;
+        }
+    }
+
+    // Single-line basic ("...") and literal ('...') strings; anything else makes the entry count as different.
+    private static bool TryReadString(string text, ref int position, out string value)
+    {
+        value = string.Empty;
+        if (position >= text.Length) return false;
+        var quote = text[position];
+        if (quote == '\'')
+        {
+            var close = text.IndexOf('\'', position + 1);
+            if (close < 0 || text.IndexOf('\n', position, close - position) >= 0) return false;
+            value = text.Substring(position + 1, close - position - 1);
+            position = close + 1;
+            return true;
+        }
+        if (quote != '"') return false;
+        var builder = new StringBuilder();
+        var cursor = position + 1;
+        while (cursor < text.Length)
+        {
+            var character = text[cursor++];
+            if (character == '"')
+            {
+                value = builder.ToString();
+                position = cursor;
+                return true;
+            }
+            if (character == '\n') return false;
+            if (character != '\\') { builder.Append(character); continue; }
+            if (cursor >= text.Length) return false;
+            var escape = text[cursor++];
+            switch (escape)
+            {
+                case '"': builder.Append('"'); break;
+                case '\\': builder.Append('\\'); break;
+                case 'n': builder.Append('\n'); break;
+                case 't': builder.Append('\t'); break;
+                case 'r': builder.Append('\r'); break;
+                case 'b': builder.Append('\b'); break;
+                case 'f': builder.Append('\f'); break;
+                case 'u' or 'U':
+                    var length = escape == 'u' ? 4 : 8;
+                    if (cursor + length > text.Length ||
+                        !int.TryParse(text.Substring(cursor, length), System.Globalization.NumberStyles.HexNumber,
+                            System.Globalization.CultureInfo.InvariantCulture, out var code) || code > 0x10FFFF)
+                        return false;
+                    builder.Append(char.ConvertFromUtf32(code));
+                    cursor += length;
+                    break;
+                default: return false;
+            }
+        }
+        return false;
     }
 
     /// <summary>Returns the text with the entry appended, or null when it is already there.</summary>
@@ -90,7 +225,7 @@ public static class TomlConfigEditor
 
     private readonly record struct Line(string Text, string Eol);
 
-    private readonly record struct Section(int HeaderLine, int EndLine);
+    private readonly record struct Section(int HeaderLine, int EndLine, int PathLength);
 
     private sealed class ScanResult
     {
@@ -169,7 +304,7 @@ public static class TomlConfigEditor
             var path = headers[index].Path;
             if (path.Count < 2 || path[0] != TablesKey || path[1] != McpServerSpec.Name || path.Contains("[]")) continue;
             var endLine = index + 1 < headers.Count ? headers[index + 1].Line : scan.Lines.Count;
-            scan.Sections.Add(new Section(headers[index].Line, endLine));
+            scan.Sections.Add(new Section(headers[index].Line, endLine, path.Count));
         }
         return scan;
     }

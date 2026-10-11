@@ -76,6 +76,13 @@ public sealed record McpServerSpec(string Command, IReadOnlyList<string> Args)
         "claude mcp add " + Name + " " + string.Join(" ", Env.Select(pair => "-e " + pair.Key + "=" + pair.Value)) +
         " -- " + string.Join(" ", new[] { Command }.Concat(Args).Select(ShellQuote));
 
+    /// <summary>
+    ///     Whether an existing entry launches the same program with the same arguments as <paramref name="spec" />.
+    ///     Commands compare case-insensitively (Windows paths); arguments exactly. The environment is not compared.
+    /// </summary>
+    public static bool SameLaunch(string command, IReadOnlyList<string> args, McpServerSpec spec) =>
+        string.Equals(command, spec.Command, StringComparison.OrdinalIgnoreCase) && args.SequenceEqual(spec.Args);
+
     /// <summary>A short label for the dialog text.</summary>
     public string Display => string.Join(" ", new[] { Command }.Concat(Args));
 

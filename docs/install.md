@@ -79,10 +79,11 @@ Each app shows one state:
 
 - **Not installed**: the app's folder does not exist. Nothing can be changed.
 - **Not configured**: the app is there and has no `revit-model-mcp` entry. **Add** creates it.
-- **Configured**: the entry exists. **Remove** deletes it. An entry you edited yourself is shown as configured and is never overwritten.
+- **Configured**: the entry exists and starts the server the dialog would write (same command and arguments; the environment is not compared). **Remove** deletes it. **Add** never overwrites an existing entry.
+- **Configured (different command)**: the entry exists but starts another command, for example `uvx revit-model-mcp==0.6.0` while the bundled executable is installed. **Update** replaces only that entry with the one the dialog would write, after a backup; **Remove** deletes it. Nothing is changed until you press a button.
 - **Config unreadable**: the file cannot be read or is not valid JSON or TOML, or the entry uses a layout the add-in does not edit (for example an inline TOML table). The file is left untouched; fix it by hand.
 
-Add and Remove change only the `revit-model-mcp` entry. Other servers, comments, unknown keys and indentation stay as they were. Before every change the add-in copies the old file next to it as `<file>.<yyyyMMdd-HHmmss>.bak`, then replaces the file in one step. Restart the app to load the change.
+Add, Update and Remove change only the `revit-model-mcp` entry. Other servers, comments, unknown keys and indentation stay as they were. Before every change the add-in copies the old file next to it as `<file>.<yyyyMMdd-HHmmss>.bak`, then replaces the file in one step. Restart the app to load the change.
 
 The **Claude Code** row has a **Copy command** button for the `claude mcp add` command from step 6; paste it into a terminal. For a remote workstation, a managed install pinned to a release, or settings the dialog does not write, edit the configuration by hand as described above.
 

@@ -9,8 +9,11 @@ namespace RevitModelMcp.Core.Connect;
 /// </summary>
 public static class JsonConfigEditor
 {
-    /// <summary>Reads whether the entry exists.</summary>
-    public static McpClientStatus Inspect(McpClientTarget target, string text)
+    /// <summary>
+    ///     Reads whether the entry exists. With a <paramref name="spec" />, an entry that starts another command than the
+    ///     spec is reported as <see cref="McpClientState.ConfiguredDifferentCommand" />.
+    /// </summary>
+    public static McpClientStatus Inspect(McpClientTarget target, string text, McpServerSpec? spec = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return new McpClientStatus(target, McpClientState.NotConfigured);
         if (!TryParse(text, out var root, out var error)) return Unreadable(target, error);
@@ -18,8 +21,43 @@ public static class JsonConfigEditor
         var servers = Find(root, target.RootKey);
         if (servers is null) return new McpClientStatus(target, McpClientState.NotConfigured);
         if (servers.Value.Kind != NodeKind.Object) return Unreadable(target, $"\"{target.RootKey}\" is not an object.");
+        var entry = Find(servers.Value, McpServerSpec.Name);
+        if (entry is null) return new McpClientStatus(target, McpClientState.NotConfigured);
         return new McpClientStatus(target,
-            Find(servers.Value, McpServerSpec.Name) is null ? McpClientState.NotConfigured : McpClientState.Configured);
+            spec is null || StartsSpec(text, entry.Value, spec) ? McpClientState.Configured : McpClientState.ConfiguredDifferentCommand);
+    }
+
+    private static bool StartsSpec(string text, Node entry, McpServerSpec spec)
+    {
+        if (entry.Kind != NodeKind.Object) return false;
+        var command = Find(entry, "command");
+        var args = Find(entry, "args");
+        if (command is null || args is null) return false;
+        var commandText = ReadString(text, command.Value);
+        var argList = ReadStrings(text, args.Value);
+        return commandText is not null && argList is not null && McpServerSpec.SameLaunch(commandText, argList, spec);
+    }
+
+    private static string? ReadString(string text, Node node)
+    {
+        if (text[node.Start] != '"') return null;
+        var position = node.Start;
+        return ParseString(text, ref position);
+    }
+
+    private static List<string>? ReadStrings(string text, Node node)
+    {
+        if (text[node.Start] != '[') return null;
+        var items = new List<string>();
+        var position = SkipTrivia(text, node.Start + 1, false, true);
+        while (position < node.End && text[position] != ']')
+        {
+            if (text[position] != '"') return null;
+            items.Add(ParseString(text, ref position));
+            position = SkipTrivia(text, position, false, true);
+            if (position < node.End && text[position] == ',') position = SkipTrivia(text, position + 1, false, true);
+        }
+        return items;
     }
 
     /// <summary>Returns the text with the entry added, or null when it is already there.</summary>
