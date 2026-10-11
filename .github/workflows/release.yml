@@ -134,6 +134,9 @@ jobs:
               ($_.Extension -eq '.dll' -and $_.VersionInfo.CompanyName -match 'Autodesk')
             })
             if ($blocked.Count) { throw "Autodesk binaries must not be distributed: $($blocked.Name -join ', ')" }
+            $servers = @($files | Where-Object Name -EQ 'revit-model-mcp.exe')
+            if ($servers.Count -ne 1) { throw "Expected one bundled server executable in $($msi.Name), found $($servers.Count)" }
+            if (!(Test-Path (Join-Path $servers[0].DirectoryName 'licenses/PYTHON-LICENSE.txt'))) { throw "Missing Python license in $($msi.Name)" }
             $manifests = @($files | Where-Object Name -EQ 'RevitModelMcp.addin')
             if ($manifests.Count -ne 6) { throw 'Unexpected Revit year count in MSI' }
             foreach ($year in '22', '23', '24', '25', '26', '27') {
@@ -203,7 +206,9 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Store MSI extraction failed: $($process.ExitCode)" }
           $files = @(Get-ChildItem $target -Recurse -File)
           if ($files | Where-Object Name -EQ 'RevitModelMcp.Updater.exe') { throw 'The store MSI must not contain the updater' }
-          if (!($files | Where-Object Name -EQ 'revit-model-mcp.exe')) { throw 'The store MSI must contain the bundled server' }
+          $servers = @($files | Where-Object Name -EQ 'revit-model-mcp.exe')
+          if ($servers.Count -ne 1) { throw "Expected one bundled server executable in the store MSI, found $($servers.Count)" }
+          if (!(Test-Path (Join-Path $servers[0].DirectoryName 'licenses/PYTHON-LICENSE.txt'))) { throw 'Missing Python license in the store MSI' }
           $blocked = @($files | Where-Object {
             $_.Name -match '^(AdWindows|UIFramework|RevitAPI|RevitNET).*\.dll$' -or
             ($_.Extension -eq '.dll' -and $_.VersionInfo.CompanyName -match 'Autodesk')
