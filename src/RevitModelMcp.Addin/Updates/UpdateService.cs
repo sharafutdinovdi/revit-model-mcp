@@ -179,7 +179,7 @@ internal static class UpdateService
         return uri;
     }
 
-    private static UpdateChannel Channel()
+    internal static UpdateChannel Channel()
     {
         string? Metadata(string key) => typeof(Application).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .FirstOrDefault(attribute => attribute.Key == key)?.Value;
