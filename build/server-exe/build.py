@@ -8,6 +8,7 @@ Needs only Python 3.11+ with venv and pip on the build machine. Every dependency
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import subprocess
 import sys
@@ -17,21 +18,34 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 NAME = "revit-model-mcp"
 LICENSE_NAMES = ("LICENSE", "LICENCE", "COPYING", "NOTICE", "AUTHORS")
-# PyInstaller and its hooks are build tools; only their bootloader ships, covered by the PyInstaller license.
-BUILD_ONLY = {
-    "altgraph",
-    "packaging",
-    "pefile",
-    "pyinstaller",
-    "pyinstaller-hooks-contrib",
-    "pywin32-ctypes",
-    "setuptools",
-    "pip",
-    "hatchling",
-    "pathspec",
-    "pluggy",
-    "trove-classifiers",
-}
+
+
+def requirement_names(path: Path) -> set[str]:
+    """Normalized distribution names pinned in a requirements file."""
+    names = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"([A-Za-z0-9][A-Za-z0-9._-]*)==", line)
+        if match:
+            names.add(normalize_name(match.group(1)))
+    return names
+
+
+def normalize_name(name: str) -> str:
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def distribution_name(dist_info: str) -> str:
+    """Package name of a '<name>-<version>.dist-info' folder name (PEP 427 escaping: '-' is '_')."""
+    stem = dist_info.removesuffix(".dist-info")
+    return normalize_name(stem.rsplit("-", 1)[0])
+
+
+# Build tools (pinned build set minus the runtime lock) plus the venv's own installers: only the PyInstaller
+# bootloader ships, covered by the PyInstaller license.
+BUILD_ONLY = (
+    requirement_names(HERE / "requirements-build.txt")
+    - requirement_names(ROOT / "server" / "requirements.docker.txt")
+) | {"pip", "setuptools", "wheel"}
 
 
 def run(*command: str | Path) -> None:
@@ -47,7 +61,7 @@ def collect_licenses(venv: Path, destination: Path) -> int:
     """Copy license files of every bundled distribution; returns how many files were copied."""
     copied = 0
     for dist_info in sorted(venv.glob("**/site-packages/*.dist-info")):
-        package = dist_info.name.rsplit("-", 1)[0].replace("_", "-").lower()
+        package = distribution_name(dist_info.name)
         if package in BUILD_ONLY:
             continue
         files = [
