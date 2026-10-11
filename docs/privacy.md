@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective date: October 7, 2026.
+Effective date: October 12, 2026.
 Changes to this policy are recorded in the repository history.
 
 ## Summary
@@ -8,7 +8,7 @@ Changes to this policy are recorded in the repository history.
 - Your model data stays on your machines. The project has no server that receives it.
 - There is no analytics, telemetry, crash reporting or advertising code in the add-in or the Python server.
 - Revit model data leaves the workstation only as responses to the MCP client you chose. That client may send it to an AI model service under its own policy.
-- The only automatic requests to the project's hosting are update checks to `api.github.com` (add-in) and `pypi.org` (server). They carry no model data and you can switch them off.
+- The Autodesk App Store build and its bundled server make no automatic requests. Other builds make only update checks to `api.github.com` (add-in) and `pypi.org` (server). They carry no model data and you can switch them off.
 
 ## Data collection
 
@@ -26,6 +26,9 @@ It contains no model data, document names, user names or license information.
 GitHub sees the network address of the request, as it does for any web request, and handles it under [its own privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
 The `REVIT_MCP_UPDATE_FEED` environment variable redirects the check to another HTTPS (or loopback HTTP) release feed, for example an internal mirror.
 Per-user installs download the SingleUser MSI and its SHA256 checksum from the release assets when an update is available. Per-machine installs only show a notice.
+
+The Autodesk App Store build (the `store` channel) never checks GitHub and ships without the updater. Its bundled server never contacts PyPI. Updates arrive through the Autodesk App Store. Managed builds (the `managed` channel) likewise make no update requests.
+The **Connect AI app** button writes a local MCP client configuration entry on the workstation. It makes no network request.
 
 The Python server checks for a newer package once every 24 hours.
 It looks up the package page on `pypi.org` and refreshes the cached package with `uvx`, which downloads from PyPI and its package hosting service.
