@@ -49,6 +49,7 @@ void BuildSingleUserMsi()
     project.Properties =
     [
         new Property("UPDATECHECK", "1") { Secure = true },
+        new Property("UPDATEMODE", "") { Secure = true },
         .. OtherScopeProperties("Machine", year => $@"{MachineAddinsRoot(year).Search}\{year}")
     ];
     project.LaunchConditions =
@@ -58,7 +59,7 @@ void BuildSingleUserMsi()
             "Uninstall it from Apps > Installed apps, then run this SingleUser installer again.")
     ];
     project.RegValues = [];
-    project.Actions = [UpdateSettingAction("LOCALAPPDATA", false)];
+    project.Actions = [.. UpdateSettingActions("LOCALAPPDATA", false)];
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser";
     project.Dirs =
     [
@@ -80,7 +81,9 @@ void BuildMultiUserMsi()
     [
         .. OtherScopeProperties("User", year => $@"[AppDataFolder]Autodesk\Revit\Addins\{year}"),
         new Property("HTTP_ENABLED", "0") { Secure = true },
+        .. MachinePolicyValues.Properties(),
         new Property("UPDATECHECK", "1") { Secure = true },
+        new Property("UPDATEMODE", "") { Secure = true },
         new Property("HTTP_URL_PREFIX", "http://127.0.0.1:53110/") { Secure = true },
         new RegValueProperty("HTTP_OWNED_PREFIX", RegistryHive.LocalMachine,
             @"Software\RevitModelMcp\HttpUrlAcl\[ProductCode]", "Prefix", "") { Secure = true }
@@ -91,8 +94,11 @@ void BuildMultiUserMsi()
             "Prefix", "[HTTP_OWNED_PREFIX]")
         {
             ComponentCondition = "HTTP_ENABLED=\"1\" AND NOT Installed"
-        }
+        },
+        .. MachinePolicyValues.RegValues()
     ];
+    project.Include(WixExtension.Util);
+    project.WixSourceGenerated += MachinePolicyValues.MarkReadOnlyAsDword;
     project.Actions =
     [
         new SetPropertyAction("HTTP_OWNED_PREFIX", "[HTTP_URL_PREFIX]", Return.check,
@@ -116,7 +122,13 @@ void BuildMultiUserMsi()
             Execute = Execute.deferred,
             Impersonate = false
         },
-        UpdateSettingAction("ProgramData", true)
+        .. MachinePolicyValues.RememberActions(),
+        CheckProgramDataFolderMessageAction(),
+        CheckProgramDataFolderAction(),
+        EnsureProgramDataFolderAction(),
+        ClearMsiReadOnlyAction(),
+        RemoveProgramDataFolderAction(),
+        .. UpdateSettingActions("ProgramData", true)
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-MultiUser";
 
@@ -153,19 +165,94 @@ LaunchCondition OtherScopeLaunchCondition(string message) =>
     new("Installed OR (" + string.Join(" AND ",
         wixEntities.Select(entity => $"RMM_OTHER_SCOPE_{entity.Version}=\"\"")) + ")", message);
 
-PathFileAction UpdateSettingAction(string environmentFolder, bool elevated)
+// UPDATECHECK=0 is the legacy alias for UPDATEMODE=off. Both persist in settings.json so they survive upgrades.
+// The mode value cannot be spliced into a deferred script, so each allowed value gets its own action.
+IEnumerable<PathFileAction> UpdateSettingActions(string environmentFolder, bool elevated)
 {
-    var script = $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
-        "$directory = Split-Path $path; New-Item -ItemType Directory -Path $directory -Force | Out-Null; " +
-        "$settings = if (Test-Path $path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }; " +
-        "$settings | Add-Member -NotePropertyName updateCheck -NotePropertyValue $false -Force; " +
-        "$settings | ConvertTo-Json -Compress | Set-Content -LiteralPath $path -Encoding UTF8";
-    var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-    return new PathFileAction(new Id(elevated ? "DisableMachineUpdateCheck" : "DisableUserUpdateCheck"),
+    yield return UpdateSettingAction(environmentFolder, elevated, "DisableUpdateCheck",
+        "updateCheck", "$false", "UPDATECHECK=\"0\"");
+    foreach (var mode in new[] { "off", "notify", "auto" })
+        yield return UpdateSettingAction(environmentFolder, elevated, $"SetUpdateMode{mode}",
+            "updateMode", $"'{mode}'", $"UPDATEMODE~=\"{mode}\"");
+}
+
+// Always creates %ProgramData%\RevitModelMcp with a protected ACL, so an administrator who later drops policy.json
+// there gets a folder a standard user cannot have created or changed. Fails the install if the folder is untrustworthy.
+PathFileAction EnsureProgramDataFolderAction()
+{
+    var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(MachinePolicyValues.EnsureProgramDataFolderScript));
+    return new PathFileAction(new Id("MachineEnsureProgramDataFolder"),
         @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
         $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
         "SystemFolder", Return.check, When.After, Step.InstallFiles,
-        new Condition("UPDATECHECK=\"0\" AND NOT REMOVE~=\"ALL\""))
+        new Condition("NOT REMOVE~=\"ALL\""))
+    {
+        Execute = Execute.deferred,
+        Impersonate = false
+    };
+}
+
+// Pre-check of the same folder test, so a refusal comes with a sentence in the MSI log instead of a bare 1722/1603 from
+// the ensure script. WixQuietExec copies the script output to the log. It runs as SYSTEM right after InstallInitialize,
+// before any file or registry change, so the rollback has nothing to undo. Needs the WiX Util extension.
+WixQuietExecAction CheckProgramDataFolderAction() =>
+    new(new Id("MachineCheckProgramDataFolder"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.CheckProgramDataFolderScript(false))}",
+        Return.check, When.After, Step.InstallInitialize, new Condition("NOT REMOVE~=\"ALL\""))
+    {
+        Impersonate = false
+    };
+
+// The same check in the user's session before the install sequence, only with a UI: the reason is shown in a message box.
+PathFileAction CheckProgramDataFolderMessageAction() =>
+    new(new Id("MachineCheckProgramDataFolderMessage"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.CheckProgramDataFolderScript(true))}",
+        "SystemFolder", Return.check, When.Before, Step.InstallInitialize,
+        new Condition("UILevel>=4 AND NOT REMOVE~=\"ALL\""));
+
+// READONLY=0 on a maintenance run (REINSTALL=ALL): the ReadOnly component condition turns false, but Windows Installer
+// keeps a value of an installed component, so this removes the value the installer wrote, as an upgrade does.
+PathFileAction ClearMsiReadOnlyAction() =>
+    new(new Id("MachineClearMsiReadOnly"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.ClearMsiReadOnlyScript)}",
+        "SystemFolder", Return.check, When.After, Step.WriteRegistryValues,
+        new Condition(InstallerScripts.ClearMsiReadOnlyCondition))
+    {
+        Execute = Execute.deferred,
+        Impersonate = false
+    };
+
+// Uninstall (not the removal step of an upgrade) deletes the MSI-written settings.json and then the empty folder.
+// policy.json or any other file keeps the folder.
+PathFileAction RemoveProgramDataFolderAction() =>
+    new(new Id("MachineRemoveProgramDataFolder"),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {InstallerScripts.Encode(InstallerScripts.RemoveProgramDataFolderScript)}",
+        "SystemFolder", Return.ignore, When.After, Step.RemoveFiles,
+        new Condition("REMOVE~=\"ALL\" AND NOT UPGRADINGPRODUCTCODE"))
+    {
+        Execute = Execute.deferred,
+        Impersonate = false
+    };
+
+PathFileAction UpdateSettingAction(string environmentFolder, bool elevated, string id, string key, string value, string condition)
+{
+    // The elevated script first makes the machine folder admin-only, so SYSTEM never writes into a folder a user owns.
+    var script = (elevated ? MachinePolicyValues.EnsureProgramDataFolderScript : "") +
+        $"$path = Join-Path $env:{environmentFolder} 'RevitModelMcp\\settings.json'; " +
+        "$directory = Split-Path $path; New-Item -ItemType Directory -Path $directory -Force | Out-Null; " +
+        "$settings = if (Test-Path $path) { Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }; " +
+        $"$settings | Add-Member -NotePropertyName {key} -NotePropertyValue {value} -Force; " +
+        "$settings | ConvertTo-Json -Compress | Set-Content -LiteralPath $path -Encoding UTF8";
+    var encoded = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
+    return new PathFileAction(new Id((elevated ? "Machine" : "User") + id),
+        @"[SystemFolder]WindowsPowerShell\v1.0\powershell.exe",
+        $"-NoProfile -NonInteractive -EncodedCommand {encoded}",
+        "SystemFolder", Return.check, When.After, Step.InstallFiles,
+        new Condition($"{condition} AND NOT REMOVE~=\"ALL\""))
     {
         Execute = Execute.deferred,
         Impersonate = !elevated

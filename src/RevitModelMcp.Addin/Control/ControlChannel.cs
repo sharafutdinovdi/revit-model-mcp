@@ -11,6 +11,7 @@ using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Output;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
@@ -256,7 +257,7 @@ internal sealed class ControlChannel
     {
         var job = _scheduler.Status(jobId);
         if (job is not null && ActionJobParser.IsAction(job.Command) && ActionCommandExecutor.ReadOnlyMode)
-            return new(false, job.State, "read-only mode");
+            return new(false, job.State, PolicyProvider.ReadOnlyMessage);
         var cancellation = _scheduler.Cancel(jobId, clientId,
             isAction && job is not null && ActionJobParser.IsAction(job.Command));
         if (!cancellation.Cancelled || cancellation.State != JobState.Cancelled || job is null)
@@ -294,6 +295,11 @@ internal sealed class ControlChannel
             return;
         }
         PluginLog.Info($"Job received. Command='{parsed.Command}'. Client='{parsed.ClientName}'. JobId='{_current?.JobId}'.");
+        if (PolicyProvider.Refusal(parsed.Command) is { } policyRefusal)
+        {
+            TryWriteError(application, parsed.Command, policyRefusal, startedAt, parsed.CorrelationId);
+            return;
+        }
         var document = application.ActiveUIDocument?.Document;
         if (!ActionJobParser.IsAction(parsed.Command) && parsed.TargetDocument is not null &&
             !JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, parsed.TargetDocument))
@@ -365,13 +371,11 @@ internal sealed class ControlChannel
         _stopped = true;
         lock (_httpCompletions)
         {
-            var abandoned = _scheduler.AbandonUnfinished(
-                "{\"success\":false,\"abandoned\":true,\"error\":\"Revit shut down while this job was running. The change may still have been applied; inspect the model before retrying.\"}",
-                "{\"success\":false,\"cancelled\":true,\"error\":\"Revit shut down before this job started.\"}");
+            var abandoned = _scheduler.AbandonUnfinished(ShutdownResults.Running, ShutdownResults.Queued);
             foreach (var completion in _httpCompletions)
             {
                 var job = abandoned.FirstOrDefault(item => item.JobId == completion.Key);
-                completion.Value.TrySetResult(job?.Result ?? "{\"success\":false,\"error\":\"Revit is shutting down.\"}");
+                completion.Value.TrySetResult(job?.Result ?? ShutdownResults.Unknown);
             }
             _httpCompletions.Clear();
         }

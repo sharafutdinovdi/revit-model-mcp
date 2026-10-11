@@ -162,7 +162,7 @@ internal static class ViewVisibility
     }
 
     /// <summary>Resolves a category by ID, localized name, <c>BuiltInCategory</c> name or English label.</summary>
-    private static Category? ResolveCategory(string reference, List<Category> categories) =>
+    internal static Category? ResolveCategory(string reference, List<Category> categories) =>
         categories.FirstOrDefault(category => long.TryParse(reference, out var id) && RevitValueReader.GetId(category.Id) == id)
         ?? categories.FirstOrDefault(category => string.Equals(category.Name, reference, StringComparison.OrdinalIgnoreCase))
         ?? categories.FirstOrDefault(category => CategoryNames.Matches(reference,
@@ -206,7 +206,7 @@ internal static class ViewVisibility
     {
         var nonControlled = template.GetNonControlledTemplateParameterIds().ToHashSet();
         return template.GetTemplateParameterIds().Where(id => !nonControlled.Contains(id))
-            .Select(id => Enum.GetName(typeof(BuiltInParameter), RevitValueReader.GetId(id)) ?? "")
+            .Select(id => RevitValueReader.ToBuiltInParameter(RevitValueReader.GetId(id))?.ToString() ?? "")
             .Any(name => name.Contains("VIS_GRAPHICS") || name.Contains("WORKSET") || name.Contains("FILTER"));
     }
 }

@@ -16,9 +16,11 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from revit_model_mcp.policy import POLICY_REFUSAL_PREFIX
 from revit_model_mcp.revit_channel import (
     Job,
     JobPickupStatus,
+    PolicyRefusedError,
     ReadOnlyRefusedError,
     ResponseParseError,
     ResponseTimeoutError,
@@ -32,6 +34,15 @@ from revit_model_mcp.revit_channel import (
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+def _policy_refusal_text(error: urllib.error.HTTPError) -> str | None:
+    """Return the organization policy refusal text from a 403 body, if the add-in sent one."""
+    try:
+        text = json.loads(error.read(65536)).get("error")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return text if isinstance(text, str) and text.startswith(POLICY_REFUSAL_PREFIX) else None
 
 
 def _is_job_submission_path(path: str) -> bool:
@@ -318,7 +329,10 @@ class HttpHost:
                 with self._opener.open(request, timeout=timeout) as response:
                     return response.status, response.read(), response.headers
             except urllib.error.HTTPError as error:
+                policy_text = _policy_refusal_text(error) if error.code == 403 else None
                 error.close()
+                if policy_text is not None:
+                    raise PolicyRefusedError(policy_text) from None
                 if error.code == 401:
                     self._verified_token = None
                 if error.code == 410:

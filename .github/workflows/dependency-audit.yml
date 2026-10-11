@@ -1,0 +1,68 @@
+name: Dependency audit
+
+on:
+  pull_request:
+    paths:
+      - 'server/uv.lock'
+      - 'server/pyproject.toml'
+      - 'src/**/packages*.lock.json'
+      - '.github/workflows/dependency-audit.yml'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nuget:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+      - name: Scan locked NuGet packages for known vulnerabilities
+        shell: pwsh
+        run: |
+          $projects = @(
+            @{ Path = 'src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj'; Configuration = 'Release.R22' },
+            @{ Path = 'src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj'; Configuration = 'Release.R23' },
+            @{ Path = 'src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj'; Configuration = 'Release.R24' },
+            @{ Path = 'src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj'; Configuration = 'Release.R25' },
+            @{ Path = 'src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj'; Configuration = 'Release.R26' },
+            @{ Path = 'src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj'; Configuration = 'Release.R27' },
+            @{ Path = 'src/RevitModelMcp.BatchSupervisor/RevitModelMcp.BatchSupervisor.csproj'; Configuration = 'Release.R26' }
+          )
+          $failed = $false
+          foreach ($project in $projects) {
+            $label = "$($project.Path) ($($project.Configuration))"
+            dotnet restore $project.Path --locked-mode "-p:Configuration=$($project.Configuration)" -p:DeployAddin=false
+            if ($LASTEXITCODE -ne 0) { throw "Locked restore failed for $label" }
+            $report = dotnet list $project.Path package --vulnerable --include-transitive --no-restore 2>&1 | Out-String
+            Write-Host $report
+            if ($report -match 'has the following vulnerable packages') {
+              Write-Host "::error::Vulnerable NuGet packages in $label"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
+
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        run: pip install --require-hashes -r .github/requirements/uv.txt
+      - name: Export the locked runtime dependencies
+        working-directory: server
+        run: uv export --frozen --no-dev --no-emit-project --format requirements-txt --output-file "$RUNNER_TEMP/runtime-requirements.txt"
+      - name: Scan the locked Python dependencies for known vulnerabilities
+        run: uvx pip-audit==2.10.1 --requirement "$RUNNER_TEMP/runtime-requirements.txt" --no-deps --disable-pip --strict

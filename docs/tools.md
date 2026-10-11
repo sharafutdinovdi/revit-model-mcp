@@ -1,6 +1,51 @@
 # Read tool reference
 
-MEP routing, graphic overrides, view and sheet creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
+## Toolsets
+
+`tools/list` costs context in every MCP client that does not load tools on demand. Set `REVIT_MCP_TOOLSETS` (or start the server with `--toolsets`) to a comma-separated list to expose only some tools. `core` is always included, `all` exposes everything, and an unknown name stops the server with the list of valid names. A hidden tool cannot be called; the tools stay registered in [tool-manifest.json](tool-manifest.json), which lists each tool's `toolset`.
+
+Toolsets limit visibility only. They are not a permission: read-only mode, confirmation tokens and the add-in's own checks apply to every listed tool.
+
+The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (20 tools, about 6.7k tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+
+| Toolset | Tools |
+| --- | --- |
+| `core` | `revit_ping`, `revit_list_instances`, `revit_documents`, `revit_document_info`, `revit_ui_state`, `revit_jobs`, `revit_cancel_job`, `revit_undo_last` |
+| `read` | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations`, `revit_model_health`, `revit_list_warnings`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check`, `revit_model_snapshot`, `revit_schedule_data` |
+| `actions` | `revit_set_parameter`, `revit_update_parameters`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_delete`, `revit_run_actions` |
+| `documents` | `revit_open_document`, `revit_activate_document`, `revit_new_document`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
+| `views-sheets` | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_tag_elements`, `revit_create_schedule`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| `family` | `revit_family_audit`, `revit_edit_families`, `revit_load_family`, `revit_place_family`, `revit_place_families` |
+| `links` | `revit_compare_link_datums`, `revit_align_link_datums`, `revit_remove_links` |
+| `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
+| `export` | `revit_export`, `revit_export_nwc`, `revit_nwc_settings_check`, `revit_issue_register` |
+| `batch` | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report`, `revit_process_models` |
+| `code` | `revit_execute_code` |
+
+### Tool list size
+
+`cd server && uv run python ../build/tool_size.py` measures the `tools/list` payload (compact JSON of every tool, bytes; tokens are bytes divided by 4, an estimate).
+Tool and parameter descriptions state plain behavior. The confirmation procedure, addressing rules and long-job handling live in the server instructions and the `revit://guides/coordinator` resource, not in each description.
+
+| Toolset | Tools | Bytes | About tokens |
+| --- | --- | --- | --- |
+| `core` | 8 | 7,464 | 1,866 |
+| `read` | 12 | 19,286 | 4,821 |
+| `actions` | 9 | 11,103 | 2,775 |
+| `documents` | 6 | 4,952 | 1,238 |
+| `views-sheets` | 21 | 25,559 | 6,389 |
+| `family` | 5 | 8,591 | 2,147 |
+| `links` | 3 | 4,261 | 1,065 |
+| `cad-mep` | 4 | 5,663 | 1,415 |
+| `export` | 4 | 7,288 | 1,822 |
+| `batch` | 6 | 7,459 | 1,864 |
+| `code` | 1 | 1,326 | 331 |
+| `all` (default) | 79 | 102,952 | 25,738 |
+| `core,read` | 20 | 26,750 | 6,687 |
+
+Before this change all 77 tools measured 156,658 bytes (about 39,164 tokens).
+
+MEP routing, graphic overrides, view and sheet creation, element tagging, schedule creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 
 Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` runs on the MCP client machine from snapshot files and needs no Revit transport or running instance.
 `revit_capture_elements` downloads a highlighted element PNG over local or SSH transport; HTTP is unavailable.
@@ -27,16 +72,16 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
 | `revit_ui_state` | None | Read the active document and view, open UI views, up to 500 selected elements, and all open documents. |
 | `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
-| `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields; return counts and optional sum/average. |
+| `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
 | `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `output_path=null`, `document=null`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Local/SSH only. |
-| `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 1-4000 pixels on the fitted image dimension. |
+| `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 32-4000 pixels (Revit rejects smaller images) on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
-| `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID. |
+| `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID; `element_id` must be at least 1. |
 | `revit_view_warnings` | `view` | Read warnings involving elements in a view. |
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
@@ -95,7 +140,7 @@ Parameter names resolve through `LookupParameter(name)`, which returns the first
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
 Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `output_path` is honored; the client/response timeout still applies.
 
-Offsets are zero-based row counts; limits are positive row counts. `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
+Offsets are zero-based row counts (at least 0); limits are positive row counts (at least 1). `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.
 Other numeric filter values follow document display units; returned query values carry a `unit` field when available.
 See the [feed format](feed-format.md#jobs) for the distinction between filter inputs and numeric outputs.
@@ -186,6 +231,7 @@ Read `errorCode`, not the text of `error`. The wording of messages is not part o
 | `errorCode` | Meaning |
 | --- | --- |
 | `read_only` | Refused because the server runs with `REVIT_MCP_READ_ONLY=1`, the workstation `read-only` file exists, or the transport reported a read-only refusal. `error` is `read-only mode`. |
+| `policy_blocked` | Refused by the machine policy an administrator set, for example a denied tool or disabled code execution. `error` starts with `Blocked by organization policy:`. See the [policy reference](admin/policy-reference.md). |
 | `action_failed` | The add-in tried the action and reported a failure. `error` holds the add-in's message. |
 
 New codes can appear in a minor release; treat an unknown code as a failed action.

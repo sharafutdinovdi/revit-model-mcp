@@ -52,6 +52,8 @@ ACTION_TOOLS = {
     "revit_apply_view_template",
     "revit_create_sheet",
     "revit_place_views_on_sheet",
+    "revit_tag_elements",
+    "revit_create_schedule",
     "revit_set_parameter",
     "revit_delete",
     "revit_run_actions",
@@ -1607,6 +1609,129 @@ def test_view_and_sheet_action_mapping():
             assert payload["placements"] == [{"view": "Level 1", "xMm": 10.0, "yMm": 20.0}]
 
 
+def test_tag_elements_mapping_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_tag_elements",
+            {"view": "Level 1", "categories": ["Doors"], "leader": True, "tag_type": "Door Tag"},
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "tag-elements"
+    assert payload["view"] == "Level 1"
+    assert payload["categories"] == ["Doors"]
+    assert payload["elementIds"] is None
+    assert payload["leader"] is True
+    assert payload["orientation"] == "horizontal"
+    assert payload["typeName"] == "Door Tag"
+    assert payload["skipTagged"] is True
+    assert payload["dryRun"] is False
+    asyncio.run(
+        server.call_tool(
+            "revit_tag_elements", {"view": 123, "element_ids": [5, 6], "dry_run": True}
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["view"] == "123"
+    assert payload["elementIds"] == [5, 6]
+    assert payload["dryRun"] is True
+    execute.reset_mock()
+    for invalid in (
+        {"view": "Level 1"},
+        {"view": "Level 1", "categories": ["Doors"], "element_ids": [1]},
+        {"view": "Level 1", "categories": []},
+        {"view": "Level 1", "element_ids": [0]},
+        {"view": "Level 1", "categories": ["Doors"], "orientation": "diagonal"},
+    ):
+        with pytest.raises(Exception):
+            asyncio.run(server.call_tool("revit_tag_elements", invalid))
+    execute.assert_not_awaited()
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(
+        blocked.call_tool("revit_tag_elements", {"view": "Level 1", "categories": ["Doors"]})
+    )
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
+
+
+def test_create_schedule_mapping_and_validation():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_create_schedule",
+            {
+                "category": "Doors",
+                "fields": ["Mark", "Level"],
+                "name": "Door list",
+                "filters": [
+                    {"field": "Level", "operator": "equal", "value": "Level 1"},
+                    {"field": "Width", "operator": "greater_than", "value": 900},
+                    {"field": "Mark", "operator": "has_value"},
+                    {"field": "Fire Rating", "operator": "equal", "value": True},
+                ],
+                "sort": [{"field": "Level", "header": True}, {"field": "Mark", "descending": True}],
+                "itemized": False,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert payload["command"] == "create-schedule"
+    assert payload["category"] == "Doors"
+    assert payload["scheduleFields"] == ["Mark", "Level"]
+    assert payload["name"] == "Door list"
+    assert payload["itemized"] is False
+    assert payload["scheduleFilters"] == [
+        {"field": "Level", "operator": "equal", "value": "Level 1"},
+        {"field": "Width", "operator": "greater_than", "value": "900"},
+        {"field": "Mark", "operator": "has_value", "value": None},
+        {"field": "Fire Rating", "operator": "equal", "value": "1"},
+    ]
+    assert payload["scheduleSort"] == [
+        {
+            "field": "Level",
+            "descending": False,
+            "header": True,
+            "footer": False,
+            "blankLine": False,
+        },
+        {"field": "Mark", "descending": True, "header": False, "footer": False, "blankLine": False},
+    ]
+    execute.reset_mock()
+    for invalid in (
+        {"category": "Doors", "fields": []},
+        {
+            "category": "Doors",
+            "fields": ["Mark"],
+            "filters": [{"field": "Mark", "operator": "equal"}],
+        },
+        {
+            "category": "Doors",
+            "fields": ["Mark"],
+            "filters": [{"field": "Mark", "operator": "has_value", "value": "x"}],
+        },
+        {
+            "category": "Doors",
+            "fields": ["Mark"],
+            "filters": [{"field": "Mark", "operator": "like", "value": "x"}],
+        },
+        {"category": "", "fields": ["Mark"]},
+    ):
+        with pytest.raises(Exception):
+            asyncio.run(server.call_tool("revit_create_schedule", invalid))
+    execute.assert_not_awaited()
+    blocked, blocked_execute, _ = action_server(read_only=True)
+    result = asyncio.run(
+        blocked.call_tool("revit_create_schedule", {"category": "Doors", "fields": ["Mark"]})
+    )
+    assert "read-only mode" in str(result)
+    blocked_execute.assert_not_awaited()
+
+
 def test_create_view_batch_mapping_and_validation():
     import asyncio
 
@@ -1858,10 +1983,10 @@ def test_process_progress_current_path_is_redacted():
 @pytest.mark.parametrize(
     ("tool_name", "expected_text"),
     [
-        ("revit_update_parameters", ["skipped.inGroup", "dry_run", "groups"]),
+        ("revit_update_parameters", ["skipped.inGroup", "dry_run", "Group members"]),
         ("revit_set_parameter", ["Group members", "clear message", "dry_run"]),
         *(
-            (name, ["skipped.pinned", "skipped.hosted", "skipped.constrained", "unpinning"])
+            (name, ["skipped.pinned", "skipped.hosted", "skipped.constrained"])
             for name in ("revit_move", "revit_rotate", "revit_mirror")
         ),
         ("revit_walls_from_cad", ["unjoinedEnds", "unjoinedReasons", "dry_run"]),
@@ -1963,7 +2088,7 @@ def test_confirmation_tools_describe_confirm_token():
     tools = {tool.name: tool.description for tool in asyncio.run(server.list_tools())}
     for name in CONFIRMED_TOOL_CALLS:
         assert "confirm_token" in tools[name], name
-    assert "confirmation token" in tools["revit_process_models"]
+    assert "confirm_token" in tools["revit_process_models"]
     assert 'transaction="none" is refused' in tools["revit_execute_code"]
 
 

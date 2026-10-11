@@ -2,6 +2,7 @@ import pytest
 
 from revit_model_mcp.errors import (
     ACTION_FAILED,
+    POLICY_BLOCKED,
     READ_ONLY,
     READ_ONLY_MESSAGE,
     refusal,
@@ -22,6 +23,20 @@ def test_refusal_shape():
     "response,code",
     [
         ({"success": False, "error": "read-only mode"}, READ_ONLY),
+        (
+            {
+                "success": False,
+                "error": "Blocked by organization policy: the tool 'delete' is denied.",
+            },
+            POLICY_BLOCKED,
+        ),
+        (
+            {
+                "success": False,
+                "error": "Blocked by organization policy: the workstation is read-only.",
+            },
+            POLICY_BLOCKED,
+        ),
         ({"success": False, "error": "Cannot move element."}, ACTION_FAILED),
         ({"success": False, "error": "Failed", "errorCode": "future_code"}, "future_code"),
         ({"success": True, "error": "Ignored"}, None),

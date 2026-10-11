@@ -62,7 +62,7 @@ def test_unwritable_directory_prevents_remote_read(tmp_path, host):
         tmp_path.chmod(0o755)
 
 
-def test_save_failure_preserves_remote_capture(tmp_path, host, monkeypatch):
+def test_save_failure_deletes_remote_capture(tmp_path, host, monkeypatch):
     target = tmp_path / "capture.png"
 
     def full_disk(descriptor):
@@ -71,8 +71,9 @@ def test_save_failure_preserves_remote_capture(tmp_path, host, monkeypatch):
     monkeypatch.setattr(atomic_write.os, "fsync", full_disk)
     with pytest.raises(RevitChannelError, match="Cannot save image.*No space left on device"):
         finish(host, target)
-    host._run.assert_awaited_once()
-    assert "Remove-Item" not in host._run.await_args.args[0]
+    assert host._run.await_count == 2
+    assert "Remove-Item" not in host._run.await_args_list[0].args[0]
+    assert "Remove-Item" in host._run.await_args_list[1].args[0]
     assert not target.exists()
     assert list(tmp_path.iterdir()) == []
 
@@ -139,12 +140,13 @@ def test_preflight_creates_parent_without_leaving_files(tmp_path):
 
 
 @pytest.mark.parametrize("artifact", ["invalid base64!", base64.b64encode(b"not PNG").decode()])
-def test_invalid_image_preserves_remote_capture(tmp_path, host, artifact):
+def test_invalid_image_deletes_remote_capture(tmp_path, host, artifact):
     package = json.loads(host._run.return_value)
     package["artifact"] = artifact
     host._run.return_value = json.dumps(package)
     with pytest.raises((RevitChannelError, ResponseParseError)):
         finish(host, tmp_path / "capture.png")
-    host._run.assert_awaited_once()
-    assert "Remove-Item" not in host._run.await_args.args[0]
+    assert host._run.await_count == 2
+    assert "Remove-Item" not in host._run.await_args_list[0].args[0]
+    assert "Remove-Item" in host._run.await_args_list[1].args[0]
     assert list(tmp_path.iterdir()) == []

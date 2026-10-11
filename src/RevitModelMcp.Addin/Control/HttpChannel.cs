@@ -15,6 +15,7 @@ using System.Xml.Linq;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Output;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
@@ -160,7 +161,7 @@ internal sealed class HttpChannel : IDisposable
                         context.Response.Close();
                     }
                     catch (Exception) { context.Response.Abort(); }
-                    return;
+                    continue;
                 }
                 _ = Task.Run(async () =>
                 {
@@ -202,7 +203,8 @@ internal sealed class HttpChannel : IDisposable
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
                     ["startedUtc"] = ChannelDirectory.StartedUtc,
-                    ["readOnly"] = ActionCommandExecutor.ReadOnlyMode
+                    ["readOnly"] = ActionCommandExecutor.ReadOnlyMode,
+                    ["policy"] = PolicyProvider.Current.ToSummary()
                 }).ConfigureAwait(false);
                 return;
             }
@@ -237,7 +239,7 @@ internal sealed class HttpChannel : IDisposable
                 var request = ControlJobParser.Parse(payload);
                 if (ActionCommandExecutor.ReadOnlyMode)
                 {
-                    await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = request.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+                    await JsonAsync(context, 403, new() { ["error"] = PolicyProvider.ReadOnlyMessage, ["correlationId"] = request.CorrelationId ?? string.Empty }).ConfigureAwait(false);
                     return;
                 }
                 var cancellation = _channel.CancelJob(jobId, request.ClientId);
@@ -262,9 +264,9 @@ internal sealed class HttpChannel : IDisposable
             {
                 var pixel = 1600;
                 var parameter = context.Request.QueryString["pixel"];
-                if (parameter is not null && (!int.TryParse(parameter, out pixel) || pixel is < 1 or > 4000))
+                if (parameter is not null && (!int.TryParse(parameter, out pixel) || pixel is < 32 or > 4000))
                 {
-                    await JsonAsync(context, 400, new() { ["error"] = "pixel must be between 1 and 4000." }).ConfigureAwait(false);
+                    await JsonAsync(context, 400, new() { ["error"] = "pixel must be between 32 and 4000; Revit rejects smaller images." }).ConfigureAwait(false);
                     return;
                 }
                 var name = Uri.UnescapeDataString(path.Substring(7, path.Length - 13));
@@ -363,7 +365,16 @@ internal sealed class HttpChannel : IDisposable
             }).ConfigureAwait(false);
             return null;
         }
-        return Encoding.UTF8.GetString(result.Body);
+        if (!StrictUtf8.TryDecode(result.Body, out var text))
+        {
+            await JsonAsync(context, 400, new()
+            {
+                ["error"] = "invalid_request",
+                ["message"] = "The request body is not valid UTF-8."
+            }).ConfigureAwait(false);
+            return null;
+        }
+        return text;
     }
 
     private Task ExpiredAsync(HttpListenerContext context, string jobId)
@@ -407,7 +418,12 @@ internal sealed class HttpChannel : IDisposable
         RemoveExpiredResults();
         if (ReadOnlyGatePolicy.RefusesSubmission(command.Command) && ActionCommandExecutor.ReadOnlyMode)
         {
-            await JsonAsync(context, 403, new() { ["error"] = "read-only mode", ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+            await JsonAsync(context, 403, new() { ["error"] = PolicyProvider.ReadOnlyMessage, ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
+            return null;
+        }
+        if (PolicyProvider.Refusal(command.Command) is { } policyRefusal)
+        {
+            await JsonAsync(context, 403, new() { ["error"] = policyRefusal, ["correlationId"] = command.CorrelationId ?? string.Empty }).ConfigureAwait(false);
             return null;
         }
         var submitted = _channel.SubmitHttp(command, payload, out var completion);
@@ -514,11 +530,13 @@ internal sealed class HttpChannel : IDisposable
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _closing = true;
         _gate.Close();
-        try { if (_listener.IsListening) _listener.Stop(); }
-        catch (ObjectDisposedException) { }
+        // Queued jobs become cancelled ("Revit is closing") and waiting long-polls are released with their job state
+        // while the listener still accepts connections, so every open request is answered before the listener stops.
         _channel.Shutdown();
         var drained = _gate.WaitDrained(TimeSpan.FromSeconds(_settings.ShutdownDrainSeconds));
         if (!drained) PluginLog.Warn($"HTTP shutdown drain timed out with {_gate.Active} handlers remaining.");
+        try { if (_listener.IsListening) _listener.Stop(); }
+        catch (ObjectDisposedException) { }
         _shutdown.Cancel();
         _cleanup?.Dispose();
         _listener.Close();
@@ -545,6 +563,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
     [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
     [DataMember(Name = "updateCheck", Order = 7)] public bool UpdateCheck { get; set; } = true;
+    [DataMember(Name = "updateMode", Order = 12, EmitDefaultValue = false)] public string? UpdateMode { get; set; }
     [DataMember(Name = "maxStoredResponses", Order = 8)] public int MaxStoredResponses { get; set; } = HttpLimits.DefaultMaxStoredResponses;
     [DataMember(Name = "maxStoredBytes", Order = 9)] public long MaxStoredBytes { get; set; } = HttpLimits.DefaultMaxStoredBytes;
     [DataMember(Name = "requestReadTimeoutSeconds", Order = 10)] public int RequestReadTimeoutSeconds { get; set; } = HttpLimits.DefaultRequestReadTimeoutSeconds;
@@ -602,11 +621,13 @@ internal sealed record HttpSettings
         return settings;
     }
 
-    public void ApplyHttpOverrides()
+    /// <summary>Applies the environment variables, then the optional policy HttpEnabled value, so a policy value always wins over the environment.</summary>
+    public void ApplyHttpOverrides(bool? policyHttpEnabled = null)
     {
         var enabled = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_ENABLED");
         if (!string.IsNullOrWhiteSpace(enabled))
             HttpEnabled = enabled switch { "0" => false, "1" => true, _ => throw new InvalidDataException("REVIT_MCP_HTTP_ENABLED must be 0 or 1.") };
+        HttpEnabled = policyHttpEnabled ?? HttpEnabled;
         var bind = Environment.GetEnvironmentVariable("REVIT_MCP_HTTP_BIND");
         if (!string.IsNullOrWhiteSpace(bind))
             HttpBind = bind;

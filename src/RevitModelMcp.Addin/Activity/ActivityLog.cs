@@ -7,7 +7,7 @@ namespace RevitModelMcp.Activity;
 
 /// <summary>
 /// In-memory ring buffer of the last 500 recorded MCP jobs, also appended as JSON lines to
-/// <c>%LOCALAPPDATA%\RevitModelMcp\activity.log</c>. <see cref="ActivityEntry.Document"/> always holds
+/// <c>%LOCALAPPDATA%\RevitModelMcp\activity.log</c> (or <c>activity.log</c> under the policy LogDir). <see cref="ActivityEntry.Document"/> always holds
 /// <c>Document.Title</c> (a file name, never a directory), so nothing here needs path redaction.
 /// </summary>
 internal static class ActivityLog
@@ -17,10 +17,10 @@ internal static class ActivityLog
     private static readonly object SyncRoot = new();
     private static readonly LinkedList<ActivityEntry> Entries = new();
     private static readonly UTF8Encoding Utf8WithoutBom = new(false);
-    private static readonly string LogDirectory = Path.Combine(
+    private static string LogDirectory => Policy.PolicyProvider.Current.LogDir ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp");
-    private static readonly string LogPath = Path.Combine(LogDirectory, "activity.log");
-    private static readonly string RotatedLogPath = Path.Combine(LogDirectory, "activity.1.log");
+    private static string LogPath => Path.Combine(LogDirectory, "activity.log");
+    private static string RotatedLogPath => Path.Combine(LogDirectory, "activity.1.log");
 
     public static event Action? Changed;
 

@@ -11,6 +11,7 @@ using Nice3point.Revit.Extensions;
 using Nice3point.Revit.Toolkit;
 using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
+using RevitModelMcp.Connect;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
@@ -36,7 +37,7 @@ public sealed class Application : ExternalApplication
         "view-info", "view-elements", "element-details", "view-warnings", "export-view", "capture-elements", "schedule-data",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",
         "list-relations", "family-audit", "nwc-settings-check", "compare-link-datums",
-        "select", "show", "isolate", "override-graphics", "move", "rotate", "copy", "mirror", "change-type", "update-parameters", "place-family", "load-family", "place-families", "create-wall", "link-cad", "walls-from-cad", "create-mep-run", "create-view", "duplicate-view", "apply-view-template", "create-sheet", "place-views-on-sheet",
+        "select", "show", "isolate", "override-graphics", "move", "rotate", "copy", "mirror", "change-type", "update-parameters", "place-family", "load-family", "place-families", "create-wall", "link-cad", "walls-from-cad", "create-mep-run", "create-view", "duplicate-view", "apply-view-template", "create-sheet", "place-views-on-sheet", "tag-elements", "create-schedule",
         "set-parameter", "delete", "batch", "process-models", "export-nwc", "export", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "activate-document", "activate-view", "close-views", "new-document",
@@ -54,13 +55,16 @@ public sealed class Application : ExternalApplication
     private PipeChannel? _pipeChannel;
     private volatile IReadOnlyList<InstanceDocument> _documents = Array.Empty<InstanceDocument>();
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
+    private static Application? _instance;
 
     public override void OnStartup()
     {
 #if NETFRAMEWORK
         AppDomain.CurrentDomain.AssemblyResolve += ResolveCodeDependency;
 #endif
+        Policy.PolicyProvider.ApplyProcessEnvironment();
         PluginLog.Start();
+        _instance = this;
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         var (fileChannelEnabled, fileChannelWarning) = Output.ChannelDirectory.InitializeChannel();
         if (fileChannelWarning is not null)
@@ -86,10 +90,11 @@ public sealed class Application : ExternalApplication
         try
         {
             httpSettings = HttpSettings.Load();
+            if (Policy.PolicyProvider.Current.HttpEnabled is { } policyHttp) httpSettings.HttpEnabled = policyHttp;
             showActivityPaneOnAction = httpSettings.ShowActivityPaneOnAction;
             try
             {
-                NwcPathValidator.ConfigureTrustedNetworkRoots(httpSettings.TrustedNetworkRoots);
+                NwcPathValidator.ConfigureTrustedNetworkRoots(Policy.PolicyProvider.Current.TrustedNetworkRoots ?? httpSettings.TrustedNetworkRoots);
             }
             catch (ArgumentException)
             {
@@ -146,13 +151,13 @@ public sealed class Application : ExternalApplication
         _instanceHeartbeat?.Start(_activeDocument, _documents);
         var httpStatus = httpSettings is null
             ? HttpListenerStatus.ConfigError(httpSettingsError!)
-            : HttpListenerStatus.DisabledBySettings();
+            : HttpListenerStatus.ForDisabled(Policy.PolicyProvider.Current.HttpEnabled);
         var channelOwnsStatus = false;
         if (httpSettings is not null)
         {
             try
             {
-                httpSettings.ApplyHttpOverrides();
+                httpSettings.ApplyHttpOverrides(Policy.PolicyProvider.Current.HttpEnabled);
                 _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
                     Application.ControlledApplication.VersionNumber, httpSettings);
                 _httpChannel.UpdateDocument(_activeDocument?.Title);
@@ -175,6 +180,7 @@ public sealed class Application : ExternalApplication
 
     public override void OnShutdown()
     {
+        _instance = null;
 #if NETFRAMEWORK
         AppDomain.CurrentDomain.AssemblyResolve -= ResolveCodeDependency;
 #endif
@@ -228,6 +234,20 @@ public sealed class Application : ExternalApplication
             .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Activity32.png")
             .SetToolTip(PaneText.RibbonToolTip);
         button.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, HelpLinks.AddinHelpUrl));
+        var connect = panel.AddPushButton<ConnectAiCommand>(ConnectText.RibbonButton)
+            .SetImage("/RevitModelMcp;component/Resources/Icons/Connect16.png")
+            .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Connect32.png")
+            .SetToolTip(ConnectText.RibbonToolTip);
+        connect.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, HelpLinks.AddinHelpUrl));
+    }
+
+    /// <summary>Re-reads document titles, for example after a detached open appended "_detached" with no later event.</summary>
+    internal static void RefreshDocumentList()
+    {
+        var instance = _instance;
+        if (instance is null) return;
+        instance.RefreshDocuments(null);
+        instance._httpChannel?.UpdateDocument(instance._activeDocument?.Title);
     }
 
     private void OnViewActivated(object? sender, ViewActivatedEventArgs args)

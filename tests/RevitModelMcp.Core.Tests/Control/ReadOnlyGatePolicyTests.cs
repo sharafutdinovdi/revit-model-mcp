@@ -7,7 +7,7 @@ public sealed class ReadOnlyGatePolicyTests
     [Test]
     public async Task RefusesSubmission_ActionsAndBatchSupervisorStart()
     {
-        foreach (var command in new[] { "select", "move", "undo-last", "export", "batch-supervisor-start" })
+        foreach (var command in new[] { "select", "move", "undo-last", "tag-elements", "create-schedule", "export", "batch-supervisor-start" })
             await Assert.That(ReadOnlyGatePolicy.RefusesSubmission(command)).IsTrue();
     }
 

@@ -66,6 +66,10 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "skippedCount", Order = 19, EmitDefaultValue = false)]
     public int? SkippedCount { get; set; }
 
+    /// <summary>Effective machine policy, set on ping only. Values hold no paths or secrets.</summary>
+    [DataMember(Name = "policy", Order = 20, EmitDefaultValue = false)]
+    public Dictionary<string, string>? Policy { get; set; }
+
     [OnSerializing]
     private void AddJobMetadata(StreamingContext context)
     {
@@ -179,13 +183,21 @@ public sealed record ScheduleDataResult
                 .Where(text => !string.IsNullOrWhiteSpace(text))))
             .ToList();
     }
+
+    /// <summary>First body row to read; one past <paramref name="lastRow"/> when the offset is beyond the last data row.</summary>
+    public static int FirstRow(int dataStart, int offset, int lastRow) =>
+        (long)offset > (long)lastRow - dataStart ? lastRow + 1 : dataStart + offset;
+
+    public static bool IsTruncated(int offset, int rowCount, int totalRows) => (long)offset + rowCount < totalRows;
 }
 
 public static class ReadCommandResponseFactory
 {
-    public static CommandResponse<string> Ping(long elapsedMs)
+    public static CommandResponse<string> Ping(long elapsedMs, Dictionary<string, string>? policy = null)
     {
-        return CommandResponse<string>.Ok("ping", "pong", elapsedMs);
+        var response = CommandResponse<string>.Ok("ping", "pong", elapsedMs);
+        if (policy is { Count: > 0 }) response.Policy = policy;
+        return response;
     }
 }
 

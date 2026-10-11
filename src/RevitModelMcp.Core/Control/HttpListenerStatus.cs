@@ -16,6 +16,12 @@ public sealed class HttpListenerStatus
 
     public static HttpListenerStatus DisabledBySettings() => new(Disabled, "HTTP is disabled in settings.");
 
+    public static HttpListenerStatus DisabledByPolicy() => new(Disabled, "HTTP is disabled by organization policy.");
+
+    /// <summary>The disabled status that names the cause: machine policy when it forces HttpEnabled off, else the settings.</summary>
+    public static HttpListenerStatus ForDisabled(bool? policyHttpEnabled) =>
+        policyHttpEnabled == false ? DisabledByPolicy() : DisabledBySettings();
+
     public static HttpListenerStatus Started() => new(Listening, null);
 
     public static HttpListenerStatus ConfigError(string exceptionTypeName) => new(Failed,

@@ -14,13 +14,7 @@ MANIFEST_PATH = REPOSITORY_ROOT / "bundle" / "manifest.json"
 
 
 def tool_manifest_entry(tool) -> dict:
-    description, separator, suffix = tool.description.partition(
-        "\n\nIf more than one Revit instance"
-    )
-    return {
-        "name": tool.name,
-        "description": inspect.cleandoc(description) + separator + suffix,
-    }
+    return {"name": tool.name, "description": inspect.cleandoc(tool.description)}
 
 
 def main() -> None:

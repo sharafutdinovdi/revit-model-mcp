@@ -72,6 +72,8 @@ public static class ActionSummaryBuilder
             "apply-view-template" => $"{(context.DryRun ? "Would apply" : "Applied")} a view template to {Plural(context.Count, "view")} in {doc}.",
             "create-sheet" => $"{(context.DryRun ? "Would create" : "Created")} sheet '{context.SheetNumber} - {context.ViewName}' in {doc}.",
             "place-views-on-sheet" => $"{(context.DryRun ? "Would place" : "Placed")} {Plural(context.Count, "view")} on sheet '{context.ViewName}' in {doc}.",
+            "tag-elements" => $"{(context.DryRun ? "Would create" : "Created")} {Plural(context.Count, "tag")} in view '{context.ViewName}' in {doc}.",
+            "create-schedule" => $"{(context.DryRun ? "Would create" : "Created")} schedule '{context.ViewName}' with {Plural(context.Count, "field")} in {doc}.",
             "set-parameter" => $"{(context.DryRun ? "Would set" : "Set")} parameter '{context.Parameter}' on 1 element in {doc}.",
             "batch" => $"{(context.DryRun ? "Would run" : "Ran")} a batch of {Plural(context.BatchStepCount, "step")} in {doc}.",
             "process-models" when context.ProcessTotal > 0 => $"{(context.DryRun ? "Previewed" : "Processed")} {context.Count} of {context.ProcessTotal} models; {context.ProcessFailed} failed, {context.ProcessSkipped} skipped{(context.ProcessCancelled > 0 ? $", {context.ProcessCancelled} cancelled" : "")}.",

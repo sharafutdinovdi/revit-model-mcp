@@ -32,7 +32,7 @@ public sealed class ControlJobParserTests
         foreach (var fields in new[]
         {
             "", "\"elementIds\":[]", "\"elementIds\":[0]", "\"elementIds\":[-1]",
-            "\"elementIds\":[1],\"pixelSize\":0", "\"elementIds\":[1],\"pixelSize\":4001",
+            "\"elementIds\":[1],\"pixelSize\":0", "\"elementIds\":[1],\"pixelSize\":31", "\"elementIds\":[1],\"pixelSize\":4001",
             "\"elementIds\":[1],\"paddingMm\":-1", "\"elementIds\":[1],\"paddingMm\":20001",
             "\"elementIds\":[1],\"mode\":\"section\"",
             "\"elementIds\":[1],\"mode\":\"\""
@@ -54,7 +54,7 @@ public sealed class ControlJobParserTests
             Command = "capture-elements",
             ElementIds = Enumerable.Range(1, 500).Select(value => (long)value).ToList(),
             PaddingMm = 20000,
-            PixelSize = 1
+            PixelSize = 32
         });
         await Assert.That(boundary.Kind).IsEqualTo(ControlJobKind.CaptureElements);
     }
@@ -523,7 +523,21 @@ public sealed class ControlJobParserTests
         await Assert.That(missingView.Kind).IsEqualTo(ControlJobKind.Invalid);
         await Assert.That(missingView.Error).Contains("requires the view field");
         await Assert.That(oversized.Kind).IsEqualTo(ControlJobKind.Invalid);
-        await Assert.That(oversized.Error).Contains("between 1 and 4000");
+        await Assert.That(oversized.Error).Contains("between 32 and 4000");
+    }
+
+    [Test]
+    [Arguments(1, false)]
+    [Arguments(31, false)]
+    [Arguments(32, true)]
+    [Arguments(4000, true)]
+    public async Task Parse_ExportViewPixelSizeMinimumIs32(int pixelSize, bool valid)
+    {
+        var parsed = ControlJobParser.Parse(
+            "{\"command\":\"export-view\",\"view\":\"Level 1 Plan\",\"pixelSize\":" + pixelSize + "}");
+
+        await Assert.That(parsed.Kind == ControlJobKind.Invalid).IsEqualTo(!valid);
+        if (!valid) await Assert.That(parsed.Error).Contains("between 32 and 4000");
     }
 
     [Test]

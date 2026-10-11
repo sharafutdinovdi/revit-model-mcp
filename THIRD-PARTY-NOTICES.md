@@ -16,7 +16,17 @@ Floating version ranges can resolve to other versions during a future restore.
 | MCP Python SDK (`mcp`) | 2.2.0 | MIT, [PyPI metadata](https://pypi.org/pypi/mcp/2.2.0/json) |
 | openpyxl | 3.1.5 | MIT, [PyPI metadata](https://pypi.org/pypi/openpyxl/3.1.5/json) |
 | Pillow | 12.3.0 | MIT-CMU, [license in the package source](https://github.com/python-pillow/Pillow/blob/12.3.0/LICENSE) |
+| Microsoft.CodeAnalysis.CSharp | 4.11.0 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/microsoft.codeanalysis.csharp/4.11.0/microsoft.codeanalysis.csharp.nuspec) |
+| Microsoft.CodeAnalysis.Common | 4.11.0 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/microsoft.codeanalysis.common/4.11.0/microsoft.codeanalysis.common.nuspec) |
+| System.Collections.Immutable | 8.0.0 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/system.collections.immutable/8.0.0/system.collections.immutable.nuspec) |
+| System.Reflection.Metadata | 8.0.0 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/system.reflection.metadata/8.0.0/system.reflection.metadata.nuspec) |
+| Microsoft.CodeAnalysis.Analyzers | 3.3.4 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/microsoft.codeanalysis.analyzers/3.3.4/microsoft.codeanalysis.analyzers.nuspec) |
 | TUnit | 1.72.10 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/tunit/1.72.10/tunit.nuspec) |
+
+Microsoft.CodeAnalysis.CSharp compiles the code of `revit_execute_code` inside the add-in.
+It and its runtime dependencies ship next to the add-in assembly and are excluded from ILRepack.
+Microsoft.CodeAnalysis.Analyzers is a build-time analyzer package; it is listed because the restore resolves it.
+Versions come from the R26 package lock file.
 
 The Revit API packages include a Nice3point MIT license file.
 The inspected Revit API packages contain reference assemblies under `ref/`, with no runtime assets.
@@ -41,6 +51,42 @@ Revit supplies these binaries on the workstation; the release does not distribut
 | WixSharp.Core | 2.14.1 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/wixsharp.core/2.14.1/wixsharp.core.nuspec) |
 | WixSharp.Msi.Core | 2.14.1 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/wixsharp.msi.core/2.14.1/wixsharp.msi.core.nuspec) |
 | Nice3point.Revit.Sdk | 6.2.3 | MIT License, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/nice3point.revit.sdk/6.2.3/nice3point.revit.sdk.nuspec) |
+
+## Python server transitive dependencies
+
+These packages come in through `mcp`, `openpyxl` and `cryptography` and are installed by `uvx` or `pip`, not vendored.
+Versions are from `server/uv.lock` on 2026-10-10; license text is from the PyPI metadata of that version.
+
+| Package | Locked version | License |
+|---|---|---|
+| mcp-types | 2.3.0 | MIT, [PyPI metadata](https://pypi.org/pypi/mcp-types/2.3.0/json) |
+| anyio | 4.15.1 | MIT, [PyPI metadata](https://pypi.org/pypi/anyio/4.15.1/json) |
+| idna | 3.20 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/idna/3.20/json) |
+| typing-extensions | 4.16.0 | PSF-2.0, [PyPI metadata](https://pypi.org/pypi/typing-extensions/4.16.0/json) |
+| httpx2 | 2.13.1 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/httpx2/2.13.1/json) |
+| httpcore2 | 2.13.1 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/httpcore2/2.13.1/json) |
+| h11 | 0.16.0 | MIT, [PyPI metadata](https://pypi.org/pypi/h11/0.16.0/json) |
+| truststore | 0.10.4 | MIT, [PyPI metadata](https://pypi.org/pypi/truststore/0.10.4/json) |
+| jsonschema | 4.26.0 | MIT, [PyPI metadata](https://pypi.org/pypi/jsonschema/4.26.0/json) |
+| attrs | 26.1.0 | MIT, [PyPI metadata](https://pypi.org/pypi/attrs/26.1.0/json) |
+| jsonschema-specifications | 2025.9.1 | MIT, [PyPI metadata](https://pypi.org/pypi/jsonschema-specifications/2025.9.1/json) |
+| referencing | 0.37.0 | MIT, [PyPI metadata](https://pypi.org/pypi/referencing/0.37.0/json) |
+| rpds-py | 2026.6.3 | MIT, [PyPI metadata](https://pypi.org/pypi/rpds-py/2026.6.3/json) |
+| pydantic | 2.13.5 | MIT, [PyPI metadata](https://pypi.org/pypi/pydantic/2.13.5/json) |
+| annotated-types | 0.8.0 | MIT, [PyPI metadata](https://pypi.org/pypi/annotated-types/0.8.0/json) |
+| pydantic-core | 2.46.5 | MIT, [PyPI metadata](https://pypi.org/pypi/pydantic-core/2.46.5/json) |
+| typing-inspection | 0.4.4 | MIT, [PyPI metadata](https://pypi.org/pypi/typing-inspection/0.4.4/json) |
+| opentelemetry-api | 1.45.0 | Apache-2.0, [PyPI metadata](https://pypi.org/pypi/opentelemetry-api/1.45.0/json) |
+| pyjwt | 2.15.1 | MIT, [PyPI metadata](https://pypi.org/pypi/pyjwt/2.15.1/json) |
+| cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/cryptography/50.0.2/json) |
+| cffi | 2.1.1 | MIT-0, [PyPI metadata](https://pypi.org/pypi/cffi/2.1.1/json) |
+| pycparser | 3.0 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/pycparser/3.0/json) |
+| python-multipart | 0.0.32 | Apache-2.0, [PyPI metadata](https://pypi.org/pypi/python-multipart/0.0.32/json) |
+| sse-starlette | 3.5.0 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/sse-starlette/3.5.0/json) |
+| starlette | 1.7.0 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/starlette/1.7.0/json) |
+| uvicorn | 0.54.0 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/uvicorn/0.54.0/json) |
+| click | 8.5.0 | BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/click/8.5.0/json) |
+| et-xmlfile | 2.0.0 | MIT, [PyPI metadata](https://pypi.org/pypi/et-xmlfile/2.0.0/json) |
 
 ## Release verification
 

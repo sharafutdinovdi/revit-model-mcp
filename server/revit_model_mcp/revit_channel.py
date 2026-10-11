@@ -14,7 +14,13 @@ from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
-from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
+from revit_model_mcp.errors import (
+    POLICY_BLOCKED,
+    READ_ONLY,
+    READ_ONLY_MESSAGE,
+    refusal,
+    with_error_code,
+)
 from revit_model_mcp.universal_jobs import aggregate_payload, query_payload
 
 LOGGER = logging.getLogger(__name__)
@@ -88,6 +94,8 @@ ACTION_COMMANDS = frozenset(
         "apply-view-template",
         "create-sheet",
         "place-views-on-sheet",
+        "tag-elements",
+        "create-schedule",
         "set-parameter",
         "delete",
         "batch",
@@ -153,6 +161,17 @@ class RevitChannelError(RuntimeError):
 
 class ReadOnlyRefusedError(RevitChannelError):
     """The transport refused a request because the workstation is read-only."""
+
+
+class PolicyRefusedError(ReadOnlyRefusedError):
+    """The add-in refused a request because of the machine policy; the text is the add-in's own."""
+
+
+def refused_response(command: str, error: ReadOnlyRefusedError) -> dict[str, Any]:
+    """The refusal for a transport refusal: organization policy text, else the user read-only gate."""
+    if isinstance(error, PolicyRefusedError):
+        return refusal(command, POLICY_BLOCKED, str(error))
+    return refusal(command, READ_ONLY, READ_ONLY_MESSAGE)
 
 
 class ResultExpiredError(RevitChannelError):
@@ -241,8 +260,10 @@ class Job:
 
     @classmethod
     def export_view(cls, view: str, pixel_size: int = 1600, output_path: str | None = None) -> Job:
-        if pixel_size < 1 or pixel_size > 4000:
-            raise RevitChannelError("pixel_size must be between 1 and 4000.")
+        if pixel_size < 32 or pixel_size > 4000:
+            raise RevitChannelError(
+                "pixel_size must be between 32 and 4000 (Revit rejects smaller images)."
+            )
         payload = {
             "command": "export-view",
             "view": _required_text(view, "view"),
@@ -586,11 +607,11 @@ class RevitChannel:
     ) -> dict[str, Any]:
         try:
             return await self._execute(job, timeout_seconds, pickup_timeout_seconds)
-        except ReadOnlyRefusedError:
+        except ReadOnlyRefusedError as error:
             if job.command in ACTION_COMMANDS or (
                 job.command == "jobs" and job.payload.get("requestCancellation")
             ):
-                return refusal(job.command, READ_ONLY, READ_ONLY_MESSAGE)
+                return refused_response(job.command, error)
             raise
 
     async def _execute(
@@ -654,6 +675,13 @@ class RevitChannel:
     async def _execute_serial(
         self, job: Job, timeout_seconds: int, pickup_timeout_seconds: int
     ) -> dict[str, Any]:
+        if job.command in ("export-view", "capture-elements"):
+            from revit_model_mcp.artifact_download import preflight_artifact_target
+
+            try:
+                preflight_artifact_target(job.output_path)
+            except ValueError as error:
+                raise RevitChannelError(str(error)) from error
         candidate = (
             job.command in LONG_ACTION_COMMANDS
             or (job.command == "open-document" and job.payload.get("audit") is True)
@@ -821,13 +849,13 @@ class RevitChannel:
                 )
 
             if job.command in ("export-view", "capture-elements") and result.get("success") is True:
-                finish_attempted = True
                 content, local_path = await self.remote.finish_job(
                     response_name,
                     [temporary_name, response_name],
                     True,
                     job.output_path,
                 )
+                finish_attempted = True
                 result = _complete_image_result(parse_response(content, job.command), job.command)
                 if local_path is not None:
                     result["data"]["localPath"] = local_path

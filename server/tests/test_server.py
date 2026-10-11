@@ -87,6 +87,8 @@ ACTION_TOOL_NAMES = {
     "revit_apply_view_template",
     "revit_create_sheet",
     "revit_place_views_on_sheet",
+    "revit_tag_elements",
+    "revit_create_schedule",
     "revit_set_parameter",
     "revit_delete",
     "revit_run_actions",
@@ -123,24 +125,25 @@ def test_bundle_tool_description_is_dedented():
     ]
     tool = SimpleNamespace(
         name="example",
-        description=(
-            "First line.\n\n    Second line.\n    \n\n"
-            "If more than one Revit instance is running, choose one."
-        ),
+        description="First line.\n\n    Second line.\n    \n    Third line.",
     )
     assert tool_manifest_entry(tool) == {
         "name": "example",
-        "description": "First line.\n\nSecond line.\n\nIf more than one Revit instance is running, choose one.",
+        "description": "First line.\n\nSecond line.\n\nThird line.",
     }
 
 
-def test_addressing_sentence_matches_tool_parameters():
+def test_addressing_is_described_on_the_parameters():
     import asyncio
 
     tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
-    assert "document is required" not in tools["revit_ui_state"].description
-    assert "process_id" in tools["revit_ui_state"].description
-    assert "document is required" in tools["revit_document_info"].description
+    for name in ("revit_ui_state", "revit_document_info"):
+        properties = tools[name].input_schema["properties"]
+        assert "process_id" in properties
+        assert "process_id" not in tools[name].description
+    document = tools["revit_document_info"].input_schema["properties"]["document"]
+    assert "several Revit instances" in document["description"]
+    assert "document" not in tools["revit_ui_state"].input_schema["properties"]
 
 
 def test_bundle_manifest_matches_tool_registry():
@@ -487,6 +490,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             "revit_apply_view_template": {"views", "template"},
             "revit_create_sheet": {"number", "name"},
             "revit_place_views_on_sheet": {"sheet", "views"},
+            "revit_tag_elements": {"view"},
+            "revit_create_schedule": {"category", "fields"},
         }.items():
             properties = action_tools[name].input_schema["properties"]
             self.assertTrue(required.issubset(action_tools[name].input_schema["required"]))
@@ -936,3 +941,39 @@ def test_client_name_comes_from_initialize_context():
         asyncio.run(revit_server.mcp.call_tool("revit_ping", {}, context=context))
     assert host.payload["clientName"] == "codex"
     assert len(host.payload["clientId"]) == 32
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("tool", "arguments", "text"),
+    [
+        ("revit_element_details", {"element_id": 0}, "element_id"),
+        ("revit_element_details", {"element_id": -1}, "element_id"),
+        ("revit_view_elements", {"view": "Plan", "limit": 0}, "limit"),
+        ("revit_view_elements", {"view": "Plan", "offset": -1}, "offset"),
+        ("revit_query_elements", {"limit": 0}, "limit"),
+        ("revit_list_relations", {"relation": "group-elements", "source_id": 0}, "source"),
+        (
+            "revit_aggregate_elements",
+            {"group_by": ["category", "family", "type"]},
+            "group_by",
+        ),
+    ],
+)
+async def test_invalid_arguments_name_the_bad_argument(tool, arguments, text):
+    with pytest.raises(ToolError) as caught:
+        await revit_server.mcp.call_tool(tool, arguments)
+    assert text in str(caught.value)
+    assert str(caught.value) != f"Error executing tool {tool}"
+
+
+@pytest.mark.anyio
+async def test_job_validation_errors_become_tool_errors():
+    from revit_model_mcp.revit_channel import RevitChannelError
+
+    @revit_server.addressed_tool
+    async def revit_ping() -> dict:
+        raise RevitChannelError("bad argument: limit")
+
+    with pytest.raises(ToolError, match="bad argument: limit"):
+        await revit_ping()

@@ -10,6 +10,7 @@ using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
@@ -46,7 +47,7 @@ internal static class BatchCommands
         catch (Exception exception)
         {
             var response = CommandResponse<object>.Fail(job.Command, exception.Message, stopwatch.ElapsedMilliseconds);
-            if (exception.Message == ReadOnlyGatePolicy.Message) response.Error = exception.Message;
+            if (exception.Message == PolicyProvider.ReadOnlyMessage) response.Error = exception.Message;
             CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                 ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
         }
@@ -63,7 +64,7 @@ internal static class BatchCommands
     private static BatchStartResult StartSupervisor(string? runId)
     {
         if (BatchReadOnlyPolicy.RefusedInReadOnlyMode("batch-supervisor-start") && ActionCommandExecutor.ReadOnlyMode)
-            throw new InvalidOperationException("read-only mode");
+            throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
         if (Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1")
             throw new InvalidOperationException("A batch worker cannot start a supervisor.");
         if (!Guid.TryParseExact(runId, "N", out _)) throw new ArgumentException("Invalid run id.");

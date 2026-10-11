@@ -124,7 +124,13 @@ def test_invalid_image_becomes_warning(tmp_path):
 
 @pytest.mark.parametrize(
     "changes",
-    [{"element_ids": []}, {"pixel_size": 4001}, {"padding_mm": float("nan")}, {"mode": "bad"}],
+    [
+        {"element_ids": []},
+        {"pixel_size": 4001},
+        {"pixel_size": 31},
+        {"padding_mm": float("nan")},
+        {"mode": "bad"},
+    ],
 )
 def test_capture_validation(changes):
     with pytest.raises(ValueError):

@@ -23,7 +23,8 @@ public static class ControlPayloadJsonSerializer
                     typeof(int[]),
                     typeof(long[]),
                     typeof(object[]),
-                    typeof(Dictionary<string, object>)
+                    typeof(Dictionary<string, object>),
+                    typeof(Dictionary<string, string>)
                 }
             });
         using var stream = new MemoryStream();

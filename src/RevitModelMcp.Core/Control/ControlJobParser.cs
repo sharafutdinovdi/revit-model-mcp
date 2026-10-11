@@ -354,8 +354,8 @@ public sealed class ControlJobParseResult
         }
 
         var resolvedPixelSize = pixelSize ?? 1600;
-        return resolvedPixelSize is < 1 or > 4000
-            ? Invalid(command, "The pixelSize must be between 1 and 4000 pixels.")
+        return resolvedPixelSize is < ControlJobParser.MinPixelSize or > 4000
+            ? Invalid(command, "The pixelSize must be between 32 and 4000 pixels; Revit rejects smaller images.")
             : ExportView(view, resolvedPixelSize, zoomToFit ?? true);
     }
 
@@ -364,8 +364,8 @@ public sealed class ControlJobParseResult
         const string command = "capture-elements";
         if (job.ElementIds is null || job.ElementIds.Count is < 1 or > 500 || job.ElementIds.Any(id => id <= 0))
             return Invalid(command, "elementIds requires 1 to 500 positive integer IDs.");
-        if (job.PixelSize is < 1 or > 4000)
-            return Invalid(command, "pixelSize must be between 1 and 4000 pixels.");
+        if (job.PixelSize is < ControlJobParser.MinPixelSize or > 4000)
+            return Invalid(command, "pixelSize must be between 32 and 4000 pixels; Revit rejects smaller images.");
         var padding = job.PaddingMm ?? 1500;
         if (double.IsNaN(padding) || double.IsInfinity(padding) || padding is < 0 or > 20000)
             return Invalid(command, "paddingMm must be between 0 and 20000.");
@@ -404,6 +404,7 @@ public sealed class ControlJobParseResult
 public static class ControlJobParser
 {
     internal const int MaximumQueryLimit = 5000;
+    internal const int MinPixelSize = 32;
     public static ControlJobParseResult Parse(string? content, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         if (string.IsNullOrWhiteSpace(content))

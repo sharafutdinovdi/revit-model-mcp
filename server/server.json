@@ -35,6 +35,11 @@
           "default": "0"
         },
         {
+          "name": "REVIT_MCP_TOOLSETS",
+          "description": "Comma-separated toolsets whose tools are listed: all, core, read, actions, documents, views-sheets, family, links, cad-mep, export, batch, code. core is always included. Limits visibility only. Default all.",
+          "default": "all"
+        },
+        {
           "name": "REVIT_MCP_TOKEN",
           "description": "HTTP bearer token from the workstation settings.json. Required only for http:// or https:// hosts; leave unset for local and SSH.",
           "isSecret": true

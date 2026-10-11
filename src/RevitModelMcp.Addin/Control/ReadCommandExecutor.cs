@@ -7,6 +7,7 @@ using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.Control;
 
@@ -32,7 +33,7 @@ internal static class ReadCommandExecutor
             if (job.Kind == ControlJobKind.Ping)
             {
                 stopwatch.Stop();
-                output.Write(ReadCommandResponseFactory.Ping(stopwatch.ElapsedMilliseconds));
+                output.Write(ReadCommandResponseFactory.Ping(stopwatch.ElapsedMilliseconds, PolicyProvider.Current.ToSummary()));
                 LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
                 return;
             }
@@ -257,14 +258,14 @@ internal static class ReadCommandExecutor
         }
         var totalRows = Math.Max(0, body.LastRowNumber - dataStart + 1);
         var rows = new List<List<string>>();
-        for (var row = dataStart + offset; row <= body.LastRowNumber && rows.Count < maxRows; row++)
+        for (var row = ScheduleDataResult.FirstRow(dataStart, offset, body.LastRowNumber); row <= body.LastRowNumber && rows.Count < maxRows; row++)
             rows.Add(columnNumbers.Select(column => schedule.GetCellText(SectionType.Body, row, column)).ToList());
         return new ScheduleDataResult
         {
             Columns = columns,
             Rows = rows,
             TotalRows = totalRows,
-            Truncated = offset + rows.Count < totalRows
+            Truncated = ScheduleDataResult.IsTruncated(offset, rows.Count, totalRows)
         };
     }
 

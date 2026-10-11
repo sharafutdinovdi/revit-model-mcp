@@ -43,7 +43,7 @@ internal static class ActivityRecorder
         };
         Record(entry, document, data?.UndoName, data?.RolledBack == true, changes,
             dryRun && document is not null && data is not null
-                ? () => FillDryRun(entry, document, data) : null);
+                ? () => FillDryRun(entry, document, data) : null, response.Success, response.Partial);
     }
 
     private static string CodeActivitySummary(string code, string? documentPath)
@@ -77,19 +77,20 @@ internal static class ActivityRecorder
         };
         Record(entry, document, data?.UndoName, data?.RolledBack == true, changes,
             dryRun && document is not null && data is not null
-                ? () => FillFamilyDryRun(entry, document, data) : null);
+                ? () => FillFamilyDryRun(entry, document, data) : null, response.Success, response.Partial);
     }
 
     private static void Record(ActivityEntry entry, Document? document, string? undoName, bool rolledBack,
-        ChangeCapture? changes, Action? fillDryRun = null)
+        ChangeCapture? changes, Action? fillDryRun = null, bool success = true, bool partial = false)
     {
         if (fillDryRun is not null) fillDryRun();
         else changes?.Fill(entry);
         ActivityLog.Record(entry);
         if (document is not null && undoName is { Length: > 0 })
             UndoTracker.RecordOwnCommit(document.Title, undoName);
-        else if (rolledBack && changes is not null)
-            // A rolled-back job leaves the undo stack where it was before the job.
+        else if (changes is not null && UndoRestorePolicy.ShouldRestore(success, partial, rolledBack, undoName, false,
+            NoChangeGuardPolicy.RestoresUndoStateWithoutEntry(entry.Command)))
+            // A rolled-back or failed job leaves the undo stack where it was before the job.
             UndoTracker.Restore(changes.UndoStateAtStart);
     }
 

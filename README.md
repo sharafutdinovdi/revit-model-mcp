@@ -141,6 +141,7 @@ See [safety](#safety).
 | Create elements | `revit_create_wall`, `revit_create_mep_run` |
 | Work with families | `revit_load_family`, `revit_place_family`, `revit_place_families`, `revit_edit_families` |
 | Work with views and sheets | `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| Tag elements and create schedules | `revit_tag_elements`, `revit_create_schedule` |
 | Open, save and close documents | `revit_open_document`, `revit_new_document`, `revit_activate_document`, `revit_close_views`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
 | Export files | `revit_export` |
 | Run C# in Revit | `revit_execute_code` |
@@ -242,6 +243,13 @@ The bundle enables response path redaction by default.
 The project has no telemetry.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
 The server checks for a newer stable release once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
+
+## For administrators
+
+The [deployment guide](https://sharafutdinovdi.github.io/revit-model-mcp/admin/deployment/) covers silent MSI installs, SCCM, Intune, Group Policy, offline server installs and proxies.
+The [policy reference](https://sharafutdinovdi.github.io/revit-model-mcp/admin/policy-reference/) lists every setting and its precedence.
+For security reviews, use the [security whitepaper](https://sharafutdinovdi.github.io/revit-model-mcp/admin/security-whitepaper/) and the [questionnaire answers](https://sharafutdinovdi.github.io/revit-model-mcp/admin/security-questionnaire/).
+See also the [MCP specifications](https://sharafutdinovdi.github.io/revit-model-mcp/mcp-specifications/), the [tested clients](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/) and [what Model MCP deliberately does not do](https://sharafutdinovdi.github.io/revit-model-mcp/not-doing/).
 
 ## Code signing policy
 

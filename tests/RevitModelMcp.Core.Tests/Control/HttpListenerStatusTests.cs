@@ -14,6 +14,16 @@ public sealed class HttpListenerStatusTests
     }
 
     [Test]
+    public async Task DisabledByPolicy_NamesTheOrganizationPolicy()
+    {
+        var status = HttpListenerStatus.ForDisabled(false);
+        await Assert.That(status.State).IsEqualTo(HttpListenerStatus.Disabled);
+        await Assert.That(status.Reason).IsEqualTo("HTTP is disabled by organization policy.");
+        await Assert.That(HttpListenerStatus.ForDisabled(null).Reason).IsEqualTo("HTTP is disabled in settings.");
+        await Assert.That(HttpListenerStatus.ForDisabled(true).Reason).IsEqualTo("HTTP is disabled in settings.");
+    }
+
+    [Test]
     public async Task Started_HasNoReason()
     {
         var status = HttpListenerStatus.Started();

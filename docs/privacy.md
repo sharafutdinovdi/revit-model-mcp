@@ -37,7 +37,7 @@ To turn the checks off:
 
 | Check | How to disable |
 | --- | --- |
-| Add-in, one machine | Install the MSI with `UPDATECHECK=0`, or set `{"updateCheck":false}` in `%ProgramData%\RevitModelMcp\settings.json` (all users) or `%LOCALAPPDATA%\RevitModelMcp\settings.json` (current user). |
+| Add-in, one machine | Install the MSI with `UPDATEMODE=off` (or `UPDATECHECK=0`), or set `{"updateMode":"off"}` in `%ProgramData%\RevitModelMcp\settings.json` (all users) or `%LOCALAPPDATA%\RevitModelMcp\settings.json` (current user). |
 | Add-in, environment | Set `REVIT_MCP_NO_UPDATE_CHECK=1` in the environment of the Revit process. |
 | Add-in, managed install | A build made with the MSBuild property `ManagedInstall=true` never checks for updates. Use it when another system delivers add-in updates. |
 | Server | Set `REVIT_MCP_NO_UPDATE_CHECK=1` in the MCP client's server settings. |

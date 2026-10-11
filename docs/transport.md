@@ -132,6 +132,7 @@ Restart Revit after a change.
 | `token` | string | generated | Bearer token: nonempty, no control characters. The add-in writes a random 32-byte token on first start. `REVIT_MCP_TOKEN` overrides it. |
 | `showActivityPaneOnAction` | boolean | `true` | Shows the MCP activity pane when an action runs. |
 | `trustedNetworkRoots` | array of strings | `[]` | UNC share roots such as `\\server\share` that file actions may use. See [security](security.md). |
+| `updateMode` | string | channel default | `off`, `notify` or `auto`. See [automatic updates](updates.md). |
 | `updateCheck` | boolean | `true` | `false` stops the add-in from checking for updates. A `false` in `%ProgramData%\RevitModelMcp\settings.json` applies to every user. See [automatic updates](updates.md). |
 | `maxStoredResponses` | integer | `256` | See [Limits](#limits). |
 | `maxStoredBytes` | integer | `67108864` | See [Limits](#limits). |
@@ -243,6 +244,7 @@ HTTP 410 with `"error":"expired"` and `"retryable":false` means the result expir
 It is final: do not poll it again, and inspect the model before resubmitting an action.
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
+HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
 MCP action tools return `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` when `REVIT_MCP_READ_ONLY=1` in the Python process. A read-only refusal from the pipe or HTTP transport (pipe error `read_only`, HTTP 403) is returned the same way for actions.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
@@ -252,11 +254,11 @@ streaming bodies without a declared length.
 The same limits and the read deadline apply to the cancel request body.
 
 When Revit shuts down, the add-in stops accepting connections, then finishes in-flight requests for up to `shutdownDrainSeconds`.
-Queued jobs end as `cancelled`.
+Queued jobs end as `cancelled` with the error `Revit is closing.`, and requests waiting on them receive that job state before the listener stops.
 A job that was already running ends as `abandoned`, not `failed`, because Revit cannot interrupt it and the change may still have been applied.
 The result of an abandoned job has `"abandoned":true`; inspect the model before retrying it.
 
-View names must be URL-encoded; `pixel` accepts 1-4000.
+View names must be URL-encoded; `pixel` accepts 32-4000.
 Image requests can return HTTP 202 with `jobId` after 120 seconds.
 Poll `/jobs/{id}`, then append `jobId={id}` to the image URL to fetch that export without executing it again.
 The optional `document` query must match the job's `targetDocument`.
@@ -615,7 +617,7 @@ Use `-Uninstall -Year 2026` to remove that year's add-in; local settings remain 
 The script refuses to run while Revit is open unless `-Force` is supplied.
 Start Revit and open a model after installation, or restart it if it was already running.
 The add-in creates `%LOCALAPPDATA%\RevitModelMcp\instance_<processId>.json` and updates it every five seconds.
-It adds one "Activity" button in the MCP panel on the Add-Ins tab, which opens the MCP activity pane.
+It adds an "Activity" button (opens the MCP activity pane) and a "Connect AI app" button (registers the server in installed AI apps) in the MCP panel on the Add-Ins tab.
 
 ## Batch transport
 

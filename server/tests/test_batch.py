@@ -66,6 +66,9 @@ class Host(SshPowerShellHost):
             "artifact": base64.b64encode(self.artifacts[(run_id, name)]).decode(),
         }
 
+    async def batch_assert_writable(self):
+        self.gate_checks = getattr(self, "gate_checks", 0) + 1
+
     async def batch_activate_interactive(self):
         self.activations += 1
         if not self.instance_delay:
@@ -669,3 +672,34 @@ async def test_host_batch_cancel_reports_missing_run():
 
     with pytest.raises(BatchRunNotFoundError):
         await MissingRunHost().batch_cancel("a" * 32)
+
+
+@pytest.mark.anyio
+async def test_file_gate_refuses_start_before_activation(boundary):
+    from revit_model_mcp.ssh_host import RemoteCommandError
+
+    tools, host, channel = boundary
+    host.instances = []
+    host.batch_assert_writable = AsyncMock(
+        side_effect=RemoteCommandError(1, "Transport command exited: read-only mode")
+    )
+    host.batch_activate_interactive = AsyncMock()
+    host.batch_create = AsyncMock()
+    assert await tools["revit_batch_start"](folder=r"C:\models") == {
+        "success": False,
+        "command": "batch-start",
+        "error": "read-only mode",
+        "errorCode": "read_only",
+    }
+    host.batch_activate_interactive.assert_not_awaited()
+    host.batch_create.assert_not_awaited()
+    assert not host.discovery and not channel.jobs
+
+
+@pytest.mark.anyio
+async def test_gate_script_checks_the_per_user_file():
+    host = SshPowerShellHost("test-host")
+    host._run = AsyncMock(return_value="")
+    await host.batch_assert_writable()
+    script = host._run.await_args.args[0]
+    assert "'read-only'" in script and "throw 'read-only mode'" in script

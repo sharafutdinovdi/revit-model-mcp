@@ -54,6 +54,7 @@ public static class PipeProtocol
             Error = Text(root, "error"),
             Message = Text(root, "message"),
             RetryAfterMs = Number(root, "retryAfterMs"),
+            Policy = RawObject(root, "policy"),
             Job = RawObject(root, "job"),
             Result = RawObject(root, "result")
         };
@@ -108,6 +109,7 @@ public static class PipeProtocol
         String(builder, "error", message.Error);
         String(builder, "message", message.Message);
         Literal(builder, "retryAfterMs", message.RetryAfterMs?.ToString(CultureInfo.InvariantCulture));
+        Literal(builder, "policy", SingleLine(message.Policy));
         Literal(builder, "job", SingleLine(message.Job));
         Literal(builder, "result", SingleLine(message.Result));
         builder.Append('}');

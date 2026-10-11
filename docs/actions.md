@@ -77,6 +77,8 @@ Cancellation is refused in server or workstation read-only mode.
 | `revit_apply_view_template` | `views`, `template` | Apply a matching template to one or more views. Type mismatches are reported in `typeMismatches`. When no view matches the template type the call is refused and nothing is committed. |
 | `revit_create_sheet` | `number`, `name`, `title_block=null` | Create a sheet with a loaded title block. Sheet numbers must be unique. |
 | `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
+| `revit_tag_elements` | `view`, `categories=null`, `element_ids=null`, `leader=false`, `orientation="horizontal"`, `tag_type=null`, `skip_tagged=true`, `max_elements=5000` | Tag elements in a view, chosen by category names or by element IDs (exactly one). Returns the created tag IDs in `createdElementIds`. Elements that already have a tag in the view are left alone unless `skip_tagged=false`. Inputs Revit cannot tag are listed in `skipped` with a reason, and the call fails when no tag is created. `tag_type` matches a tag type name, a family name or `Family: Type`; without it Revit uses the default tag type of each category. Room tags need a plan view and ignore `orientation`. Spaces and areas are not supported. Cannot run in a batch. |
+| `revit_create_schedule` | `category`, `fields`, `name=null`, `filters=null`, `sort=null`, `itemized=true` | Create a schedule for one category. `fields` are Revit UI field names in column order. `filters` are `{field, operator, value}` records; `operator` is `equal`, `not_equal`, `greater_than`, `greater_than_or_equal`, `less_than`, `less_than_or_equal`, `contains`, `not_contains`, `begins_with`, `not_begins_with`, `ends_with`, `not_ends_with`, `has_value` or `has_no_value` (the last two take no value). Numeric values use mm for lengths, m2 for areas and m3 for volumes. For fields that reference an element (Level, Phase), `value` is the element name; it is resolved to the element and filtered by its ID, and an unknown or ambiguous name is reported in `skipped`. `sort` records are `{field, descending=false, header=false, footer=false, blank_line=false}`; a header or footer groups rows. A field used only by a filter or sort is added hidden. Returns the schedule view ID in `viewId`, the resolved `fields`, `filtersApplied` and `sortApplied`. Names Revit does not know are listed in `skipped`, and the call fails when no field resolves. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. Group members that Revit refuses to change fail with a clear message, including in dry runs. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids`, `dry_run=false`, `confirm_token=null` | Delete nonempty IDs and their dependents. A real deletion of more than 500 elements, dependents included, needs a confirmation token. |
 | `revit_run_actions` | `steps`, `dry_run=false` | Execute 1-50 actions in one `MCP (<clientName>): ...` undo entry. |
@@ -93,6 +95,8 @@ Cancellation is refused in server or workstation read-only mode.
 `revit_link_cad` accepts a workstation `.dwg` path subject to the same absolute-path and trusted network share rules as other file actions. The view must be a plan. Without `view`, it uses a floor plan on `level`, or the active plan. `origin` accepts `internal`, `shared` and `center`; `units` accepts `auto`, `mm`, `cm`, `m`, `in` and `ft`. The `layers` list selects imported layers. The result reports line and polyline segment counts by layer, plus XY extents.
 
 `revit_walls_from_cad` uses the imported instance geometry and selected CAD layers. It merges collinear segments on each layer within 0.5 degree and 5 mm across gaps up to `max_gap_mm`. Short pieces participate in merging before the length filter. It pairs overlapping intervals within the thickness range. Unused intervals can pair with another partner. Bridged openings remain continuous. Each wall uses the requested basic type or the closest basic type by width. With `join=true`, centerlines extend or trim to L, T and X intersections within `max_thickness_mm`, and Revit joins are enabled there. `dry_run=true` returns the same planned walls and join numbers without model changes. Joins Revit would reject are left out and reported as `unjoinedEnds` with `unjoinedReasons`. `unpairedLines` counts merged lines with no paired interval; `mergedSegments` counts source segments absorbed by merging.
+
+An unknown layer name is refused with the list of available layers, for a dry run and a real run. A real run that pairs no walls fails with the count of unpaired lines and creates nothing, so no empty undo entry is recorded.
 
 Category names in `hide_categories` and `show_categories` accept the Revit UI name, the `BuiltInCategory` name (`OST_StructuralColumns`, with or without the prefix), the English name (`Structural Columns`) or the category ID, independent of the Revit UI language. An unknown name is rejected with close matches drawn from all three forms. `revit_view_elements` and the universal query filters resolve category names the same way.
 
@@ -185,7 +189,7 @@ With `stop_on_error=true`, the first failed family rolls back the whole project 
 
 `type_name` and `wall_type` are required arguments that accept `null`.
 
-`revit_override_graphics`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_update_parameters`, `revit_place_family`, `revit_create_wall`, `revit_create_mep_run`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet`, `revit_set_parameter` and `revit_delete` accept `dry_run=false`.
+`revit_override_graphics`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_update_parameters`, `revit_place_family`, `revit_create_wall`, `revit_create_mep_run`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_create_sheet`, `revit_place_views_on_sheet`, `revit_tag_elements`, `revit_create_schedule`, `revit_set_parameter` and `revit_delete` accept `dry_run=false`.
 A dry run executes the mutation, reads its prospective result, and rolls back its transaction. The action transaction does not commit. The activity pane lists elements reported by the action result.
 
 **Dry run preflight.**
@@ -218,7 +222,7 @@ Mirror with `copy=true` and copy create new elements and report the created ids.
 
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.
-`revit_isolate` has no `dry_run` argument; it uses temporary isolation only.
+`revit_isolate` has no `dry_run` argument; it uses temporary isolation only. Isolation, and graphic overrides or resets that change no element, return no `undoName`. After an isolate, `revit_undo_last` refuses because the isolate is Revit's newest change; use Undo in Revit to revert earlier actions.
 Created IDs in a dry run are provisional and do not identify persisted elements.
 
 Successful real writes return `data.dryRun:false` and re-read the affected elements after commit.
@@ -226,6 +230,7 @@ Successful real writes return `data.dryRun:false` and re-read the affected eleme
 `verification.error` reports a failed post-commit re-read; the change is committed.
 Single-action responses include `failedStep:null`.
 The `verification` block contains model facts: bounding boxes for moves, parameter values and ownership for parameter edits, element metadata for creation, and deleted/dependent IDs with a survival check for deletion.
+A real deletion compares the model before and after the commit: elements Revit removed on its own (empty groups, dimensions) join `verification.changed` and `before.dependents`, `count` covers them and a `warning` gives their number. The confirmation preview states "at least" because it cannot see them. After a real `revit_copy` or `revit_mirror` with `copy=true`, copies that Revit removed at commit (for example a door whose host was not mirrored) are dropped from `copies`, `verification.changed` and `count`, and a `warning` states how many. A dry run cannot know this and reports the provisional IDs.
 Bounding boxes use model XYZ in mm rounded to one decimal; unavailable bounding boxes are omitted.
 For example, setting Comments on element 123 returns:
 
@@ -301,6 +306,10 @@ tools still listed and returning `success:false`, `error:"read-only mode"` and `
    New-Item -ItemType File -Force "$env:LOCALAPPDATA\RevitModelMcp\read-only" | Out-Null
    ```
 
+3. An administrator can enforce read-only mode for the whole machine with the `ReadOnly` machine policy.
+   Users cannot lift it, and the refusal text is `Blocked by organization policy: the workstation is read-only.`
+   See the [policy reference](admin/policy-reference.md).
+
 The add-in checks the gate file for every action, including selection and navigation, and shows a "Read-only"
 bar at the top of the MCP activity pane while it is present.
 Removing the file re-enables actions immediately; restarting Revit is unnecessary.
@@ -322,6 +331,7 @@ A committed single action or batch runs inside a `TransactionGroup` assimilated 
 `MCP (<clientName>): <short summary>`, truncated to 60 characters; `clientName` comes from the calling MCP
 client's `initialize` handshake, or `unknown`. `select`, `show`, `export-nwc` and `revit_compare_link_datums`
 make no document change and open no such group.
+A real action that commits without changing any element is rolled back: the result has `committed: false` and `rolledBack: true`, and no `undoName`. `revit_undo_last` then still targets the previous MCP action.
 Warnings at commit are dismissed and reported on successful actions.
 Errors permit one `FixElements` or `SetValue` resolution when Revit allows it; unresolved or repeated errors roll back the transaction.
 Selection and navigation use UI calls without model transactions.
@@ -400,7 +410,7 @@ the following hold, tracked from Revit's `DocumentChanged` event:
 Otherwise it refuses with a clear reason, for example `the last change in Revit is not ours: Move Elements`
 when the user made an unrelated edit since the last MCP action, or `there is no recorded MCP action to
 undo` when nothing has run yet. When Revit reports no matching undo entry, for example after the newest action was already undone, the refusal says so. Only the single most recent action is covered; there is no redo and no
-undo of an older entry. The same button appears on the newest row of the activity pane, disabled once it no
+undo of an older entry. After `revit_isolate` the newest change in Revit is the temporary isolate, so `revit_undo_last` refuses and earlier MCP actions can no longer be undone with it; use Undo in Revit to revert them. The same button appears on the newest row of the activity pane, disabled once it no
 longer applies.
 
 ### MCP activity pane

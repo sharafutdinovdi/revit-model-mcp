@@ -54,6 +54,18 @@ public sealed class UndoStateTrackerTests
     }
 
     [Test]
+    public async Task Restore_AfterRefusedRollback_KeepsUndoEligibleForTheLastAction()
+    {
+        var tracker = new UndoStateTracker();
+        tracker.RecordCommit("Model", "MCP (mcp): Move");
+        var before = tracker.Snapshot();
+        tracker.RecordEntryRemoved("Model");
+        tracker.Restore(before);
+        await Assert.That(UndoEligibility.IsAllowed(true, false, "MCP (mcp): Move", tracker.Snapshot().LastTransactionName, out var reason)).IsTrue();
+        await Assert.That(reason).IsNull();
+    }
+
+    [Test]
     public async Task TemporaryScope_DisposeTwiceRestoresOnlyOnce()
     {
         var tracker = new UndoStateTracker();
