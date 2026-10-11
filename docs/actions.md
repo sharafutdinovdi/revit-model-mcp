@@ -222,7 +222,7 @@ Mirror with `copy=true` and copy create new elements and report the created ids.
 
 A successful dry run includes `data.dryRun:true`, `data.rolledBack:true` and the same `verification` shape as a real write.
 An action that throws returns an error without a verification block; a missing family also returns `closestFamilies` on the single-action tool.
-`revit_isolate` has no `dry_run` argument; it uses temporary isolation only. Isolation, and graphic overrides or resets that change no element, keep no Revit undo entry and return no `undoName`, so `revit_undo_last` still undoes the previous action.
+`revit_isolate` has no `dry_run` argument; it uses temporary isolation only. Isolation, and graphic overrides or resets that change no element, return no `undoName`. After an isolate, `revit_undo_last` refuses because the isolate is Revit's newest change; use Undo in Revit to revert earlier actions.
 Created IDs in a dry run are provisional and do not identify persisted elements.
 
 Successful real writes return `data.dryRun:false` and re-read the affected elements after commit.
@@ -410,7 +410,7 @@ the following hold, tracked from Revit's `DocumentChanged` event:
 Otherwise it refuses with a clear reason, for example `the last change in Revit is not ours: Move Elements`
 when the user made an unrelated edit since the last MCP action, or `there is no recorded MCP action to
 undo` when nothing has run yet. When Revit reports no matching undo entry, for example after the newest action was already undone, the refusal says so. Only the single most recent action is covered; there is no redo and no
-undo of an older entry. The same button appears on the newest row of the activity pane, disabled once it no
+undo of an older entry. After `revit_isolate` the newest change in Revit is the temporary isolate, so `revit_undo_last` refuses and earlier MCP actions can no longer be undone with it; use Undo in Revit to revert them. The same button appears on the newest row of the activity pane, disabled once it no
 longer applies.
 
 ### MCP activity pane
