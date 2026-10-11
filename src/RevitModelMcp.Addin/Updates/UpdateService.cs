@@ -62,22 +62,22 @@ internal static class UpdateService
             }
             else
             {
-            var message = outcome switch
-            {
-                InstallerOutcome.Succeeded => $"Updated to {result.Version}",
-                InstallerOutcome.SucceededRestartRequired => $"Updated to {result.Version}. Restart the computer to finish the update.",
-                _ => $"Update to {result.Version} failed: {result.Reason ?? FailureReason(result.ExitCode)}"
-            };
-            ActivityRecorder.RecordSystemNotice(message, resultReleaseUrl, outcome == InstallerOutcome.Failed);
-            state.ReportedResultTime = result.Time;
-            state.QueuedVersion = null;
-            if (outcome == InstallerOutcome.Failed)
-            {
-                var failed = result.Version.TrimStart('v', 'V');
-                state.BlockedVersions.RemoveAll(item => item.Version == failed);
-                state.BlockedVersions.Add(new BlockedVersion { Version = failed, Until = DateTimeOffset.UtcNow + UpdatePolicy.BlockDuration });
-            }
-            WriteJson(statePath, state);
+                var message = outcome switch
+                {
+                    InstallerOutcome.Succeeded => $"Updated to {result.Version}",
+                    InstallerOutcome.SucceededRestartRequired => $"Updated to {result.Version}. Restart the computer to finish the update.",
+                    _ => $"Update to {result.Version} failed: {result.Reason ?? FailureReason(result.ExitCode)}"
+                };
+                ActivityRecorder.RecordSystemNotice(message, resultReleaseUrl, outcome == InstallerOutcome.Failed);
+                state.ReportedResultTime = result.Time;
+                state.QueuedVersion = null;
+                if (outcome == InstallerOutcome.Failed)
+                {
+                    var failed = result.Version.TrimStart('v', 'V');
+                    state.BlockedVersions.RemoveAll(item => item.Version == failed);
+                    state.BlockedVersions.Add(new BlockedVersion { Version = failed, Until = DateTimeOffset.UtcNow + UpdatePolicy.BlockDuration });
+                }
+                WriteJson(statePath, state);
             }
         }
 
