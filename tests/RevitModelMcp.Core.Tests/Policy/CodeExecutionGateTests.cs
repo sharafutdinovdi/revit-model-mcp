@@ -112,4 +112,26 @@ public sealed class CodeExecutionGateTests
         await Assert.That(MachinePolicy.IsCodeCommand("process-models")).IsFalse();
         await Assert.That(MachinePolicy.IsCodeCommand(null)).IsFalse();
     }
+
+    // The gate keys on the command alone: revit_execute_code with dry_run=true reaches the add-in as the same
+    // "execute-code" command and is refused before any argument is read, so a dry run cannot compile or run code.
+    [Test]
+    [Arguments("revit_execute_code")]
+    [Arguments("execute-code")]
+    public async Task DryRunOfCode_IsRefusedWhenStoreDefaultIsOff(string command)
+    {
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, MachinePolicy.Empty, null)).IsEqualTo(CodeExecutionGate.StoreRefusal);
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, MachinePolicy.Empty, "off")).IsEqualTo(CodeExecutionGate.StoreRefusal);
+    }
+
+    [Test]
+    [Arguments("revit_execute_code")]
+    [Arguments("execute-code")]
+    public async Task DryRunOfCode_IsRefusedWhenPolicyIsOff(string command)
+    {
+        var policy = new MachinePolicy { ExecuteCode = "off" };
+        foreach (var channel in Enum.GetValues<UpdateChannel>())
+            await Assert.That(CodeExecutionGate.Refusal(command, channel, policy, "confirm")).IsEqualTo(policy.CodeStepRefusal());
+        await Assert.That(policy.Refusal(command)).IsEqualTo(policy.CodeStepRefusal());
+    }
 }
