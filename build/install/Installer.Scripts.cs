@@ -21,8 +21,11 @@ static class InstallerScripts
     /// </summary>
     public const string ClearMsiReadOnlyScript =
         "$ErrorActionPreference = 'Stop'; " +
-        "foreach ($key in 'HKLM:\\Software\\Policies\\RevitModelMcp', 'HKLM:\\Software\\RevitModelMcp\\MsiPolicy') { " +
-        "if (Test-Path -LiteralPath $key) { Remove-ItemProperty -LiteralPath $key -Name 'ReadOnly' -ErrorAction SilentlyContinue } }; ";
+        "try { $hklm = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64'); " +
+        "foreach ($subKey in 'Software\\Policies\\RevitModelMcp', 'Software\\RevitModelMcp\\MsiPolicy') { " +
+        "$key = $hklm.OpenSubKey($subKey, $true); " +
+        "if ($key) { try { $key.DeleteValue('ReadOnly', $false) } finally { $key.Dispose() } } } } " +
+        "catch { Write-Output ('Model MCP: could not clear the ReadOnly policy value: ' + $_.Exception.Message); exit 1 }; ";
 
     /// <summary>The MSI condition of the ReadOnly clearing action: maintenance or repair, READONLY=0, value owned by the installer.</summary>
     public const string ClearMsiReadOnlyCondition =

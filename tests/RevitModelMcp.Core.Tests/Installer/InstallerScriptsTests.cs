@@ -7,11 +7,22 @@ public sealed class InstallerScriptsTests
     [Test]
     public async Task ReadOnlyClearRemovesBothInstallerOwnedValues()
     {
-        await Assert.That(InstallerScripts.ClearMsiReadOnlyScript).Contains(@"HKLM:\Software\Policies\RevitModelMcp");
-        await Assert.That(InstallerScripts.ClearMsiReadOnlyScript).Contains(@"HKLM:\Software\RevitModelMcp\MsiPolicy");
-        await Assert.That(InstallerScripts.ClearMsiReadOnlyScript).Contains("Remove-ItemProperty");
-        await Assert.That(InstallerScripts.ClearMsiReadOnlyScript).Contains("-Name 'ReadOnly'");
-        await Assert.That(InstallerScripts.ClearMsiReadOnlyScript).DoesNotContain("ExecuteCode");
+        var script = InstallerScripts.ClearMsiReadOnlyScript;
+        await Assert.That(script).Contains(@"Software\Policies\RevitModelMcp");
+        await Assert.That(script).Contains(@"Software\RevitModelMcp\MsiPolicy");
+        await Assert.That(script).Contains("DeleteValue('ReadOnly'");
+        await Assert.That(script).DoesNotContain("ExecuteCode");
+    }
+
+    [Test]
+    public async Task ReadOnlyClearOpensTheNativeRegistryViewAndFailsLoudly()
+    {
+        var script = InstallerScripts.ClearMsiReadOnlyScript;
+        await Assert.That(script).Contains("OpenBaseKey('LocalMachine', 'Registry64')");
+        await Assert.That(script).Contains("$ErrorActionPreference = 'Stop'");
+        await Assert.That(script).DoesNotContain("SilentlyContinue");
+        await Assert.That(script).Contains("Model MCP: ");
+        await Assert.That(script).Contains("exit 1");
     }
 
     [Test]
