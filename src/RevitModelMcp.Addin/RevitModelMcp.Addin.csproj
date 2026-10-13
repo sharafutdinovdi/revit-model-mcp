@@ -85,7 +85,7 @@
           DestinationFolder="$(TargetDir)"/>
   </Target>
 
-  <Target Name="CopyBatchSupervisor" AfterTargets="Build">
+  <Target Name="CopyBatchSupervisor" BeforeTargets="PublishAddin" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.BatchSupervisor.exe"
           DestinationFolder="$(TargetDir)"/>
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
