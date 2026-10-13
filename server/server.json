@@ -7,12 +7,12 @@
     "url": "https://github.com/sharafutdinovdi/revit-model-mcp",
     "source": "github"
   },
-  "version": "0.9.1",
+  "version": "0.10.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "revit-model-mcp",
-      "version": "0.9.1",
+      "version": "0.10.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
