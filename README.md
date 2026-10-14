@@ -1,7 +1,7 @@
 <h1 align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.png">
-    <img alt="Model MCP: read and act on live Revit models from your AI client" src="docs/assets/hero-light.png" width="1200">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.webp">
+    <img alt="Model MCP: BIM on Autopilot. Ask, check and change live Revit projects from Claude, Cursor or any MCP client. An animation shows a building model rising level by level in a Revit 3D view after the prompt: build the model up level by level." src="docs/assets/hero-light.webp" width="1200">
   </picture>
 </h1>
 
@@ -31,6 +31,13 @@ Actions are enabled in this recording.
 4. Cleanup afterwards is one more sentence: reset the view, delete the chair.
 
 </details>
+
+## Why Model MCP
+
+- **Safe by design.** Each change is one named undo entry in Revit, and one setting makes the whole server read-only.
+- **Confirmation first.** Saving, syncing and other irreversible steps wait for your explicit approval.
+- **Installs like normal software.** MSI installers, with deployment guides for SCCM, Intune and Group Policy.
+- **Works from a Mac.** MCP stdio runs through SSH to the Windows workstation, so no port opens.
 
 ## Quick start
 
@@ -76,9 +83,37 @@ Restart the client, keep a model open in Revit and ask: "Call `revit_ping`, then
 `success: true` means both parts are connected.
 From a clone, `uv run --directory server revit-model-mcp` runs the same server without installing the package.
 
+## Try these prompts
+
+Paste any of these into your MCP client with a model open in Revit.
+The last column names the tools each prompt uses.
+
+| Goal | Prompt | Tools |
+| --- | --- | --- |
+| Review | "Give me an overview of the open model: levels, element counts by category, links and the biggest problems." | `revit_document_info`, `revit_list_catalog`, `revit_aggregate_elements`, `revit_list_warnings` |
+| Health check | "Run a health check before we issue this model and list what fails." | `revit_model_health`, `revit_parameter_fill_check` |
+| Find and show | "Find the doors on this floor and show me where they are in 3D." | `revit_query_elements`, `revit_capture_elements` |
+| Highlight | "Colour those doors red on the L2 plan and fade everything else." | `revit_activate_view`, `revit_override_graphics` |
+| Change, then undo | "Move the selected elements 500 mm along X. Preview it first, then do it, then undo it." | `revit_move` with `dry_run`, `revit_undo_last` |
+| Batch over a folder | "Collect read-only snapshots of every model in this folder and tell me which ones have parameters left empty." | `revit_batch_start`, `revit_batch_status`, `revit_build_report` |
+| ISO 19650 register | "Check this model against our EIR and write an issue register to Excel with element snapshots." | `revit_issue_register`, with the [ISO 19650 skill](skills/iso19650-issue-register/SKILL.md) |
+| Export | "Export the L2 plan as PDF, and a Navisworks file of the whole model." | `revit_export`, `revit_export_nwc` |
+| Run from a Mac | "Call revit_ping and tell me which model is open on the workstation." | `revit_ping`, over SSH (see [remote workstations](#remote-workstations)) |
+
 ## What it can do
 
 The tables list every tool by name; the [tool reference](https://sharafutdinovdi.github.io/revit-model-mcp/tools/) has arguments, units and limits.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/gallery/build.webp" alt="The building rising in a Revit 3D view, columns first, then walls, floors and roof" width="100%"><br><em>"Show the building going up in construction order."</em></td>
+    <td width="50%"><img src="docs/assets/gallery/assemble.webp" alt="Building elements flying into place in a Revit 3D view while the camera orbits" width="100%"><br><em>"Bring the building together piece by piece."</em></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/assets/gallery/air.webp" alt="Supply and return air moving through the duct network in blue and orange" width="100%"><br><em>"Show supply and return air moving through the building."</em></td>
+    <td width="50%"><img src="docs/assets/gallery/warnings.webp" alt="Elements in a Revit 3D view coloured by model warnings while the view turns" width="100%"><br><em>"Colour the model by warnings."</em></td>
+  </tr>
+</table>
 
 <a id="tools"></a>
 

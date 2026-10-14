@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Model MCP README banner</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #F2F5FA;
       --ink: #081C38;
-      --muted: #5C6F88;
-      --glow: rgba(54, 142, 245, 0);
+      --muted: #4F6482;
+      --accent: #2A7DE6;
       --side: #081C38;
+      --win-line: rgba(8, 28, 56, 0.16);
+      --win-shadow: 0 2px 4px rgba(8, 28, 56, 0.06), 0 28px 56px -18px rgba(8, 28, 56, 0.34);
+      --bubble: #2A7DE6;
     }
 
     @media (prefers-color-scheme: dark) {
@@ -19,8 +22,11 @@
         --bg: #081C38;
         --ink: #FFFFFF;
         --muted: #A9BAD3;
-        --glow: rgba(54, 142, 245, 0.55);
+        --accent: #6DB1FF;
         --side: #1B5BB0;
+        --win-line: rgba(255, 255, 255, 0.18);
+        --win-shadow: 0 28px 56px -14px rgba(0, 0, 0, 0.65);
+        --bubble: #2F82EA;
       }
     }
 
@@ -39,103 +45,118 @@
       overflow: hidden;
     }
 
-    .lockup {
+    .brand {
       position: absolute;
-      left: 72px;
-      top: 118px;
-    }
-
-    .name {
+      left: 64px;
+      top: 56px;
       display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 12px;
     }
 
-    .name svg {
-      width: 88px;
-      height: 88px;
-      flex: none;
+    .brand svg { width: 38px; height: 38px; flex: none; }
+
+    .brand span {
+      font-size: 21px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--ink);
     }
 
     h1 {
+      position: absolute;
+      left: 64px;
+      top: 134px;
       margin: 0;
       font-size: 64px;
       font-weight: 800;
-      letter-spacing: -0.03em;
-      line-height: 1;
+      letter-spacing: -0.04em;
+      line-height: 1.04;
       color: var(--ink);
     }
 
-    .claim {
-      margin: 36px 0 0;
-      max-width: 720px;
-      font-size: 26px;
-      font-weight: 700;
-      line-height: 1.3;
-      letter-spacing: -0.01em;
-      color: var(--ink);
-    }
+    h1 em { font-style: normal; color: var(--accent); }
 
     .sub {
-      margin: 14px 0 0;
-      font-size: 20px;
-      font-weight: 400;
+      position: absolute;
+      left: 64px;
+      top: 296px;
+      width: 440px;
+      margin: 0;
+      font-size: 19px;
+      line-height: 1.5;
       color: var(--muted);
     }
 
-    .glow {
+    /* Window for the recording. The animation overlays the inner 498 x 358 area at (647, 41). */
+    .win {
       position: absolute;
-      left: 800px;
-      top: 20px;
-      width: 380px;
-      height: 380px;
-      border-radius: 50%;
-      background: radial-gradient(circle, var(--glow) 0%, rgba(54, 142, 245, 0) 68%);
+      left: 646px;
+      top: 40px;
+      width: 500px;
+      height: 360px;
+      border-radius: 14px;
+      border: 1px solid var(--win-line);
+      box-shadow: var(--win-shadow);
+      overflow: hidden;
+      background: #FFFFFF;
     }
 
-    .stage {
+    .win img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+    .bubble {
       position: absolute;
-      left: 924px;
-      top: 299px;
-      width: 230px;
-      height: 128px;
+      left: 560px;
+      top: 316px;
+      width: 330px;
+      padding: 14px 18px 15px;
+      border-radius: 20px 20px 20px 5px;
+      background: var(--bubble);
+      color: #FFFFFF;
+      font-size: 16.5px;
+      font-weight: 600;
+      line-height: 1.35;
+      letter-spacing: -0.005em;
+      box-shadow: 0 14px 30px -10px rgba(8, 28, 56, 0.5);
     }
 
-    .mascot {
-      position: absolute;
-      left: 918px;
-      top: 24px;
-      height: 340px;
-    }
+    .layer-base .bubble { display: none; }
+    .layer-bubble #hero { background: transparent; }
+    .layer-bubble .brand, .layer-bubble h1, .layer-bubble .sub, .layer-bubble .win { visibility: hidden; }
   </style>
 </head>
 <body>
   <div id="hero">
-    <div class="lockup">
-      <div class="name">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Model MCP">
-          <polygon points="32,34 56,46 32,58 8,46" fill="#368EF5"/>
-          <polygon points="8,46 32,58 32,63 8,51" fill="var(--side)"/>
-          <polygon points="32,58 56,46 56,51 32,63" fill="var(--side)"/>
-          <polygon points="32,20 56,32 32,44 8,32" fill="#368EF5"/>
-          <polygon points="8,32 32,44 32,49 8,37" fill="var(--side)"/>
-          <polygon points="32,44 56,32 56,37 32,49" fill="var(--side)"/>
-          <polygon points="32,6 56,18 32,30 8,18" fill="#3CC7D4"/>
-          <polygon points="8,18 32,30 32,35 8,23" fill="var(--side)"/>
-          <polygon points="32,30 56,18 56,23 32,35" fill="var(--side)"/>
-        </svg>
-        <h1>Model MCP</h1>
-      </div>
-      <p class="claim">Read and act on live Revit models from your AI client.</p>
-      <p class="sub">One undo per change. Read-only on request.</p>
+    <div class="brand">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Model MCP">
+        <polygon points="32,34 56,46 32,58 8,46" fill="#368EF5"/>
+        <polygon points="8,46 32,58 32,63 8,51" fill="var(--side)"/>
+        <polygon points="32,58 56,46 56,51 32,63" fill="var(--side)"/>
+        <polygon points="32,20 56,32 32,44 8,32" fill="#368EF5"/>
+        <polygon points="8,32 32,44 32,49 8,37" fill="var(--side)"/>
+        <polygon points="32,44 56,32 56,37 32,49" fill="var(--side)"/>
+        <polygon points="32,6 56,18 32,30 8,18" fill="#3CC7D4"/>
+        <polygon points="8,18 32,30 32,35 8,23" fill="var(--side)"/>
+        <polygon points="32,30 56,18 56,23 32,35" fill="var(--side)"/>
+      </svg>
+      <span>Model MCP</span>
     </div>
-    <div class="glow"></div>
-    <svg class="stage" viewBox="0 0 270 150" aria-hidden="true">
-      <polygon points="135,0 270,62.5 135,125 0,62.5" fill="#3CC7D4"/>
-      <polygon points="0,62.5 135,125 135,150 0,87.5" fill="var(--side)"/>
-      <polygon points="135,125 270,62.5 270,87.5 135,150" fill="var(--side)"/>
-    </svg>
-    <img class="mascot" src="brand/mascot-pointing.webp" alt="">
+    <h1>BIM on<br><em>Autopilot.</em></h1>
+    <p class="sub">Ask, check and change live Revit projects from Claude, Cursor or any MCP client.</p>
+    <div class="win"><img id="frame" alt=""></div>
+    <div class="bubble">Build the model up level by level in my 3D view.</div>
   </div>
+  <script>
+    // The render script drives the page with query parameters:
+    //   ?frame=<file url>  poster frame inside the window (static fallback image)
+    //   ?layer=base        page without the bubble, window left blank for the video
+    //   ?layer=bubble      only the bubble on a transparent background, composited above the video
+    const params = new URLSearchParams(location.search);
+    const frame = params.get("frame");
+    const img = document.getElementById("frame");
+    if (frame) img.src = frame; else img.remove();
+    const layer = params.get("layer");
+    if (layer) document.body.classList.add("layer-" + layer);
+  </script>
 </body>
 </html>
