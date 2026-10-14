@@ -6,19 +6,25 @@
 
 Run from the repository root:
 
-    uv run build/render_brand_assets.py
+    uv run build/render_brand_assets.py [--readme-media]
 
 The first run needs a Chromium build: ``uvx playwright install chromium``.
+``--readme-media`` renders only the README hero and gallery animations. They need ffmpeg
+with libwebp and the raw Revit takes in work/ws/visuals-spike/film/takes (not in git).
 The HTML sources load Inter from Google Fonts, so rendering needs network access.
 """
 
 from __future__ import annotations
 
 import io
+import shutil
 import struct
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from playwright.sync_api import Browser, sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,6 +38,54 @@ CYAN = "#3CC7D4"
 SIDE = "#1B5BB0"
 
 FONT_LINK = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800&amp;display=swap" rel="stylesheet">'
+
+FPS = 15
+TAKES = ROOT / "work" / "ws" / "visuals-spike" / "film" / "takes"
+
+# Source windows come from work/ws/visuals-spike/film/slots.json. Crops are (width, height, x, y) on
+# the 1884 x 874 recordings; "rate" retimes the take and "dur" is the output length in seconds.
+WIDE = (1554, 874, 163, 0)
+HERO_TAKE = {
+    "file": "A1.mp4",
+    "trim": 1.4,
+    "rate": 3.0,
+    "dur": 6.4,
+    "crop": (1216, 874, 334, 0),
+}
+GALLERY = (
+    {
+        "name": "build",
+        "file": "A6-take2.mp4",
+        "trim": 0.3,
+        "rate": 3.0,
+        "dur": 5.4,
+        "crop": WIDE,
+    },
+    {
+        "name": "assemble",
+        "file": "A3-alt.mp4",
+        "trim": 0.7,
+        "rate": 3.0,
+        "dur": 6.0,
+        "crop": WIDE,
+    },
+    {
+        "name": "air",
+        "file": "F1-take2.mp4",
+        "trim": 0.6,
+        "rate": 1.75,
+        "dur": 6.0,
+        "crop": (1400, 788, 277, 0),
+    },
+    {
+        "name": "warnings",
+        "file": "W1.mp4",
+        "trim": 0.4,
+        "rate": 2.5,
+        "dur": 5.8,
+        "crop": WIDE,
+    },
+)
 
 
 def mark(top: str, mid: str, bottom: str, side: str) -> str:
@@ -60,6 +114,7 @@ def shoot(
     scale: float = 1,
     scheme: str = "light",
     transparent: bool = False,
+    query: str = "",
 ) -> bytes:
     """Screenshot an HTML string or file at the given CSS size."""
     page = browser.new_page(
@@ -67,8 +122,9 @@ def shoot(
         device_scale_factor=scale,
         color_scheme=scheme,
     )
-    if isinstance(html, Path):
-        page.goto(html.as_uri(), wait_until="load")
+    url = html.as_uri() + query if isinstance(html, Path) else None
+    if url:
+        page.goto(url, wait_until="load")
     else:
         page.set_content(html, wait_until="load")
     page.evaluate("document.fonts.ready")
@@ -124,6 +180,209 @@ def quantized_png(data: bytes) -> bytes:
     return out.getvalue()
 
 
+def photo_png(data: bytes) -> bytes:
+    """Reduce a render with screenshots in it to a dithered 256-colour PNG."""
+    image = Image.open(io.BytesIO(data)).convert("RGB")
+    palette = image.quantize(
+        256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG
+    )
+    out = io.BytesIO()
+    palette.save(out, format="PNG", optimize=True)
+    return out.getvalue()
+
+
+def rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
+    """Return an anti-aliased rounded-rectangle alpha mask."""
+    scale = 4
+    big = Image.new("L", (size[0] * scale, size[1] * scale), 0)
+    ImageDraw.Draw(big).rounded_rectangle(
+        (0, 0, big.width - 1, big.height - 1), radius * scale, fill=255
+    )
+    return big.resize(size, Image.Resampling.LANCZOS)
+
+
+def outline(size: tuple[int, int], radius: int) -> Image.Image:
+    """Return a transparent image with a faint rounded outline for light tiles."""
+    scale = 4
+    big = Image.new("RGBA", (size[0] * scale, size[1] * scale), (0, 0, 0, 0))
+    ImageDraw.Draw(big).rounded_rectangle(
+        (0, 0, big.width - 1, big.height - 1),
+        radius * scale,
+        outline=(8, 28, 56, 56),
+        width=2 * scale,
+    )
+    return big.resize(size, Image.Resampling.LANCZOS)
+
+
+def ffmpeg(*args: str | Path) -> None:
+    subprocess.run(["ffmpeg", "-y", "-v", "error", *map(str, args)], check=True)
+
+
+def clip_filter(take: dict, size: tuple[int, int]) -> str:
+    """Trim, retime, crop, scale and fade a take through white so a loop has no visible cut."""
+    crop_w, crop_h, crop_x, crop_y = take["crop"]
+    fade = 0.3
+    return (
+        f"setpts=(PTS-STARTPTS)/{take['rate']},fps={FPS},"
+        f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},"
+        f"scale={size[0]}:{size[1]}:flags=lanczos,"
+        f"fade=t=in:st=0:d={fade}:color=white,"
+        f"fade=t=out:st={take['dur'] - fade}:d={fade}:color=white,format=rgba"
+    )
+
+
+def source_args(take: dict) -> list[str | Path]:
+    return [
+        "-ss",
+        take["trim"],
+        "-t",
+        take["dur"] * take["rate"],
+        "-i",
+        TAKES / take["file"],
+    ]
+
+
+def encode_webp(frames: Path, out: Path, quality: int, limit_mb: float) -> None:
+    """Assemble PNG frames into a looping animated WebP and enforce the size budget."""
+    images = [Image.open(f).convert("RGBA") for f in sorted(frames.glob("*.png"))]
+    images[0].save(
+        out,
+        save_all=True,
+        append_images=images[1:],
+        duration=round(1000 / FPS),
+        loop=0,
+        quality=quality,
+        method=6,
+    )
+    size = out.stat().st_size / 1e6
+    if size > limit_mb:
+        raise SystemExit(f"{out.name} is {size:.1f} MB, over the {limit_mb} MB budget")
+    print(f"{out.relative_to(ROOT)}: {size:.2f} MB, {len(images)} frames")
+
+
+def render_hero(browser: Browser, work: Path) -> None:
+    """Composite the build-up recording into the hero window, in both colour schemes."""
+    take = HERO_TAKE
+    inner = (498, 358)
+    mask = work / "hero-mask.png"
+    rounded_mask(inner, 13).save(mask)
+    poster_time = take["trim"] + (take["dur"] - 0.7) * take["rate"]
+    poster = work / "hero-poster.png"
+    ffmpeg(
+        "-ss",
+        poster_time,
+        "-i",
+        TAKES / take["file"],
+        "-frames:v",
+        1,
+        "-vf",
+        f"crop={take['crop'][0]}:{take['crop'][1]}:{take['crop'][2]}:{take['crop'][3]},scale={inner[0]}:{inner[1]}:flags=lanczos",
+        poster,
+    )
+    for scheme in ("light", "dark"):
+        base = work / f"hero-base-{scheme}.png"
+        base.write_bytes(
+            shoot(
+                browser,
+                ASSETS / "hero.html",
+                (1200, 440),
+                1,
+                scheme,
+                query="?layer=base",
+            )
+        )
+        bubble = work / f"hero-bubble-{scheme}.png"
+        bubble.write_bytes(
+            shoot(
+                browser,
+                ASSETS / "hero.html",
+                (1200, 440),
+                1,
+                scheme,
+                True,
+                "?layer=bubble",
+            )
+        )
+        out = ASSETS / f"hero-{scheme}.webp"
+        frames = work / f"frames-hero-{scheme}"
+        frames.mkdir()
+        ffmpeg(
+            "-loop",
+            1,
+            "-framerate",
+            FPS,
+            "-t",
+            take["dur"],
+            "-i",
+            base,
+            *source_args(take),
+            "-i",
+            mask,
+            "-loop",
+            1,
+            "-i",
+            bubble,
+            "-filter_complex",
+            f"[1:v]{clip_filter(take, inner)}[v];[2:v]format=gray[m];[v][m]alphamerge[va];"
+            "[0:v][va]overlay=647:41:shortest=1[b];[b][3:v]overlay=0:0:shortest=1,format=yuv420p[o]",
+            "-map",
+            "[o]",
+            "-an",
+            frames / "%04d.png",
+        )
+        encode_webp(frames, out, 72, 4)
+        (ASSETS / f"hero-{scheme}.png").write_bytes(
+            photo_png(
+                shoot(
+                    browser,
+                    ASSETS / "hero.html",
+                    (1200, 440),
+                    2,
+                    scheme,
+                    query=f"?frame={poster.as_uri()}",
+                )
+            )
+        )
+
+
+def render_gallery(work: Path) -> None:
+    """Encode the README gallery tiles: rounded, outlined, looping animated WebP."""
+    size = (600, 338)
+    mask = work / "tile-mask.png"
+    rounded_mask(size, 16).save(mask)
+    border = work / "tile-border.png"
+    outline(size, 16).save(border)
+    out_dir = ASSETS / "gallery"
+    out_dir.mkdir(exist_ok=True)
+    for take in GALLERY:
+        out = out_dir / f"{take['name']}.webp"
+        frames = work / f"frames-{take['name']}"
+        frames.mkdir()
+        ffmpeg(
+            *source_args(take),
+            "-i",
+            mask,
+            "-i",
+            border,
+            "-filter_complex",
+            f"[0:v]{clip_filter(take, size)}[v];[1:v]format=gray[m];[v][m]alphamerge[va];"
+            "[va][2:v]overlay=0:0:format=auto[o]",
+            "-map",
+            "[o]",
+            "-an",
+            frames / "%04d.png",
+        )
+        encode_webp(frames, out, 62, 2.5)
+
+
+def render_readme_media(browser: Browser) -> None:
+    """Render the hero and the gallery from the raw takes (needs ffmpeg)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(tmp)
+        render_hero(browser, work)
+        render_gallery(work)
+
+
 def installer_banner() -> str:
     return (
         f"<html><head>{FONT_LINK}</head><body style='margin:0;background:#fff'>"
@@ -145,9 +404,14 @@ def installer_dialog() -> str:
     )
 
 
-def main() -> None:
+def main(media_only: bool = False) -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
+
+        if media_only:
+            render_readme_media(browser)
+            browser.close()
+            return
 
         icons_dir = ASSETS / "icons"
         icons_dir.mkdir(exist_ok=True)
@@ -177,13 +441,12 @@ def main() -> None:
             shoot(browser, installer_dialog(), (493, 312))
         )
 
-        hero = ASSETS / "hero.html"
-        (ASSETS / "hero-light.png").write_bytes(
-            quantized_png(shoot(browser, hero, (1200, 440), 2, "light"))
-        )
-        (ASSETS / "hero-dark.png").write_bytes(
-            quantized_png(shoot(browser, hero, (1200, 440), 2, "dark"))
-        )
+        if TAKES.is_dir() and shutil.which("ffmpeg"):
+            render_readme_media(browser)
+        else:
+            print(
+                "Skipping README animations: needs ffmpeg and the raw takes in", TAKES
+            )
         (ASSETS / "social-card.png").write_bytes(
             shoot(browser, ASSETS / "social-card.html", (1280, 640))
         )
@@ -192,4 +455,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(media_only="--readme-media" in sys.argv[1:])
