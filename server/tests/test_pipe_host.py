@@ -11,7 +11,7 @@ from types import ModuleType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from revit_model_mcp import pipe_host
+from revit_model_mcp import package_version, pipe_host
 from revit_model_mcp.pipe_host import (
     PIPE_PROTOCOL,
     LocalPipeHost,
@@ -96,7 +96,7 @@ def write_heartbeat(directory: Path, protocols: list[str] | None) -> None:
         "updatedUtc": datetime.now(timezone.utc).isoformat(),
         "fileChannelVersion": 2,
         "startedUtc": "2026-09-24T00:00:00Z",
-        "addinVersion": "0.6.0",
+        "addinVersion": package_version(),
         "protocolVersion": 1,
         "commands": ["ping", "document-info"],
     }
@@ -184,7 +184,7 @@ class FakeRevit:
                             "instanceId": INSTANCE_ID,
                             "pid": PID,
                             "revitVersion": "2026",
-                            "addinVersion": "0.6.0",
+                            "addinVersion": package_version(),
                             "protocolVersion": 1,
                             "commands": ["ping", "document-info"],
                             "documents": [],
@@ -256,7 +256,7 @@ def test_pipe_is_selected_when_the_heartbeat_advertises_it(tmp_path: Path) -> No
             selected, job = await host.select_job(Job.ping())
             assert isinstance(selected, PipeJobHost)
             assert job.payload["targetProcessId"] == PID
-            assert selected.instance_info["addinVersion"] == "0.6.0"
+            assert selected.instance_info["addinVersion"] == package_version()
             assert selected.instance_info["commands"] == ["ping", "document-info"]
             instances = await host.list_revit_instances()
             assert instances[0]["pluginResponding"] is True
@@ -430,7 +430,6 @@ def test_local_heartbeat_preserves_http_listener_status(tmp_path, monkeypatch):
 def test_pipe_read_only_action_returns_refusal_and_read_raises():
     import pytest
 
-    from revit_model_mcp import package_version
     from revit_model_mcp.revit_channel import ReadOnlyRefusedError
 
     async def check():
@@ -457,8 +456,6 @@ def test_pipe_read_only_action_returns_refusal_and_read_raises():
 
 
 def test_pipe_read_only_cancel_returns_refusal():
-    from revit_model_mcp import package_version
-
     async def check():
         connection = MagicMock()
         connection.request = AsyncMock(return_value={"type": "error", "error": "read_only"})
@@ -505,7 +502,6 @@ def test_pipe_move_failure_deletes_source_image(tmp_path):
 def test_pipe_policy_read_only_and_denial_keep_the_organization_text():
     import pytest
 
-    from revit_model_mcp import package_version
     from revit_model_mcp.revit_channel import PolicyRefusedError, RevitChannelError
 
     text = "Blocked by organization policy: the workstation is read-only."
