@@ -409,6 +409,9 @@ jobs:
           if (@($json.external_endpoints).Count -ne 0) { throw 'The store tool manifest must declare no external endpoints' }
           if (@($json.ai_llm_providers).Count -ne 0) { throw 'The store tool manifest must declare no AI providers' }
           if (@($json.tools).Count -eq 0) { throw 'The store tool manifest lists no tools' }
+          foreach ($tool in $json.tools) {
+            if ($tool.inputSchema -isnot [System.Management.Automation.PSCustomObject]) { throw "Tool $($tool.name) must have an inputSchema object" }
+          }
       - name: Generate CycloneDX SBOMs
         shell: pwsh
         run: |

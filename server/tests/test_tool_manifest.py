@@ -114,7 +114,7 @@ def test_committed_manifest_has_neutral_keys():
 
 
 @pytest.mark.parametrize("managed", [False, True])
-def test_snake_case_export(generator, built, tmp_path, managed):
+def test_snake_case_export(generator, built, registry, tmp_path, managed):
     output = tmp_path / "nested" / "export.json"
     argv = ["tool_manifest.py", "--export-snake-case", str(output)]
     if managed:
@@ -122,9 +122,16 @@ def test_snake_case_export(generator, built, tmp_path, managed):
     with patch("sys.argv", argv):
         generator["main"]()
     exported = json.loads(output.read_text(encoding="utf-8"))
+    input_schemas = {tool.name: tool.input_schema for tool in registry[0]}
     assert exported["tools"] == [
-        {"name": tool["name"], "description": tool["description"]} for tool in built["tools"]
+        {
+            "name": tool["name"],
+            "description": tool["description"],
+            "inputSchema": input_schemas[tool["name"]],
+        }
+        for tool in built["tools"]
     ]
+    assert all(tool["inputSchema"]["type"] == "object" for tool in exported["tools"])
     assert "mcp_manifest_version" in exported
     assert "app_model" in exported
     assert [e["domain"] for e in exported["external_endpoints"]] == (
