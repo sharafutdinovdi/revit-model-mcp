@@ -285,7 +285,8 @@ def build_manifest(tools, resources, prompts, managed=False) -> dict:
     }
 
 
-def export_snake_case(manifest: dict) -> dict:
+def export_snake_case(manifest: dict, tools) -> dict:
+    input_schemas = {tool.name: tool.input_schema for tool in tools}
     return {
         "mcp_manifest_version": "1.0",
         "app_model": "A",
@@ -295,7 +296,11 @@ def export_snake_case(manifest: dict) -> dict:
             "transport": manifest["server"]["transport"],
         },
         "tools": [
-            {"name": tool["name"], "description": tool["description"]}
+            {
+                "name": tool["name"],
+                "description": tool["description"],
+                "inputSchema": input_schemas[tool["name"]],
+            }
             for tool in manifest["tools"]
         ],
         "resources": [dict(item) for item in manifest["resources"]],
@@ -346,8 +351,9 @@ def main() -> None:
     if args.output is None:
         args.output = MANAGED_MANIFEST_PATH if args.managed else MANIFEST_PATH
 
+    tools = asyncio.run(mcp.list_tools())
     manifest = build_manifest(
-        asyncio.run(mcp.list_tools()),
+        tools,
         asyncio.run(mcp.list_resources()),
         asyncio.run(mcp.list_prompts()),
         managed=args.managed,
@@ -355,7 +361,7 @@ def main() -> None:
     if args.export_snake_case:
         args.export_snake_case.parent.mkdir(parents=True, exist_ok=True)
         args.export_snake_case.write_text(
-            render(export_snake_case(manifest)), encoding="utf-8"
+            render(export_snake_case(manifest, tools)), encoding="utf-8"
         )
         print(f"Wrote snake_case export to {args.export_snake_case}")
         return

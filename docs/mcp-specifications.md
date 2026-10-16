@@ -36,6 +36,7 @@ All requests are HTTPS, carry no model data, and can be turned off. The Autodesk
 | `pypi.org`, `files.pythonhosted.org` | uv launcher | Package download when the server starts for the first time | No (the store build does not use the uv launcher) |
 
 No other domain is contacted. The committed manifest lists the domains of the regular build; the managed manifest (`--managed`) has none, and the release workflow attaches the store export `revit-model-mcp-<version>-store.mcp-manifest.json`, made from the managed manifest with `--export-snake-case`, with `external_endpoints` and `ai_llm_providers` empty. See the [full table](admin/security-whitepaper.md#outbound-network).
+Each tool in the store export includes the server's advertised `inputSchema`.
 
 ## Code execution in the store build
 
