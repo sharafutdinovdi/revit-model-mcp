@@ -21,6 +21,12 @@ public sealed class ResponderInfo
 [DataContract]
 public sealed class CatalogData
 {
+    [DataMember(Name = "total")]
+    public int Total { get; set; }
+
+    [DataMember(Name = "hasMore")]
+    public bool HasMore { get; set; }
+
     [DataMember(Name = "section")]
     public string Section { get; set; } = string.Empty;
 

@@ -876,13 +876,18 @@ async def revit_parameter_fill_check(
 @addressed_tool
 async def revit_list_catalog(
     section: str,
+    name_contains: NameContains = None,
+    limit: Annotated[int, Field(ge=1, le=2000)] = 200,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters."""
+    """List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore."""
     return await _execute(
-        Job.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document
+        Job.list_catalog(section, name_contains, limit),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
     )
 
 

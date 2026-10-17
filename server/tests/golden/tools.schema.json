@@ -2824,6 +2824,23 @@
         ],
         "default": null
       },
+      "limit": {
+        "default": 200,
+        "maximum": 2000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "name_contains": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "pickup_timeout_seconds": {
         "default": 300,
         "type": "integer"

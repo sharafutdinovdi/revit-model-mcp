@@ -54,11 +54,13 @@ internal static class UniversalJobParser
     public static ControlJobParseResult ParseCatalog(ControlJobContract job)
     {
         var section = Normalize(job.Section);
+        if (job.Limit is < 1 or > 2000)
+            return ControlJobParseResult.Invalid("list-catalog", "limit must be between 1 and 2000.");
         return section is null || !CatalogSections.Contains(section)
             ? ControlJobParseResult.Invalid(
                 "list-catalog",
                 $"Unknown catalog section: {section ?? "<empty>"}. Available sections: {string.Join(", ", CatalogSections)}.")
-            : WithCatalog(section);
+            : WithCatalog(section, job);
     }
 
     public static ControlJobParseResult ParseWarnings(ControlJobContract job)
@@ -193,10 +195,12 @@ internal static class UniversalJobParser
         result.Limit = common.Limit;
     }
 
-    private static ControlJobParseResult WithCatalog(string section)
+    private static ControlJobParseResult WithCatalog(string section, ControlJobContract job)
     {
         var result = ControlJobParseResult.Create(ControlJobKind.ListCatalog, "list-catalog");
         result.CatalogSection = section;
+        result.NameContains = Normalize(job.NameContains);
+        result.Limit = job.Limit ?? 200;
         return result;
     }
 

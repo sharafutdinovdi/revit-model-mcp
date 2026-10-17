@@ -388,10 +388,15 @@ class Job:
         return cls("aggregate-elements", payload)
 
     @classmethod
-    def list_catalog(cls, section: str) -> Job:
+    def list_catalog(cls, section: str, name_contains: str | None = None, limit: int = 200) -> Job:
         return cls(
             "list-catalog",
-            {"command": "list-catalog", "section": _required_text(section, "section")},
+            {
+                "command": "list-catalog",
+                "section": _required_text(section, "section"),
+                "nameContains": _optional_text(name_contains),
+                "limit": limit,
+            },
         )
 
     @classmethod

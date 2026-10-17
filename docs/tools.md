@@ -71,7 +71,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
 | `revit_ui_state` | None | Read the active document and view, open UI views, up to 500 selected elements, and all open documents. |
-| `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
+| `revit_list_catalog` | `section`, `name_contains=null`, `limit=200` (1 to 2000) | Discover names with a case-insensitive filter. Returns `total` before the limit and `hasMore`. |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |

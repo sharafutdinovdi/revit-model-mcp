@@ -238,7 +238,14 @@ EXPECTED_PARAMETERS = {
     "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],
     "revit_ui_state": [],
-    "revit_list_catalog": ["section", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_list_catalog": [
+        "section",
+        "name_contains",
+        "limit",
+        "timeout_seconds",
+        "pickup_timeout_seconds",
+        "document",
+    ],
     "revit_aggregate_elements": [
         "group_by",
         "sum_field",
@@ -1015,3 +1022,37 @@ def test_server_import_does_not_load_workbook_dependencies():
         text=True,
         timeout=30,
     )
+
+
+@pytest.mark.parametrize(
+    "arguments, expected_filter, expected_limit",
+    [({}, None, 200), ({"name_contains": "Door", "limit": 12}, "Door", 12)],
+)
+def test_catalog_filter_and_limit_payload(arguments, expected_filter, expected_limit):
+    import asyncio
+
+    execute = AsyncMock(return_value={"success": True})
+    with patch.object(revit_server, "_execute", execute):
+        asyncio.run(
+            revit_server.mcp.call_tool(
+                "revit_list_catalog", {"section": "family-types", **arguments}
+            )
+        )
+    assert execute.await_args.args[0].payload == {
+        "command": "list-catalog",
+        "section": "family-types",
+        "nameContains": expected_filter,
+        "limit": expected_limit,
+    }
+
+
+@pytest.mark.parametrize("limit", [0, 2001])
+def test_catalog_rejects_invalid_limit(limit):
+    import asyncio
+
+    execute = AsyncMock()
+    with patch.object(revit_server, "_execute", execute), pytest.raises(Exception):
+        asyncio.run(
+            revit_server.mcp.call_tool("revit_list_catalog", {"section": "levels", "limit": limit})
+        )
+    execute.assert_not_awaited()

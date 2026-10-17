@@ -89,7 +89,12 @@ class UniversalJobTests(unittest.TestCase):
     def test_forms_catalog_warnings_and_relations_jobs(self) -> None:
         self.assertEqual(
             Job.list_catalog(" parameters ").payload,
-            {"command": "list-catalog", "section": "parameters"},
+            {
+                "command": "list-catalog",
+                "section": "parameters",
+                "nameContains": None,
+                "limit": 200,
+            },
         )
         self.assertEqual(
             Job.list_warnings(" Walls overlap ", True).payload,

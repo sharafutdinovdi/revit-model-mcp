@@ -171,7 +171,7 @@ internal static class ReadCommandExecutor
                     WriteSuccess(output, job.Command, ElementQueryReader.ReadAggregate(document, job), stopwatch);
                     break;
                 case ControlJobKind.ListCatalog:
-                    WriteSuccess(output, job.Command, CatalogReader.Read(document, job.CatalogSection!), stopwatch);
+                    WriteSuccess(output, job.Command, CatalogReader.Read(document, job.CatalogSection!, job.NameContains, job.Limit), stopwatch);
                     break;
                 case ControlJobKind.ListWarnings:
                     WriteSuccess(
