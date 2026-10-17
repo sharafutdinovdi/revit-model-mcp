@@ -9,6 +9,19 @@ permissions:
   contents: read
 
 jobs:
+  # Branch protection requires CI / test.
+  test:
+    needs: [bundle, python, core-tests, addin-build, installer]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all CI jobs to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
+
   bundle:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -610,16 +623,3 @@ jobs:
           retention-days: 90
           path: output/revit-model-mcp-${{ env.CI_VERSION }}-managed.bundle.zip
           if-no-files-found: error
-
-  # Branch protection requires CI / test.
-  test:
-    needs: [bundle, python, core-tests, addin-build, installer]
-    if: always()
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Require all CI jobs to pass
-        env:
-          RESULTS: ${{ toJSON(needs) }}
-        run: |
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
