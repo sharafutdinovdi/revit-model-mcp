@@ -293,7 +293,7 @@ internal sealed class ControlChannel
                     JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument)))
             {
                 TryWriteError(application, parsed.Command,
-                    $"Target document '{parsed.TargetDocument}' is no longer open; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
+                    $"Target document '{parsed.TargetDocument}' is not open; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
                     startedAt, parsed.CorrelationId);
                 return;
             }
