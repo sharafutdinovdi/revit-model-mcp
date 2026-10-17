@@ -2159,3 +2159,47 @@ def test_addin_family_audit_bounds_wildcard_and_reports_every_skipped_name():
     assert "skipped?.AddRange(editable.Skip(200)" in source
     assert "What = family.Name" in source
     assert "editable.Count > 200 && skipped is null" in source
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        {"save": {"mode": "output_dir", "output_dir": r"C:\Out"}},
+        {"exports": [{"format": "ifc"}]},
+        {"exports": [{"format": "ifc", "output_dir": r"C:\Out\{model}"}]},
+    ],
+)
+def test_process_models_refuses_output_name_collisions_before_submission(output):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(ToolError, match="Sources share a model name") as error:
+        asyncio.run(
+            server.call_tool(
+                "revit_process_models",
+                {
+                    "paths": [r"C:\First\Model.rvt", "D:/Second/MODEL.RVT"],
+                    **output,
+                },
+            )
+        )
+    assert '"Model"' in str(error.value)
+    assert r"C:\First\Model.rvt" in str(error.value)
+    assert "D:/Second/MODEL.RVT" in str(error.value)
+    execute.assert_not_awaited()
+
+
+def test_process_models_accepts_distinct_output_names():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\First\A.rvt", r"D:\Second\B.rvt"],
+                "save": {"mode": "output_dir", "output_dir": r"C:\Out"},
+            },
+        )
+    )
+    execute.assert_awaited_once()

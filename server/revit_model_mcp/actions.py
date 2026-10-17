@@ -1861,6 +1861,29 @@ def register_actions(mcp, execute, host_provider) -> None:
                 or not pattern.lower().endswith(".rvt")
             ):
                 raise ValueError("pattern must be a .rvt file name pattern.")
+            if paths and (
+                (save and save.mode == "output_dir")
+                or any(
+                    request.output_dir is None or "{model}" in request.output_dir
+                    for request in exports or []
+                )
+            ):
+                groups: dict[str, list[str]] = {}
+                for path in paths:
+                    groups.setdefault(PureWindowsPath(path).stem.casefold(), []).append(path)
+                collisions = [group for group in groups.values() if len(group) > 1]
+                if collisions:
+                    listed = "; ".join(
+                        f'"{PureWindowsPath(group[0]).stem}" ({", ".join(group)})'
+                        for group in collisions[:5]
+                    )
+                    if len(collisions) > 5:
+                        listed += f", and {len(collisions) - 5} more"
+                    raise ValueError(
+                        "Sources share a model name, so their outputs would overwrite each other: "
+                        + listed
+                        + ". Process them in separate calls or with different output folders."
+                    )
             if save and save.mode == "output_dir" and paths:
                 targets = {
                     str(PureWindowsPath(save.output_dir) / PureWindowsPath(path).name).casefold()
