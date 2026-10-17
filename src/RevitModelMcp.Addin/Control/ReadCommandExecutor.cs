@@ -67,10 +67,7 @@ internal static class ReadCommandExecutor
                 WriteSuccess(output, job.Command, xml, stopwatch);
                 return;
             }
-            var document = job.Kind is ControlJobKind.ViewInfo or ControlJobKind.ModelSnapshot or ControlJobKind.ScheduleData or ControlJobKind.CaptureElements
-                ? ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)
-                : application.ActiveUIDocument?.Document
-                    ?? throw new InvalidOperationException("No active Revit document.");
+            var document = ActionCommandExecutor.ResolveDocument(application, job.TargetDocument);
             if (job.Command == "compare-link-datums")
             {
                 WriteSuccess(output, job.Command, LinkDatumReader.Read(document, job.Action!.DatumOptions!), stopwatch);
@@ -96,7 +93,7 @@ internal static class ReadCommandExecutor
                     WriteSuccess(output, job.Command, ParameterFillReader.Read(document, job.CoordinatorJob), stopwatch);
                     break;
                 case ControlJobKind.DocumentInfo:
-                    WriteSuccess(output, job.Command, ReadCommandReader.ReadDocumentInfo(application), stopwatch);
+                    WriteSuccess(output, job.Command, ReadCommandReader.ReadDocumentInfo(document), stopwatch);
                     break;
                 case ControlJobKind.ListViews:
                     var views = ReadCommandReader.ReadViews(

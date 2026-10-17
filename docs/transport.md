@@ -428,7 +428,8 @@ Actions and undirected reads require exactly one running Revit process.
 Directed reads require exactly one active document matching the case-insensitive title or file-name substring.
 Zero or multiple matches fail before publication.
 Actions retain their open-document resolution inside the selected process.
-After pickup, a directed read rechecks the active document and returns a correlated error if it changed to a non-matching model.
+After pickup, a directed read resolves the target among open documents and can read an inactive document.
+If the target closed, the error names the target and active documents and suggests passing `document` or calling `revit_activate_document`.
 
 A fresh heartbeat and an existing process are pre-checks.
 For v2 the server performs a bounded ping handshake with a fresh `correlationId` in the selected directory.

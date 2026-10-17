@@ -2113,3 +2113,19 @@ def test_read_only_action_result_has_error_code(name, arguments, command):
     }
     execute.assert_not_awaited()
     host.list_revit_instances.assert_not_awaited()
+
+
+def test_addin_reads_resolve_open_target_after_document_switch():
+    root = Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Addin/Control"
+    channel = (root / "ControlChannel.cs").read_text()
+    assert "application.Application.Documents.Cast<Autodesk.Revit.DB.Document>()" in channel
+    assert "Target document '{parsed.TargetDocument}' is no longer open" in channel
+    assert "the active document is" in channel
+    for name in ("ReadCommandExecutor.cs", "ViewElementsSession.cs"):
+        source = (root / name).read_text()
+        assert "ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)" in source
+        assert "application.ActiveUIDocument?.Document" not in source
+    assert (
+        "ReadCommandReader.ReadDocumentInfo(document)"
+        in (root / "ReadCommandExecutor.cs").read_text()
+    )

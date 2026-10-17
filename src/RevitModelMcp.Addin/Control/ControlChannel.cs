@@ -289,8 +289,14 @@ internal sealed class ControlChannel
         if (!ActionJobParser.IsAction(parsed.Command) && parsed.TargetDocument is not null &&
             !JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, parsed.TargetDocument))
         {
-            TryWriteError(application, parsed.Command, "The active document no longer matches the target document.", startedAt, parsed.CorrelationId);
-            return;
+            if (!application.Application.Documents.Cast<Autodesk.Revit.DB.Document>().Any(candidate =>
+                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument)))
+            {
+                TryWriteError(application, parsed.Command,
+                    $"Target document '{parsed.TargetDocument}' is no longer open; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
+                    startedAt, parsed.CorrelationId);
+                return;
+            }
         }
         if (parsed.Kind == ControlJobKind.Jobs)
         {
