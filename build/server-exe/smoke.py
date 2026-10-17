@@ -85,6 +85,7 @@ def main() -> None:
         "REVIT_MCP_HOST": "local",
         "REVIT_MCP_NO_UPDATE_CHECK": "1",
     }
+    initialize_started = time.perf_counter()
     process = subprocess.Popen(
         command,
         stdin=subprocess.PIPE,
@@ -138,11 +139,15 @@ def main() -> None:
 
     send(initialize)
     server = wait_response(1, "initialize")["result"]["serverInfo"]
-    print(f"initialize: {server['name']} {server.get('version')}")
+    print(
+        f"initialize: {server['name']} {server.get('version')} "
+        f"({time.perf_counter() - initialize_started:.3f} s)"
+    )
     send(initialized)
+    tools_started = time.perf_counter()
     send(tools_list)
     count = len(wait_response(2, "tools/list")["result"]["tools"])
-    print(f"tools/list: {count} tools")
+    print(f"tools/list: {count} tools ({time.perf_counter() - tools_started:.3f} s)")
 
     assert process.stdin is not None
     process.stdin.close()
