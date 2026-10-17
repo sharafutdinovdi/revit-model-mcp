@@ -20,12 +20,13 @@ You do not need Revit or Windows for the Python server, the Core library, tests 
 cd server && uv run --with pytest pytest -q
 dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
 uv tool install pre-commit && pre-commit install
-SKIP=dotnet-format pre-commit run --all-files
+pre-commit run --all-files
 ```
 
 The first command runs the Python server tests, which use mocked transports and a fake HTTP server.
 The second runs the Core C# tests on Windows, macOS or Linux with the SDK from `global.json`.
-The `dotnet-format` hook needs Windows, so skip it elsewhere; the Windows PR checks verify C# formatting and build the add-in for every Revit year.
+The `dotnet-format` hook prints a notice and exits successfully on macOS and Linux.
+Windows PR checks verify C# formatting and build the add-in for every Revit year.
 Only changes under `src/RevitModelMcp.Addin` need Windows to build locally.
 
 ### Labels and milestones
@@ -80,7 +81,8 @@ Path labels are applied automatically; `enhancement`, `bug`, `docs` and `depende
 
 ## Local checks
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.11+, the .NET SDK selected by `global.json`, and actionlint 1.7.12 on PATH.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.11+, and the .NET SDK selected by `global.json`.
+The actionlint hook installs version 1.7.12 in an isolated Go environment; Go must be available for the initial setup.
 Run from the repository root:
 
 ```sh
@@ -91,7 +93,8 @@ pre-commit run --all-files
 
 The hooks apply Ruff 0.16.10 fixes and formatting, verify C# formatting, lint workflows, and check file endings, whitespace, YAML and JSON.
 The C# hook sets `Configuration=Debug.R26` and `DeployAddin=false` and runs once when C# files change.
-Full solution formatting requires Windows; macOS and Linux contributors can run `SKIP=dotnet-format pre-commit run --all-files` and use the Windows PR check for C# formatting.
+Full solution formatting requires Windows.
+On macOS and Linux, the hook prints a notice and exits successfully; Windows PR CI verifies C# formatting.
 Review hook edits and stage them before committing again.
 
 ## Build and test

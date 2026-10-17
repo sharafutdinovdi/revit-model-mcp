@@ -27,8 +27,8 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-The C# hook requires Windows; on macOS or Linux, report its result and use Windows PR CI as the oracle.
-See [Local checks](CONTRIBUTING.md#local-checks) for prerequisites and the platform-specific skip command.
+The C# hook prints a notice and exits successfully on macOS and Linux; Windows PR CI verifies C# formatting.
+See [Local checks](CONTRIBUTING.md#local-checks) for prerequisites and hook behavior on each platform.
 Use the SDK in `global.json`.
 Run from the repository root on Windows:
 
