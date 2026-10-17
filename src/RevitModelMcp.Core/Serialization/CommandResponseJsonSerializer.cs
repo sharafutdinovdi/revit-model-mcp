@@ -27,7 +27,7 @@ public static class CommandResponseJsonSerializer
     {
         using var input = new MemoryStream(Encoding.UTF8.GetBytes(match.Value));
         var value = (string)StringSerializer.ReadObject(input)!;
-        value = Regex.Replace(value, @"(?:[A-Za-z]:[\\/]|\\\\|RSN://)[^""'\r\n,;<>|]+",
+        value = Regex.Replace(value, @"(?:(?<![A-Za-z])[A-Za-z]:[\\/]|\\\\|RSN://)[^""'\r\n,;<>|]+",
             path => Path.GetFileName(path.Value.Replace('\\', '/')));
         using var output = new MemoryStream();
         StringSerializer.WriteObject(output, value);

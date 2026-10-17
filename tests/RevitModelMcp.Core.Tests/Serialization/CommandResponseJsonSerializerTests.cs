@@ -11,6 +11,19 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    [Arguments("https://host/a/b", "https://host/a/b")]
+    [Arguments("file:///a/b.rvt", "file:///a/b.rvt")]
+    [Arguments(@"C:\a\b.rvt", "b.rvt")]
+    [Arguments(@"\\srv\share\x.rvt", "x.rvt")]
+    public async Task RedactPaths_PreservesUrlsAndRedactsWindowsPaths(string value, string expected)
+    {
+        var response = CommandResponse<string>.Ok("test", value, 1);
+        var redacted = CommandResponseJsonSerializer.RedactPaths(CommandResponseJsonSerializer.Serialize(response));
+        using var json = JsonDocument.Parse(redacted);
+        await Assert.That(json.RootElement.GetProperty("data").GetString()).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task FamilyAudit_SerializesAllSkippedFamilies()
     {
         var data = new FamilyAuditData
