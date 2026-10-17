@@ -6,6 +6,18 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.10.0...v1.0.0) (2026-10-16)
+
+
+### Features
+
+* **build:** include inputSchema in the store MCP manifest ([#286](https://github.com/sharafutdinovdi/revit-model-mcp/issues/286)) ([9b488cb](https://github.com/sharafutdinovdi/revit-model-mcp/commit/9b488cb97f15668facc0ef8f834c2df08f02fc8c))
+
+
+### Documentation
+
+* refresh README with live Revit footage and example prompts ([#284](https://github.com/sharafutdinovdi/revit-model-mcp/issues/284)) ([8ddd24a](https://github.com/sharafutdinovdi/revit-model-mcp/commit/8ddd24a18f4fe4143f99cc7824961f2babf06e72))
+
 ## [0.10.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.9.1...v0.10.0) (2026-10-12)
 
 
