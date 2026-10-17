@@ -1194,7 +1194,7 @@ async def revit_family_audit(
     timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or ["*"]; family mode takes none."""
+    """Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or ["*"]; family mode takes none. The wildcard audits the first 200 editable families sorted by name; data.skipped lists each remaining name and reason, with skippedCount."""
     if families is not None and (not families or any(not name.strip() for name in families)):
         raise ToolError("families must contain 1 to 200 non-empty names.")
     if families is not None and "*" in families and families != ["*"]:

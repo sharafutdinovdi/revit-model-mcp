@@ -2147,3 +2147,15 @@ def test_process_models_dry_run_forces_auto_transaction_and_warns():
         "existing warning",
         "dry_run forced transaction=auto",
     ]
+
+
+def test_addin_family_audit_bounds_wildcard_and_reports_every_skipped_name():
+    source = (
+        Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Addin/Capture/FamilyAuditReader.cs"
+    ).read_text()
+    assert "SelectFamilies(document, names, result.Skipped)" in source
+    assert ".OrderBy(family => family.Name, StringComparer.OrdinalIgnoreCase)" in source
+    assert "editable.Take(200)" in source
+    assert "skipped?.AddRange(editable.Skip(200)" in source
+    assert "What = family.Name" in source
+    assert "editable.Count > 200 && skipped is null" in source

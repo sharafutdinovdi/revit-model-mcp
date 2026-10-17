@@ -5,6 +5,9 @@ namespace RevitModelMcp.Core.Models;
 [DataContract]
 public sealed class FamilyAuditData
 {
+    [DataMember(Name = "skipped")] public List<SkippedRead> Skipped { get; set; } = [];
+    [DataMember(Name = "skippedCount")] public int SkippedCount { get; set; }
+
     [DataMember(Name = "mode")] public string Mode { get; set; } = string.Empty;
     [DataMember(Name = "families")] public List<FamilyAuditFamily> Families { get; set; } = [];
 }

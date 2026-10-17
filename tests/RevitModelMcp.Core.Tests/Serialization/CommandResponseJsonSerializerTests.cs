@@ -11,6 +11,27 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task FamilyAudit_SerializesAllSkippedFamilies()
+    {
+        var data = new FamilyAuditData
+        {
+            Mode = "project",
+            SkippedCount = 150,
+            Skipped = Enumerable.Range(201, 150).Select(index => new SkippedRead
+            {
+                What = $"Family {index}",
+                Reason = "The audit is limited to the first 200 editable families."
+            }).ToList()
+        };
+        using var json = Parse(CommandResponse<FamilyAuditData>.Ok("family-audit", data, 1));
+        var result = json.RootElement.GetProperty("data");
+        await Assert.That(result.GetProperty("skippedCount").GetInt32()).IsEqualTo(150);
+        await Assert.That(result.GetProperty("skipped").GetArrayLength()).IsEqualTo(150);
+        await Assert.That(result.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("Family 201");
+        await Assert.That(result.GetProperty("skipped")[149].GetProperty("reason").GetString()).Contains("200");
+    }
+
+    [Test]
     public async Task ProcessModels_SerializesProgressAndCancelledResult()
     {
         var data = new ActionResultData
