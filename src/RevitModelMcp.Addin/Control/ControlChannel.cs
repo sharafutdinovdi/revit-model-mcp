@@ -1,9 +1,6 @@
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.Serialization.Json;
-using System.Text;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Batch;
@@ -236,20 +233,8 @@ internal sealed class ControlChannel
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { return null; }
     }
 
-    private static bool IsSuccessfulOrPartial(string json)
-    {
-        try
-        {
-            using var reader = JsonReaderWriterFactory.CreateJsonReader(
-                Encoding.UTF8.GetBytes(json), System.Xml.XmlDictionaryReaderQuotas.Max);
-            var response = XElement.Load(reader);
-            return response.Element("success")?.Value == "true" || response.Element("partial")?.Value == "true";
-        }
-        catch (Exception exception) when (exception is System.Xml.XmlException or System.Runtime.Serialization.SerializationException)
-        {
-            return false;
-        }
-    }
+    private static bool IsSuccessfulOrPartial(string json) =>
+        ResultEnvelope.TryReadFlags(json, out var success, out var partial) && (success || partial);
 
     public JobCancellation CancelJob(string jobId, string clientId) => CancelJob(jobId, clientId, true);
 

@@ -11,7 +11,6 @@ using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Linq;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Serialization;
 using RevitModelMcp.Output;
@@ -305,14 +304,38 @@ internal sealed class HttpChannel : IDisposable
                     return;
                 }
                 var result = await job.Completion.ConfigureAwait(false);
-                using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(result), System.Xml.XmlDictionaryReaderQuotas.Max);
-                var response = XElement.Load(reader);
-                if (response.Element("success")?.Value != "true")
+                if (!ResultEnvelope.TryReadFlags(result, out var success, out _) || !success)
                 {
                     await BytesAsync(context, 422, Encoding.UTF8.GetBytes(result), "application/json").ConfigureAwait(false);
                     return;
                 }
-                var fileName = response.Element("data")?.Element("fileName")?.Value;
+                string? fileName = null;
+                using (var reader = JsonReaderWriterFactory.CreateJsonReader(
+                           Encoding.UTF8.GetBytes(result), System.Xml.XmlDictionaryReaderQuotas.Max))
+                {
+                    reader.MoveToContent();
+                    reader.ReadStartElement();
+                    while (reader.MoveToContent() == System.Xml.XmlNodeType.Element)
+                    {
+                        if (reader.LocalName == "data")
+                        {
+                            using var dataReader = reader.ReadSubtree();
+                            dataReader.Read();
+                            dataReader.ReadStartElement();
+                            while (dataReader.MoveToContent() == System.Xml.XmlNodeType.Element)
+                            {
+                                if (dataReader.LocalName == "fileName")
+                                {
+                                    fileName = dataReader.ReadElementContentAsString();
+                                    break;
+                                }
+                                dataReader.Skip();
+                            }
+                            break;
+                        }
+                        reader.Skip();
+                    }
+                }
                 if (string.IsNullOrEmpty(fileName) || Path.GetFileName(fileName) != fileName)
                     throw new InvalidDataException("Invalid image artifact name.");
                 var imagePath = Path.Combine(ChannelDirectory.OutputDirectory, fileName);
