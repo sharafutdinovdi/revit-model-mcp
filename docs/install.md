@@ -115,6 +115,14 @@ The installers published on the [releases page](https://github.com/sharafutdinov
 The two installers are alternatives: install only one.
 Each refuses to install while the other is present, so uninstall the other first (**Apps > Installed apps**), then install.
 Upgrade within the same scope works in place.
+
+Machines that had both 0.9.0 installer scopes need leftover cleanup with Revit and the MCP server closed:
+
+1. Uninstall both the per-user and per-machine entries in **Apps > Installed apps**.
+2. Remove leftover `RevitModelMcp*` files and folders from `%APPDATA%\Autodesk\Revit\Addins\<year>\` and `%ProgramData%\Autodesk\Revit\Addins\<year>\` for each installed Revit year.
+3. Remove the leftover bundled server folders `%LOCALAPPDATA%\Programs\Model MCP\server` and `%ProgramFiles%\Model MCP\server`.
+4. Install one scope. Local settings and other retained data follow the [privacy cleanup instructions](privacy.md#data-retention).
+
 Run the installer with Revit closed, then start Revit and open a model.
 The installer replaces the add-in files and the `RevitModelMcp.addin` manifest it ships, even when an older developer build left a higher file version or a manifest with absolute paths. It leaves other add-ins in the same folder alone.
 Both support automatic updates; see [automatic updates](updates.md) for behavior and opt-out settings.
