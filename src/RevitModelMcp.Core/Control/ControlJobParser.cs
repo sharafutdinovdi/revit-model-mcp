@@ -403,6 +403,11 @@ public sealed class ControlJobParseResult
 
 public static class ControlJobParser
 {
+    private static readonly DataContractJsonSerializer JobSerializer = new(typeof(ControlJobContract),
+        new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true });
+    private static readonly DataContractJsonSerializer EnvelopeSerializer = new(typeof(JobEnvelope));
+    private static readonly Regex WorksetsProperty = new("\"worksets\"(?=\\s*:)", RegexOptions.Compiled);
+
     internal const int MaximumQueryLimit = 5000;
     internal const int MinPixelSize = 32;
     public static ControlJobParseResult Parse(string? content, IReadOnlyCollection<string>? trustedNetworkRoots = null)
@@ -418,11 +423,9 @@ public static class ControlJobParser
             if (isNwcExport)
                 content = Regex.Replace(content, "\"parameters\"(?=\\s*:)", "\"nwcParameters\"");
             if (Regex.IsMatch(content, "\"command\"\\s*:\\s*\"set-view-visibility\""))
-                content = Regex.Replace(content, "\"worksets\"(?=\\s*:)", "\"visibilityWorksets\"");
-            var serializer = new DataContractJsonSerializer(typeof(ControlJobContract),
-                new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true });
+                content = WorksetsProperty.Replace(content, "\"visibilityWorksets\"");
             using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
-            var job = serializer.ReadObject(stream) as ControlJobContract;
+            var job = JobSerializer.ReadObject(stream) as ControlJobContract;
             return job is null
                 ? ControlJobParseResult.Invalid("invalid", "The job JSON is empty.")
                 : ControlJobParseResult.FromContract(job, trustedNetworkRoots);
@@ -436,7 +439,7 @@ public static class ControlJobParser
             try
             {
                 using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
-                var envelope = new DataContractJsonSerializer(typeof(JobEnvelope)).ReadObject(stream) as JobEnvelope;
+                var envelope = EnvelopeSerializer.ReadObject(stream) as JobEnvelope;
                 if (envelope is not null)
                 {
                     result = ControlJobParseResult.Invalid(envelope.Command ?? "invalid", result.Error!, isNwcExport ? null : exception);

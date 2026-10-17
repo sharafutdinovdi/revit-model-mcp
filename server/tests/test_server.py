@@ -4,6 +4,8 @@ import base64
 import json
 import os
 import runpy
+import subprocess
+import sys
 import tomllib
 import unittest
 from datetime import datetime, timezone
@@ -997,3 +999,19 @@ async def test_job_validation_errors_become_tool_errors():
 
     with pytest.raises(ToolError, match="bad argument: limit"):
         await revit_ping()
+
+
+def test_server_import_does_not_load_workbook_dependencies():
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; import revit_model_mcp.server; "
+            "assert 'openpyxl' not in sys.modules; assert 'PIL' not in sys.modules",
+        ],
+        cwd=MCP_DIRECTORY,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )

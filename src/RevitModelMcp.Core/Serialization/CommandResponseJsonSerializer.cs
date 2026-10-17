@@ -10,15 +10,27 @@ namespace RevitModelMcp.Core.Serialization;
 
 public static class CommandResponseJsonSerializer
 {
+    private static readonly DataContractJsonSerializer StringSerializer = new(typeof(string));
+
+    private static class ResponseSerializer<T>
+    {
+        internal static readonly DataContractJsonSerializer Instance = new(
+            typeof(CommandResponse<T>),
+            new DataContractJsonSerializerSettings
+            {
+                UseSimpleDictionaryFormat = true,
+                EmitTypeInformation = System.Runtime.Serialization.EmitTypeInformation.Never
+            });
+    }
+
     public static string RedactPaths(string json) => Regex.Replace(json, "\"(?:\\\\.|[^\"\\\\])*\"", match =>
     {
-        var serializer = new DataContractJsonSerializer(typeof(string));
         using var input = new MemoryStream(Encoding.UTF8.GetBytes(match.Value));
-        var value = (string)serializer.ReadObject(input)!;
+        var value = (string)StringSerializer.ReadObject(input)!;
         value = Regex.Replace(value, @"(?:[A-Za-z]:[\\/]|\\\\|RSN://)[^""'\r\n,;<>|]+",
             path => Path.GetFileName(path.Value.Replace('\\', '/')));
         using var output = new MemoryStream();
-        serializer.WriteObject(output, value);
+        StringSerializer.WriteObject(output, value);
         return Encoding.UTF8.GetString(output.ToArray());
     });
 
@@ -29,15 +41,8 @@ public static class CommandResponseJsonSerializer
             throw new ArgumentNullException(nameof(response));
         }
 
-        var serializer = new DataContractJsonSerializer(
-            typeof(CommandResponse<T>),
-            new DataContractJsonSerializerSettings
-            {
-                UseSimpleDictionaryFormat = true,
-                EmitTypeInformation = System.Runtime.Serialization.EmitTypeInformation.Never
-            });
         using var stream = new MemoryStream();
-        serializer.WriteObject(stream, response);
+        ResponseSerializer<T>.Instance.WriteObject(stream, response);
         var json = Encoding.UTF8.GetString(stream.ToArray());
         if (response is CommandResponse<ActionResultData> { Command: "execute-code", Data: { } action })
         {

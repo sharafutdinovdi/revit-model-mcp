@@ -29,18 +29,18 @@ internal sealed class ViewElementReader
         var result = new ViewElementDump
         {
             Id = RevitValueReader.GetId(element.Id),
-            Category = TryRead($"element {RevitValueReader.GetId(element.Id)} category", () => element.Category?.Name),
-            Family = TryRead($"element {RevitValueReader.GetId(element.Id)} family", () => RevitValueReader.GetFamilyName(element)),
-            Type = TryRead($"element {RevitValueReader.GetId(element.Id)} type", () => RevitValueReader.GetTypeName(_document, element)),
-            Name = TryRead($"element {RevitValueReader.GetId(element.Id)} name", () => element.Name),
-            Level = TryRead($"element {RevitValueReader.GetId(element.Id)} level", () => GetLevelName(element)),
-            Workset = TryRead($"element {RevitValueReader.GetId(element.Id)} workset", () => GetWorksetName(element)),
-            Phase = TryRead($"element {RevitValueReader.GetId(element.Id)} phase", () => GetPhaseName(element)),
+            Category = TryRead(RevitValueReader.GetId(element.Id), "category", () => element.Category?.Name),
+            Family = TryRead(RevitValueReader.GetId(element.Id), "family", () => RevitValueReader.GetFamilyName(element)),
+            Type = TryRead(RevitValueReader.GetId(element.Id), "type", () => RevitValueReader.GetTypeName(_document, element)),
+            Name = TryRead(RevitValueReader.GetId(element.Id), "name", () => element.Name),
+            Level = TryRead(RevitValueReader.GetId(element.Id), "level", () => GetLevelName(element)),
+            Workset = TryRead(RevitValueReader.GetId(element.Id), "workset", () => GetWorksetName(element)),
+            Phase = TryRead(RevitValueReader.GetId(element.Id), "phase", () => GetPhaseName(element)),
             HasWarnings = _warningElementIds.Contains(RevitValueReader.GetId(element.Id))
         };
 
         ReadParameters(element, result, true);
-        var type = TryRead($"element {RevitValueReader.GetId(element.Id)} type", () => _document.GetElement(element.GetTypeId()));
+        var type = TryRead(RevitValueReader.GetId(element.Id), "type", () => _document.GetElement(element.GetTypeId()));
         if (type is not null)
         {
             ReadParameters(type, result, false);
@@ -65,7 +65,7 @@ internal sealed class ViewElementReader
             result.Room = ReadRoom(room);
         }
 
-        var type = TryRead($"element {RevitValueReader.GetId(element.Id)} type", () => _document.GetElement(element.GetTypeId()));
+        var type = TryRead(RevitValueReader.GetId(element.Id), "type", () => _document.GetElement(element.GetTypeId()));
         if (type is null)
         {
             return result;
@@ -74,8 +74,8 @@ internal sealed class ViewElementReader
         result.TypeElement = new ElementTypeDetails
         {
             Id = RevitValueReader.GetId(type.Id),
-            Family = TryRead($"type {RevitValueReader.GetId(type.Id)} family", () => RevitValueReader.GetFamilyName(type)),
-            Name = TryRead($"type {RevitValueReader.GetId(type.Id)} name", () => type.Name),
+            Family = TryRead(RevitValueReader.GetId(type.Id), "family", () => RevitValueReader.GetFamilyName(type), "type"),
+            Name = TryRead(RevitValueReader.GetId(type.Id), "name", () => type.Name, "type"),
             Parameters = ReadAllParameters(type)
         };
         return result;
@@ -170,7 +170,7 @@ internal sealed class ViewElementReader
 
     public string? GetTypeIdentity(Element element, ViewElementDump dump)
     {
-        var typeId = TryRead($"element {RevitValueReader.GetId(element.Id)} type ID", () => element.GetTypeId());
+        var typeId = TryRead(RevitValueReader.GetId(element.Id), "type ID", () => element.GetTypeId());
         if (RevitValueReader.IsValidId(typeId))
         {
             return RevitValueReader.GetId(typeId!).ToString(CultureInfo.InvariantCulture);
@@ -386,7 +386,7 @@ internal sealed class ViewElementReader
         return candidates.Any(candidate => string.Equals(name, candidate, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static T? TryRead<T>(string what, Func<T?> read)
+    private static T? TryRead<T>(long id, string what, Func<T?> read, string kind = "element")
     {
         try
         {
@@ -394,7 +394,7 @@ internal sealed class ViewElementReader
         }
         catch (Exception exception)
         {
-            PluginLog.Skipped(what, exception);
+            PluginLog.Skipped($"{kind} {id} {what}", exception);
             return default;
         }
     }

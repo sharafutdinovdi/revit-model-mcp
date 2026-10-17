@@ -12,6 +12,7 @@ namespace RevitModelMcp.Activity;
 /// </summary>
 internal static class ActivityLog
 {
+    private static readonly DataContractJsonSerializer Serializer = new(typeof(ActivityEntry));
     private const int MaxEntries = 500;
     private const long FileSizeLimitBytes = 5 * 1024 * 1024;
     private static readonly object SyncRoot = new();
@@ -72,9 +73,8 @@ internal static class ActivityLog
         try
         {
             Directory.CreateDirectory(LogDirectory);
-            var serializer = new DataContractJsonSerializer(typeof(ActivityEntry));
             using var stream = new MemoryStream();
-            serializer.WriteObject(stream, entry);
+            Serializer.WriteObject(stream, entry);
             var line = Encoding.UTF8.GetString(stream.ToArray());
             lock (SyncRoot)
             {

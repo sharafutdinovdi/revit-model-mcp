@@ -47,11 +47,12 @@ internal static class ModelHealthReader
 
     public static Dictionary<string, int?> ReadCounts(Document document, IReadOnlyCollection<string>? requested = null)
     {
+        var warnings = new Lazy<IList<FailureMessage>>(document.GetWarnings);
         var metrics = new Dictionary<string, Func<int>>
         {
             ["elements"] = () => Count(document, collector => collector.WhereElementIsNotElementType()),
-            ["warnings"] = () => document.GetWarnings().Count,
-            ["warningGroups"] = () => document.GetWarnings().Select(warning => warning.GetDescriptionText()).Distinct().Count(),
+            ["warnings"] = () => warnings.Value.Count,
+            ["warningGroups"] = () => warnings.Value.Select(warning => warning.GetDescriptionText()).Distinct().Count(),
             ["levels"] = () => CountClass<Level>(document),
             ["grids"] = () => CountClass<Grid>(document),
             ["views"] = () => CountClass<View>(document),

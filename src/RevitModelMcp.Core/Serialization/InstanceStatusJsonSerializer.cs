@@ -6,6 +6,8 @@ namespace RevitModelMcp.Core.Serialization;
 
 public static class InstanceStatusJsonSerializer
 {
+    private static readonly DataContractJsonSerializer Serializer = new(typeof(InstanceStatus));
+
     public static string Serialize(InstanceStatus status)
     {
         if (status is null)
@@ -13,9 +15,8 @@ public static class InstanceStatusJsonSerializer
             throw new ArgumentNullException(nameof(status));
         }
 
-        var serializer = new DataContractJsonSerializer(typeof(InstanceStatus));
         using var stream = new MemoryStream();
-        serializer.WriteObject(stream, status);
+        Serializer.WriteObject(stream, status);
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 }

@@ -21,18 +21,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
 from revit_model_mcp.batch import register_batch
-from revit_model_mcp.health_workbook import (
-    validate_health_path,
-    warning_ids,
-    write_health_workbook,
-)
 from revit_model_mcp.http_host import HttpHost
-from revit_model_mcp.issue_register import (
-    snapshot_indices,
-    validate_capture,
-    validate_register,
-    write_register,
-)
 from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.policy import policy_refusal
 from revit_model_mcp.revit_channel import (
@@ -45,7 +34,6 @@ from revit_model_mcp.revit_channel import (
     RevitChannelError,
     with_client_identity,
 )
-from revit_model_mcp.snapshot_report import build_report
 from revit_model_mcp.ssh_host import SshPowerShellHost
 from revit_model_mcp.toolsets import ENVIRONMENT_VARIABLE, TOOLSETS, apply_toolsets, parse_toolsets
 from revit_model_mcp.updates import check_for_updates, update_status
@@ -710,8 +698,16 @@ async def revit_model_health(
     ] = None,
 ) -> dict[str, Any]:
     """Read model quality counts: project metadata, file size, counts, units and the ten most frequent warning groups. Unavailable metrics are null and listed in skipped. output_path also writes an .xlsx health report with up to five snapshots."""
+    target = None
     try:
-        target = validate_health_path(output_path) if output_path is not None else None
+        if output_path is not None:
+            from revit_model_mcp.health_workbook import (
+                validate_health_path,
+                warning_ids,
+                write_health_workbook,
+            )
+
+            target = validate_health_path(output_path)
     except (OSError, ValueError) as error:
         raise ToolError(str(error)) from error
     health = await _execute(
@@ -1039,6 +1035,8 @@ async def revit_capture_elements(
     document: Document = None,
 ) -> CallToolResult:
     """Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back."""
+    from revit_model_mcp.issue_register import validate_capture
+
     try:
         validate_capture(element_ids, pixel_size, padding_mm, mode)
         result = await _execute(
@@ -1244,6 +1242,8 @@ def revit_build_report(
     """Build a local Excel report from snapshots without contacting Revit."""
     if (blocked := policy_refusal("revit_build_report")) is not None:
         raise ToolError(blocked)
+    from revit_model_mcp.snapshot_report import build_report
+
     try:
         return build_report(snapshots_dir, output_path, previous_dir, findings)
     except (OSError, ValueError, TypeError) as error:
@@ -1261,6 +1261,12 @@ async def revit_issue_register(
     """Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused."""
     if (blocked := policy_refusal("revit_issue_register")) is not None:
         raise ToolError(blocked)
+    from revit_model_mcp.issue_register import (
+        snapshot_indices,
+        validate_register,
+        write_register,
+    )
+
     try:
         target, project, issues = validate_register(output_path, project, issues, pixel_size)
         selected, skipped = snapshot_indices(issues)

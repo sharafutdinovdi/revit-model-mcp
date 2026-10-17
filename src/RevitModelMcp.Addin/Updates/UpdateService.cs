@@ -16,6 +16,11 @@ namespace RevitModelMcp.Updates;
 
 internal static class UpdateService
 {
+    private static class JsonSerializer<T>
+    {
+        internal static readonly DataContractJsonSerializer Instance = new(typeof(T));
+    }
+
     private const string ReleasePath = "/repos/sharafutdinovdi/revit-model-mcp/releases/latest";
     private static readonly string LocalDirectory = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp");
@@ -216,7 +221,7 @@ internal static class UpdateService
     {
         using var response = Request(uri).GetResponse();
         using var stream = response.GetResponseStream();
-        return stream is null ? null : new DataContractJsonSerializer(typeof(T)).ReadObject(stream) as T;
+        return stream is null ? null : JsonSerializer<T>.Instance.ReadObject(stream) as T;
     }
 
     private static string ReadText(Uri uri, Uri feed)
@@ -267,13 +272,13 @@ internal static class UpdateService
     {
         if (!File.Exists(path)) return null;
         using var file = File.OpenRead(path);
-        return new DataContractJsonSerializer(typeof(T)).ReadObject(file) as T;
+        return JsonSerializer<T>.Instance.ReadObject(file) as T;
     }
 
     private static void WriteJson<T>(string path, T value)
     {
         using var file = File.Create(path);
-        new DataContractJsonSerializer(typeof(T)).WriteObject(file, value);
+        JsonSerializer<T>.Instance.WriteObject(file, value);
     }
 
     private static void CreatePrivateDirectory(string path)
