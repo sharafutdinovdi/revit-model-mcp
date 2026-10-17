@@ -5,6 +5,22 @@ namespace RevitModelMcp.Core.Serialization;
 
 public static class ControlPayloadJsonSerializer
 {
+    private static readonly DataContractJsonSerializer Serializer = new(
+        typeof(Dictionary<string, object>),
+        new DataContractJsonSerializerSettings
+        {
+            UseSimpleDictionaryFormat = true,
+            KnownTypes = new[]
+            {
+                typeof(string[]),
+                typeof(int[]),
+                typeof(long[]),
+                typeof(object[]),
+                typeof(Dictionary<string, object>),
+                typeof(Dictionary<string, string>)
+            }
+        });
+
     public static string Serialize(Dictionary<string, object> value)
     {
         if (value is null)
@@ -12,23 +28,8 @@ public static class ControlPayloadJsonSerializer
             throw new ArgumentNullException(nameof(value));
         }
 
-        var serializer = new DataContractJsonSerializer(
-            typeof(Dictionary<string, object>),
-            new DataContractJsonSerializerSettings
-            {
-                UseSimpleDictionaryFormat = true,
-                KnownTypes = new[]
-                {
-                    typeof(string[]),
-                    typeof(int[]),
-                    typeof(long[]),
-                    typeof(object[]),
-                    typeof(Dictionary<string, object>),
-                    typeof(Dictionary<string, string>)
-                }
-            });
         using var stream = new MemoryStream();
-        serializer.WriteObject(stream, value);
+        Serializer.WriteObject(stream, value);
         return Encoding.UTF8.GetString(stream.ToArray());
     }
 }
