@@ -250,10 +250,10 @@ def test_capture_budget_preserves_register_and_skips_remaining(tmp_path):
 
     async def slow_capture(job, *_):
         calls.append(job)
-        await asyncio.sleep(1)
+        await asyncio.sleep(10)
 
     with (
-        patch.object(server, "ISSUE_CAPTURE_BUDGET_SECONDS", 0.01),
+        patch.object(server, "ISSUE_CAPTURE_BUDGET_SECONDS", 0.5),
         patch.object(server.channel, "execute", side_effect=slow_capture),
     ):
         result = asyncio.run(
@@ -266,6 +266,7 @@ def test_capture_budget_preserves_register_and_skips_remaining(tmp_path):
     assert len(calls) == 1
     assert result["snapshotCount"] == 0
     assert len(result["warnings"]) == 2
+    assert all("capture time budget exhausted" in warning for warning in result["warnings"])
     register = load_workbook(result["path"])["Register"]
     assert register["B2"].value == "Snapshot unavailable: capture time budget exhausted"
     assert register["B3"].value == "Snapshot skipped: capture time budget exhausted"

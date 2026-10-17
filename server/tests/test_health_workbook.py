@@ -232,18 +232,20 @@ def test_capture_budget_and_errors_keep_health_response(tmp_path, health):
         if job.command == "list-warnings":
             return {"data": {"groups": groups()}}
         captures.append(job)
-        await asyncio.sleep(1)
+        await asyncio.sleep(10)
 
     with (
         patch.object(server.channel, "execute", side_effect=execute),
-        patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.01),
+        patch.object(server, "HEALTH_CAPTURE_BUDGET_SECONDS", 0.5),
     ):
         result = asyncio.run(server.revit_model_health(output_path=str(tmp_path / "health.xlsx")))
     assert len(captures) == 1
     assert result["data"] == health["data"]
     assert result["workbook"]["snapshotCount"] == 0
     assert len(result["workbook"]["warnings"]) == 5
-    assert "time budget exhausted" in result["workbook"]["warnings"][-1]
+    warnings = result["workbook"]["warnings"]
+    assert warnings[0].endswith("Snapshot unavailable: capture time budget exhausted")
+    assert all(w.endswith("Snapshot skipped: capture time budget exhausted") for w in warnings[1:])
 
 
 def test_early_budget_timer_starts_one_capture(tmp_path, health):
