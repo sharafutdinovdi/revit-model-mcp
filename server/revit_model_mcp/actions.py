@@ -11,10 +11,6 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
-from revit_model_mcp.errors import (
-    ACTION_FAILED,
-    refusal,
-)
 from revit_model_mcp.policy import policy_gate
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
@@ -1049,9 +1045,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Compile and run C# against the live Revit API on the Revit thread. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction="none" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none."""
-        if transaction == "none" and dry_run:
-            return refusal("execute-code", ACTION_FAILED, "dry_run requires transaction='auto'.")
+        """Compile and run C# against the live Revit API on the Revit thread. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction="none" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction="auto"."""
+        if dry_run:
+            transaction = "auto"
         return await send(
             "execute-code",
             code=code,
@@ -1845,9 +1841,13 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=14400)] = 14400,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response."""
+        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run forces code.transaction="auto" and reports the override in warnings."""
         if (paths is None) == (folder is None):
             raise ToolError("Provide paths or folder, but not both.")
+        warnings = []
+        if dry_run and code and code.transaction == "none":
+            code = code.model_copy(update={"transaction": "auto"})
+            warnings.append("dry_run forced transaction=auto")
         try:
             for path in paths or []:
                 _validate_workstation_path(path)
@@ -1886,11 +1886,9 @@ def register_actions(mcp, execute, host_provider) -> None:
                 and any(path.upper().startswith("RSN://") for path in paths)
             ):
                 raise ValueError("in_place requires local or UNC non-workshared files.")
-            if dry_run and code and code.transaction == "none":
-                raise ValueError("dry_run requires code.transaction=auto.")
         except ValueError as error:
             raise ToolError(str(error)) from error
-        return await send(
+        response = await send(
             "process-models",
             process={
                 "paths": paths,
@@ -1916,6 +1914,9 @@ def register_actions(mcp, execute, host_provider) -> None:
             process_id=process_id,
             timeout_seconds=timeout_seconds,
         )
+        if warnings:
+            response.setdefault("warnings", []).extend(warnings)
+        return response
 
     @action
     async def revit_edit_families(

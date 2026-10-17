@@ -208,16 +208,15 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     assert execute.await_args.args[1] == 600
 
     execute.reset_mock()
-    refused = asyncio.run(
+    result = asyncio.run(
         server.call_tool(
             "revit_execute_code",
             {"code": "return 42;", "transaction": "none", "dry_run": True},
         )
     )
-    assert refused.structured_content["success"] is False
-    assert refused.structured_content["errorCode"] == "action_failed"
-    assert "dry_run requires" in refused.structured_content["error"]
-    execute.assert_not_awaited()
+    assert result.structured_content["success"] is True
+    assert execute.await_args.args[0].payload["transaction"] == "auto"
+    assert execute.await_args.args[0].payload["dryRun"] is True
     blocked, blocked_execute, _ = action_server(read_only=True)
     result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
     assert "read-only mode" in str(result)
@@ -282,11 +281,6 @@ def test_process_models_confirmation_flow_and_validation():
         {},
         {"paths": ["relative.rvt"]},
         {"paths": [r"C:\Models\A.rvt"], "folder": r"C:\Models"},
-        {
-            "paths": [r"C:\Models\A.rvt"],
-            "code": {"code": "return 1;", "transaction": "none"},
-            "dry_run": True,
-        },
         {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "output_dir", "output_dir": r"C:\Models"}},
         {
             "paths": [r"C:\Models\A.rvt"],
@@ -2129,3 +2123,27 @@ def test_addin_reads_resolve_open_target_after_document_switch():
         "ReadCommandReader.ReadDocumentInfo(document)"
         in (root / "ReadCommandExecutor.cs").read_text()
     )
+
+
+def test_process_models_dry_run_forces_auto_transaction_and_warns():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.return_value["warnings"] = ["existing warning"]
+    result = asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\Models\A.rvt"],
+                "code": {"code": "return 1;", "transaction": "none"},
+                "dry_run": True,
+            },
+        )
+    )
+    process = execute.await_args.args[0].payload["process"]
+    assert process["code"]["transaction"] == "auto"
+    assert process["dryRun"] is True
+    assert result.structured_content["warnings"] == [
+        "existing warning",
+        "dry_run forced transaction=auto",
+    ]
