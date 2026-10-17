@@ -1056,3 +1056,21 @@ def test_catalog_rejects_invalid_limit(limit):
             revit_server.mcp.call_tool("revit_list_catalog", {"section": "levels", "limit": limit})
         )
     execute.assert_not_awaited()
+
+
+def test_schedule_and_server_output_paths_describe_resolution():
+    import asyncio
+
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    schedule = tools["revit_schedule_data"].input_schema["properties"]["schedule"]
+    assert "Exact schedule name or decimal Revit view ID." in schedule["description"]
+    assert "Use the id when two schedules share a name." in schedule["description"]
+    for name in (
+        "revit_model_health",
+        "revit_capture_elements",
+        "revit_export_view",
+        "revit_build_report",
+        "revit_issue_register",
+    ):
+        output = tools[name].input_schema["properties"]["output_path"]
+        assert "resolved on the machine running this server" in output["description"]

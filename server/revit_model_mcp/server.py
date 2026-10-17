@@ -160,7 +160,7 @@ SaveTo = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("output_path", "outputPath"),
-        description="New PNG path on the MCP client machine; an existing file is an error. Default null downloads to a temporary directory and returns localPath.",
+        description="New PNG path, resolved on the machine running this server; an existing file is an error. Default null downloads to a temporary directory and returns localPath.",
     ),
 ]
 OptionalViewName = Annotated[
@@ -693,7 +693,7 @@ async def revit_model_health(
         str | None,
         Field(
             validation_alias=AliasChoices("output_path", "outputPath"),
-            description="New .xlsx health report path on the MCP server machine; parent must exist and existing files are refused.",
+            description="New .xlsx health report path, resolved on the machine running this server; parent must exist and existing files are refused.",
         ),
     ] = None,
 ) -> dict[str, Any]:
@@ -1016,7 +1016,12 @@ async def revit_view_summary(
 
 @addressed_tool
 async def revit_schedule_data(
-    schedule: Annotated[str, Field(description="Exact schedule name or decimal Revit view ID.")],
+    schedule: Annotated[
+        str,
+        Field(
+            description="Exact schedule name or decimal Revit view ID. (Use the id when two schedules share a name.)"
+        ),
+    ],
     max_rows: Annotated[int, Field(ge=1, le=5000)] = 500,
     offset: Annotated[int, Field(ge=0)] = 0,
     document: Document = None,
@@ -1227,7 +1232,7 @@ def revit_build_report(
         str,
         Field(
             validation_alias=AliasChoices("output_path", "outputPath"),
-            description="New .xlsx file path on the MCP client machine; existing files are never replaced.",
+            description="New .xlsx file path, resolved on the machine running this server; existing files are never replaced.",
         ),
     ],
     previous_dir: Annotated[
@@ -1257,7 +1262,12 @@ def revit_build_report(
 
 @addressed_tool
 async def revit_issue_register(
-    output_path: str,
+    output_path: Annotated[
+        str,
+        Field(
+            description="New .xlsx issue register path, resolved on the machine running this server; existing files are refused."
+        ),
+    ],
     project: dict[str, Any],
     issues: list[dict[str, Any]],
     pixel_size: PixelSize = 900,
