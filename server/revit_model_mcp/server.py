@@ -160,7 +160,7 @@ SaveTo = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("output_path", "outputPath"),
-        description="New PNG path on the MCP client machine; an existing file is an error. Default null downloads to a temporary directory and returns localPath.",
+        description="New PNG path, resolved on the machine running this server; an existing file is an error. Default null downloads to a temporary directory and returns localPath.",
     ),
 ]
 OptionalViewName = Annotated[
@@ -693,7 +693,7 @@ async def revit_model_health(
         str | None,
         Field(
             validation_alias=AliasChoices("output_path", "outputPath"),
-            description="New .xlsx health report path on the MCP server machine; parent must exist and existing files are refused.",
+            description="New .xlsx health report path, resolved on the machine running this server; parent must exist and existing files are refused.",
         ),
     ] = None,
 ) -> dict[str, Any]:
@@ -876,13 +876,18 @@ async def revit_parameter_fill_check(
 @addressed_tool
 async def revit_list_catalog(
     section: str,
+    name_contains: NameContains = None,
+    limit: Annotated[int, Field(ge=1, le=2000)] = 200,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters."""
+    """List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore."""
     return await _execute(
-        Job.list_catalog(section), timeout_seconds, pickup_timeout_seconds, document
+        Job.list_catalog(section, name_contains, limit),
+        timeout_seconds,
+        pickup_timeout_seconds,
+        document,
     )
 
 
@@ -1011,7 +1016,12 @@ async def revit_view_summary(
 
 @addressed_tool
 async def revit_schedule_data(
-    schedule: Annotated[str, Field(description="Exact schedule name or decimal Revit view ID.")],
+    schedule: Annotated[
+        str,
+        Field(
+            description="Exact schedule name or decimal Revit view ID. (Use the id when two schedules share a name.)"
+        ),
+    ],
     max_rows: Annotated[int, Field(ge=1, le=5000)] = 500,
     offset: Annotated[int, Field(ge=0)] = 0,
     document: Document = None,
@@ -1189,7 +1199,7 @@ async def revit_family_audit(
     timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or ["*"]; family mode takes none."""
+    """Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or ["*"]; family mode takes none. The wildcard audits the first 200 editable families sorted by name; data.skipped lists each remaining name and reason, with skippedCount."""
     if families is not None and (not families or any(not name.strip() for name in families)):
         raise ToolError("families must contain 1 to 200 non-empty names.")
     if families is not None and "*" in families and families != ["*"]:
@@ -1222,7 +1232,7 @@ def revit_build_report(
         str,
         Field(
             validation_alias=AliasChoices("output_path", "outputPath"),
-            description="New .xlsx file path on the MCP client machine; existing files are never replaced.",
+            description="New .xlsx file path, resolved on the machine running this server; existing files are never replaced.",
         ),
     ],
     previous_dir: Annotated[
@@ -1252,7 +1262,12 @@ def revit_build_report(
 
 @addressed_tool
 async def revit_issue_register(
-    output_path: str,
+    output_path: Annotated[
+        str,
+        Field(
+            description="New .xlsx issue register path, resolved on the machine running this server; existing files are refused."
+        ),
+    ],
     project: dict[str, Any],
     issues: list[dict[str, Any]],
     pixel_size: PixelSize = 900,

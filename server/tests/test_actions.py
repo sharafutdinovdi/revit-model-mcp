@@ -208,16 +208,15 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     assert execute.await_args.args[1] == 600
 
     execute.reset_mock()
-    refused = asyncio.run(
+    result = asyncio.run(
         server.call_tool(
             "revit_execute_code",
             {"code": "return 42;", "transaction": "none", "dry_run": True},
         )
     )
-    assert refused.structured_content["success"] is False
-    assert refused.structured_content["errorCode"] == "action_failed"
-    assert "dry_run requires" in refused.structured_content["error"]
-    execute.assert_not_awaited()
+    assert result.structured_content["success"] is True
+    assert execute.await_args.args[0].payload["transaction"] == "auto"
+    assert execute.await_args.args[0].payload["dryRun"] is True
     blocked, blocked_execute, _ = action_server(read_only=True)
     result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
     assert "read-only mode" in str(result)
@@ -282,11 +281,6 @@ def test_process_models_confirmation_flow_and_validation():
         {},
         {"paths": ["relative.rvt"]},
         {"paths": [r"C:\Models\A.rvt"], "folder": r"C:\Models"},
-        {
-            "paths": [r"C:\Models\A.rvt"],
-            "code": {"code": "return 1;", "transaction": "none"},
-            "dry_run": True,
-        },
         {"paths": [r"C:\Models\A.rvt"], "save": {"mode": "output_dir", "output_dir": r"C:\Models"}},
         {
             "paths": [r"C:\Models\A.rvt"],
@@ -2113,3 +2107,99 @@ def test_read_only_action_result_has_error_code(name, arguments, command):
     }
     execute.assert_not_awaited()
     host.list_revit_instances.assert_not_awaited()
+
+
+def test_addin_reads_resolve_open_target_after_document_switch():
+    root = Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Addin/Control"
+    channel = (root / "ControlChannel.cs").read_text()
+    assert "application.Application.Documents.Cast<Autodesk.Revit.DB.Document>()" in channel
+    assert "Target document '{parsed.TargetDocument}' is no longer open" in channel
+    assert "the active document is" in channel
+    for name in ("ReadCommandExecutor.cs", "ViewElementsSession.cs"):
+        source = (root / name).read_text()
+        assert "ActionCommandExecutor.ResolveDocument(application, job.TargetDocument)" in source
+        assert "application.ActiveUIDocument?.Document" not in source
+    assert (
+        "ReadCommandReader.ReadDocumentInfo(document)"
+        in (root / "ReadCommandExecutor.cs").read_text()
+    )
+
+
+def test_process_models_dry_run_forces_auto_transaction_and_warns():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.return_value["warnings"] = ["existing warning"]
+    result = asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\Models\A.rvt"],
+                "code": {"code": "return 1;", "transaction": "none"},
+                "dry_run": True,
+            },
+        )
+    )
+    process = execute.await_args.args[0].payload["process"]
+    assert process["code"]["transaction"] == "auto"
+    assert process["dryRun"] is True
+    assert result.structured_content["warnings"] == [
+        "existing warning",
+        "dry_run forced transaction=auto",
+    ]
+
+
+def test_addin_family_audit_bounds_wildcard_and_reports_every_skipped_name():
+    source = (
+        Path(__file__).resolve().parents[2] / "src/RevitModelMcp.Addin/Capture/FamilyAuditReader.cs"
+    ).read_text()
+    assert "SelectFamilies(document, names, result.Skipped)" in source
+    assert ".OrderBy(family => family.Name, StringComparer.OrdinalIgnoreCase)" in source
+    assert "editable.Take(200)" in source
+    assert "skipped?.AddRange(editable.Skip(200)" in source
+    assert "What = family.Name" in source
+    assert "editable.Count > 200 && skipped is null" in source
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        {"save": {"mode": "output_dir", "output_dir": r"C:\Out"}},
+        {"exports": [{"format": "ifc"}]},
+        {"exports": [{"format": "ifc", "output_dir": r"C:\Out\{model}"}]},
+    ],
+)
+def test_process_models_refuses_output_name_collisions_before_submission(output):
+    import asyncio
+
+    server, execute, _ = action_server()
+    with pytest.raises(ToolError, match="Sources share a model name") as error:
+        asyncio.run(
+            server.call_tool(
+                "revit_process_models",
+                {
+                    "paths": [r"C:\First\Model.rvt", "D:/Second/MODEL.RVT"],
+                    **output,
+                },
+            )
+        )
+    assert '"Model"' in str(error.value)
+    assert r"C:\First\Model.rvt" in str(error.value)
+    assert "D:/Second/MODEL.RVT" in str(error.value)
+    execute.assert_not_awaited()
+
+
+def test_process_models_accepts_distinct_output_names():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_process_models",
+            {
+                "paths": [r"C:\First\A.rvt", r"D:\Second\B.rvt"],
+                "save": {"mode": "output_dir", "output_dir": r"C:\Out"},
+            },
+        )
+    )
+    execute.assert_awaited_once()

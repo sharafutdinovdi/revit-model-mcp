@@ -32,8 +32,7 @@ internal sealed class ViewElementsSession : IControlSession
         ControlJobParseResult job,
         DateTimeOffset startedAt)
     {
-        _document = application.ActiveUIDocument?.Document
-                    ?? throw new InvalidOperationException("No active Revit document.");
+        _document = ActionCommandExecutor.ResolveDocument(application, job.TargetDocument);
         _output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             job.Command,

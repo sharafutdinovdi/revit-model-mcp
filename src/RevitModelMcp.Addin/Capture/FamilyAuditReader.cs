@@ -18,7 +18,7 @@ internal static class FamilyAuditReader
         if (names is null) throw new ArgumentException("families is required in project mode.");
         if (document.IsModifiable) throw new InvalidOperationException("Close the project transaction before editing families.");
         var result = new FamilyAuditData { Mode = "project" };
-        foreach (var (name, family) in SelectFamilies(document, names))
+        foreach (var (name, family) in SelectFamilies(document, names, result.Skipped))
         {
             if (family is null)
             {
@@ -47,17 +47,25 @@ internal static class FamilyAuditReader
                 familyDocument?.Close(false);
             }
         }
+        result.SkippedCount = result.Skipped.Count;
         return result;
     }
 
-    internal static List<(string Name, Family? Family)> SelectFamilies(Document project, IReadOnlyList<string> names)
+    internal static List<(string Name, Family? Family)> SelectFamilies(Document project, IReadOnlyList<string> names, List<SkippedRead>? skipped = null)
     {
         var families = new FilteredElementCollector(project).OfClass(typeof(Family)).Cast<Family>().ToList();
         if (names.Count == 1 && names[0] == "*")
         {
-            var editable = families.Where(family => family.IsEditable && !family.IsInPlace).ToList();
-            if (editable.Count > 200) throw new ArgumentException("The project contains more than 200 editable families; choose names explicitly.");
-            return editable.Select(family => (family.Name, (Family?)family)).ToList();
+            var editable = families.Where(family => family.IsEditable && !family.IsInPlace)
+                .OrderBy(family => family.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            if (editable.Count > 200 && skipped is null)
+                throw new ArgumentException("The project contains more than 200 editable families; choose names explicitly.");
+            skipped?.AddRange(editable.Skip(200).Select(family => new SkippedRead
+            {
+                What = family.Name,
+                Reason = "The audit is limited to the first 200 editable families."
+            }));
+            return editable.Take(200).Select(family => (family.Name, (Family?)family)).ToList();
         }
         return names.Select(name => (Name: name, Family: (Family?)families.FirstOrDefault(family =>
             string.Equals(family.Name, name, StringComparison.OrdinalIgnoreCase)))).ToList();

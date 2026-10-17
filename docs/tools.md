@@ -71,7 +71,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
 | `revit_ui_state` | None | Read the active document and view, open UI views, up to 500 selected elements, and all open documents. |
-| `revit_list_catalog` | `section` | Discover valid category, family, view and parameter names. |
+| `revit_list_catalog` | `section`, `name_contains=null`, `limit=200` (1 to 2000) | Discover names with a case-insensitive filter. Returns `total` before the limit and `hasMore`. |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
@@ -89,7 +89,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_model_health` | `output_path` (optional) | Read model quality counts and top warnings; save an Excel health report on the MCP server machine. |
 | `revit_links_status` | None | Read RVT, CAD and image status, paths and instance counts. |
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. Refused for family documents. |
-| `revit_family_audit` | `families=null`, `timeout_seconds=600` | Inspect family parameters, use, shared status and purge candidates. |
+| `revit_family_audit` | `families=null`, `timeout_seconds=600` | Inspect family parameters, use, shared status and purge candidates. `["*"]` audits the first 200 editable families sorted by name; `data.skipped` lists each remaining name and reason, with `skippedCount`. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null`, `open_timeout_minutes=null` | Start persistent read-only collection; see [batch collection](batch.md). |

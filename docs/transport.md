@@ -245,6 +245,13 @@ It is final: do not poll it again, and inspect the model before resubmitting an 
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
+
+Direct HTTP `POST /jobs` validates a supplied `jobId` for action commands, whose results are persisted: the ID must be a 32-character hexadecimal GUID without dashes.
+An invalid value returns HTTP 400 with `error:invalid_job_id` and `message:"jobId must be a 32-character hexadecimal GUID without dashes."`.
+An absent or blank ID gets a generated ID.
+Read submissions do not enforce this format; `GET /jobs/{id}`, `POST /jobs/{id}/cancel`, and image requests with `jobId` look up the supplied ID and return HTTP 404 for an unknown ID.
+The Python HTTP transport URL-encodes lookup IDs and checks pending responses for a non-empty string ID, without GUID validation.
+
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
 MCP action tools return `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` when `REVIT_MCP_READ_ONLY=1` in the Python process. A read-only refusal from the pipe or HTTP transport (pipe error `read_only`, HTTP 403) is returned the same way for actions.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
@@ -428,7 +435,8 @@ Actions and undirected reads require exactly one running Revit process.
 Directed reads require exactly one active document matching the case-insensitive title or file-name substring.
 Zero or multiple matches fail before publication.
 Actions retain their open-document resolution inside the selected process.
-After pickup, a directed read rechecks the active document and returns a correlated error if it changed to a non-matching model.
+After pickup, a directed read resolves the target among open documents and can read an inactive document.
+If the target closed, the error names the target and active documents and suggests passing `document` or calling `revit_activate_document`.
 
 A fresh heartbeat and an existing process are pre-checks.
 For v2 the server performs a bounded ping handshake with a fresh `correlationId` in the selected directory.
