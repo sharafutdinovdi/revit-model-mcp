@@ -21,6 +21,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 from revit_model_mcp import package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
 from revit_model_mcp.batch import register_batch
+from revit_model_mcp.errors import unavailable
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.policy import policy_refusal
@@ -32,6 +33,7 @@ from revit_model_mcp.revit_channel import (
     Job,
     RevitChannel,
     RevitChannelError,
+    TransportUnavailableError,
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
@@ -473,6 +475,8 @@ async def _execute(
         result.setdefault("skipped", [])
         result.setdefault("skippedCount", 0)
         return redact_model_paths(result)
+    except TransportUnavailableError as error:
+        return redact_model_paths(unavailable(job.command, str(error)))
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
@@ -523,6 +527,9 @@ def addressed_tool(function):
         token = _addressed_process_id.set(process_id)
         try:
             return await function(*args, **kwargs)
+        except TransportUnavailableError as error:
+            command = function.__name__.removeprefix("revit_").replace("_", "-")
+            return redact_model_paths(unavailable(command, str(error)))
         except RevitChannelError as error:
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
         finally:
@@ -1189,6 +1196,8 @@ async def revit_list_instances(document: Document = None) -> dict[str, Any]:
                 "skippedCount": 0,
             }
         )
+    except TransportUnavailableError as error:
+        return redact_model_paths(unavailable("list-instances", str(error)))
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 

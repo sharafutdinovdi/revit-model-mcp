@@ -2187,3 +2187,25 @@ def test_process_models_accepts_distinct_output_names():
         )
     )
     execute.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_action_discovery_returns_retryable_transport_failure(monkeypatch):
+    from types import SimpleNamespace
+
+    from revit_model_mcp.revit_channel import SshUnavailableError
+
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    host = SimpleNamespace(
+        list_revit_instances=AsyncMock(
+            side_effect=SshUnavailableError(r"Lost C:\Private\Tower.rvt")
+        )
+    )
+    execute = AsyncMock()
+    result = await _send_action(execute, lambda: host, "move")
+    assert result["success"] is False
+    assert result["command"] == "move"
+    assert result["errorCode"] == "transport_unavailable"
+    assert result["retryable"] is True
+    assert "Private" not in result["error"]
+    execute.assert_not_awaited()

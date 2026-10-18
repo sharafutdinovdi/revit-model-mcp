@@ -703,3 +703,35 @@ async def test_gate_script_checks_the_per_user_file():
     await host.batch_assert_writable()
     script = host._run.await_args.args[0]
     assert "'read-only'" in script and "throw 'read-only mode'" in script
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "tool,method,arguments,command",
+    [
+        (
+            "revit_batch_start",
+            "batch_assert_writable",
+            {"paths": [r"C:\models\One.rvt"]},
+            "batch-start",
+        ),
+        ("revit_batch_status", "batch_status", {"run_id": "a" * 32}, "batch-status"),
+    ],
+)
+async def test_batch_returns_retryable_transport_failure(
+    boundary, monkeypatch, tool, method, arguments, command
+):
+    from revit_model_mcp.revit_channel import SshUnavailableError
+
+    tools, host, channel = boundary
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    monkeypatch.setattr(
+        host, method, AsyncMock(side_effect=SshUnavailableError(r"Lost C:\Private\Tower.rvt"))
+    )
+    result = await tools[tool](**arguments)
+    assert result["success"] is False
+    assert result["command"] == command
+    assert result["errorCode"] == "transport_unavailable"
+    assert result["retryable"] is True
+    assert "Private" not in result["error"]
+    assert not channel.jobs

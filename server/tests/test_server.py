@@ -1074,3 +1074,76 @@ def test_schedule_and_server_output_paths_describe_resolution():
     ):
         output = tools[name].input_schema["properties"]["output_path"]
         assert "resolved on the machine running this server" in output["description"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("transport", ["ssh", "pipe", "http"])
+async def test_execute_returns_retryable_transport_failure(transport, monkeypatch):
+    from revit_model_mcp.http_host import HttpUnavailableError
+    from revit_model_mcp.pipe_host import PipeDisconnectedError
+    from revit_model_mcp.revit_channel import SshUnavailableError
+
+    error_type = {
+        "ssh": SshUnavailableError,
+        "pipe": PipeDisconnectedError,
+        "http": HttpUnavailableError,
+    }[transport]
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    monkeypatch.setattr(
+        revit_server.channel,
+        "execute",
+        AsyncMock(side_effect=error_type(r"Lost C:\Private\Tower.rvt")),
+    )
+    result = await revit_server._execute(Job.ping(), 120, 300, None)
+    assert result["errorCode"] == "transport_unavailable"
+    assert result["retryable"] is True
+    assert result["success"] is False
+    assert result["command"] == "ping"
+    assert "The call did not run. Retry when the workstation or tunnel is back." in result["error"]
+    assert "Private" not in result["error"]
+
+
+@pytest.mark.anyio
+async def test_list_instances_returns_retryable_transport_failure(monkeypatch):
+    from revit_model_mcp.revit_channel import SshUnavailableError
+
+    monkeypatch.setattr(
+        revit_server.host,
+        "list_revit_instances",
+        AsyncMock(side_effect=SshUnavailableError("tunnel closed")),
+    )
+    result = await revit_server.revit_list_instances()
+    assert result["errorCode"] == "transport_unavailable"
+    assert result["retryable"] is True
+    assert result["success"] is False
+    assert result["command"] == "list-instances"
+
+
+@pytest.mark.anyio
+async def test_addressed_tool_returns_retryable_transport_failure():
+    from revit_model_mcp.pipe_host import PipeDisconnectedError
+
+    @revit_server.addressed_tool
+    async def revit_ping() -> dict:
+        raise PipeDisconnectedError("closed")
+
+    result = await revit_ping(process_id=42)
+    assert result["errorCode"] == "transport_unavailable"
+    assert result["retryable"] is True
+    assert result["command"] == "ping"
+    assert revit_server._addressed_process_id.get() is None
+
+
+@pytest.mark.anyio
+async def test_http_not_reachable_is_a_normal_tool_result(monkeypatch):
+    import urllib.error
+
+    host = revit_server.HttpHost("http://127.0.0.1:53110")
+    monkeypatch.setattr(
+        host._opener, "open", unittest.mock.Mock(side_effect=urllib.error.URLError("offline"))
+    )
+    monkeypatch.setattr(revit_server, "channel", revit_server.RevitChannel(host))
+    result = await revit_server.mcp.call_tool("revit_ping", {})
+    assert not result.is_error
+    assert result.structured_content["errorCode"] == "transport_unavailable"
+    assert result.structured_content["retryable"] is True
