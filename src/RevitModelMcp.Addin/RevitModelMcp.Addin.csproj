@@ -1,4 +1,4 @@
-<Project Sdk="Nice3point.Revit.Sdk/6.2.3">
+<Project Sdk="Nice3point.Revit.Sdk/6.3.2">
 
   <PropertyGroup>
     <AssemblyName>RevitModelMcp</AssemblyName>
@@ -57,7 +57,7 @@
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="[$(MinimumRevitApiPackageVersion)]"/>
     <PackageReference Include="ILRepack" Version="2.0.46" PrivateAssets="all"/>
     <PackageReference Include="JetBrains.Annotations" Version="2026.2.0" PrivateAssets="all"/>
-    <PackageReference Include="Polyfill" Version="11.0.1" PrivateAssets="all"/>
+    <PackageReference Include="Polyfill" Version="11.4.5" PrivateAssets="all"/>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0"/>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
   </ItemGroup>
@@ -105,10 +105,17 @@
 
   <Target Name="PinMergedRevitApiReferences"
           AfterTargets="RepackAddinFiles"
-          Condition="'$(IsRepackable)' == 'true'">
+          BeforeTargets="DeployAddin"
+          Condition="'$(IsRepackable)' == 'true' And '$(PublishAddin)' == 'true'">
     <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
            Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
-    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <!-- MSI and ZIP packaging consume the build output. Keep its add-in identical to the published assembly. -->
+    <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))"
+          DestinationFiles="$(TargetPath)"/>
+    <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetName).pdb'))"
+          DestinationFolder="$(TargetDir)"
+          Condition="Exists($([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetName).pdb')))"/>
   </Target>
 
 </Project>
