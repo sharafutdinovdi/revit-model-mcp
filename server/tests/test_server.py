@@ -334,7 +334,7 @@ EXPECTED_PARAMETERS = {
         "document",
     ],
     "revit_list_instances": ["document"],
-    "revit_family_audit": ["families", "timeout_seconds", "document"],
+    "revit_family_audit": ["families", "detail", "timeout_seconds", "document"],
     "revit_nwc_settings_check": [
         "settings_xml",
         "timeout_seconds",
@@ -439,9 +439,23 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         job, response_timeout, pickup_timeout = channel.calls[0]
         self.assertEqual(job.command, "family-audit")
         self.assertEqual(job.payload["families"], ["Door"])
+        self.assertEqual(job.payload["detail"], "summary")
         self.assertEqual(job.payload["targetDocument"], "Model")
         self.assertEqual(response_timeout, 600)
         self.assertEqual(pickup_timeout, 300)
+
+    async def test_family_audit_full_detail_is_forwarded_and_documented(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_family_audit", {"detail": "full"})
+        self.assertEqual(channel.calls[0][0].payload["detail"], "full")
+        tool = next(
+            tool
+            for tool in await revit_server.mcp.list_tools()
+            if tool.name == "revit_family_audit"
+        )
+        self.assertIn('detail="summary"', tool.description)
+        self.assertIn('detail="full"', tool.description)
 
     async def test_nwc_settings_check_routes_as_read(self) -> None:
         channel = RecordingChannel()

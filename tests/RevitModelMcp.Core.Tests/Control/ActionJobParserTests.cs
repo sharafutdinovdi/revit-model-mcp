@@ -1067,6 +1067,64 @@ public sealed class ActionJobParserTests
         await Assert.That(result.CoordinatorJob.TargetDocument).IsEqualTo("Model");
         await Assert.That(result.TargetDocument).IsNull();
         await Assert.That(result.Action!.Families).IsEquivalentTo(new[] { "Door" });
+        await Assert.That(result.Action.Detail).IsEqualTo("summary");
+    }
+
+    [Test]
+    [Arguments("summary", ControlJobKind.FamilyAudit)]
+    [Arguments("full", ControlJobKind.FamilyAudit)]
+    [Arguments("verbose", ControlJobKind.Invalid)]
+    public async Task Parse_FamilyAudit_ValidatesDetail(string detail, ControlJobKind expected)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"family-audit","detail":"{{detail}}"}""");
+        await Assert.That(result.Kind).IsEqualTo(expected);
+        if (expected == ControlJobKind.FamilyAudit)
+            await Assert.That(result.Action!.Detail).IsEqualTo(detail);
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(20)]
+    [Arguments(21)]
+    public async Task FamilyAuditSummary_SerializesCountsAndBoundsUnusedNames(int unusedCount)
+    {
+        var family = new FamilyAuditFamily
+        {
+            Parameters = Enumerable.Range(0, unusedCount).Select(index => new FamilyParameterData
+            {
+                Name = $"Unused {index}", DataCarrierRisk = true
+            }).Concat([new FamilyParameterData { Name = "Used", Used = true }]).ToList()
+        };
+        family.ApplySummary();
+        using var stream = new MemoryStream();
+        new DataContractJsonSerializer(typeof(FamilyAuditFamily)).WriteObject(stream, family);
+        using var json = System.Text.Json.JsonDocument.Parse(stream.ToArray());
+        var root = json.RootElement;
+        await Assert.That(root.TryGetProperty("parameters", out _)).IsFalse();
+        await Assert.That(root.GetProperty("parameterCount").GetInt32()).IsEqualTo(unusedCount + 1);
+        await Assert.That(root.GetProperty("unusedParameterCount").GetInt32()).IsEqualTo(unusedCount);
+        await Assert.That(root.GetProperty("dataCarrierRiskCount").GetInt32()).IsEqualTo(unusedCount);
+        await Assert.That(root.GetProperty("unusedParameters").GetArrayLength()).IsEqualTo(Math.Min(20, unusedCount));
+        await Assert.That(root.TryGetProperty("unusedParametersTruncated", out _)).IsEqualTo(unusedCount > 20);
+        if (unusedCount > 0)
+            await Assert.That(root.GetProperty("unusedParameters")[0].GetString()).IsEqualTo("Unused 0");
+    }
+
+    [Test]
+    public async Task FamilyAuditFull_KeepsParametersAndGroupLabelsWithoutSummaryFields()
+    {
+        var family = new FamilyAuditFamily
+        {
+            Parameters = [new FamilyParameterData { Name = "Width", Group = "group-id", GroupName = "Dimensions" }]
+        };
+        using var stream = new MemoryStream();
+        new DataContractJsonSerializer(typeof(FamilyAuditFamily)).WriteObject(stream, family);
+        using var json = System.Text.Json.JsonDocument.Parse(stream.ToArray());
+        var root = json.RootElement;
+        await Assert.That(root.TryGetProperty("parameterCount", out _)).IsFalse();
+        await Assert.That(root.TryGetProperty("unusedParameters", out _)).IsFalse();
+        await Assert.That(root.GetProperty("parameters")[0].GetProperty("group").GetString()).IsEqualTo("group-id");
+        await Assert.That(root.GetProperty("parameters")[0].GetProperty("groupName").GetString()).IsEqualTo("Dimensions");
     }
 
     [Test]
