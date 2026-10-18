@@ -29,7 +29,6 @@ from revit_model_mcp.policy import policy_refusal
 from revit_model_mcp.revit_channel import (
     CHANNEL_DIRECTORY,
     DEFAULT_HOST,
-    DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     Job,
     RevitChannel,
@@ -70,13 +69,6 @@ TimeoutSeconds = Annotated[
     Field(
         validation_alias=AliasChoices("timeout_seconds", "timeoutSeconds"),
         description="Seconds to wait for a result (default 120).",
-    ),
-]
-PickupTimeoutSeconds = Annotated[
-    int,
-    Field(
-        validation_alias=AliasChoices("pickup_timeout_seconds", "pickupTimeoutSeconds"),
-        description="Seconds to wait for the add-in to pick up the job (default 300); unused over HTTP.",
     ),
 ]
 GroupBy = Annotated[
@@ -278,6 +270,12 @@ def _accepted_argument_names(tool: Any) -> set[str]:
 def _unknown_argument_message(tool_name: str, unknown: list[str], accepted: set[str]) -> str:
     parts = []
     for argument in unknown:
+        if argument in {"pickup_timeout_seconds", "pickupTimeoutSeconds"}:
+            parts.append(
+                "pickup_timeout_seconds is no longer an argument; "
+                "set REVIT_MCP_PICKUP_TIMEOUT_SECONDS in the server environment"
+            )
+            continue
         scope, replacement = _RENAMED_ARGUMENTS.get(argument, (None, ""))
         if scope is not None and scope != tool_name:
             replacement = ""
@@ -461,7 +459,6 @@ def batch_audit(
 async def _execute(
     job: Job,
     timeout_seconds: int,
-    pickup_timeout_seconds: int,
     document: str | None,
 ) -> dict[str, Any]:
     if (blocked := policy_refusal(job.command)) is not None:
@@ -470,7 +467,6 @@ async def _execute(
         result = await channel.execute(
             job.for_document(document).for_process(_addressed_process_id.get()),
             timeout_seconds,
-            pickup_timeout_seconds,
         )
         if job.command == "ping":
             result.update(serverVersion=package_version(), **update_status(package_version()))
@@ -562,14 +558,13 @@ async def revit_jobs(
         int, Field(ge=0, le=50, description="Seconds to wait, 0 through 50.")
     ] = 40,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """List recent jobs, or wait up to wait_seconds (0 to 50, default 40) for the result of an action jobId. Results stay on the workstation for 24 hours, across server restarts."""
     job = Job.jobs()
     if job_id is not None:
         job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_seconds})
-    return await _execute(job, timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(job, timeout_seconds, document)
 
 
 @addressed_tool
@@ -583,7 +578,6 @@ async def revit_compare_link_datums(
     reuse_matching: bool = True,
     tolerance_mm: float = 0.5,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Compare host grids and levels with one loaded Revit link. Changes nothing."""
@@ -603,7 +597,6 @@ async def revit_compare_link_datums(
             },
         ),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -611,25 +604,22 @@ async def revit_compare_link_datums(
 @addressed_tool
 async def revit_ping(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Check the connection to Revit without reading the model. Returns data="pong", even when no document is active."""
-    return await _execute(Job.ping(), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(Job.ping(), timeout_seconds, document)
 
 
 @addressed_tool
 async def revit_nwc_settings_check(
     settings_xml: str,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Parse a Navisworks exporter XML file on the Revit workstation without exporting."""
     return await _execute(
         Job("nwc-settings-check", {"command": "nwc-settings-check", "settingsXml": settings_xml}),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -637,25 +627,22 @@ async def revit_nwc_settings_check(
 @addressed_tool
 async def revit_document_info(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count."""
-    return await _execute(Job.document_info(), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(Job.document_info(), timeout_seconds, document)
 
 
 @addressed_tool
 async def revit_documents(
     include_linked: bool = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """List every open document in one Revit process, including background documents. Linked documents are listed only when include_linked is set."""
     return await _execute(
         Job("documents", {"command": "documents", "includeLinked": include_linked}),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -666,7 +653,6 @@ async def revit_ui_state() -> dict[str, Any]:
     return await _execute(
         Job("ui-state", {"command": "ui-state"}),
         DEFAULT_TIMEOUT_SECONDS,
-        DEFAULT_PICKUP_TIMEOUT_SECONDS,
         None,
     )
 
@@ -675,7 +661,6 @@ async def revit_ui_state() -> dict[str, Any]:
 async def revit_model_snapshot(
     parameter_rules: list[ParameterRule] | None = None,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete."""
@@ -688,7 +673,6 @@ async def revit_model_snapshot(
             },
         ),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -696,7 +680,6 @@ async def revit_model_snapshot(
 @addressed_tool
 async def revit_model_health(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
     output_path: Annotated[
         str | None,
@@ -722,7 +705,6 @@ async def revit_model_health(
     health = await _execute(
         Job("model-health", {"command": "model-health"}),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -731,7 +713,6 @@ async def revit_model_health(
     warning_result = await _execute(
         Job.list_warnings(None, True),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
     groups = warning_result["data"]["groups"]
@@ -767,7 +748,6 @@ async def revit_model_health(
                                 str(Path(directory) / f"snapshot_{index}.png"),
                             ),
                             min(120, max(1, int(remaining))),
-                            min(300, max(1, int(remaining))),
                             document,
                         )
                     snapshots[index] = result["data"]["localPath"]
@@ -796,14 +776,12 @@ async def revit_model_health(
 @addressed_tool
 async def revit_links_status(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read RVT, CAD and image link status. Each list is capped at 100 entries; summary counts cover all links."""
     return await _execute(
         Job("links-status", {"command": "links-status"}),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -811,14 +789,12 @@ async def revit_links_status(
 @addressed_tool
 async def revit_shared_coordinates(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read project and survey coordinates: base and survey points, active site, project locations and link offsets (mm, degrees). Lists are capped at 100 with total counts."""
     return await _execute(
         Job("shared-coordinates", {"command": "shared-coordinates"}),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -854,7 +830,6 @@ async def revit_parameter_fill_check(
     ] = 20,
     include_types: bool = True,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Count filled, empty and missing parameters per parameter and category, with samples of empty and missing element IDs. Numeric zero counts as filled."""
@@ -877,7 +852,6 @@ async def revit_parameter_fill_check(
     return await _execute(
         Job("parameter-fill-check", payload),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -888,14 +862,12 @@ async def revit_list_catalog(
     name_contains: NameContains = None,
     limit: Annotated[int, Field(ge=1, le=2000)] = 200,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore."""
     return await _execute(
         Job.list_catalog(section, name_contains, limit),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -914,7 +886,6 @@ async def revit_aggregate_elements(
     area_scheme: AreaScheme = None,
     parameter_filters: ParameterFilters = None,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Summarize matching elements by one or two fields, with optional sum and average. Lengths use mm, areas m2, volumes m3. For area totals, group by level and select the area scheme."""
@@ -933,7 +904,6 @@ async def revit_aggregate_elements(
             parameter_filters,
         ),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -956,7 +926,6 @@ async def revit_query_elements(
     sort_direction: SortDirection = "asc",
     include_geometry: IncludeGeometry = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist."""
@@ -979,7 +948,6 @@ async def revit_query_elements(
             include_geometry,
         ),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -989,14 +957,12 @@ async def revit_list_views(
     view_type: ViewType = None,
     name_contains: NameContains = None,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """List non-template views with id, name, type, level, scale and template."""
     return await _execute(
         Job.list_views(view_type, name_contains),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -1005,22 +971,20 @@ async def revit_list_views(
 async def revit_view_info(
     view: ViewName,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Inspect one view's template, display, categories, worksets, filters and links."""
-    return await _execute(Job.view_info(view), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(Job.view_info(view), timeout_seconds, document)
 
 
 @addressed_tool
 async def revit_view_summary(
     view: ViewName,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read element categories and counts for a selected view."""
-    return await _execute(Job.view_summary(view), timeout_seconds, pickup_timeout_seconds, document)
+    return await _execute(Job.view_summary(view), timeout_seconds, document)
 
 
 @addressed_tool
@@ -1039,7 +1003,6 @@ async def revit_schedule_data(
     return await _execute(
         Job.schedule_data(schedule, max_rows, offset),
         DEFAULT_TIMEOUT_SECONDS,
-        DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
     )
 
@@ -1071,7 +1034,6 @@ async def revit_capture_elements(
                 output_path,
             ),
             DEFAULT_TIMEOUT_SECONDS,
-            DEFAULT_PICKUP_TIMEOUT_SECONDS,
             document,
         )
         encoded = base64.b64encode(Path(result["data"]["localPath"]).read_bytes()).decode("ascii")
@@ -1097,7 +1059,6 @@ async def revit_export_view(
     return await _execute(
         Job.export_view(view, pixel_size, output_path),
         DEFAULT_TIMEOUT_SECONDS,
-        DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
     )
 
@@ -1109,14 +1070,12 @@ async def revit_view_elements(
     offset: Annotated[int, Field(ge=0)] = 0,
     limit: Annotated[int, Field(ge=1)] = 100,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read one page of elements in a selected view, with IDs, category, family, type, level and measurements (mm, m2, m3)."""
     return await _execute(
         Job.view_elements(view, categories, offset, limit),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -1125,26 +1084,20 @@ async def revit_view_elements(
 async def revit_element_details(
     element_id: ElementId,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read parameters and geometry of an element by Revit ID, with its type parameters and related warnings. Geometry is in model mm; roomCenterMm is a point inside the room."""
-    return await _execute(
-        Job.element_details(element_id), timeout_seconds, pickup_timeout_seconds, document
-    )
+    return await _execute(Job.element_details(element_id), timeout_seconds, document)
 
 
 @addressed_tool
 async def revit_view_warnings(
     view: ViewName,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read warnings involving elements present in a selected view. A warning may also involve elements outside the view."""
-    return await _execute(
-        Job.view_warnings(view), timeout_seconds, pickup_timeout_seconds, document
-    )
+    return await _execute(Job.view_warnings(view), timeout_seconds, document)
 
 
 @addressed_tool
@@ -1152,14 +1105,12 @@ async def revit_list_warnings(
     warning_text: WarningText = None,
     include_elements: IncludeElements = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Group model warnings by description text. warning_text with include_elements=true returns the elements of one group."""
     return await _execute(
         Job.list_warnings(warning_text, include_elements),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -1170,14 +1121,12 @@ async def revit_list_relations(
     source_id: SourceId = None,
     source_name: SourceName = None,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
-    pickup_timeout_seconds: PickupTimeoutSeconds = DEFAULT_PICKUP_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
     """Read model object membership or dependencies. relation is level-rooms, area-scheme-elements or view-template-dependents (with source_name), or group-elements or nested-family (with source_id)."""
     return await _execute(
         Job.list_relations(relation, source_id, source_name),
         timeout_seconds,
-        pickup_timeout_seconds,
         document,
     )
 
@@ -1219,7 +1168,6 @@ async def revit_family_audit(
     return await _execute(
         Job("family-audit", {"command": "family-audit", "families": families, "detail": detail}),
         timeout_seconds,
-        DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,
     )
 
@@ -1325,7 +1273,6 @@ async def revit_issue_register(
                                 str(Path(directory) / f"snapshot_{index}.png"),
                             ),
                             min(120, max(1, int(remaining))),
-                            min(300, max(1, int(remaining))),
                             document,
                         )
                     snapshots[index] = result["data"]["localPath"]

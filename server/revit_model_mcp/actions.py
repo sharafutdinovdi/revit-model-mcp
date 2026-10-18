@@ -14,7 +14,6 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, m
 from revit_model_mcp.errors import unavailable
 from revit_model_mcp.policy import policy_gate
 from revit_model_mcp.revit_channel import (
-    DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     Job,
     RevitChannelError,
@@ -724,9 +723,7 @@ async def _send_action(
             "targetProcessId": selected["processId"],
         },
     )
-    return redact_model_paths(
-        await execute(job, timeout_seconds, DEFAULT_PICKUP_TIMEOUT_SECONDS, None)
-    )
+    return redact_model_paths(await execute(job, timeout_seconds, None))
 
 
 def register_actions(mcp, execute, host_provider) -> None:
@@ -1131,7 +1128,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             .for_document(document)
             .for_process(process_id)
         )
-        return redact_model_paths(await execute(job, 50, DEFAULT_PICKUP_TIMEOUT_SECONDS, None))
+        return redact_model_paths(await execute(job, 50, None))
 
     @action
     async def revit_select(element_ids: ElementIds, document: Document = None) -> dict[str, Any]:

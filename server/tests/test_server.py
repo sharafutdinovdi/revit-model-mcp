@@ -218,32 +218,29 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
-    "revit_model_health": ["timeout_seconds", "pickup_timeout_seconds", "document", "output_path"],
+    "revit_model_health": ["timeout_seconds", "document", "output_path"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
         "parameter_rules",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_build_report": ["snapshots_dir", "output_path", "previous_dir", "findings"],
-    "revit_ping": ["timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_ping": ["timeout_seconds", "document"],
     "revit_jobs": [
         "job_id",
         "wait_seconds",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
-    "revit_document_info": ["timeout_seconds", "pickup_timeout_seconds", "document"],
-    "revit_documents": ["include_linked", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_document_info": ["timeout_seconds", "document"],
+    "revit_documents": ["include_linked", "timeout_seconds", "document"],
     "revit_ui_state": [],
     "revit_list_catalog": [
         "section",
         "name_contains",
         "limit",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_aggregate_elements": [
@@ -259,7 +256,6 @@ EXPECTED_PARAMETERS = {
         "area_scheme",
         "parameter_filters",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_query_elements": [
@@ -279,18 +275,16 @@ EXPECTED_PARAMETERS = {
         "sort_direction",
         "include_geometry",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_list_views": [
         "view_type",
         "name_contains",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
-    "revit_view_summary": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
-    "revit_view_info": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_view_summary": ["view", "timeout_seconds", "document"],
+    "revit_view_info": ["view", "timeout_seconds", "document"],
     "revit_issue_register": ["output_path", "project", "issues", "pixel_size", "document"],
     "revit_capture_elements": [
         "element_ids",
@@ -308,21 +302,18 @@ EXPECTED_PARAMETERS = {
         "offset",
         "limit",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_element_details": [
         "element_id",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
-    "revit_view_warnings": ["view", "timeout_seconds", "pickup_timeout_seconds", "document"],
+    "revit_view_warnings": ["view", "timeout_seconds", "document"],
     "revit_list_warnings": [
         "warning_text",
         "include_elements",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_list_relations": [
@@ -330,7 +321,6 @@ EXPECTED_PARAMETERS = {
         "source_id",
         "source_name",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
     "revit_list_instances": ["document"],
@@ -338,7 +328,6 @@ EXPECTED_PARAMETERS = {
     "revit_nwc_settings_check": [
         "settings_xml",
         "timeout_seconds",
-        "pickup_timeout_seconds",
         "document",
     ],
 }
@@ -361,7 +350,7 @@ class RecordingChannel:
     def __init__(self) -> None:
         self.calls = []
 
-    async def execute(self, job, timeout_seconds, pickup_timeout_seconds):
+    async def execute(self, job, timeout_seconds, pickup_timeout_seconds=300):
         self.calls.append((job, timeout_seconds, pickup_timeout_seconds))
         return {"command": job.command, "payload": job.payload}
 
@@ -377,7 +366,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 return_value={"latestKnownVersion": "0.7.0", "updateCheck": "disabled"},
             ),
         ):
-            result = await revit_server._execute(Job.ping(), 120, 300, None)
+            result = await revit_server._execute(Job.ping(), 120, None)
         self.assertEqual(result["serverVersion"], package_version())
         self.assertEqual(result["latestKnownVersion"], "0.7.0")
         self.assertEqual(result["updateCheck"], "disabled")
@@ -538,12 +527,6 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             tools["revit_view_elements"].input_schema["properties"]["timeout_seconds"]["default"],
             120,
-        )
-        self.assertEqual(
-            tools["revit_view_elements"].input_schema["properties"]["pickup_timeout_seconds"][
-                "default"
-            ],
-            300,
         )
         for name, parameters in EXPECTED_PARAMETERS.items():
             properties = tools[name].input_schema["properties"]
@@ -1108,7 +1091,7 @@ async def test_execute_returns_retryable_transport_failure(transport, monkeypatc
         "execute",
         AsyncMock(side_effect=error_type(r"Lost C:\Private\Tower.rvt")),
     )
-    result = await revit_server._execute(Job.ping(), 120, 300, None)
+    result = await revit_server._execute(Job.ping(), 120, None)
     assert result["errorCode"] == "transport_unavailable"
     assert result["retryable"] is True
     assert result["success"] is False

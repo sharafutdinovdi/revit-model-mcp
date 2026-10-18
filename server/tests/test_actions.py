@@ -769,7 +769,7 @@ def test_action_response_timeout_reaches_channel(timeout_seconds):
     timeout = {} if timeout_seconds is None else {"timeout_seconds": timeout_seconds}
     asyncio.run(_send_action(execute, lambda: host, "select", elementIds=[1], **timeout))
     execute.assert_awaited_once()
-    assert execute.await_args.args[1:] == (timeout_seconds or 120, 300, None)
+    assert execute.await_args.args[1:] == (timeout_seconds or 120, None)
 
 
 @pytest.mark.parametrize(

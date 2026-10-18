@@ -55,3 +55,19 @@ def test_documented_camel_case_aliases_still_pass_the_check():
     tool = revit_server.mcp._tool_manager.get_tool("revit_model_health")
     accepted = revit_server._accepted_argument_names(tool)
     assert {"timeout_seconds", "timeoutSeconds", "process_id", "processId"} <= accepted
+
+
+@pytest.mark.parametrize("argument", ["pickup_timeout_seconds", "pickupTimeoutSeconds"])
+def test_removed_pickup_timeout_points_to_server_environment(argument):
+    with pytest.raises(ToolError) as error:
+        _call("revit_ping", {argument: 42})
+    assert str(error.value) == (
+        "Unknown argument: pickup_timeout_seconds is no longer an argument; "
+        "set REVIT_MCP_PICKUP_TIMEOUT_SECONDS in the server environment."
+    )
+
+
+def test_no_tool_exposes_pickup_timeout():
+    for tool in asyncio.run(revit_server.mcp.list_tools()):
+        assert "pickup_timeout_seconds" not in tool.input_schema.get("properties", {})
+        assert "pickupTimeoutSeconds" not in tool.input_schema.get("properties", {})
