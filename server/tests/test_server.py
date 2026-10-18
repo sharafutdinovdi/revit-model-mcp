@@ -1147,3 +1147,55 @@ async def test_http_not_reachable_is_a_normal_tool_result(monkeypatch):
     assert not result.is_error
     assert result.structured_content["errorCode"] == "transport_unavailable"
     assert result.structured_content["retryable"] is True
+
+
+@pytest.mark.parametrize("arguments", [[], ["--help"]])
+def test_bad_environment_host_does_not_crash_import(arguments):
+    result = subprocess.run(
+        [sys.executable, "-m", "revit_model_mcp.server", *arguments],
+        env={**os.environ, "REVIT_MCP_HOST": "bogus://x"},
+        capture_output=True,
+        text=True,
+    )
+    assert "Traceback" not in result.stderr
+    if arguments:
+        assert result.returncode == 0
+        assert "host mode: bogus://x" in result.stdout
+    else:
+        assert result.returncode == 2
+        assert "REVIT_MCP_HOST must be" in result.stderr
+
+
+def test_cli_invalid_host_exits_with_configuration_message(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["revit-model-mcp", "--host", "bogus://x"])
+    with patch.object(revit_server.mcp, "run") as run, pytest.raises(SystemExit) as raised:
+        revit_server.main()
+    assert raised.value.code == 2
+    assert "REVIT_MCP_HOST must be" in capsys.readouterr().err
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "failure", [RuntimeError("stdio failed\nsecond line"), KeyboardInterrupt()]
+)
+def test_cli_handles_run_failure(failure, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["revit-model-mcp"])
+    monkeypatch.setenv("REVIT_MCP_HOST", "local")
+    with (
+        patch.object(revit_server, "host"),
+        patch.object(revit_server, "channel"),
+        patch.object(revit_server, "check_for_updates"),
+        patch.object(revit_server.mcp, "run", side_effect=failure) as run,
+    ):
+        if isinstance(failure, KeyboardInterrupt):
+            assert revit_server.main() is None
+            assert capsys.readouterr().err == ""
+        else:
+            with pytest.raises(RuntimeError) as raised:
+                revit_server.main()
+            assert raised.value is failure
+            assert (
+                capsys.readouterr().err
+                == "revit-model-mcp: RuntimeError: stdio failed second line\n"
+            )
+        run.assert_called_once_with(transport="stdio")

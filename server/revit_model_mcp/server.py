@@ -8,6 +8,7 @@ import functools
 import inspect
 import json
 import os
+import sys
 import tempfile
 from importlib.resources import files
 from pathlib import Path
@@ -56,7 +57,8 @@ def create_host(
     )
 
 
-host = create_host(os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST))
+# main() validates environment configuration before starting the transport.
+host = create_host(DEFAULT_HOST)
 channel = RevitChannel(host)
 
 ISSUE_CAPTURE_BUDGET_SECONDS = 210
@@ -1389,13 +1391,24 @@ def main() -> None:
     except ValueError as error:
         parser.error(str(error))
     global host, channel
-    host = create_host(args.host, args.token)
+    try:
+        host = create_host(args.host, args.token)
+    except ValueError as error:
+        parser.error(str(error))
     channel = RevitChannel(host)
     if args.redact_paths:
         os.environ["REVIT_MCP_REDACT_PATHS"] = "1"
     apply_toolsets(mcp, args.toolsets)
     check_for_updates()
-    mcp.run(transport="stdio")
+    try:
+        mcp.run(transport="stdio")
+    except KeyboardInterrupt:
+        return
+    except Exception as error:
+        message = redact_model_paths({"error": str(error)})["error"]
+        message = " ".join(message.splitlines())
+        print(f"revit-model-mcp: {type(error).__name__}: {message}", file=sys.stderr)
+        raise
 
 
 if __name__ == "__main__":
