@@ -5,6 +5,7 @@ import base64
 import binascii
 import json
 import os
+import shlex
 import shutil
 import stat
 import tempfile
@@ -1409,6 +1410,10 @@ def test_ssh_command_reuses_private_runtime_directory(monkeypatch, tmp_path):
         "-o",
         "PermitLocalCommand=no",
         "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
         "ControlMaster=auto",
         "-o",
         f"ControlPath={directory}/mux-%C",
@@ -1504,7 +1509,7 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
         command = SshPowerShellHost("revit-host")._build_command("'ok'")
     mkdir.assert_not_called()
     assert not any(option.startswith("Control") for option in command)
-    assert command[17:23] == [
+    assert command[21:27] == [
         "-p",
         "2222",
         "-o",
@@ -1533,7 +1538,7 @@ def test_ssh_extra_options_follow_mux_options(monkeypatch, tmp_path):
     monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
     monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
     command = SshPowerShellHost("revit-host")._build_command("'ok'")
-    assert command[22:26] == [
+    assert command[24:28] == [
         "ControlPersist=600",
         "-o",
         "ServerAliveInterval=30",
@@ -2766,3 +2771,21 @@ def test_transport_spawn_os_errors(failure):
                 await SshPowerShellHost(local=True)._run("'ok'")
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        "-o ServerAliveInterval=30 -o ServerAliveCountMax=6",
+        "-oserveraliveinterval=30 -oServerAliveCountMax=6",
+        '-o "ServerAliveInterval 30" -o "ServerAliveCountMax 6"',
+    ],
+)
+def test_ssh_keepalive_user_options_replace_defaults(monkeypatch, options):
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", options)
+    command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    assert "ServerAliveInterval=15" not in command
+    assert "ServerAliveCountMax=3" not in command
+    assert command[
+        command.index("revit-host") - len(shlex.split(options)) : command.index("revit-host")
+    ] == shlex.split(options)

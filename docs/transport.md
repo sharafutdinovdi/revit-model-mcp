@@ -504,6 +504,8 @@ macOS and Linux clients run the server on Windows over SSH stdio, or use HTTP or
 `REVIT_MCP_HOST=ssh:<alias>` selects a host in the client's SSH configuration.
 `--host ssh:<alias>` provides the same setting on the command line.
 The client invokes `ssh` with batch mode and a 45-second connection timeout.
+Keepalive defaults are `-o ServerAliveInterval=15 -o ServerAliveCountMax=3`.
+SSH checks the connection every 15 seconds and disconnects after three unanswered keepalive messages.
 It disables terminal allocation, agent forwarding, X11 forwarding, configured port forwards and local commands before applying `REVIT_MCP_SSH_OPTIONS`.
 The remote command runs Windows PowerShell with a UTF-16LE base64-encoded script.
 Host aliases are validated. PowerShell string literals escape ASCII and Unicode single quotes, and response file names and startup timestamps are validated before use.
@@ -527,6 +529,7 @@ If the socket path is too long, the server tries `~/.cache/rmm`. If the director
 Use it on clients without multiplexing support, such as native Windows OpenSSH.
 `REVIT_MCP_SSH_OPTIONS` appends shell-quoted arguments after built-in options and before the host, for example `-o ServerAliveInterval=30 -p 2222`.
 OpenSSH uses the first value for an option.
+Explicit `ServerAliveInterval` and `ServerAliveCountMax` options in `REVIT_MCP_SSH_OPTIONS` replace their built-in defaults.
 A custom socket path or lifetime requires `REVIT_MCP_SSH_MUX=0` plus all three `Control*` options in `REVIT_MCP_SSH_OPTIONS`.
 Local mode ignores both variables and creates no multiplexing directory.
 

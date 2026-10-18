@@ -720,6 +720,19 @@ class SshPowerShellHost:
             "-o",
             "PermitLocalCommand=no",
         ]
+        extra_options = shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", ""))
+        overrides = set()
+        for index, argument in enumerate(extra_options):
+            if argument == "-o" and index + 1 < len(extra_options):
+                option = extra_options[index + 1]
+            elif argument.startswith("-o"):
+                option = argument[2:]
+            else:
+                continue
+            overrides.add(re.split(r"[=\s]", option.strip(), maxsplit=1)[0].lower())
+        for name, value in (("ServerAliveInterval", 15), ("ServerAliveCountMax", 3)):
+            if name.lower() not in overrides:
+                command.extend(["-o", f"{name}={value}"])
         if os.environ.get("REVIT_MCP_SSH_MUX") != "0":
             directory = _mux_directory(os.environ.get("XDG_RUNTIME_DIR"))
             if directory is not None:
@@ -733,7 +746,7 @@ class SshPowerShellHost:
                         "ControlPersist=600",
                     ]
                 )
-        command.extend(shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", "")))
+        command.extend(extra_options)
         return command + [self.host] + powershell
 
     async def _run(
