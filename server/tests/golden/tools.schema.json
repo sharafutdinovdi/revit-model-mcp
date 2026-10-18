@@ -190,10 +190,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -849,10 +845,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "prefix": {
         "default": "",
@@ -1605,10 +1597,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -1643,10 +1631,6 @@
       "include_linked": {
         "default": false,
         "type": "boolean"
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -1945,10 +1929,6 @@
       },
       "element_id": {
         "minimum": 1,
-        "type": "integer"
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
         "type": "integer"
       },
       "process_id": {
@@ -2651,10 +2631,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -2797,10 +2773,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -2848,10 +2820,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -2905,10 +2873,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -2980,10 +2944,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -3029,10 +2989,6 @@
       "include_elements": {
         "default": false,
         "type": "boolean"
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -3187,10 +3143,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -3253,10 +3205,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -3394,10 +3342,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -3631,10 +3575,6 @@
         "minItems": 1,
         "type": "array"
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -3697,10 +3637,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -4600,10 +4536,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -5210,10 +5142,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -5693,10 +5621,6 @@
         "minimum": 0,
         "type": "integer"
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -5733,10 +5657,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [
@@ -5775,10 +5695,6 @@
         ],
         "default": null
       },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
-      },
       "process_id": {
         "anyOf": [
           {
@@ -5815,10 +5731,6 @@
           }
         ],
         "default": null
-      },
-      "pickup_timeout_seconds": {
-        "default": 300,
-        "type": "integer"
       },
       "process_id": {
         "anyOf": [

@@ -72,6 +72,7 @@ Boolean server variables accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`,
 | `REVIT_MCP_SSH_MUX` | Server | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
 | `REVIT_MCP_SSH_OPTIONS` | Server | Unset | Extra SSH arguments, parsed with shell quoting and appended after built-in options, before the host. Example: `-o ServerAliveInterval=30 -p 2222`. |
 | `REVIT_MCP_ACTIVATE_TASK` | Server | Unset | Optional existing Windows scheduled task. Runs once after 60 seconds if the trigger remains pending. The task must activate the interactive Revit window. No task is created by the server. |
+| `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` | Server | `300` | Seconds to wait for the add-in to pick up a file-channel job. Accepts positive integers; invalid values raise a channel error on first use. HTTP ignores this timeout. |
 | `REVIT_MCP_TOOL_BUDGET_S` | Server | `40` | Seconds the first response of a long action waits before it returns `status:"running"`. Accepts 10 through 200. |
 | `REVIT_MCP_NO_UPDATE_CHECK` | Server | Off | `1` disables the background package refresh and the PyPI version lookup. |
 | `REVIT_MCP_HTTP_ENABLED` | Add-in | `httpEnabled` from `settings.json` | `0` or `1` turns the HTTP listener off or on. Other values disable HTTP. |
@@ -120,7 +121,8 @@ Each HTTP endpoint represents one Revit process.
 
 The default file pickup timeout is 300 seconds.
 The response timeout is 120 seconds after pickup.
-Most tools accept `pickup_timeout_seconds` and `timeout_seconds`.
+`REVIT_MCP_PICKUP_TIMEOUT_SECONDS` configures file pickup for all tools.
+Most tools accept `timeout_seconds` for the response timeout.
 `revit_export_view` uses the defaults.
 Supply `document` when multiple Revit instances run on the host.
 Use a distinctive document title or file name.
