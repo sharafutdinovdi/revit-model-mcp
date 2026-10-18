@@ -2789,3 +2789,38 @@ def test_ssh_keepalive_user_options_replace_defaults(monkeypatch, options):
     assert command[
         command.index("revit-host") - len(shlex.split(options)) : command.index("revit-host")
     ] == shlex.split(options)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("value", [None, "1", "42"])
+async def test_pickup_timeout_environment_reaches_file_channel(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("REVIT_MCP_PICKUP_TIMEOUT_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("REVIT_MCP_PICKUP_TIMEOUT_SECONDS", value)
+    remote = FakeRemoteHost()
+    result = await RevitChannel(remote).execute(Job.document_info())
+    assert result["success"] is True
+    assert remote.pickup_timeout == (int(value) if value else DEFAULT_PICKUP_TIMEOUT_SECONDS)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("value", ["", "invalid", "0", "-1", "1.5"])
+async def test_invalid_pickup_timeout_environment_fails_on_first_use(monkeypatch, value):
+    monkeypatch.setenv("REVIT_MCP_PICKUP_TIMEOUT_SECONDS", value)
+    remote = FakeRemoteHost()
+    channel = RevitChannel(remote)
+    with pytest.raises(
+        RevitChannelError,
+        match=r"^REVIT_MCP_PICKUP_TIMEOUT_SECONDS must be a positive integer\.$",
+    ):
+        await channel.execute(Job.document_info())
+    assert remote.events == []
+
+
+@pytest.mark.anyio
+async def test_explicit_internal_pickup_timeout_overrides_environment(monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_PICKUP_TIMEOUT_SECONDS", "42")
+    remote = FakeRemoteHost()
+    await RevitChannel(remote).execute(Job.document_info(), pickup_timeout_seconds=7)
+    assert remote.pickup_timeout == 7

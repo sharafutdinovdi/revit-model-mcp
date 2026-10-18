@@ -65,12 +65,12 @@ class CoordinatorToolTests(unittest.IsolatedAsyncioTestCase):
                 with patch.object(server, "_execute", execute):
                     await server.mcp.call_tool(
                         "revit_" + command.replace("-", "_"),
-                        {"timeout_seconds": 41, "pickup_timeout_seconds": 42, "document": "Model"},
+                        {"timeout_seconds": 41, "document": "Model"},
                     )
                 job, *options = execute.call_args.args
                 self.assertEqual(job.command, command)
                 self.assertEqual(job.payload, {"command": command})
-                self.assertEqual(options, [41, 42, "Model"])
+                self.assertEqual(options, [41, "Model"])
 
     async def test_fill_job(self):
         execute = AsyncMock(return_value={"success": True})
@@ -87,7 +87,6 @@ class CoordinatorToolTests(unittest.IsolatedAsyncioTestCase):
                     "include_types": False,
                     "document": "Model",
                     "timeout_seconds": 41,
-                    "pickup_timeout_seconds": 42,
                 },
             )
         job, *options = execute.call_args.args
@@ -104,7 +103,7 @@ class CoordinatorToolTests(unittest.IsolatedAsyncioTestCase):
                 "includeTypes": False,
             },
         )
-        self.assertEqual(options, [41, 42, "Model"])
+        self.assertEqual(options, [41, "Model"])
 
     async def test_fill_defaults(self):
         execute = AsyncMock(return_value={"success": True})

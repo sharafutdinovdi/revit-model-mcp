@@ -254,7 +254,7 @@ Completed read results expire ten minutes after completion, action results after
 Do not resubmit an action after a timeout without checking its result and the model.
 The Python client submits once with `timeout=0`, then polls within `timeout_seconds`.
 Proof verification uses the existing health requests for each job and adds no HTTP request per job or poll.
-`pickup_timeout_seconds` applies only to file transports.
+`REVIT_MCP_PICKUP_TIMEOUT_SECONDS` in the server environment configures file pickup; HTTP ignores this timeout.
 
 HTTP 401 means the token is missing or invalid.
 HTTP 429 with `error:queue_full` means this client already has 16 queued jobs; `retryAfterMs` gives a retry hint.
@@ -568,6 +568,8 @@ Activation only occurs if the current job file still exists.
 The server checks the task result and reports activation failure separately.
 The task is optional and is never created by the server.
 The default pickup timeout is 300 seconds, followed by a separate 120-second response timeout.
+`REVIT_MCP_PICKUP_TIMEOUT_SECONDS` in the server environment overrides the file pickup timeout for all tools.
+It accepts a positive integer; an invalid value raises `RevitChannelError` on first use.
 
 ## Path redaction
 

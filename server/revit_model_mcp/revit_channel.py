@@ -122,6 +122,20 @@ ACTION_COMMANDS = frozenset(
 LONG_ACTION_COMMANDS = frozenset({"process-models", "export", "export-nwc", "edit-families"})
 
 
+def configured_pickup_timeout_seconds() -> int:
+    try:
+        value = int(
+            os.environ.get("REVIT_MCP_PICKUP_TIMEOUT_SECONDS", str(DEFAULT_PICKUP_TIMEOUT_SECONDS))
+        )
+    except ValueError as error:
+        raise RevitChannelError(
+            "REVIT_MCP_PICKUP_TIMEOUT_SECONDS must be a positive integer."
+        ) from error
+    if value <= 0:
+        raise RevitChannelError("REVIT_MCP_PICKUP_TIMEOUT_SECONDS must be a positive integer.")
+    return value
+
+
 def tool_budget_seconds() -> float:
     try:
         value = float(os.environ.get("REVIT_MCP_TOOL_BUDGET_S", "40"))
@@ -618,10 +632,16 @@ class RevitChannel:
         self,
         job: Job,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
-        pickup_timeout_seconds: int = DEFAULT_PICKUP_TIMEOUT_SECONDS,
+        pickup_timeout_seconds: int | None = None,
     ) -> dict[str, Any]:
         try:
-            return await self._execute(job, timeout_seconds, pickup_timeout_seconds)
+            return await self._execute(
+                job,
+                timeout_seconds,
+                pickup_timeout_seconds
+                if pickup_timeout_seconds is not None
+                else configured_pickup_timeout_seconds(),
+            )
         except ReadOnlyRefusedError as error:
             if job.command in ACTION_COMMANDS or (
                 job.command == "jobs" and job.payload.get("requestCancellation")
