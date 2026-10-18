@@ -1,4 +1,4 @@
-<Project Sdk="Nice3point.Revit.Sdk/6.2.3">
+<Project Sdk="Nice3point.Revit.Sdk/6.3.2">
 
   <PropertyGroup>
     <AssemblyName>RevitModelMcp</AssemblyName>
@@ -105,10 +105,14 @@
 
   <Target Name="PinMergedRevitApiReferences"
           AfterTargets="RepackAddinFiles"
-          Condition="'$(IsRepackable)' == 'true'">
+          BeforeTargets="DeployAddin"
+          Condition="'$(IsRepackable)' == 'true' And '$(PublishAddin)' == 'true'">
     <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
            Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
-    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <!-- MSI and ZIP packaging consume the build output. Keep its add-in identical to the published assembly. -->
+    <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))"
+          DestinationFiles="$(TargetPath)"/>
   </Target>
 
 </Project>
