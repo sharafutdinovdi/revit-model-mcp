@@ -1092,7 +1092,8 @@ public sealed class ActionJobParserTests
         {
             Parameters = Enumerable.Range(0, unusedCount).Select(index => new FamilyParameterData
             {
-                Name = $"Unused {index}", DataCarrierRisk = true
+                Name = $"Unused {index}",
+                DataCarrierRisk = true
             }).Concat([new FamilyParameterData { Name = "Used", Used = true }]).ToList()
         };
         family.ApplySummary();
