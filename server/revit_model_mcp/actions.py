@@ -11,12 +11,14 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, create_model, model_validator
 
+from revit_model_mcp.errors import unavailable
 from revit_model_mcp.policy import policy_gate
 from revit_model_mcp.revit_channel import (
     DEFAULT_PICKUP_TIMEOUT_SECONDS,
     DEFAULT_TIMEOUT_SECONDS,
     Job,
     RevitChannelError,
+    TransportUnavailableError,
     _optional_text,
     _unique_texts,
     resolve_instance,
@@ -708,6 +710,8 @@ async def _send_action(
             if process_id is not None
             else resolve_instance(instances, document)
         )
+    except TransportUnavailableError as error:
+        return redact_model_paths(unavailable(command, str(error)))
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
     if document is not None:

@@ -5,6 +5,7 @@ import base64
 import binascii
 import json
 import os
+import shlex
 import shutil
 import stat
 import tempfile
@@ -31,6 +32,7 @@ from revit_model_mcp.revit_channel import (
     RevitChannelError,
     RevitNotRunningError,
     SshUnavailableError,
+    TransportUnavailableError,
     matches_document,
     parse_response,
     resolve_instance,
@@ -463,6 +465,8 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(elapsed, 0.9)
         self.assertLessEqual(elapsed, 2.0)
         self.assertIn("Nothing was sent to the host.", str(raised.exception))
+        self.assertFalse(raised.exception.started)
+        self.assertIsInstance(raised.exception, TransportUnavailableError)
         start.assert_not_called()
         self.assertEqual(len(host._connection_starts), RELAY_CONNECTION_LIMIT)
         self.assertFalse(host._connection_lock.locked())
@@ -602,6 +606,8 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("command execution timeout", message)
         self.assertIn("not evidence that SSH is unavailable", message)
         self.assertTrue(process.killed)
+        self.assertTrue(raised.exception.started)
+        self.assertNotIsInstance(raised.exception, TransportUnavailableError)
 
     async def test_reports_ssh_process_error_without_claiming_connection_failure(
         self,
@@ -1404,6 +1410,10 @@ def test_ssh_command_reuses_private_runtime_directory(monkeypatch, tmp_path):
         "-o",
         "PermitLocalCommand=no",
         "-o",
+        "ServerAliveInterval=15",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
         "ControlMaster=auto",
         "-o",
         f"ControlPath={directory}/mux-%C",
@@ -1499,7 +1509,7 @@ def test_ssh_command_can_disable_mux_and_append_options(monkeypatch):
         command = SshPowerShellHost("revit-host")._build_command("'ok'")
     mkdir.assert_not_called()
     assert not any(option.startswith("Control") for option in command)
-    assert command[17:23] == [
+    assert command[21:27] == [
         "-p",
         "2222",
         "-o",
@@ -1528,7 +1538,7 @@ def test_ssh_extra_options_follow_mux_options(monkeypatch, tmp_path):
     monkeypatch.delenv("REVIT_MCP_SSH_MUX", raising=False)
     monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", "-o ServerAliveInterval=30")
     command = SshPowerShellHost("revit-host")._build_command("'ok'")
-    assert command[22:26] == [
+    assert command[24:28] == [
         "ControlPersist=600",
         "-o",
         "ServerAliveInterval=30",
@@ -2744,3 +2754,38 @@ def test_failed_image_download_removes_remote_files(command, tmp_path):
     deleted = remote.delete_files.await_args.args[0]
     assert remote.written_name in deleted
     assert remote.response_name in deleted
+
+
+@pytest.mark.parametrize(
+    "failure", [FileNotFoundError("missing"), PermissionError("denied"), OSError("spawn failed")]
+)
+def test_transport_spawn_os_errors(failure):
+    async def run():
+        with patch(
+            "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+            AsyncMock(side_effect=failure),
+        ):
+            with pytest.raises(
+                SshUnavailableError, match="Could not start the transport executable"
+            ):
+                await SshPowerShellHost(local=True)._run("'ok'")
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        "-o ServerAliveInterval=30 -o ServerAliveCountMax=6",
+        "-oserveraliveinterval=30 -oServerAliveCountMax=6",
+        '-o "ServerAliveInterval 30" -o "ServerAliveCountMax 6"',
+    ],
+)
+def test_ssh_keepalive_user_options_replace_defaults(monkeypatch, options):
+    monkeypatch.setenv("REVIT_MCP_SSH_OPTIONS", options)
+    command = SshPowerShellHost("revit-host")._build_command("'ok'")
+    assert "ServerAliveInterval=15" not in command
+    assert "ServerAliveCountMax=3" not in command
+    assert command[
+        command.index("revit-host") - len(shlex.split(options)) : command.index("revit-host")
+    ] == shlex.split(options)

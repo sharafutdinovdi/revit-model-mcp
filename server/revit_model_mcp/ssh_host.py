@@ -31,6 +31,7 @@ from revit_model_mcp.revit_channel import (
     RevitChannelError,
     RevitNotRunningError,
     SshUnavailableError,
+    TransportUnavailableError,
     matches_document,
     select_instance,
 )
@@ -68,7 +69,16 @@ def _fail_dead_supervisor(state: dict[str, object]) -> dict[str, object]:
 
 
 class RemoteCommandTimeoutError(RevitChannelError):
-    pass
+    def __init__(self, message: str, *, started: bool = True) -> None:
+        super().__init__(message)
+        self.started = started
+
+
+class RemoteCommandNotStartedError(RemoteCommandTimeoutError, TransportUnavailableError):
+    transport = "SSH"
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, started=False)
 
 
 class BatchRunNotFoundError(RevitChannelError):
@@ -710,6 +720,19 @@ class SshPowerShellHost:
             "-o",
             "PermitLocalCommand=no",
         ]
+        extra_options = shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", ""))
+        overrides = set()
+        for index, argument in enumerate(extra_options):
+            if argument == "-o" and index + 1 < len(extra_options):
+                option = extra_options[index + 1]
+            elif argument.startswith("-o"):
+                option = argument[2:]
+            else:
+                continue
+            overrides.add(re.split(r"[=\s]", option.strip(), maxsplit=1)[0].lower())
+        for name, value in (("ServerAliveInterval", 15), ("ServerAliveCountMax", 3)):
+            if name.lower() not in overrides:
+                command.extend(["-o", f"{name}={value}"])
         if os.environ.get("REVIT_MCP_SSH_MUX") != "0":
             directory = _mux_directory(os.environ.get("XDG_RUNTIME_DIR"))
             if directory is not None:
@@ -723,7 +746,7 @@ class SshPowerShellHost:
                         "ControlPersist=600",
                     ]
                 )
-        command.extend(shlex.split(os.environ.get("REVIT_MCP_SSH_OPTIONS", "")))
+        command.extend(extra_options)
         return command + [self.host] + powershell
 
     async def _run(
@@ -755,16 +778,9 @@ class SshPowerShellHost:
                 process.kill()
                 await process.communicate()
             raise
-        except FileNotFoundError as error:
-            if process is not None and process.returncode is None:
-                process.kill()
-                await process.communicate()
-            raise SshUnavailableError(
-                "Could not start the transport executable. Check that PowerShell (local mode) or ssh (SSH mode) is available in PATH."
-            ) from error
         except asyncio.TimeoutError as error:
             if process is None:
-                raise RemoteCommandTimeoutError(
+                raise RemoteCommandNotStartedError(
                     f"Command on {self.host} was not started: the SSH connection quota "
                     f"({RELAY_CONNECTION_LIMIT} connections per {RELAY_WINDOW_SECONDS:g} s) "
                     f"did not free up within {timeout_seconds:g} s. Nothing was sent to the host."
@@ -775,6 +791,13 @@ class SshPowerShellHost:
             raise RemoteCommandTimeoutError(
                 f"Command on {self.host} did not complete within {timeout_seconds:g} s and was stopped. "
                 "This is a command execution timeout, not evidence that SSH is unavailable."
+            ) from error
+        except OSError as error:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.communicate()
+            raise SshUnavailableError(
+                "Could not start the transport executable. Check that PowerShell (local mode) or ssh (SSH mode) is available in PATH."
             ) from error
         if process is None:
             raise SshUnavailableError(

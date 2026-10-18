@@ -7,6 +7,23 @@ For a remote client, run the whole server on the workstation over SSH stdio; see
 HTTP connects directly to the add-in and requires no SSH server or remote file transfer.
 The MCP client still communicates with the Python server over stdio.
 
+## Transport errors
+
+Unavailable SSH, named pipe, and HTTP transports return a normal MCP tool result with `success:false`, `command`, `errorCode:"transport_unavailable"`, and `retryable:true`.
+The `error` message names the transport and reason and directs the client to retry when the workstation or tunnel is back.
+Transport failures do not close the stdio server.
+The [tool error codes](tools.md#errors-and-refusals) also define `read_only`, `policy_blocked`, and `action_failed`.
+
+SSH connection quota exhaustion before a command starts, connection failures, missing or inaccessible transport executables, pipe disconnects, unreachable HTTP endpoints, and HTTP 503 use `transport_unavailable`.
+An execution timeout after a command starts remains a tool error.
+An HTTP request timeout also remains a tool error: a submitted job may still execute.
+The model and job result require inspection before retrying an action after a timeout.
+
+An invalid `REVIT_MCP_HOST` produces a startup configuration message on stderr and exit code 2.
+`--help` and `--version` remain available without starting a transport.
+An unexpected stdio run exception produces a diagnostic line on stderr and propagates to the caller.
+A keyboard interrupt exits successfully.
+
 ## Named pipe
 
 Each add-in listens on `\\.\pipe\RevitModelMcp.<pid>` from startup.
@@ -504,6 +521,8 @@ macOS and Linux clients run the server on Windows over SSH stdio, or use HTTP or
 `REVIT_MCP_HOST=ssh:<alias>` selects a host in the client's SSH configuration.
 `--host ssh:<alias>` provides the same setting on the command line.
 The client invokes `ssh` with batch mode and a 45-second connection timeout.
+Keepalive defaults are `-o ServerAliveInterval=15 -o ServerAliveCountMax=3`.
+SSH checks the connection every 15 seconds and disconnects after three unanswered keepalive messages.
 It disables terminal allocation, agent forwarding, X11 forwarding, configured port forwards and local commands before applying `REVIT_MCP_SSH_OPTIONS`.
 The remote command runs Windows PowerShell with a UTF-16LE base64-encoded script.
 Host aliases are validated. PowerShell string literals escape ASCII and Unicode single quotes, and response file names and startup timestamps are validated before use.
@@ -527,6 +546,7 @@ If the socket path is too long, the server tries `~/.cache/rmm`. If the director
 Use it on clients without multiplexing support, such as native Windows OpenSSH.
 `REVIT_MCP_SSH_OPTIONS` appends shell-quoted arguments after built-in options and before the host, for example `-o ServerAliveInterval=30 -p 2222`.
 OpenSSH uses the first value for an option.
+Explicit `ServerAliveInterval` and `ServerAliveCountMax` options in `REVIT_MCP_SSH_OPTIONS` replace their built-in defaults.
 A custom socket path or lifetime requires `REVIT_MCP_SSH_MUX=0` plus all three `Control*` options in `REVIT_MCP_SSH_OPTIONS`.
 Local mode ignores both variables and creates no multiplexing directory.
 

@@ -14,13 +14,20 @@ from mcp.types import ToolAnnotations
 
 from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.artifact_download import save_batch_artifact
-from revit_model_mcp.errors import READ_ONLY, READ_ONLY_MESSAGE, refusal, with_error_code
+from revit_model_mcp.errors import (
+    READ_ONLY,
+    READ_ONLY_MESSAGE,
+    refusal,
+    unavailable,
+    with_error_code,
+)
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.policy import policy_gate, policy_refusal
 from revit_model_mcp.revit_channel import (
     Job,
     ReadOnlyRefusedError,
     RevitChannelError,
+    TransportUnavailableError,
     refused_response,
     resolve_instance,
 )
@@ -248,6 +255,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             return {"runId": run_id, "acceptedModels": len(selected_paths)}
         except ReadOnlyRefusedError as error:
             return refused_response("batch-start", error)
+        except TransportUnavailableError as error:
+            return redact_model_paths(unavailable("batch-start", str(error)))
         except RevitChannelError as error:
             if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):
                 return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
@@ -264,6 +273,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         _deny_by_policy("revit_batch_status")
         try:
             return _public(await _file_host(host_provider()).batch_status(_run_id(run_id)))
+        except TransportUnavailableError as error:
+            return redact_model_paths(unavailable("batch-status", str(error)))
         except RevitChannelError as error:
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 

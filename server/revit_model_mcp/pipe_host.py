@@ -29,6 +29,7 @@ from revit_model_mcp.revit_channel import (
     RemoteHost,
     ResponseParseError,
     RevitChannelError,
+    TransportUnavailableError,
     matches_document,
     select_instance,
 )
@@ -51,8 +52,8 @@ StreamPair = tuple[asyncio.StreamReader, asyncio.StreamWriter]
 Connector = Callable[[int], Awaitable[StreamPair]]
 
 
-class PipeDisconnectedError(RevitChannelError):
-    pass
+class PipeDisconnectedError(TransportUnavailableError):
+    transport = "named pipe"
 
 
 def pipe_address(process_id: int) -> str:

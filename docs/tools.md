@@ -220,7 +220,8 @@ Every tool follows one rule.
 
 | Case | What the client gets |
 | --- | --- |
-| Invalid, missing or unknown argument, unknown batch run, unknown document, transport failure, failed read | An MCP tool error (`isError`) with a message. |
+| Invalid, missing or unknown argument, unknown batch run, unknown document, command execution timeout, failed read | An MCP tool error (`isError`) with a message. |
+| Unavailable SSH, named pipe, or HTTP transport | A normal result with `success:false`, `command`, `error`, `errorCode:"transport_unavailable"`, and `retryable:true`. |
 | A refused or failed action, including read-only mode | A normal result with `success:false`, `command`, `error` and `errorCode`. |
 | An action that needs confirmation | `success:true` with `data.needsConfirmation:true`, `confirmationText` and `confirmToken`. This is not an error. |
 
@@ -232,6 +233,7 @@ Read `errorCode`, not the text of `error`. The wording of messages is not part o
 | --- | --- |
 | `read_only` | Refused because the server runs with `REVIT_MCP_READ_ONLY=1`, the workstation `read-only` file exists, or the transport reported a read-only refusal. `error` is `read-only mode`. |
 | `policy_blocked` | Refused by the machine policy an administrator set, for example a denied tool or disabled code execution. `error` starts with `Blocked by organization policy:`. See the [policy reference](admin/policy-reference.md). |
+| `transport_unavailable` | Revit cannot be reached over SSH, a named pipe, or HTTP. `retryable` is `true`. Retry when the workstation or tunnel is back. |
 | `action_failed` | The add-in tried the action and reported a failure. `error` holds the add-in's message. |
 
 New codes can appear in a minor release; treat an unknown code as a failed action.
