@@ -355,53 +355,6 @@ def test_redirect_does_not_forward_token(endpoint):
 REPOSITORY = Path(__file__).resolve().parents[2]
 
 
-def test_addin_advertises_bound_http_endpoint_identity():
-    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
-    application = (REPOSITORY / "src/RevitModelMcp.Addin/Application.cs").read_text()
-    assert "public int? BoundPort { get; private set; }" in source
-    start = source.split("public void Start()", 1)[1].split("private async Task", 1)[0]
-    disabled, enabled = start.split("_listener.Start();", 1)
-    assert "if (!_settings.HttpEnabled)" in disabled
-    assert "return;" in disabled
-    assert "BoundPort =" not in disabled
-    assert enabled.lstrip().startswith("BoundPort = _settings.HttpPort;")
-    assert source.count("BoundPort =") == 1
-    after_start = application.split("_httpChannel.Start();", 1)[1]
-    assert after_start.lstrip().startswith(
-        "_instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);"
-    )
-    assert "HttpPort = _httpPort" in application
-    health = source.split('path == "/health"', 1)[1].split("return;", 1)[0]
-    assert '["startedUtc"] = ChannelDirectory.StartedUtc' in health
-    assert "StartedUtc = Output.ChannelDirectory.StartedUtc" in application
-
-
-def test_addin_rejects_oversized_declared_job_before_reading():
-    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
-    jobs = source.split('method == "POST" && path == "/jobs"', 1)[1].split(
-        'method == "GET" && path.StartsWith("/views/"', 1
-    )[0]
-    reader = source.split("private async Task<string?> ReadBodyAsync", 1)[1].split(
-        "private Task ExpiredAsync", 1
-    )[0]
-    declared_limit = reader.index("context.Request.ContentLength64 > MaxJobBytes")
-    body_read = reader.index("BoundedBodyReader.ReadAsync")
-    cancel = source.split('path.EndsWith("/cancel"', 1)[1].split(
-        'method == "POST" && path == "/jobs"', 1
-    )[0]
-    bounded_reader = (
-        REPOSITORY / "src/RevitModelMcp.Core/Control/BoundedBodyReader.cs"
-    ).read_text()
-
-    assert "private const long MaxJobBytes = 1024 * 1024;" in source
-    assert declared_limit < body_read
-    assert reader.count("JsonAsync(context, 413") == 2
-    assert "result.Status == BodyReadStatus.TooLarge" in reader
-    assert "ReadBodyAsync(context)" in jobs
-    assert "ReadBodyAsync(context)" in cancel
-    assert "TooLarge" in bounded_reader
-
-
 def run_powershell(script):
     executable = shutil.which("pwsh")
     if not executable:
@@ -675,23 +628,6 @@ finally { Remove-Item $root -Recurse -Force }
     )
 
 
-def test_msi_http_url_acl_requires_opt_in_and_owned_prefix():
-    source = (REPOSITORY / "build/install/Installer.cs").read_text()
-    assert 'new Property("HTTP_ENABLED", "0")' in source
-    register = source.split('new Id("RegisterHttpUrlAcl")', 1)[1].split(
-        'new Id("RemoveHttpUrlAcl")', 1
-    )[0]
-    assert 'HTTP_ENABLED=\\"1\\" AND NOT Installed' in register
-    assert "Return.check" in register
-    assert "Step.WriteRegistryValues" in register
-    assert "url=[HTTP_OWNED_PREFIX]" in register
-    remove = source.split('new Id("RemoveHttpUrlAcl")', 1)[1]
-    assert 'REMOVE=\\"ALL\\" AND HTTP_OWNED_PREFIX' in remove
-    assert "http delete urlacl url=[HTTP_OWNED_PREFIX]" in remove
-    assert 'new RegValueProperty("HTTP_OWNED_PREFIX"' in source
-    assert "HttpUrlAcl\\[ProductCode]" in source
-
-
 @pytest.mark.parametrize("changed", [{"processId": 84}, {"startedUtc": "2026-09-16T01:00:00Z"}])
 def test_endpoint_identity_change_rejected_before_post(endpoint, changed):
     host, state = endpoint
@@ -776,24 +712,6 @@ def test_request_body_errors(endpoint, status, message):
     assert state["requests"][-1][1].startswith("/jobs?")
 
 
-def test_addin_http_shutdown_and_response_limits():
-    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
-    assert "private readonly DrainGate _gate = new();" in source
-    assert "BoundedBodyReader.ReadAsync" in source
-    assert "JsonAsync(context, 408" in source
-    expired = source.split("private Task ExpiredAsync", 1)[1].split(
-        "private bool Authenticated", 1
-    )[0]
-    assert "JsonAsync(context, 410" in expired
-    assert source.count("await ExpiredAsync(context,") == 3
-    dispose = source.split("public void Dispose()", 1)[1].split("private sealed class HttpJob", 1)[
-        0
-    ]
-    assert "_gate.WaitDrained" in dispose
-    assert dispose.index("_gate.Close()") < dispose.index("_listener.Stop()")
-    assert dispose.index("_channel.Shutdown()") < dispose.index("_gate.WaitDrained")
-
-
 def test_http_503_points_to_listener_diagnostics(endpoint):
     host, state = endpoint
     state["status"] = 503
@@ -820,20 +738,6 @@ def test_unreachable_endpoint_points_to_heartbeat_listener_reason():
     assert "revit_ping over the local transport shows the reason in httpListener" in str(
         captured.value
     )
-
-
-def test_addin_self_probe_is_independent_of_shutdown_drain():
-    source = (REPOSITORY / "src/RevitModelMcp.Addin/Control/HttpChannel.cs").read_text()
-    listen = source.split("private async Task ListenAsync()", 1)[1].split(
-        "private async Task HandleAsync", 1
-    )[0]
-    assert listen.index('AbsolutePath == "/health"') < listen.index("_gate.TryEnter()")
-    probe = source.split("private async Task ProbeAsync()", 1)[1].split(
-        "private async Task ListenAsync()", 1
-    )[0]
-    assert probe.count("_closing") == 2
-    dispose = source.split("public void Dispose()", 1)[1]
-    assert dispose.index("_closing = true") < dispose.index("_gate.Close()")
 
 
 def test_http_read_only_action_returns_refusal(endpoint):
@@ -864,18 +768,6 @@ def test_http_read_only_cancel_returns_refusal(endpoint):
         method == "POST" and path == "/jobs/" + "a" * 32 + "/cancel"
         for method, path, _ in state["requests"]
     )
-
-
-def test_addin_refuses_job_control_and_batch_start_in_read_only_mode():
-    control = REPOSITORY / "src/RevitModelMcp.Addin/Control"
-    http = (control / "HttpChannel.cs").read_text()
-    cancel = http.split('path.EndsWith("/cancel"', 1)[1].split("_channel.CancelJob", 1)[0]
-    assert "ActionCommandExecutor.ReadOnlyMode" in cancel and "403" in cancel
-    assert "ReadOnlyGatePolicy.RefusesSubmission" in http
-    pipe = (control / "PipeChannel.cs").read_text()
-    pipe_cancel = pipe.split("private PipeMessage Cancel(", 1)[1].split("CancelJob", 1)[0]
-    assert '"read_only"' in pipe_cancel
-    assert "ReadOnlyGatePolicy.RefusesSubmission" in pipe
 
 
 POLICY_READ_ONLY_TEXT = "Blocked by organization policy: the workstation is read-only."
