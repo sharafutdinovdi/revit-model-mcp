@@ -1,11 +1,11 @@
 <h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.webp">
-    <img alt="Model MCP: BIM on Autopilot. Ask, check and change live Revit projects from Claude, Cursor or any MCP client. An animation shows a building model rising level by level in a Revit 3D view after the prompt: build the model up level by level." src="docs/assets/hero-light.webp" width="1200">
+    <img alt="Model MCP: BIM on Autopilot. Ask, check and change live Revit projects from Claude Desktop, Claude Code or any MCP client that starts a stdio server. An animation shows a building model rising level by level in a Revit 3D view after the prompt: build the model up level by level." src="docs/assets/hero-light.webp" width="1200">
   </picture>
 </h1>
 
-Model MCP for Autodesk® Revit® connects an MCP client such as Claude Desktop or Claude Code to a live Revit project.
+Model MCP for Autodesk® Revit® connects Claude Desktop, Claude Code or any MCP client that starts a stdio server to a live Revit project.
 Ask questions about the model, check it, and change it in plain language.
 Every change is one named undo entry in Revit, and read-only mode is one switch away.
 
@@ -32,25 +32,29 @@ Actions are enabled in this recording.
 
 </details>
 
-## Why Model MCP
-
-- **Safe by design.** Each change is one named undo entry in Revit, and one setting makes the whole server read-only.
-- **Confirmation first.** Saving, syncing and other irreversible steps wait for your explicit approval.
-- **Installs like normal software.** MSI installers, with deployment guides for SCCM, Intune and Group Policy.
-- **Works from a Mac.** MCP stdio runs through SSH to the Windows workstation, so no port opens.
-
 ## Quick start
 
 You need two parts: the add-in inside Revit on Windows, and the server next to your MCP client.
 Details and requirements are in [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/).
+Tested with Claude Desktop and Claude Code; other clients are listed on the [tested clients page](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/).
 
 **1. Install the add-in.**
 On the Windows machine with Revit, download `RevitModelMcp-<version>-SingleUser.msi` (current user) or `RevitModelMcp-<version>-MultiUser.msi` (all users) from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
 Install only one of them.
-Run it with Revit closed, start Revit and open a model.
+Alternatively, install with WinGet:
+
+```sh
+winget install Sharafutdinov.RevitModelMcp
+```
+
+Keep Revit closed during installation, then start Revit and open a model.
 Revit asks whether to load the add-in, because release builds are not code-signed yet.
 
 **2. Add the server to your MCP client.**
+In Revit, Add-ins > MCP > Connect AI app registers the bundled server in Claude Desktop, Cursor, VS Code or Codex; Claude Code gets a copy-paste command.
+The MSI includes the server executable, so this path needs no separate Python or uv installation.
+
+If you prefer the PyPI server:
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then register the server.
 For Claude Code on the same Windows machine:
 
@@ -82,6 +86,16 @@ The [Claude Desktop bundle](https://sharafutdinovdi.github.io/revit-model-mcp/in
 Restart the client, keep a model open in Revit and ask: "Call `revit_ping`, then tell me which model is open."
 `success: true` means both parts are connected.
 From a clone, `uv run --directory server revit-model-mcp` runs the same server without installing the package.
+
+For updates, the release add-in checks GitHub daily and notifies by default; the PyPI server checks PyPI, or install the newer MSI ([updates](https://sharafutdinovdi.github.io/revit-model-mcp/updates/)).
+Report bugs in [Issues](https://github.com/sharafutdinovdi/revit-model-mcp/issues/new/choose), ask questions in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions), and report vulnerabilities through [SECURITY.md](SECURITY.md).
+
+## Why Model MCP
+
+- **Safe by design.** Each change is one named undo entry in Revit, and one setting makes the whole server read-only.
+- **Confirmation first.** Saving, syncing and other irreversible steps wait for your explicit approval.
+- **Installs like normal software.** MSI installers, with deployment guides for SCCM, Intune and Group Policy.
+- **Works from a Mac.** MCP stdio runs through SSH to the Windows workstation, so no port opens.
 
 ## Try these prompts
 
@@ -229,12 +243,13 @@ Install it the same way: copy `skills/iso19650-issue-register` into `~/.claude/s
 
 <a id="actions-opt-in"></a>
 
-- **Actions are on by default.** Set `REVIT_MCP_READ_ONLY=1` in the server environment, or create the workstation `read-only` file, to refuse every action. Action tools stay listed and return `read_only` instead of running.
+- **Actions are on by default.** Set `REVIT_MCP_READ_ONLY=1` in the server environment, or create the workstation `read-only` file, to refuse every action. Action tools stay listed and return `errorCode: "read_only"` instead of running.
 - **One undo per change.** A committed action is one named Revit undo entry, shown in Revit's Undo list and in the add-in's "MCP activity" pane. `revit_undo_last` undoes it while it is still Revit's last change.
 - **Confirmation tokens for irreversible actions.** Saving, synchronizing, removing links and running C# always need one. Closing with changes, deleting more than 500 elements, overwriting existing export files and in-place saves in batch runs need one too. The first call changes nothing and returns the text to show you; the retry needs your explicit agreement. A token is single use and expires after five minutes.
 - **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export` and `revit_process_models` accept `dry_run` to preview the result without committing it.
 - **A readable summary.** Every action returns `verification` and a one-sentence `summary` of what changed.
 - **Path redaction.** `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields. Names, parameter values and errors stay visible.
+- **Unreachable workstation.** `errorCode: "transport_unavailable"` with `retryable: true` means Revit or the workstation is unreachable and the call did not run. Retry when the workstation or tunnel is back. See [errors and refusals](https://sharafutdinovdi.github.io/revit-model-mcp/tools/#errors-and-refusals).
 - **HTTP.** Direct HTTP callers need the bearer token and are refused while the workstation read-only file is present.
 
 For unattended runs, switch on read-only mode.
@@ -268,7 +283,8 @@ See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transpor
 Revit 2022 to 2027 on Windows 10 and 11.
 The add-in targets .NET Framework 4.8 for Revit 2022-2024, .NET 8 for 2025 and 2026, and .NET 10 for 2027.
 Every year builds, installs and runs live reads and actions.
-The server needs Python 3.11 or newer, started through uv, and runs on Windows, macOS or Linux.
+The MSI bundles a server executable for Windows that needs no separate Python or uv installation.
+The PyPI server needs Python 3.11 or newer and runs on Windows, macOS or Linux; uv can start it with `uvx revit-model-mcp`.
 See [validation evidence](https://sharafutdinovdi.github.io/revit-model-mcp/validation/) for dates and limits, and [known gaps](https://sharafutdinovdi.github.io/revit-model-mcp/roadmap/#known-gaps).
 
 ## Privacy
@@ -290,7 +306,7 @@ See also the [MCP specifications](https://sharafutdinovdi.github.io/revit-model-
 
 Release builds are not code-signed yet, so Revit asks whether to load the add-in after install and after each update.
 Verify downloads with `SHA256SUMS.txt` and the build provenance attestation; see the [code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) and [download verification](https://sharafutdinovdi.github.io/revit-model-mcp/security/#verify-downloads).
-See [automatic updates](docs/updates.md) for how the add-in updates itself.
+See [automatic updates](https://sharafutdinovdi.github.io/revit-model-mcp/updates/) for update modes and installation.
 
 ## Contributing and support
 
