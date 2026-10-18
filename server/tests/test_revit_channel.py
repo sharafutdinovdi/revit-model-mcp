@@ -31,6 +31,7 @@ from revit_model_mcp.revit_channel import (
     RevitChannelError,
     RevitNotRunningError,
     SshUnavailableError,
+    TransportUnavailableError,
     matches_document,
     parse_response,
     resolve_instance,
@@ -463,6 +464,8 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(elapsed, 0.9)
         self.assertLessEqual(elapsed, 2.0)
         self.assertIn("Nothing was sent to the host.", str(raised.exception))
+        self.assertFalse(raised.exception.started)
+        self.assertIsInstance(raised.exception, TransportUnavailableError)
         start.assert_not_called()
         self.assertEqual(len(host._connection_starts), RELAY_CONNECTION_LIMIT)
         self.assertFalse(host._connection_lock.locked())
@@ -602,6 +605,8 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("command execution timeout", message)
         self.assertIn("not evidence that SSH is unavailable", message)
         self.assertTrue(process.killed)
+        self.assertTrue(raised.exception.started)
+        self.assertNotIsInstance(raised.exception, TransportUnavailableError)
 
     async def test_reports_ssh_process_error_without_claiming_connection_failure(
         self,
@@ -2744,3 +2749,20 @@ def test_failed_image_download_removes_remote_files(command, tmp_path):
     deleted = remote.delete_files.await_args.args[0]
     assert remote.written_name in deleted
     assert remote.response_name in deleted
+
+
+@pytest.mark.parametrize(
+    "failure", [FileNotFoundError("missing"), PermissionError("denied"), OSError("spawn failed")]
+)
+def test_transport_spawn_os_errors(failure):
+    async def run():
+        with patch(
+            "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+            AsyncMock(side_effect=failure),
+        ):
+            with pytest.raises(
+                SshUnavailableError, match="Could not start the transport executable"
+            ):
+                await SshPowerShellHost(local=True)._run("'ok'")
+
+    asyncio.run(run())

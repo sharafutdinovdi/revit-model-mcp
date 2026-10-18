@@ -26,6 +26,7 @@ from revit_model_mcp.revit_channel import (
     ResponseTimeoutError,
     ResultExpiredError,
     RevitChannelError,
+    TransportUnavailableError,
     matches_document,
     select_instance,
 )
@@ -34,6 +35,10 @@ from revit_model_mcp.revit_channel import (
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+class HttpUnavailableError(TransportUnavailableError):
+    transport = "HTTP"
 
 
 def _policy_refusal_text(error: urllib.error.HTTPError) -> str | None:
@@ -352,6 +357,8 @@ class HttpHost:
                 error_type = (
                     ReadOnlyRefusedError
                     if error.code == 403 and method == "POST" and _is_job_submission_path(path)
+                    else HttpUnavailableError
+                    if error.code == 503
                     else RevitChannelError
                 )
                 raise error_type(
@@ -373,7 +380,7 @@ class HttpHost:
                         "A submitted job may still execute; "
                         "inspect the model before retrying an action."
                     ) from None
-                raise RevitChannelError(
+                raise HttpUnavailableError(
                     f"Revit endpoint not reachable at {self.host}: is Revit running with the add-in, "
                     "and is the port reachable from this machine?"
                     " If the add-in log says HTTP is disabled or failed, revit_ping over the local transport shows the reason in httpListener."

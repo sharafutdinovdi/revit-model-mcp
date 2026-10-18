@@ -6,6 +6,7 @@ from revit_model_mcp.errors import (
     READ_ONLY,
     READ_ONLY_MESSAGE,
     refusal,
+    unavailable,
     with_error_code,
 )
 
@@ -61,3 +62,13 @@ def test_with_error_code(response, code):
     result = with_error_code(response)
     assert result is response
     assert result == (original if code is None else {**original, "errorCode": code})
+
+
+def test_unavailable_shape():
+    assert unavailable("ping", "offline") == {
+        "success": False,
+        "command": "ping",
+        "error": "offline",
+        "errorCode": "transport_unavailable",
+        "retryable": True,
+    }

@@ -1,5 +1,8 @@
 """Machine-readable codes for action failures and refusals."""
 
+TRANSPORT_UNAVAILABLE = "transport_unavailable"
+"""The transport cannot reach Revit; the call can be retried."""
+
 READ_ONLY = "read_only"
 """The server or workstation refused an action in read-only mode."""
 POLICY_BLOCKED = "policy_blocked"
@@ -13,6 +16,10 @@ READ_ONLY_MESSAGE = "read-only mode"
 
 def refusal(command: str, code: str, message: str) -> dict:
     return {"success": False, "command": command, "error": message, "errorCode": code}
+
+
+def unavailable(command: str, message: str) -> dict:
+    return refusal(command, TRANSPORT_UNAVAILABLE, message) | {"retryable": True}
 
 
 def with_error_code(response: dict) -> dict:

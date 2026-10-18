@@ -21,6 +21,7 @@ from revit_model_mcp.revit_channel import (
     ResultExpiredError,
     RevitChannel,
     RevitChannelError,
+    TransportUnavailableError,
 )
 from revit_model_mcp.server import create_host
 
@@ -268,7 +269,7 @@ def test_http_401_requires_fresh_proof(endpoint):
 def test_connection_error_requires_fresh_proof(endpoint):
     host, state = endpoint
     state["drop_once"] = True
-    with pytest.raises(RevitChannelError, match="not reachable"):
+    with pytest.raises(TransportUnavailableError, match="not reachable"):
         asyncio.run(RevitChannel(host).execute(Job.ping()))
 
     assert asyncio.run(RevitChannel(host).execute(Job.ping()))["data"] == "pong"
@@ -313,7 +314,7 @@ def test_connection_refused():
     port = server.server_port
     server.server_close()
     with pytest.raises(
-        RevitChannelError,
+        TransportUnavailableError,
         match="Revit endpoint not reachable at .*is Revit running with the add-in",
     ):
         asyncio.run(HttpHost(f"http://127.0.0.1:{port}").health())
@@ -796,10 +797,10 @@ def test_addin_http_shutdown_and_response_limits():
 def test_http_503_points_to_listener_diagnostics(endpoint):
     host, state = endpoint
     state["status"] = 503
-    with pytest.raises(RevitChannelError) as captured:
+    with pytest.raises(TransportUnavailableError) as captured:
         asyncio.run(RevitChannel(host).execute(Job.ping()))
     message = str(captured.value)
-    assert message.startswith("Revit endpoint returned HTTP 503:")
+    assert "Revit endpoint returned HTTP 503:" in message
     assert "HTTP.sys has no working listener for this URL" in message
     assert "revit_ping over the local transport" in message
     assert "httpListener" in message

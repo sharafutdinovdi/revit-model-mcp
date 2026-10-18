@@ -178,8 +178,18 @@ class ResultExpiredError(RevitChannelError):
     pass
 
 
-class SshUnavailableError(RevitChannelError):
-    pass
+class TransportUnavailableError(RevitChannelError):
+    transport = "transport"
+
+    def __str__(self) -> str:
+        return (
+            f"Revit is not reachable over {self.transport}: {super().__str__().rstrip('.')}. "
+            "The call did not run. Retry when the workstation or tunnel is back."
+        )
+
+
+class SshUnavailableError(TransportUnavailableError):
+    transport = "SSH"
 
 
 class RevitNotRunningError(RevitChannelError):
