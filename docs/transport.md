@@ -174,6 +174,8 @@ netsh http show servicestate
 
 `show urlacl` must list the exact prefix, for example `http://127.0.0.1:53110/`, for the Windows user that runs Revit.
 `show servicestate` lists the request queues and URL groups that already own a prefix; another process on the same URL causes a 503.
+A leftover wildcard reservation for the same port, such as `http://+:53110/`, also causes a 503 self-probe failure.
+Remove that reservation from an elevated prompt with `netsh http delete urlacl url=http://+:53110/`, substituting the configured HTTP port.
 
 ### Windows URL reservation
 

@@ -124,7 +124,7 @@ internal sealed class HttpChannel : IDisposable
             Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName);
             StatusChanged?.Invoke(Status);
             if (Status.IsFailed)
-                PluginLog.Warn($"HTTP self-probe failed. Reason='{Status.Reason}'.");
+                PluginLog.Warn($"HTTP self-probe failed. Reason='{Status.Reason}'.{(statusCode == 503 ? $" A wildcard reservation for the same port (http://+:{_settings.HttpPort}/) also causes this; remove it with netsh http delete urlacl url=http://+:{_settings.HttpPort}/." : string.Empty)}");
             else
                 PluginLog.Info("HTTP self-probe succeeded.");
         }

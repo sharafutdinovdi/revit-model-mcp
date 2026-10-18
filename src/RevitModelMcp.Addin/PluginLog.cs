@@ -42,7 +42,7 @@ internal static class PluginLog
         Write("ERR", message, exception);
     }
 
-    public static void Debug(string message, Exception exception)
+    public static void Debug(string message, Exception? exception = null)
     {
         Write("DBG", message, exception);
     }
@@ -72,7 +72,9 @@ internal static class PluginLog
                 {
                     line += Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1"
                         ? $"{Environment.NewLine}{exception.GetType().FullName}"
-                        : $"{Environment.NewLine}{exception}";
+                        : level == "DBG"
+                            ? $"{Environment.NewLine}{exception.GetType().Name}: {Sanitize(exception.Message)}"
+                            : $"{Environment.NewLine}{exception}";
                 }
 
                 File.AppendAllText(path, line + Environment.NewLine, Utf8WithoutBom);

@@ -68,6 +68,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 - Use Conventional Commits for commits and PR titles.
 - Write code, comments and documentation in English with sentence-case headings and short sentences.
 - Add or update tests for every behavior change; never delete or weaken existing tests.
+- Tests assert behavior through the public surface. A Python test never reads C# source files to check their text; add-in behavior without a Core seam is verified on a Revit workstation and noted in the PR.
 - Describe release changes in Conventional Commit messages; release-please updates [CHANGELOG.md](CHANGELOG.md).
 - Follow `.editorconfig` and the pinned Ruff configuration.
 - Keep internal documentation links valid when moving sections.

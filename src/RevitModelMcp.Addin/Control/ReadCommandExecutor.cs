@@ -43,8 +43,9 @@ internal static class ReadCommandExecutor
                 var reference = job.CoordinatorJob.TargetDocument;
                 var target = ActionCommandExecutor.ResolveDocument(application,
                     string.IsNullOrWhiteSpace(reference) ? null : reference!.Trim());
-                ActionJobParser.ValidateFamilyMode(job.Action ?? throw new ArgumentException("Missing family arguments."), target.IsFamilyDocument);
-                var audit = FamilyAuditReader.Read(target, job.Action?.Families);
+                var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
+                ActionJobParser.ValidateFamilyMode(action, target.IsFamilyDocument);
+                var audit = FamilyAuditReader.Read(target, action.Families, action.Detail);
                 stopwatch.Stop();
                 output.Write(CommandResponse<FamilyAuditData>.Ok(job.Command, audit, stopwatch.ElapsedMilliseconds));
                 LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);

@@ -12,7 +12,7 @@ import sys
 import tempfile
 from importlib.resources import files
 from pathlib import Path
-from typing import Annotated, Any, get_type_hints
+from typing import Annotated, Any, Literal, get_type_hints
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -1207,16 +1207,17 @@ async def revit_list_instances(document: Document = None) -> dict[str, Any]:
 @addressed_tool
 async def revit_family_audit(
     families: Annotated[list[str] | None, Field(min_length=1, max_length=200)] = None,
+    detail: Literal["summary", "full"] = "summary",
     timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or ["*"]; family mode takes none. The wildcard audits the first 200 editable families sorted by name; data.skipped lists each remaining name and reason, with skippedCount."""
+    """Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or ["*"]; family mode takes none. detail="summary" returns parameter counts and up to 20 unused parameter names; detail="full" returns all parameter metadata with group IDs and groupName labels. The wildcard audits the first 200 editable families sorted by name; data.skipped lists each remaining name and reason, with skippedCount."""
     if families is not None and (not families or any(not name.strip() for name in families)):
         raise ToolError("families must contain 1 to 200 non-empty names.")
     if families is not None and "*" in families and families != ["*"]:
         raise ToolError("The '*' family selector must be alone.")
     return await _execute(
-        Job("family-audit", {"command": "family-audit", "families": families}),
+        Job("family-audit", {"command": "family-audit", "families": families, "detail": detail}),
         timeout_seconds,
         DEFAULT_PICKUP_TIMEOUT_SECONDS,
         document,

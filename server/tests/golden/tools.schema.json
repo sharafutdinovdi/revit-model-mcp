@@ -2489,6 +2489,14 @@
   },
   "revit_family_audit": {
     "properties": {
+      "detail": {
+        "default": "summary",
+        "enum": [
+          "summary",
+          "full"
+        ],
+        "type": "string"
+      },
       "document": {
         "anyOf": [
           {

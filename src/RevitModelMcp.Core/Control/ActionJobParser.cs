@@ -111,6 +111,7 @@ public static class ActionJobParser
                     Overwrite = job.Overwrite ?? false
                 },
                 Families = job.Families,
+                Detail = job.Detail ?? "summary",
                 Operations = job.Operations ?? [],
                 OverwriteParameterValues = job.OverwriteParameterValues ?? false,
                 StopOnError = job.StopOnError ?? true,
@@ -265,6 +266,8 @@ public static class ActionJobParser
                 Require(job.Families is null || !job.Families.Contains("*") || job.Families.Count == 1,
                     "The '*' family selector must be alone.");
             }
+            if (command == "family-audit")
+                Require(action.Detail is "summary" or "full", "detail must be summary or full.");
             if (command == "edit-families")
             {
                 Require(action.Operations.Count > 0, "operations must not be empty.");
@@ -951,6 +954,7 @@ public sealed class ActionJobContract
     public string? Parameter { get; set; }
     public string? ParameterId { get; set; }
     public object? Value { get; set; }
+    public string Detail { get; set; } = "summary";
     public List<string>? Families { get; set; }
     public List<FamilyEditOperationContract> Operations { get; set; } = [];
     public bool OverwriteParameterValues { get; set; }
@@ -1629,6 +1633,7 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "parameter")] public string? Parameter { get; set; }
     [DataMember(Name = "parameterId")] public string? ParameterId { get; set; }
     [DataMember(Name = "value")] public object? Value { get; set; }
+    [DataMember(Name = "detail")] public string? Detail { get; set; }
     [DataMember(Name = "families")] public List<string>? Families { get; set; }
     [DataMember(Name = "operations")] public List<FamilyEditOperationContract>? Operations { get; set; }
     [DataMember(Name = "overwriteParameterValues")] public bool? OverwriteParameterValues { get; set; }

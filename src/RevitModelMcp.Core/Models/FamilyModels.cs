@@ -21,10 +21,27 @@ public sealed class FamilyAuditFamily
     [DataMember(Name = "category", EmitDefaultValue = false)] public string? Category { get; set; }
     [DataMember(Name = "isShared")] public bool IsShared { get; set; }
     [DataMember(Name = "sharedFlagEditable")] public bool SharedFlagEditable { get; set; }
-    [DataMember(Name = "parameters")] public List<FamilyParameterData> Parameters { get; set; } = [];
+    [DataMember(Name = "parameters", EmitDefaultValue = false)] public List<FamilyParameterData>? Parameters { get; set; } = [];
+    [DataMember(Name = "parameterCount", EmitDefaultValue = false)] public int? ParameterCount { get; set; }
+    [DataMember(Name = "unusedParameterCount", EmitDefaultValue = false)] public int? UnusedParameterCount { get; set; }
+    [DataMember(Name = "dataCarrierRiskCount", EmitDefaultValue = false)] public int? DataCarrierRiskCount { get; set; }
+    [DataMember(Name = "unusedParameters", EmitDefaultValue = false)] public List<string>? UnusedParameters { get; set; }
+    [DataMember(Name = "unusedParametersTruncated", EmitDefaultValue = false)] public bool UnusedParametersTruncated { get; set; }
     [DataMember(Name = "purgeable")] public Dictionary<string, int> Purgeable { get; set; } = [];
     [DataMember(Name = "purgeableTotal")] public int PurgeableTotal { get; set; }
     [DataMember(Name = "purgeCoverage")] public string PurgeCoverage { get; set; } = string.Empty;
+
+    public void ApplySummary()
+    {
+        var parameters = Parameters ?? [];
+        var unused = parameters.Where(parameter => !parameter.Used).ToList();
+        ParameterCount = parameters.Count;
+        UnusedParameterCount = unused.Count;
+        DataCarrierRiskCount = parameters.Count(parameter => parameter.DataCarrierRisk);
+        UnusedParameters = unused.Take(20).Select(parameter => parameter.Name).ToList();
+        UnusedParametersTruncated = unused.Count > 20;
+        Parameters = null;
+    }
 }
 
 [DataContract]
@@ -35,6 +52,7 @@ public sealed class FamilyParameterData
     [DataMember(Name = "isShared")] public bool IsShared { get; set; }
     [DataMember(Name = "guid", EmitDefaultValue = false)] public string? Guid { get; set; }
     [DataMember(Name = "group")] public string Group { get; set; } = string.Empty;
+    [DataMember(Name = "groupName")] public string? GroupName { get; set; }
     [DataMember(Name = "formula", EmitDefaultValue = false)] public string? Formula { get; set; }
     [DataMember(Name = "isReporting")] public bool IsReporting { get; set; }
     [DataMember(Name = "used")] public bool Used { get; set; }

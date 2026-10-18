@@ -8,12 +8,12 @@ namespace RevitModelMcp.Capture;
 
 internal static class FamilyAuditReader
 {
-    internal static FamilyAuditData Read(Document document, IReadOnlyList<string>? names)
+    internal static FamilyAuditData Read(Document document, IReadOnlyList<string>? names, string detail = "summary")
     {
         if (document.IsFamilyDocument)
         {
             if (names is not null) throw new ArgumentException("families must be absent in family mode.");
-            return new FamilyAuditData { Mode = "family", Families = [ReadFamily(document)] };
+            return new FamilyAuditData { Mode = "family", Families = [ReadFamily(document, detail: detail)] };
         }
         if (names is null) throw new ArgumentException("families is required in project mode.");
         if (document.IsModifiable) throw new InvalidOperationException("Close the project transaction before editing families.");
@@ -35,7 +35,7 @@ internal static class FamilyAuditReader
             try
             {
                 familyDocument = document.EditFamily(family);
-                result.Families.Add(ReadFamily(familyDocument, family.Name));
+                result.Families.Add(ReadFamily(familyDocument, family.Name, detail));
             }
             catch (Exception exception)
             {
@@ -47,6 +47,9 @@ internal static class FamilyAuditReader
                 familyDocument?.Close(false);
             }
         }
+        if (detail == "summary")
+            foreach (var family in result.Families.Where(family => family.Parameters is not null))
+                family.ApplySummary();
         result.SkippedCount = result.Skipped.Count;
         return result;
     }
@@ -74,33 +77,41 @@ internal static class FamilyAuditReader
     internal static string? SkipReason(Family family) => family.IsInPlace ? "in-place" :
         !family.IsEditable ? "not editable" : null;
 
-    internal static FamilyAuditFamily ReadFamily(Document familyDocument, string? name = null)
+    internal static FamilyAuditFamily ReadFamily(Document familyDocument, string? name = null, string detail = "full")
     {
         var owner = familyDocument.OwnerFamily;
         var sharedFlag = owner?.get_Parameter(BuiltInParameter.FAMILY_SHARED);
         var candidates = FamilyPurge.Candidates(familyDocument);
-        return new FamilyAuditFamily
+        var result = new FamilyAuditFamily
         {
             Name = name ?? Path.GetFileNameWithoutExtension(familyDocument.Title),
             Category = owner?.FamilyCategory?.Name,
             IsShared = sharedFlag?.AsInteger() == 1,
             SharedFlagEditable = sharedFlag is not null && !sharedFlag.IsReadOnly,
-            Parameters = ReadParameters(familyDocument),
+            Parameters = ReadParameters(familyDocument, detail == "full"),
             Purgeable = FamilyPurge.Counts(familyDocument, candidates),
             PurgeableTotal = candidates.Count,
             PurgeCoverage = FamilyPurge.Coverage
         };
+        if (detail == "summary") result.ApplySummary();
+        return result;
     }
 
-    internal static List<FamilyParameterData> ReadParameters(Document familyDocument)
+    internal static List<FamilyParameterData> ReadParameters(Document familyDocument, bool includeGroupName = false)
     {
         var parameters = familyDocument.FamilyManager.Parameters.Cast<FamilyParameter>().ToList();
+        var unlabelableCount = 0;
         var dimensionLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(Dimension))
-            .Cast<Dimension>().Select(dimension => ReadLabel(() => dimension.FamilyLabel, $"dimension {RevitValueReader.GetId(dimension.Id)} label")?.Definition.Name)
+            .Cast<Dimension>().Where(dimension => dimension.DimensionType.StyleType is
+                DimensionStyleType.Linear or DimensionStyleType.LinearFixed or DimensionStyleType.Angular or
+                DimensionStyleType.Radial or DimensionStyleType.Diameter or DimensionStyleType.ArcLength)
+            .Select(dimension => ReadLabel(() => dimension.FamilyLabel,
+                $"dimension {RevitValueReader.GetId(dimension.Id)} label", ref unlabelableCount)?.Definition.Name)
             .OfType<string>().ToList();
         var arrayLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(BaseArray))
-            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label, $"array {RevitValueReader.GetId(array.Id)} label")?.Definition.Name)
+            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label, $"array {RevitValueReader.GetId(array.Id)} label", ref unlabelableCount)?.Definition.Name)
             .OfType<string>().ToList();
+        if (unlabelableCount > 0) PluginLog.Debug($"{unlabelableCount} dimensions cannot be labeled");
         var usage = ParameterUsage.Evaluate(parameters.Select(parameter => new ParameterUsageInput(
             parameter.Definition.Name, parameter.IsShared,
             parameter.Definition is InternalDefinition definition && definition.BuiltInParameter != BuiltInParameter.INVALID,
@@ -117,6 +128,7 @@ internal static class FamilyAuditReader
                     IsShared = parameter.IsShared,
                     Guid = parameter.IsShared ? parameter.GUID.ToString() : null,
                     Group = parameter.Definition.GetGroupTypeId().TypeId,
+                    GroupName = includeGroupName ? ReadGroupName(parameter) : null,
                     Formula = parameter.Formula,
                     IsReporting = parameter.IsReporting,
                     Used = used.Used,
@@ -127,13 +139,31 @@ internal static class FamilyAuditReader
             }).ToList();
     }
 
-    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel, string what)
+    private static string? ReadGroupName(FamilyParameter parameter)
+    {
+        try
+        {
+            return LabelUtils.GetLabelForGroup(parameter.Definition.GetGroupTypeId());
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel, string what, ref int unlabelableCount)
     {
         try
         {
             return getLabel();
         }
         catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+            when (exception.Message.IndexOf("can not be labeled", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            unlabelableCount++;
+            return null;
+        }
+        catch (Exception exception)
         {
             PluginLog.Skipped(what, exception);
             return null;
