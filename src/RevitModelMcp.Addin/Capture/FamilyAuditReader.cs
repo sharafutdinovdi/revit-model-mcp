@@ -95,12 +95,18 @@ internal static class FamilyAuditReader
     internal static List<FamilyParameterData> ReadParameters(Document familyDocument)
     {
         var parameters = familyDocument.FamilyManager.Parameters.Cast<FamilyParameter>().ToList();
+        var unlabelableCount = 0;
         var dimensionLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(Dimension))
-            .Cast<Dimension>().Select(dimension => ReadLabel(() => dimension.FamilyLabel, $"dimension {RevitValueReader.GetId(dimension.Id)} label")?.Definition.Name)
+            .Cast<Dimension>().Where(dimension => dimension.DimensionType.StyleType is
+                DimensionStyleType.Linear or DimensionStyleType.LinearFixed or DimensionStyleType.Angular or
+                DimensionStyleType.Radial or DimensionStyleType.Diameter or DimensionStyleType.ArcLength)
+            .Select(dimension => ReadLabel(() => dimension.FamilyLabel,
+                $"dimension {RevitValueReader.GetId(dimension.Id)} label", ref unlabelableCount)?.Definition.Name)
             .OfType<string>().ToList();
         var arrayLabels = new FilteredElementCollector(familyDocument).OfClass(typeof(BaseArray))
-            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label, $"array {RevitValueReader.GetId(array.Id)} label")?.Definition.Name)
+            .Cast<BaseArray>().Select(array => ReadLabel(() => array.Label, $"array {RevitValueReader.GetId(array.Id)} label", ref unlabelableCount)?.Definition.Name)
             .OfType<string>().ToList();
+        if (unlabelableCount > 0) PluginLog.Debug($"{unlabelableCount} dimensions cannot be labeled");
         var usage = ParameterUsage.Evaluate(parameters.Select(parameter => new ParameterUsageInput(
             parameter.Definition.Name, parameter.IsShared,
             parameter.Definition is InternalDefinition definition && definition.BuiltInParameter != BuiltInParameter.INVALID,
@@ -127,13 +133,19 @@ internal static class FamilyAuditReader
             }).ToList();
     }
 
-    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel, string what)
+    private static FamilyParameter? ReadLabel(Func<FamilyParameter?> getLabel, string what, ref int unlabelableCount)
     {
         try
         {
             return getLabel();
         }
         catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+            when (exception.Message.IndexOf("can not be labeled", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            unlabelableCount++;
+            return null;
+        }
+        catch (Exception exception)
         {
             PluginLog.Skipped(what, exception);
             return null;

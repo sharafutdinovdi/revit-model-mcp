@@ -42,7 +42,7 @@ internal static class PluginLog
         Write("ERR", message, exception);
     }
 
-    public static void Debug(string message, Exception exception)
+    public static void Debug(string message, Exception? exception = null)
     {
         Write("DBG", message, exception);
     }
