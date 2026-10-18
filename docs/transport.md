@@ -7,6 +7,23 @@ For a remote client, run the whole server on the workstation over SSH stdio; see
 HTTP connects directly to the add-in and requires no SSH server or remote file transfer.
 The MCP client still communicates with the Python server over stdio.
 
+## Transport errors
+
+Unavailable SSH, named pipe, and HTTP transports return a normal MCP tool result with `success:false`, `command`, `errorCode:"transport_unavailable"`, and `retryable:true`.
+The `error` message names the transport and reason and directs the client to retry when the workstation or tunnel is back.
+Transport failures do not close the stdio server.
+The [tool error codes](tools.md#errors-and-refusals) also define `read_only`, `policy_blocked`, and `action_failed`.
+
+SSH connection quota exhaustion before a command starts, connection failures, missing or inaccessible transport executables, pipe disconnects, unreachable HTTP endpoints, and HTTP 503 use `transport_unavailable`.
+An execution timeout after a command starts remains a tool error.
+An HTTP request timeout also remains a tool error: a submitted job may still execute.
+The model and job result require inspection before retrying an action after a timeout.
+
+An invalid `REVIT_MCP_HOST` produces a startup configuration message on stderr and exit code 2.
+`--help` and `--version` remain available without starting a transport.
+An unexpected stdio run exception produces a diagnostic line on stderr and propagates to the caller.
+A keyboard interrupt exits successfully.
+
 ## Named pipe
 
 Each add-in listens on `\\.\pipe\RevitModelMcp.<pid>` from startup.
