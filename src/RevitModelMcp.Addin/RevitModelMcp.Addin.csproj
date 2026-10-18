@@ -113,6 +113,9 @@
     <!-- MSI and ZIP packaging consume the build output. Keep its add-in identical to the published assembly. -->
     <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))"
           DestinationFiles="$(TargetPath)"/>
+    <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetName).pdb'))"
+          DestinationFolder="$(TargetDir)"
+          Condition="Exists($([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetName).pdb')))"/>
   </Target>
 
 </Project>
