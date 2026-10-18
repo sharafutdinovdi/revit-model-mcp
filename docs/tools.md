@@ -29,21 +29,21 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 8 | 7,464 | 1,866 |
-| `read` | 12 | 19,286 | 4,821 |
+| `core` | 8 | 6,836 | 1,709 |
+| `read` | 12 | 17,972 | 4,493 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,952 | 1,238 |
-| `views-sheets` | 21 | 25,559 | 6,389 |
-| `family` | 5 | 8,591 | 2,147 |
-| `links` | 3 | 4,261 | 1,065 |
+| `views-sheets` | 21 | 24,876 | 6,219 |
+| `family` | 5 | 8,967 | 2,241 |
+| `links` | 3 | 4,104 | 1,026 |
 | `cad-mep` | 4 | 5,663 | 1,415 |
-| `export` | 4 | 7,288 | 1,822 |
-| `batch` | 6 | 7,459 | 1,864 |
-| `code` | 1 | 1,326 | 331 |
-| `all` (default) | 79 | 102,952 | 25,738 |
-| `core,read` | 20 | 26,750 | 6,687 |
+| `export` | 4 | 7,283 | 1,820 |
+| `batch` | 6 | 7,557 | 1,889 |
+| `code` | 1 | 1,358 | 339 |
+| `all` (default) | 79 | 100,671 | 25,167 |
+| `core,read` | 20 | 24,808 | 6,202 |
 
-Before this change all 77 tools measured 156,658 bytes (about 39,164 tokens).
+With the pickup timeout argument included, all 79 tools measure 104,125 bytes (about 26,031 tokens).
 
 MEP routing, graphic overrides, view and sheet creation, element tagging, schedule creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 
@@ -54,7 +54,8 @@ Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` 
 
 Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120`, `pickup_timeout_seconds=300` and `document=null`. `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`.
+Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120` and `document=null`.
+The server environment variable `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` configures the file-channel pickup timeout (default 300 seconds). `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Every timeout argument is named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
 Arguments named `output_path` (a file) and `output_dir` (a directory) write on the machine that runs the MCP client, unless the description says the path is on the workstation. `revit_export`, `revit_process_models` exports and `save.output_dir` write on the workstation. `save_as` is a Revit Save As path on the workstation.
