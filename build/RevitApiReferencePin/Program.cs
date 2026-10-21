@@ -11,7 +11,7 @@ try
 {
     var assemblyPath = Path.GetFullPath(args[1]);
     var symbolPath = Path.ChangeExtension(assemblyPath, ".pdb");
-    var hasSymbols = args[0] == "rewrite" && File.Exists(symbolPath);
+    var hasSymbols = File.Exists(symbolPath);
     string[] referenceNames = ["RevitAPI", "RevitAPIUI"];
 
     var temporaryPath = assemblyPath + ".revit-api-pin.tmp";
@@ -20,9 +20,13 @@ try
     {
         using (var assemblyStream = new MemoryStream(File.ReadAllBytes(assemblyPath)))
         using (var symbolStream = hasSymbols ? new MemoryStream(File.ReadAllBytes(symbolPath)) : null)
-        using (var assembly = ReadAssembly(assemblyStream, symbolStream))
+        using (var assembly = AssemblyDefinition.ReadAssembly(assemblyStream, new ReaderParameters
         {
-            hasSymbols = assembly.MainModule.HasSymbols;
+            InMemory = true,
+            ReadSymbols = hasSymbols,
+            SymbolStream = symbolStream
+        }))
+        {
             var references = assembly.MainModule.AssemblyReferences;
             foreach (var name in referenceNames)
             {
@@ -88,24 +92,4 @@ catch (Exception exception) when (exception is IOException or InvalidDataExcepti
 {
     Console.Error.WriteLine($"ERROR: {exception.Message}");
     return 1;
-}
-
-static AssemblyDefinition ReadAssembly(Stream assemblyStream, Stream? symbolStream)
-{
-    try
-    {
-        return AssemblyDefinition.ReadAssembly(assemblyStream, new ReaderParameters
-        {
-            InMemory = true,
-            ReadSymbols = symbolStream is not null,
-            SymbolStream = symbolStream,
-            ThrowIfSymbolsAreNotMatching = false
-        });
-    }
-    catch (Exception exception) when (symbolStream is not null &&
-                                      exception is ArgumentException or BadImageFormatException)
-    {
-        assemblyStream.Position = 0;
-        return AssemblyDefinition.ReadAssembly(assemblyStream, new ReaderParameters { InMemory = true });
-    }
 }

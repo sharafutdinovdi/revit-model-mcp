@@ -89,7 +89,8 @@
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.BatchSupervisor.exe"
           DestinationFolder="$(TargetDir)"/>
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
-          DestinationFolder="$(TargetDir)"/>
+          DestinationFolder="$(TargetDir)"
+          Condition="'$(IsRepackable)' != 'true'"/>
   </Target>
 
   <Target Name="RemoveNetRuntimeDependencies"
@@ -116,6 +117,11 @@
     <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetName).pdb'))"
           DestinationFolder="$(TargetDir)"
           Condition="Exists($([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetName).pdb')))"/>
+    <!-- The supervisor uses net48 Core after the add-in has merged its own target framework's Core. -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
+          DestinationFolder="$(TargetDir)"/>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
+          DestinationFolder="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)'))"/>
   </Target>
 
 </Project>
