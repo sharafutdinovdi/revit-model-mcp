@@ -6,6 +6,79 @@ namespace RevitModelMcp.Core.Tests.Query;
 public sealed class QueryResultProcessorTests
 {
     [Test]
+    public async Task Pinned_ResolvesWithoutAParameterAndMatchesBooleanValues()
+    {
+        await Assert.That(QueryParameterValidator.Resolve("PINNED", [])).IsEqualTo("pinned");
+        await Assert.That(QueryParameterValidator.IsBuiltInField("pinned")).IsTrue();
+        QueryParameterValidator.ValidateAggregateFields(["pinned"], null, []);
+        var filter = new ParameterFilterSpec { Parameter = "pinned", Operator = ParameterOperator.Equals, Value = "true" };
+        await Assert.That(QueryParameterValidator.MatchesPinned(true, filter)).IsTrue();
+        await Assert.That(QueryParameterValidator.MatchesPinned(false, filter)).IsFalse();
+        filter.Value = "false";
+        await Assert.That(QueryParameterValidator.MatchesPinned(false, filter)).IsTrue();
+        filter.Value = "invalid";
+        Assert.Throws<ArgumentException>(() => QueryParameterValidator.MatchesPinned(false, filter));
+    }
+
+    [Test]
+    [Arguments("instance", "type", "instance")]
+    [Arguments("", "type", "")]
+    [Arguments(null, "type", "type")]
+    [Arguments(null, null, null)]
+    public async Task ParameterValueSource_UsesTypeOnlyWhenInstanceParameterIsAbsent(
+        string? instanceParameter, string? typeParameter, string? expected)
+    {
+        var typeReads = 0;
+        var result = QueryParameterSemantics.ResolveValueSource(instanceParameter, () =>
+        {
+            typeReads++;
+            return typeParameter;
+        });
+        await Assert.That(result).IsEqualTo(expected);
+        await Assert.That(typeReads).IsEqualTo(instanceParameter is null ? 1 : 0);
+    }
+
+    [Test]
+    [Arguments(false, "String", "text", null, false)]
+    [Arguments(true, "String", null, null, false)]
+    [Arguments(true, "String", "", null, false)]
+    [Arguments(true, "String", " \t\r\n", null, false)]
+    [Arguments(true, "String", "segment", null, true)]
+    [Arguments(false, "ElementId", null, 42L, false)]
+    [Arguments(true, "ElementId", null, -1L, false)]
+    [Arguments(true, "ElementId", null, null, false)]
+    [Arguments(true, "ElementId", null, -2L, true)]
+    [Arguments(true, "ElementId", null, 42L, true)]
+    [Arguments(true, "Integer", null, null, true)]
+    [Arguments(true, "Double", null, null, true)]
+    [Arguments(false, "Double", null, null, false)]
+    [Arguments(true, "None", null, null, false)]
+    public async Task ParameterValue_ExcludesUnsetBlankAndInvalidIds(
+        bool hasValue, string storageType, string? text, long? elementId, bool expected)
+    {
+        await Assert.That(QueryParameterSemantics.HasValue(hasValue, storageType, text, elementId)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(null, false, null, QueryParameterKind.Unknown)]
+    [Arguments("generic", false, null, QueryParameterKind.Unknown)]
+    [Arguments("autodesk.spec.aec:material-1.0.0", false, null, QueryParameterKind.Unknown)]
+    [Arguments("autodesk.spec:spec.string-2.0.0", false, null, QueryParameterKind.String)]
+    [Arguments("spec:string", false, null, QueryParameterKind.String)]
+    [Arguments("length", true, null, QueryParameterKind.Double)]
+    [Arguments("yesno", false, null, QueryParameterKind.Integer)]
+    [Arguments("generic", false, "String", QueryParameterKind.String)]
+    [Arguments(null, false, "Integer", QueryParameterKind.Integer)]
+    [Arguments(null, false, "Double", QueryParameterKind.Double)]
+    [Arguments(null, false, "ElementId", QueryParameterKind.ElementId)]
+    [Arguments(null, false, "None", QueryParameterKind.Unknown)]
+    public async Task ParameterKind_UsesActualStorageForGenericDefinitions(
+        string? dataType, bool measurable, string? storageType, QueryParameterKind expected)
+    {
+        await Assert.That(QueryParameterSemantics.ResolveKind(dataType, measurable, storageType)).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task SortAndPage_SortsNumericFieldAndReportsMoreRows()
     {
         var records = new[]

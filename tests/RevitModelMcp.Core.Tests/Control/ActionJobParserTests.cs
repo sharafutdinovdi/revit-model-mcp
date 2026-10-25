@@ -1573,6 +1573,18 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("3327617")]
+    [Arguments("\"3327617\"")]
+    [Arguments("\"A101\"")]
+    [Arguments("\"Ground floor plan\"")]
+    public async Task PlaceViewsOnSheet_AcceptsSheetReferences(string sheetJson)
+    {
+        var result = ControlJobParser.Parse($$$"""{"command":"place-views-on-sheet","sheet":{{{sheetJson}}},"placements":[{"view":"Level 1"}]}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.Sheet).IsEqualTo(sheetJson.Trim('"'));
+    }
+
+    [Test]
     public async Task CreateView_WholeModelDefaultsAndBatchStyles()
     {
         var result = ControlJobParser.Parse("""{"command":"create-view","kind":"3d"}""");

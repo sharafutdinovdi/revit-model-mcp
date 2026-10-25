@@ -10,6 +10,52 @@ namespace RevitModelMcp.Core.Tests.Batch;
 public sealed class BatchDialogPolicyTests
 {
     [Test]
+    public async Task FamilyAudit_PartialResponsePreservesFamiliesAndDismissedDialogs()
+    {
+        var data = new FamilyAuditData
+        {
+            Mode = "project",
+            Families = [new FamilyAuditFamily { Name = "Door" }],
+            SkippedCount = 1,
+            Skipped = [new SkippedRead
+            {
+                What = "Window",
+                Reason = "Revit interruption suppressed during family access.",
+                DialogId = "Dialog_Revit_Warning",
+                Message = "Constraints between geometry in the family can behave unpredictably."
+            }]
+        };
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<FamilyAuditData>.PartialResult("family-audit", data, "Read budget reached.", 60_000)));
+        var root = json.RootElement;
+        await Assert.That(root.GetProperty("partial").GetBoolean()).IsTrue();
+        var audit = root.GetProperty("data");
+        await Assert.That(audit.GetProperty("families")[0].GetProperty("name").GetString()).IsEqualTo("Door");
+        await Assert.That(audit.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+        var skipped = audit.GetProperty("skipped")[0];
+        await Assert.That(skipped.GetProperty("what").GetString()).IsEqualTo("Window");
+        await Assert.That(skipped.GetProperty("dialogId").GetString()).IsEqualTo("Dialog_Revit_Warning");
+        await Assert.That(skipped.GetProperty("message").GetString())
+            .IsEqualTo("Constraints between geometry in the family can behave unpredictably.");
+    }
+
+    [Test]
+    [Arguments("TaskDialogShowingEventArgs", 0, "2,1")]
+    [Arguments("DialogBoxShowingEventArgs", 0, "2,1")]
+    [Arguments("MessageBoxShowingEventArgs", 0, "1")]
+    [Arguments("MessageBoxShowingEventArgs", 1, "2")]
+    [Arguments("MessageBoxShowingEventArgs", 2, "3")]
+    [Arguments("MessageBoxShowingEventArgs", 3, "2")]
+    [Arguments("MessageBoxShowingEventArgs", 4, "7")]
+    [Arguments("MessageBoxShowingEventArgs", 5, "2")]
+    [Arguments("MessageBoxShowingEventArgs", 6, "2")]
+    [Arguments("MessageBoxShowingEventArgs", 0x104, "7")]
+    public async Task FamilyAuditDialogResults_PrefersCancelWithoutApprovingChanges(string type, int buttons, string expected)
+    {
+        await Assert.That(string.Join(",", BatchDialogPolicy.FamilyAuditDialogResults(type, buttons))).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task Decide_DeniesUnknownIdOrRuntimeType()
     {
         await Assert.That(BatchDialogPolicy.Decide("unknown", "TaskDialogShowingEventArgs").Recycle).IsTrue();

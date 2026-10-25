@@ -1565,7 +1565,7 @@ def test_document_lifecycle_explicit_pid_precedes_document_and_rejects_contradic
     )
     assert execute.await_args.args[0].payload["targetProcessId"] == 84
     execute.reset_mock()
-    with pytest.raises(Exception, match="contradict"):
+    with pytest.raises(Exception, match="Document 'Tower' is not open in Revit process 84"):
         asyncio.run(
             server.call_tool("revit_close_document", {"document": "Tower", "process_id": 84})
         )
@@ -1617,6 +1617,23 @@ def test_view_and_sheet_action_mapping():
             assert payload["box"] == {"minMm": [0.0, 0.0, 0.0], "maxMm": [100.0, 100.0, 100.0]}
         if command == "place-views-on-sheet":
             assert payload["placements"] == [{"view": "Level 1", "xMm": 10.0, "yMm": 20.0}]
+
+
+@pytest.mark.parametrize("sheet", [3327617, "3327617", "A101", "Ground floor plan"])
+def test_place_views_on_sheet_accepts_sheet_references(sheet):
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_place_views_on_sheet",
+            {
+                "sheet": sheet,
+                "views": [{"view": "Level 1"}],
+            },
+        )
+    )
+    assert execute.await_args.args[0].payload["sheet"] == str(sheet)
 
 
 def test_tag_elements_mapping_and_validation():

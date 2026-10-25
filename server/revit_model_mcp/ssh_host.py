@@ -11,6 +11,7 @@ import re
 import shlex
 import stat
 import tempfile
+import xml.etree.ElementTree as ET
 from collections import deque
 from collections.abc import Callable
 from dataclasses import replace
@@ -101,6 +102,25 @@ _READ_ONLY_GATE_SCRIPT = (
     "throw ('Read-only is on for this Windows user (set from ' + $readOnlyBy + ' at ' + $readOnlyAt + "
     "'). Turn it off with the Model MCP ribbon button or by asking the assistant.') }; "
 )
+
+
+def _ps_heartbeat_reader() -> str:
+    return (
+        "function Read-HeartbeatText([string]$path) { "
+        "for ($attempt = 0; $attempt -lt 5; $attempt++) { "
+        "$stream = $null; $reader = $null; try { "
+        "$stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, "
+        "([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)); "
+        "$reader = [IO.StreamReader]::new($stream); return $reader.ReadToEnd() "
+        "} catch { "
+        "$cause = $_.Exception; "
+        "while ($null -ne $cause.InnerException) { $cause = $cause.InnerException }; "
+        "if ($cause -isnot [IO.IOException] -or "
+        "($cause.HResult -band 65535) -notin @(2,32,33) -or $attempt -eq 4) { throw }; "
+        "Start-Sleep -Milliseconds 250 "
+        "} finally { if ($null -ne $reader) { $reader.Dispose() } "
+        "elseif ($null -ne $stream) { $stream.Dispose() } } } }; "
+    )
 
 
 class SshPowerShellHost:
@@ -262,11 +282,11 @@ class SshPowerShellHost:
 
     async def _discover_instances(self) -> list[dict[str, object]]:
         script = (
-            f"$directory = {self._root_directory}; "
+            _ps_heartbeat_reader() + f"$directory = {self._root_directory}; "
             "$processes = @(Get-Process Revit -ErrorAction SilentlyContinue | ForEach-Object { "
             "[ordered]@{ processId = $_.Id; revitVersion = $_.FileVersionInfo.ProductVersion } }); "
             "$files = @(Get-ChildItem -LiteralPath $directory -Filter 'instance_*.json' -File -ErrorAction SilentlyContinue | "
-            "ForEach-Object { [ordered]@{ name = $_.Name; content = [IO.File]::ReadAllText($_.FullName) } }); "
+            "ForEach-Object { [ordered]@{ name = $_.Name; content = Read-HeartbeatText $_.FullName } }); "
             "$package = [ordered]@{ processes = $processes; files = $files } | ConvertTo-Json -Depth 4 -Compress; "
             "$bytes = [Text.Encoding]::UTF8.GetBytes($package); "
             "[Convert]::ToBase64String($bytes)"
@@ -416,18 +436,18 @@ class SshPowerShellHost:
         process_id = self._instance["processId"]
         identity = _ps_quote(str(self._instance["startedUtc"]))
         identity_check = (
-            f"$heartbeat = Get-Content -LiteralPath (Join-Path ({self._root_directory}) 'instance_{process_id}.json') -Raw -ErrorAction Stop | ConvertFrom-Json; "
+            f"$heartbeat = Read-HeartbeatText (Join-Path ({self._root_directory}) 'instance_{process_id}.json') | ConvertFrom-Json -ErrorAction Stop; "
             f"if ($heartbeat.processId -ne {process_id} -or ([DateTime]$heartbeat.startedUtc).ToUniversalTime() -ne [DateTime]::Parse('{identity}').ToUniversalTime() -or $heartbeat.fileChannelVersion -ne 2 "
             "-or ([DateTime]$heartbeat.updatedUtc).ToUniversalTime() -lt [DateTime]::UtcNow.AddSeconds(-60)) { throw 'Selected Revit identity changed or heartbeat expired.' }; "
         )
-        encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
         pattern = f"response_*_{_ps_quote(command)}*.json"
         job_id = json.loads(content).get("jobId")
         if not isinstance(job_id, str) or not re.fullmatch(r"[0-9a-fA-F]{32}", job_id):
             raise RevitChannelError("A jobId GUID is required before publishing a file job.")
         target_name = f"job_{job_id}.json"
+        # PowerShell consumes redirected stdin as pipeline input. Base64 preserves UTF-8.
         script = (
-            f"$directory = {self._directory}; "
+            _ps_heartbeat_reader() + f"$directory = {self._directory}; "
             f"$revitRunning = $null -ne (Get-Process Revit -ErrorAction SilentlyContinue | Where-Object {{ $_.Id -eq {process_id} }}); "
             f"$responses = @(Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue | "
             "ForEach-Object { $_.Name }); "
@@ -436,14 +456,15 @@ class SshPowerShellHost:
             + identity_check
             + "New-Item -ItemType Directory -Force -Path $directory | Out-Null; "
             f"$source = Join-Path $directory '{_ps_quote(name)}'; $target = Join-Path $directory '{target_name}'; "
-            f"$bytes = [Convert]::FromBase64String('{encoded}'); "
-            "[IO.File]::WriteAllBytes($source, $bytes); "
-            "try { [IO.File]::Move($source, $target); $result.published = $true } "
+            "try { [IO.File]::WriteAllBytes($source, [Convert]::FromBase64String(($input -join ''))); "
+            "[IO.File]::Move($source, $target); $result.published = $true } "
             "catch { Remove-Item -LiteralPath $source -Force -ErrorAction SilentlyContinue; throw }; "
             "$result | ConvertTo-Json -Compress"
         )
         try:
-            result = json.loads(await self._run(script))
+            result = json.loads(
+                await self._run(script, input=base64.b64encode(content.encode("utf-8")))
+            )
         except (json.JSONDecodeError, TypeError) as error:
             raise ResponseParseError(
                 f"Job preparation result could not be parsed as JSON: {error}"
@@ -523,13 +544,15 @@ class SshPowerShellHost:
         timeout_seconds: float,
         correlation_id: str | None = None,
     ) -> str | None:
-        known = ",".join(
-            f"'{_ps_quote(name)}'" for name in sorted(known_names) if RESPONSE_NAME.fullmatch(name)
-        )
         pattern = f"response_*_{command}*.json"
+        candidates = f"Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue"
         selection = "Select-Object -Last 1"
         if correlation_id is not None:
             identity = _ps_quote(correlation_id)
+            candidates = (
+                f"@(Get-ChildItem -LiteralPath $directory -Filter 'response_*_{command}_{identity}.json' -File -ErrorAction SilentlyContinue; "
+                f"Get-ChildItem -LiteralPath $directory -Filter 'response_*_{command}.json' -File -ErrorAction SilentlyContinue)"
+            )
             selection = (
                 "ForEach-Object { "
                 "$file = $_; $response = $null; "
@@ -540,16 +563,19 @@ class SshPowerShellHost:
                 "}"
             )
         script = (
-            _ps_response_reader()
-            + f"$directory = {self._directory}; $known = @({known}); $matched = $null; "
-            f"$candidate = Get-ChildItem -LiteralPath $directory -Filter '{pattern}' -File -ErrorAction SilentlyContinue | "
-            f"Where-Object {{ $_.Name -cmatch '{RESPONSE_NAME.pattern}' -and $known -notcontains $_.Name }} | Sort-Object LastWriteTimeUtc | "
+            _ps_response_reader() + f"$directory = {self._directory}; $matched = $null; "
+            f"$candidate = {candidates} | "
+            f"Where-Object {{ $_.Name -cmatch '{RESPONSE_NAME.pattern}' }} | Sort-Object LastWriteTimeUtc | "
             + selection
             + ("; $candidate = $matched" if correlation_id is not None else "")
             + "; if ($null -ne $candidate) { $candidate.Name }"
         )
         result, _, _ = await self._poll_for_change(script, "", timeout_seconds)
-        return result if result is None or RESPONSE_NAME.fullmatch(result) else None
+        return (
+            result
+            if result and result not in known_names and RESPONSE_NAME.fullmatch(result)
+            else None
+        )
 
     async def _poll_for_change(
         self,
@@ -809,6 +835,23 @@ class SshPowerShellHost:
             )
         output = stdout.decode("utf-8", errors="replace").strip()
         detail = stderr.decode("utf-8", errors="replace").strip()
+        if detail.startswith("#< CLIXML"):
+            LOGGER.debug("PowerShell stderr: %s", detail)
+            try:
+                root = ET.fromstring(detail.partition("\n")[2])
+                lines = [
+                    re.sub(
+                        r"_x([0-9A-Fa-f]{4})_",
+                        lambda match: chr(int(match[1], 16)),
+                        node.text or "",
+                    )
+                    for node in root.iter()
+                    if node.tag.rsplit("}", 1)[-1] == "S" and node.get("S") == "Error"
+                ]
+                detail = "\n".join(line.rstrip() for line in lines).strip()
+            except ET.ParseError:
+                detail = ""
+            detail = detail or "PowerShell failed without an Error record. See debug logs."
         if process.returncode == 255:
             if _looks_like_connection_failure(detail):
                 raise SshUnavailableError(
