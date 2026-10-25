@@ -30,6 +30,7 @@ from revit_model_mcp.revit_channel import (
     ResponseParseError,
     RevitChannelError,
     TransportUnavailableError,
+    current_progress_reporter,
     matches_document,
     select_instance,
 )
@@ -158,6 +159,7 @@ class PipeConnection:
         self._ids = itertools.count(1)
         self._replies: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._jobs: dict[str, asyncio.Future[dict[str, Any]]] = {}
+        self._progress_callbacks: dict[str, Callable[[dict[str, Any]], Awaitable[None]]] = {}
         self.closed = False
         self.hello: dict[str, Any] = {}
         self._task = asyncio.create_task(self._read_loop())
@@ -193,6 +195,7 @@ class PipeConnection:
             self._replies.pop(request_id, None)
 
     def watch(self, job_id: str) -> asyncio.Future[dict[str, Any]]:
+        self._progress_callbacks[job_id] = current_progress_reporter().observe
         future = self._jobs.get(job_id)
         if future is None:
             future = asyncio.get_running_loop().create_future()
@@ -204,6 +207,7 @@ class PipeConnection:
 
     def forget(self, job_id: str) -> None:
         self._jobs.pop(job_id, None)
+        self._progress_callbacks.pop(job_id, None)
 
     async def aclose(self) -> None:
         self._task.cancel()
@@ -224,16 +228,24 @@ class PipeConnection:
                 if not isinstance(message, dict):
                     continue
                 if message.get("type") == "job":
-                    future = self._jobs.get(str(message.get("jobId")))
+                    job_id = str(message.get("jobId"))
+                    callback = self._progress_callbacks.get(job_id)
+                    if callback is not None:
+                        await callback(message)
+                    future = self._jobs.get(job_id)
                     if (
                         future is not None
                         and not future.done()
                         and message.get("state") in FINISHED_STATES
                         and "result" in message
                     ):
-                        self._jobs.pop(str(message.get("jobId")), None)
+                        self.forget(job_id)
                         future.set_result(message)
                     continue
+                if message.get("type") == "submitted":
+                    callback = self._progress_callbacks.get(str(message.get("jobId")))
+                    if callback is not None:
+                        await callback(message)
                 future = self._replies.get(str(message.get("id")))
                 if future is not None and not future.done():
                     future.set_result(message)
@@ -254,6 +266,7 @@ class PipeConnection:
                 # Nobody may await a watcher any more; mark the exception as retrieved.
                 future.exception()
         self._jobs.clear()
+        self._progress_callbacks.clear()
         self._writer.close()
 
 
@@ -461,6 +474,7 @@ class PipeJobHost:
     """RemoteHost for one job on a selected pipe instance."""
 
     requires_identity = False
+    reports_job_progress = True
 
     @property
     def instance_info(self) -> dict[str, Any]:
@@ -486,6 +500,7 @@ class PipeJobHost:
             raise _refusal_error(reply)
         result = reply.get("result")
         if isinstance(result, dict):
+            await current_progress_reporter().observe({**reply, "data": result.get("data")})
             return result
         return {
             "command": "jobs",

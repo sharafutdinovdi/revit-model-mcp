@@ -165,6 +165,10 @@ Unavailable geometry is omitted.
 
 ### Action job polling
 
+Long actions and `revit_jobs` waits send [progress notifications](transport.md#progress-notifications) when the client requests a progress token.
+`revit_run_actions` publishes `data.progress.steps` with `completed`, `total`, and `current` (the last attempted action kind) after each step, including a failed step.
+The existing `data.steps` array retains per-step results.
+Completed steps count attempted steps; the final `committed` and `rolledBack` fields determine whether changes remain in the model.
 Long actions may return `status:"running"`, `jobId`, progress, and partial per-model results.
 Call `revit_jobs(job_id=jobId, wait_seconds=40)` until the original final action response is returned.
 The action may already have changed the model; do not resubmit it while it runs.

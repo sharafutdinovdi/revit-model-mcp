@@ -330,7 +330,10 @@ public sealed class JobScheduler
     {
         lock (_sync)
         {
-            if (_running?.JobId == jobId) TryStoreResult(_running, response);
+            if (_running?.JobId != jobId) return;
+            _running.Result = Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1"
+                ? CommandResponseJsonSerializer.RedactPaths(response)
+                : response;
         }
     }
 

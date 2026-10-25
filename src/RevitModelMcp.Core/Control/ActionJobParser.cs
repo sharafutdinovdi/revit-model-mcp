@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Serialization;
 
 namespace RevitModelMcp.Core.Control;
 
@@ -1817,6 +1818,8 @@ public sealed class ActionResultData
     [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool? RolledBack { get; set; }
     [DataMember(Name = "verification", EmitDefaultValue = false)] public ActionVerification? Verification { get; set; }
     [DataMember(Name = "steps", EmitDefaultValue = false)] public List<BatchStepResult>? Steps { get; set; }
+    [DataMember(Name = "progress", EmitDefaultValue = false)] public BatchProgress? Progress { get; set; }
+
     [DataMember(Name = "undoName", EmitDefaultValue = false)] public string? UndoName { get; set; }
     [DataMember(Name = "committed", EmitDefaultValue = false)] public bool? Committed { get; set; }
     [DataMember(Name = "failedStep")] public int? FailedStep { get; set; }
@@ -1855,6 +1858,23 @@ public sealed class ActionResultData
     [DataMember(Name = "unjoinedReasons", EmitDefaultValue = false)] public Dictionary<string, int>? UnjoinedReasons { get; set; }
     [DataMember(Name = "unpairedLines", EmitDefaultValue = false)] public int? UnpairedLines { get; set; }
     [DataMember(Name = "skippedShortSegments", EmitDefaultValue = false)] public int? SkippedShortSegments { get; set; }
+    public void PublishBatchProgress(int total, string current, Action<string>? delivery)
+    {
+        Progress = new BatchProgress
+        {
+            Steps = new BatchStepProgress { Completed = Steps?.Count ?? 0, Total = total, Current = current }
+        };
+        delivery?.Invoke(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<BatchProgressData>.PartialResult(
+                "batch", new BatchProgressData { Progress = Progress }, "Command accepted and running.", 0)));
+    }
+
+    [DataContract]
+    private sealed record BatchProgressData
+    {
+        [DataMember(Name = "progress")] public BatchProgress Progress { get; init; } = new();
+    }
+
 }
 
 [DataContract]
@@ -2088,4 +2108,18 @@ public static class MepRunSizing
         return $"Cannot set pipe diameter {requestedMm.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} mm. " +
             $"Available pipe segment sizes (mm): {(sizes.Length == 0 ? "none" : sizes)}.";
     }
+}
+
+[DataContract]
+public sealed class BatchProgress
+{
+    [DataMember(Name = "steps")] public BatchStepProgress Steps { get; set; } = new();
+}
+
+[DataContract]
+public sealed class BatchStepProgress
+{
+    [DataMember(Name = "completed")] public int Completed { get; set; }
+    [DataMember(Name = "total")] public int Total { get; set; }
+    [DataMember(Name = "current")] public string Current { get; set; } = string.Empty;
 }

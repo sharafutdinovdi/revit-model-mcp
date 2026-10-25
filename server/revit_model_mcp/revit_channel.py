@@ -35,6 +35,130 @@ _client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
 )
 
 
+class ProgressReporter:
+    """Request-scoped, best-effort MCP progress delivery."""
+
+    def __init__(self, ctx: Context | None = None):
+        self.ctx = ctx
+        self._lock = asyncio.Lock()
+        self.finished = False
+        self.progress = 0.0
+        self.last_sent = float("-inf")
+        self.total: float | None = None
+        self.state: str | None = None
+        self.started: float | None = None
+        self.last_tick = 0.0
+        self.partial: str | None = None
+
+    async def update(self, progress: float, total: float | None, message: str):
+        async with self._lock:
+            if self.ctx is None or self.finished:
+                return
+            await self._send(progress, total, message)
+
+    async def _send(self, progress: float, total: float | None, message: str):
+        now = asyncio.get_running_loop().time()
+        final = message in {"Done", "Still running, poll revit_jobs"}
+        if not final and now - self.last_sent < 0.5:
+            await asyncio.sleep(0.5 - (now - self.last_sent))
+        from revit_model_mcp.actions import redact_model_paths
+
+        self.last_sent = asyncio.get_running_loop().time()
+        self.total = total
+        self.progress = progress
+        self.finished = final
+        try:
+            await self.ctx.report_progress(
+                progress, total, redact_model_paths({"message": message})["message"]
+            )
+        except Exception:
+            LOGGER.warning("Could not send MCP progress notification.")
+
+    async def observe(self, response: dict[str, Any]):
+        if self.ctx is None or self.finished:
+            return
+        data = response.get("data")
+        data = data if isinstance(data, dict) else {}
+        state = response.get("state", data.get("state"))
+        if state and state != self.state:
+            messages = {
+                "queued": f"Queued in Revit (position {response.get('position', data.get('position', 1))})",
+                "waiting_revit": "Waiting for the Revit API context",
+                "running": "Running in Revit",
+            }
+            if state in messages:
+                await self.update(0, None, messages[state])
+                self.state = state
+                if state != "running":
+                    self.started = None
+                if state == "running":
+                    self.started = asyncio.get_running_loop().time()
+                    self.last_tick = self.started
+        progress = response.get("progress") or data.get("progress") or data
+        if not isinstance(progress, dict):
+            return
+        fingerprint = json.dumps(progress, sort_keys=True)
+        if fingerprint == self.partial:
+            return
+        if "currentIndex" in progress and "total" in progress:
+            if self.started is None:
+                self.started = self.last_tick = asyncio.get_running_loop().time()
+            from revit_model_mcp.actions import redact_model_paths
+
+            progress = redact_model_paths(progress)
+            await self.update(
+                progress["currentIndex"],
+                progress["total"],
+                f"Model {progress['currentIndex']} of {progress['total']}: {progress.get('currentPath', '')}",
+            )
+        elif isinstance(progress.get("steps"), dict):
+            steps = progress["steps"]
+            if "completed" in steps and "total" in steps:
+                if self.started is None:
+                    self.started = self.last_tick = asyncio.get_running_loop().time()
+                await self.update(
+                    steps["completed"],
+                    steps["total"],
+                    f"Step {steps['completed']} of {steps['total']}",
+                )
+        self.partial = fingerprint
+
+    async def tick(self):
+        async with self._lock:
+            if self.ctx is None or self.finished:
+                return
+            now = asyncio.get_running_loop().time()
+            if self.started is not None and now - self.last_tick >= 2:
+                self.last_tick = now
+                progress = self.progress if self.total is not None else self.progress + 1
+                await self._send(
+                    progress, self.total, f"Running in Revit, {int(now - self.started)} s"
+                )
+
+    async def wait(self, awaitable):
+        if self.ctx is None:
+            return await awaitable
+        task = asyncio.ensure_future(awaitable)
+        try:
+            while not task.done():
+                await asyncio.wait({task}, timeout=2)
+                await self.tick()
+            return await task
+        finally:
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+
+
+_progress_reporter: contextvars.ContextVar[ProgressReporter | None] = contextvars.ContextVar(
+    "revit_progress_reporter", default=None
+)
+
+
+def current_progress_reporter() -> ProgressReporter:
+    return _progress_reporter.get() or ProgressReporter()
+
+
 def with_client_identity(function):
     signature = inspect.signature(function)
     hints = get_type_hints(function, include_extras=True)
@@ -47,9 +171,11 @@ def with_client_identity(function):
             params = None
         name = getattr(getattr(params, "client_info", None), "name", None)
         token = _client_name.set(name or "unknown")
+        progress_token = _progress_reporter.set(ProgressReporter(ctx))
         try:
             return await function(*args, **kwargs)
         finally:
+            _progress_reporter.reset(progress_token)
             _client_name.reset(token)
 
     wrapped.__signature__ = signature.replace(
@@ -153,6 +279,12 @@ def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str
         if isinstance(data, dict)
         else None
     )
+    if isinstance(data, dict):
+        nested_progress = data.get("progress")
+        if isinstance(nested_progress, dict) and isinstance(nested_progress.get("steps"), dict):
+            progress = nested_progress
+        elif isinstance(data.get("steps"), dict):
+            progress = {"steps": data["steps"]}
     models = (
         [{"status": model["status"]} for model in data.get("models", []) if "status" in model]
         if isinstance(data, dict)
@@ -640,13 +772,23 @@ class RevitChannel:
         pickup_timeout_seconds: int | None = None,
     ) -> dict[str, Any]:
         try:
-            return await self._execute(
-                job,
-                timeout_seconds,
-                pickup_timeout_seconds
-                if pickup_timeout_seconds is not None
-                else configured_pickup_timeout_seconds(),
+            reporter = current_progress_reporter()
+            result = await reporter.wait(
+                self._execute(
+                    job,
+                    timeout_seconds,
+                    pickup_timeout_seconds
+                    if pickup_timeout_seconds is not None
+                    else configured_pickup_timeout_seconds(),
+                )
             )
+            total = reporter.total or 1
+            await reporter.update(
+                total,
+                total,
+                "Still running, poll revit_jobs" if result.get("status") == "running" else "Done",
+            )
+            return result
         except ReadOnlyRefusedError as error:
             if job.command in ACTION_COMMANDS or (
                 job.command == "jobs" and job.payload.get("requestCancellation")
@@ -688,6 +830,7 @@ class RevitChannel:
             deadline = asyncio.get_running_loop().time() + wait_seconds
             while True:
                 response = await remote.fetch_job(job_id)
+                await current_progress_reporter().observe(response)
                 if not _is_intermediate_response(response):
                     return parse_response(json.dumps(response), response.get("command", ""))
                 remaining = deadline - asyncio.get_running_loop().time()
@@ -763,6 +906,8 @@ class RevitChannel:
                 temporary_name, job.to_json(), job.command
             )
             job_prepared = True
+            if not getattr(self.remote, "reports_job_progress", False):
+                await current_progress_reporter().observe({"state": "queued"})
 
             try:
                 pickup = await asyncio.wait_for(
@@ -772,6 +917,8 @@ class RevitChannel:
             except TimeoutError:
                 return running_job(job_id)
 
+            if not getattr(self.remote, "reports_job_progress", False):
+                await current_progress_reporter().observe({"state": "waiting_revit"})
             trigger_taken = pickup.taken
             if not trigger_taken:
                 trigger_state = "is still present" if pickup.trigger_present else "is absent"
@@ -781,6 +928,8 @@ class RevitChannel:
                     f"jobId={job_id}; job file {trigger_state}. The job was not deleted and may still execute later."
                 )
 
+            if not getattr(self.remote, "reports_job_progress", False):
+                await current_progress_reporter().observe({"state": "running"})
             loop = asyncio.get_running_loop()
             deadline = (
                 min(loop.time() + timeout_seconds, tool_deadline)
@@ -837,6 +986,7 @@ class RevitChannel:
                     result = _complete_image_result(
                         parse_response(content, job.command), job.command
                     )
+                    await current_progress_reporter().observe(result)
                     responder = result.get("responder")
                     if getattr(self.remote, "requires_identity", False) and (
                         result.get("correlationId") != correlation_id
@@ -874,6 +1024,7 @@ class RevitChannel:
                     raise
                 except (RevitChannelError, TimeoutError):
                     return running_job(job_id)
+                await current_progress_reporter().observe(response)
                 if _is_intermediate_response(response):
                     return running_job(job_id, response)
                 return parse_response(json.dumps(response), job.command)
