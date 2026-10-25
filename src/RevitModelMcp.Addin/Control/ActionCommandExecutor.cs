@@ -20,12 +20,42 @@ namespace RevitModelMcp.Control;
 
 internal static class ActionCommandExecutor
 {
-    internal static bool ReadOnlyMode => PolicyProvider.Current.IsReadOnly || File.Exists(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "read-only"));
+    internal static ReadOnlyLock ReadOnlyLock { get; } = new(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "read-only"),
+        () => PolicyProvider.Current.IsReadOnly);
+
+    internal static bool ReadOnlyMode => ReadOnlyLock.IsLocked;
+
+    private static void ExecuteReadOnly(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
+    {
+        CommandResponse<ActionResultData> response;
+        ActionResultData? data = null;
+        try
+        {
+            if (job.Error is not null) throw new ArgumentException(job.Error);
+            if (PolicyProvider.Refusal(job.Command) is string refusal) throw new InvalidOperationException(refusal);
+            var action = job.Action ?? throw new ArgumentException("Missing lock arguments.");
+            data = ReadOnlyLock.SetFromChat(action.Enabled, action.ConfirmToken, ConfirmationStore.Tokens,
+                Environment.UserName, Environment.MachineName);
+            response = CommandResponse<ActionResultData>.Ok(job.Command, data, 0);
+        }
+        catch (Exception exception)
+        {
+            response = CommandResponse<ActionResultData>.Fail(job.Command, exception.Message, 0);
+        }
+        if (data?.NeedsConfirmation != true) ActivityRecorder.RecordAction(job, null, data, response, null);
+        CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+            ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+    }
 
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
         ActivityPaneAutoShow.EnsureShown();
+        if (job.Command == "set-read-only")
+        {
+            ExecuteReadOnly(application, job, startedAt);
+            return;
+        }
         if (job.Command == "edit-families")
         {
             ExecuteFamilies(application, job, startedAt);

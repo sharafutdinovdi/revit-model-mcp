@@ -27,6 +27,20 @@ def test_refusal_shape():
         (
             {
                 "success": False,
+                "error": "Read-only is on for this Windows user (set from chat at 2026-10-22T12:00:00Z). Turn it off with the Model MCP ribbon button or by asking the assistant.",
+            },
+            READ_ONLY,
+        ),
+        (
+            {
+                "success": False,
+                "error": "Read-only is enforced by workstation policy; ask your administrator.",
+            },
+            POLICY_BLOCKED,
+        ),
+        (
+            {
+                "success": False,
                 "error": "Blocked by organization policy: the tool 'delete' is denied.",
             },
             POLICY_BLOCKED,

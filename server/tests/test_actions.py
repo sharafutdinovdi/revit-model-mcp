@@ -9,6 +9,7 @@ from mcp.client.stdio import stdio_client
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
+from revit_model_mcp import server as revit_server
 from revit_model_mcp.actions import (
     UpdateFilters,
     _send_action,
@@ -25,6 +26,7 @@ from revit_model_mcp.revit_channel import (
 )
 
 ACTION_TOOLS = {
+    "revit_set_read_only",
     "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
@@ -79,9 +81,9 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
 
     async def check():
         env = os.environ.copy()
-        env.pop("REVIT_MCP_READ_ONLY", None)
+        env.pop(revit_server.LEGACY_READ_ONLY_VARIABLE, None)
         if read_only is not None:
-            env["REVIT_MCP_READ_ONLY"] = read_only
+            env[revit_server.LEGACY_READ_ONLY_VARIABLE] = read_only
         parameters = StdioServerParameters(command="revit-model-mcp", args=[], env=env)
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             result = await client.list_tools()
@@ -115,18 +117,18 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
     asyncio.run(check())
 
 
-def test_stdio_read_only_blocks_execution_without_hiding_tools():
+def test_stdio_legacy_variable_does_not_block_execution():
     import asyncio
 
     async def check():
         env = os.environ.copy()
-        env["REVIT_MCP_READ_ONLY"] = "1"
+        env[revit_server.LEGACY_READ_ONLY_VARIABLE] = "1"
         parameters = StdioServerParameters(command="revit-model-mcp", args=[], env=env)
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             listed = await client.list_tools()
             assert "revit_select" in {tool.name for tool in listed.tools}
             result = await client.call_tool("revit_select", {"element_ids": []})
-        assert "read-only mode" in str(result)
+        assert "read-only mode" not in str(result)
 
     asyncio.run(check())
 
@@ -146,7 +148,7 @@ def test_session_actions_refused_in_read_only_mode(name, arguments):
     server, execute, _ = action_server(read_only=True)
     result = asyncio.run(server.call_tool(name, arguments))
     assert "read-only mode" in str(result)
-    execute.assert_not_awaited()
+    execute.assert_awaited_once()
 
 
 def test_session_action_mappings():
@@ -188,8 +190,18 @@ def action_server(read_only=False):
     execute = AsyncMock(return_value={"success": True, "data": {}, "activeView": "Level 1"})
     host = AsyncMock()
     host.list_revit_instances.return_value = [{"processId": 42}]
-    with patch.dict(os.environ, {"REVIT_MCP_READ_ONLY": "1" if read_only else "0"}):
-        register_actions(server, execute, lambda: host)
+    if read_only:
+
+        async def refused(job, *_args):
+            return {
+                "success": False,
+                "command": job.command,
+                "error": "read-only mode",
+                "errorCode": "read_only",
+            }
+
+        execute.side_effect = refused
+    register_actions(server, execute, lambda: host)
     return server, execute, host
 
 
@@ -218,7 +230,7 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     blocked, blocked_execute, _ = action_server(read_only=True)
     result = asyncio.run(blocked.call_tool("revit_execute_code", {"code": "return 42;"}))
     assert "read-only mode" in str(result)
-    blocked_execute.assert_not_awaited()
+    blocked_execute.assert_awaited_once()
 
 
 def test_process_models_maps_steps_code_exports_and_save():
@@ -293,7 +305,7 @@ def test_process_models_confirmation_flow_and_validation():
     blocked, blocked_execute, _ = action_server(read_only=True)
     response = asyncio.run(blocked.call_tool("revit_process_models", arguments))
     assert "read-only mode" in str(response)
-    blocked_execute.assert_not_awaited()
+    blocked_execute.assert_awaited_once()
 
 
 def test_process_models_redacts_nested_paths():
@@ -726,14 +738,14 @@ def test_undo_last_sends_command_without_extra_arguments():
     host.list_revit_instances.assert_awaited_once()
 
 
-def test_undo_last_in_read_only_mode_never_reaches_channel():
+def test_undo_last_passes_workstation_read_only_refusal():
     import asyncio
 
     server, execute, host = action_server(read_only=True)
     result = asyncio.run(server.call_tool("revit_undo_last", {}))
     assert "read-only mode" in str(result)
-    execute.assert_not_awaited()
-    host.list_revit_instances.assert_not_awaited()
+    execute.assert_awaited_once()
+    host.list_revit_instances.assert_awaited_once()
 
 
 def test_align_link_datums_rejects_invalid_timeout():
@@ -1652,7 +1664,7 @@ def test_tag_elements_mapping_and_validation():
         blocked.call_tool("revit_tag_elements", {"view": "Level 1", "categories": ["Doors"]})
     )
     assert "read-only mode" in str(result)
-    blocked_execute.assert_not_awaited()
+    blocked_execute.assert_awaited_once()
 
 
 def test_create_schedule_mapping_and_validation():
@@ -1727,7 +1739,7 @@ def test_create_schedule_mapping_and_validation():
         blocked.call_tool("revit_create_schedule", {"category": "Doors", "fields": ["Mark"]})
     )
     assert "read-only mode" in str(result)
-    blocked_execute.assert_not_awaited()
+    blocked_execute.assert_awaited_once()
 
 
 def test_create_view_batch_mapping_and_validation():
@@ -1914,7 +1926,7 @@ def test_activate_view_element_zoom_refused_in_read_only_mode():
     server, execute, _ = action_server(read_only=True)
     result = asyncio.run(server.call_tool("revit_activate_view", {"view": "L1", "zoom": [42]}))
     assert "read-only mode" in str(result)
-    execute.assert_not_awaited()
+    execute.assert_awaited_once()
 
 
 def test_cancel_action_job_maps_polling_request_and_read_only_gate():
@@ -1930,7 +1942,7 @@ def test_cancel_action_job_maps_polling_request_and_read_only_gate():
     blocked, blocked_execute, _ = action_server(read_only=True)
     result = asyncio.run(blocked.call_tool("revit_cancel_job", {"job_id": "a" * 32}))
     assert "read-only mode" in str(result)
-    blocked_execute.assert_not_awaited()
+    blocked_execute.assert_awaited_once()
 
 
 def test_process_progress_current_path_is_redacted():
@@ -2074,8 +2086,11 @@ def test_read_only_action_result_has_error_code(name, arguments, command):
         "error": "read-only mode",
         "errorCode": "read_only",
     }
-    execute.assert_not_awaited()
-    host.list_revit_instances.assert_not_awaited()
+    execute.assert_awaited_once()
+    if name == "revit_cancel_job":
+        host.list_revit_instances.assert_not_awaited()
+    else:
+        host.list_revit_instances.assert_awaited_once()
 
 
 def test_process_models_dry_run_forces_auto_transaction_and_warns():
@@ -2166,3 +2181,83 @@ async def test_action_discovery_returns_retryable_transport_failure(monkeypatch)
     assert result["retryable"] is True
     assert "Private" not in result["error"]
     execute.assert_not_awaited()
+
+
+def test_set_read_only_is_core_and_locks_without_confirmation():
+    import asyncio
+
+    from revit_model_mcp.toolsets import TOOLSETS
+
+    server, execute, _ = action_server()
+    tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    assert "revit_set_read_only" in TOOLSETS["core"]
+    assert tools["revit_set_read_only"].input_schema["required"] == ["enabled"]
+    assert set(tools["revit_set_read_only"].input_schema["properties"]) == {
+        "enabled",
+        "confirm_token",
+    }
+    result = asyncio.run(server.call_tool("revit_set_read_only", {"enabled": True}))
+    assert result.structured_content["success"] is True
+    job = execute.await_args.args[0]
+    assert job.command == "set-read-only"
+    assert job.payload["enabled"] is True
+    assert job.payload["confirmToken"] is None
+
+
+def test_set_read_only_unlock_forwards_confirmation_and_summary():
+    import asyncio
+
+    server, execute, _ = action_server()
+    preview = {
+        "success": True,
+        "data": {
+            "needsConfirmation": True,
+            "confirmationText": "Turn off read-only for all Revit versions of Alice on PC? The assistant will be able to change models.",
+            "confirmToken": "workstation-token",
+            "summary": "Needs confirmation to turn off read-only.",
+        },
+    }
+    execute.return_value = preview
+    result = asyncio.run(server.call_tool("revit_set_read_only", {"enabled": False}))
+    assert result.structured_content == preview
+    assert execute.await_args.args[0].payload["confirmToken"] is None
+    execute.return_value = {
+        "success": True,
+        "data": {"summary": "Read-only turned off for this Windows user."},
+    }
+    result = asyncio.run(
+        server.call_tool(
+            "revit_set_read_only", {"enabled": False, "confirm_token": "workstation-token"}
+        )
+    )
+    assert execute.await_args.args[0].payload["confirmToken"] == "workstation-token"
+    assert execute.await_args.args[0].payload["enabled"] is False
+    assert (
+        result.structured_content["data"]["summary"]
+        == "Read-only turned off for this Windows user."
+    )
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_set_read_only_preserves_workstation_policy_refusal(enabled):
+    import asyncio
+
+    server, execute, _ = action_server()
+    refused = {
+        "success": False,
+        "command": "set-read-only",
+        "errorCode": "policy_blocked",
+        "error": "Read-only is enforced by workstation policy; ask your administrator.",
+    }
+    execute.return_value = refused
+    result = asyncio.run(server.call_tool("revit_set_read_only", {"enabled": enabled}))
+    assert result.structured_content == refused
+
+
+def test_set_read_only_uses_one_instance_for_the_shared_workstation_lock():
+    import asyncio
+
+    server, execute, host = action_server()
+    host.list_revit_instances.return_value = [{"processId": 100}, {"processId": 42}]
+    asyncio.run(server.call_tool("revit_set_read_only", {"enabled": True}))
+    assert execute.await_args.args[0].payload["targetProcessId"] == 42

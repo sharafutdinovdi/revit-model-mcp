@@ -20,14 +20,16 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet" or "tag-elements" or "create-schedule";
+        "set-read-only" or "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet" or "tag-elements" or "create-schedule";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
         try
         {
+            if (command == "set-read-only" && job.Enabled is null) throw new ArgumentException("enabled is required.");
             var action = new ActionJobContract
             {
+                Enabled = job.Enabled ?? false,
                 DryRun = job.DryRun ?? false,
                 ElementIds = (job.ElementIds ?? []).Distinct().ToList(),
                 Select = job.Select ?? true,
@@ -897,6 +899,7 @@ public sealed class ActionJobContract
     public Dictionary<string, bool>? RelinquishFlags { get; set; }
     public bool SaveLocalBefore { get; set; } = true;
     public bool SaveLocalAfter { get; set; } = true;
+    public bool Enabled { get; set; }
     public string? ConfirmToken { get; set; }
     public ViewVisibilityOptions? Visibility { get; set; }
     public LinkRemovalOptions? LinkRemoval { get; set; }
@@ -1521,6 +1524,7 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "relinquishFlags")] public Dictionary<string, bool>? RelinquishFlags { get; set; }
     [DataMember(Name = "saveLocalBefore")] public bool? SaveLocalBefore { get; set; }
     [DataMember(Name = "saveLocalAfter")] public bool? SaveLocalAfter { get; set; }
+    [DataMember(Name = "enabled")] public bool? Enabled { get; set; }
     [DataMember(Name = "confirmToken")] public string? ConfirmToken { get; set; }
     [DataMember(Name = "hideCategories")] public List<string>? HideCategories { get; set; }
     [DataMember(Name = "showCategories")] public List<string>? ShowCategories { get; set; }

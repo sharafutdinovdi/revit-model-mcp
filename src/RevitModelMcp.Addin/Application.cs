@@ -32,7 +32,7 @@ public sealed class Application : ExternalApplication
 
     internal static readonly string[] SupportedCommands =
     [
-        "ping", "jobs", "jobs/persisted", "model-health", "links-status", "shared-coordinates",
+        "ping", "set-read-only", "jobs", "jobs/persisted", "model-health", "links-status", "shared-coordinates",
         "parameter-fill-check", "document-info", "documents", "ui-state", "list-views", "view-summary",
         "view-info", "view-elements", "element-details", "view-warnings", "export-view", "capture-elements", "schedule-data",
         "query-elements", "aggregate-elements", "list-catalog", "list-warnings",
@@ -44,6 +44,8 @@ public sealed class Application : ExternalApplication
         "list-sheets", "set-view-visibility", "remove-links", "execute-code", "api-lookup", "undo-last",
         "batch-supervisor-start", "batch-prepass", "batch-open", "batch-close", "model-snapshot"
     ];
+    private readonly List<(RibbonButton Button, string Icon)> _ribbonButtons = [];
+    private ReadOnlyRibbon? _readOnlyRibbon;
     private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
@@ -181,6 +183,10 @@ public sealed class Application : ExternalApplication
 
     public override void OnShutdown()
     {
+        PaneTheme.Changed -= RefreshRibbonImages;
+        _ribbonButtons.Clear();
+        _readOnlyRibbon?.Dispose();
+        ActionCommandExecutor.ReadOnlyLock.Dispose();
         RibbonBranding.Detach();
         _instance = null;
 #if NETFRAMEWORK
@@ -251,6 +257,8 @@ public sealed class Application : ExternalApplication
         ConfigureRibbonButton((RibbonButton)items[0], "Help", RibbonText.HelpToolTip, RibbonText.HelpDescription, HelpLinks.Documentation);
         ConfigureRibbonButton((RibbonButton)items[1], "Issue", RibbonText.IssueToolTip, RibbonText.IssueDescription, HelpLinks.Issues);
         ConfigureRibbonButton((RibbonButton)items[2], "Support", RibbonText.SupportToolTip, RibbonText.SupportDescription, HelpLinks.Support);
+        PaneTheme.Changed += RefreshRibbonImages;
+        _readOnlyRibbon = new ReadOnlyRibbon();
         RibbonBranding.ApplyPanelBackground();
         RibbonBranding.ApplyTabIcon();
     }
@@ -258,19 +266,28 @@ public sealed class Application : ExternalApplication
     private static PushButtonData UrlButtonData<TCommand>(string text) where TCommand : IExternalCommand =>
         new(typeof(TCommand).Name, text, typeof(TCommand).Assembly.Location, typeof(TCommand).FullName);
 
-    private static void ConfigureRibbonButton(RibbonButton button, string icon, string tooltip, string description, string helpUrl)
+    private void ConfigureRibbonButton(RibbonButton button, string icon, string tooltip, string description, string helpUrl)
     {
-        var suffix = string.Empty;
-#if REVIT2024_OR_GREATER
-        if (UIThemeManager.CurrentTheme == UITheme.Dark) suffix = "-dark";
-#endif
-        button.SetImage($"/RevitModelMcp;component/Resources/Icons/{icon}16{suffix}.png");
-        button.SetLargeImage($"/RevitModelMcp;component/Resources/Icons/{icon}32{suffix}.png");
+        _ribbonButtons.Add((button, icon));
+        ApplyRibbonImages(button, icon);
         button.ToolTip = tooltip;
         button.LongDescription = description;
+        button.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, helpUrl));
+    }
+
+    private void RefreshRibbonImages()
+    {
+        foreach (var (button, icon) in _ribbonButtons)
+            ApplyRibbonImages(button, icon);
+    }
+
+    private static void ApplyRibbonImages(RibbonButton button, string icon)
+    {
+        var suffix = PaneTheme.IsDark ? "-dark" : string.Empty;
+        button.SetImage($"/RevitModelMcp;component/Resources/Icons/{icon}16{suffix}.png");
+        button.SetLargeImage($"/RevitModelMcp;component/Resources/Icons/{icon}32{suffix}.png");
         button.ToolTipImage = new System.Windows.Media.Imaging.BitmapImage(
             new Uri($"pack://application:,,,/RevitModelMcp;component/Resources/Icons/{icon}Tooltip{suffix}.png"));
-        button.SetContextualHelp(new ContextualHelp(ContextualHelpType.Url, helpUrl));
     }
 
     /// <summary>Re-reads document titles, for example after a detached open appended "_detached" with no later event.</summary>

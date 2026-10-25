@@ -68,6 +68,7 @@ EXPECTED_TOOLS = {
     "revit_batch_fetch",
 }
 ACTION_TOOL_NAMES = {
+    "revit_set_read_only",
     "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
@@ -558,7 +559,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         instructions = revit_server.mcp.instructions
         self.assertIn("summary", instructions)
         self.assertIn("confirmation token", instructions)
-        self.assertIn("REVIT_MCP_READ_ONLY", instructions)
+        self.assertIn("workstation read-only lock", instructions)
         self.assertIn("revit_undo_last", instructions)
 
     async def test_stdio_server_starts_and_lists_tools_without_revit(self) -> None:
@@ -988,19 +989,19 @@ if __name__ == "__main__":
     ],
 )
 def test_env_flag(monkeypatch, default, value, expected):
-    monkeypatch.delenv("REVIT_MCP_READ_ONLY", raising=False)
+    monkeypatch.delenv("REVIT_MCP_REDACT_PATHS", raising=False)
     if value is not None:
-        monkeypatch.setenv("REVIT_MCP_READ_ONLY", value)
-    assert revit_server.env_flag("REVIT_MCP_READ_ONLY", default) is (
+        monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", value)
+    assert revit_server.env_flag("REVIT_MCP_REDACT_PATHS", default) is (
         default if expected is None else expected
     )
 
 
 @pytest.mark.parametrize("value", ["", "enabled", "2"])
 def test_env_flag_rejects_invalid_values(monkeypatch, value):
-    monkeypatch.setenv("REVIT_MCP_READ_ONLY", value)
-    with pytest.raises(ValueError, match="REVIT_MCP_READ_ONLY must be"):
-        revit_server.env_flag("REVIT_MCP_READ_ONLY", False)
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", value)
+    with pytest.raises(ValueError, match="REVIT_MCP_REDACT_PATHS must be"):
+        revit_server.env_flag("REVIT_MCP_REDACT_PATHS", False)
 
 
 def test_redaction_accepts_boolean_string(monkeypatch):
@@ -1321,3 +1322,47 @@ def test_cli_handles_run_failure(failure, monkeypatch, capsys):
                 == "revit-model-mcp: RuntimeError: stdio failed second line\n"
             )
         run.assert_called_once_with(transport="stdio")
+
+
+def test_legacy_read_only_variable_warns_once_without_parsing(monkeypatch, capsys):
+    monkeypatch.setenv("REVIT_MCP_READ_ONLY", "invalid-legacy-value")
+    monkeypatch.setattr("sys.argv", ["revit-model-mcp", "--version"])
+    with pytest.raises(SystemExit) as stopped:
+        revit_server.main()
+    assert stopped.value.code == 0
+    assert capsys.readouterr().err.splitlines() == [
+        "REVIT_MCP_READ_ONLY is no longer used; use the workstation read-only lock "
+        "(revit_set_read_only or the Model MCP ribbon)."
+    ]
+
+
+@pytest.mark.parametrize(
+    "source,set_by", [("user", "ribbon"), ("user", "chat"), ("user", "file"), ("policy", None)]
+)
+def test_ping_preserves_workstation_lock_fields(source, set_by):
+    import asyncio
+
+    state = {
+        "enabled": True,
+        "source": source,
+        "setBy": set_by,
+        "setAtUtc": "2026-10-22T12:00:00Z" if set_by else None,
+    }
+    with patch.object(
+        revit_server.channel,
+        "execute",
+        AsyncMock(return_value={"success": True, "data": "pong", "readOnly": state}),
+    ):
+        result = asyncio.run(revit_server.revit_ping())
+    assert result["readOnly"] == state
+
+
+def test_manifests_do_not_offer_the_removed_server_read_only_setting():
+    bundle = json.loads((REPOSITORY_ROOT / "bundle" / "manifest.json").read_text())
+    assert revit_server.LEGACY_READ_ONLY_VARIABLE not in bundle["user_config"]
+    assert revit_server.LEGACY_READ_ONLY_VARIABLE not in bundle["server"]["mcp_config"]["env"]
+    registry = json.loads((MCP_DIRECTORY / "server.json").read_text())
+    for package in registry["packages"]:
+        assert revit_server.LEGACY_READ_ONLY_VARIABLE not in {
+            variable["name"] for variable in package["environmentVariables"]
+        }

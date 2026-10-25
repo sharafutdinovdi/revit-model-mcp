@@ -5173,6 +5173,28 @@
     ],
     "type": "object"
   },
+  "revit_set_read_only": {
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "enabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "enabled"
+    ],
+    "type": "object"
+  },
   "revit_set_view_visibility": {
     "properties": {
       "category_classes": {

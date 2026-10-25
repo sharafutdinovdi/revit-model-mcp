@@ -47,7 +47,12 @@ def _policy_refusal_text(error: urllib.error.HTTPError) -> str | None:
         text = json.loads(error.read(65536)).get("error")
     except (OSError, ValueError, AttributeError):
         return None
-    return text if isinstance(text, str) and text.startswith(POLICY_REFUSAL_PREFIX) else None
+    return (
+        text
+        if isinstance(text, str)
+        and (text.startswith(POLICY_REFUSAL_PREFIX) or text.startswith("Read-only is "))
+        else None
+    )
 
 
 def _is_job_submission_path(path: str) -> bool:
@@ -337,6 +342,8 @@ class HttpHost:
                 policy_text = _policy_refusal_text(error) if error.code == 403 else None
                 error.close()
                 if policy_text is not None:
+                    if policy_text.startswith("Read-only is on for this Windows user"):
+                        raise ReadOnlyRefusedError(policy_text) from None
                     raise PolicyRefusedError(policy_text) from None
                 if error.code == 401:
                     self._verified_token = None

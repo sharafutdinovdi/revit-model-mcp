@@ -21,7 +21,7 @@ namespace RevitModelMcp.Policy;
 /// </summary>
 internal static class PolicyProvider
 {
-    private const long CacheMilliseconds = 10 * 1000;
+    private const long CacheMilliseconds = 500;
     private static readonly object SyncRoot = new();
     private static MachinePolicy _current = MachinePolicy.Empty;
     private static long _loadedAt = -CacheMilliseconds - 1;
@@ -53,7 +53,7 @@ internal static class PolicyProvider
     }
 
     /// <summary>The read-only refusal text: the policy text when the policy enforces it, otherwise the plain gate text.</summary>
-    public static string ReadOnlyMessage => Current.ReadOnlyRefusal() ?? ReadOnlyGatePolicy.Message;
+    public static string ReadOnlyMessage => Control.ActionCommandExecutor.ReadOnlyLock.State.Refusal;
 
     /// <summary>The refusal for a command under ToolDeny, ToolAllow and ExecuteCode, or null.</summary>
     public static string? Refusal(string? command)

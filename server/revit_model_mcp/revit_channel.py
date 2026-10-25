@@ -317,7 +317,13 @@ def refused_response(command: str, error: ReadOnlyRefusedError) -> dict[str, Any
     """The refusal for a transport refusal: organization policy text, else the user read-only gate."""
     if isinstance(error, PolicyRefusedError):
         return refusal(command, POLICY_BLOCKED, str(error))
-    return refusal(command, READ_ONLY, READ_ONLY_MESSAGE)
+    return refusal(
+        command,
+        READ_ONLY,
+        str(error)
+        if str(error).startswith("Read-only is on for this Windows user")
+        else READ_ONLY_MESSAGE,
+    )
 
 
 class ResultExpiredError(RevitChannelError):
@@ -824,7 +830,9 @@ class RevitChannel:
                     return await remote.cancel_job(job_id)
                 except RemoteCommandError as error:
                     # File-channel cancellation reports the gate through PowerShell stderr.
-                    if READ_ONLY_MESSAGE in str(error):
+                    if READ_ONLY_MESSAGE in str(
+                        error
+                    ) or "Read-only is on for this Windows user" in str(error):
                         raise ReadOnlyRefusedError(str(error)) from error
                     raise
             deadline = asyncio.get_running_loop().time() + wait_seconds

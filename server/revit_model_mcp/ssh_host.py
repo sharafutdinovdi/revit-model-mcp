@@ -92,8 +92,14 @@ class RemoteCommandError(RevitChannelError):
 
 
 _READ_ONLY_GATE_SCRIPT = (
-    "if (Test-Path -LiteralPath (Join-Path (Join-Path $env:LOCALAPPDATA 'RevitModelMcp') 'read-only')) "
-    "{ throw 'read-only mode' }; "
+    "$readOnlyPath = Join-Path (Join-Path $env:LOCALAPPDATA 'RevitModelMcp') 'read-only'; "
+    "if (Test-Path -LiteralPath $readOnlyPath) { "
+    "$readOnlyMetadata = @(Get-Content -LiteralPath $readOnlyPath); "
+    "$readOnlyBy = 'file'; $readOnlyAt = (Get-Item -LiteralPath $readOnlyPath).LastWriteTimeUtc.ToString('o'); "
+    "if ($readOnlyMetadata.Count -eq 2 -and $readOnlyMetadata[0] -in @('ribbon','chat')) { "
+    "$readOnlyBy = $readOnlyMetadata[0]; $readOnlyAt = $readOnlyMetadata[1] }; "
+    "throw ('Read-only is on for this Windows user (set from ' + $readOnlyBy + ' at ' + $readOnlyAt + "
+    "'). Turn it off with the Model MCP ribbon button or by asking the assistant.') }; "
 )
 
 
@@ -211,7 +217,7 @@ class SshPowerShellHost:
         return state
 
     async def batch_assert_writable(self) -> None:
-        """Raise RemoteCommandError('read-only mode') when the per-user gate file exists."""
+        """Refuse while the per-user workstation lock exists, preserving its metadata."""
         await self._run(_READ_ONLY_GATE_SCRIPT)
 
     async def batch_cancel(self, run_id: str) -> None:
@@ -393,9 +399,7 @@ class SshPowerShellHost:
                 "message": "The command cannot be interrupted or has already finished.",
             }
         await self._run(
-            f"$root = {self._root_directory}; "
-            "if (Test-Path -LiteralPath (Join-Path $root 'read-only')) { throw 'read-only mode' }; "
-            f"$jobs = Join-Path ({self._directory}) 'jobs'; "
+            _READ_ONLY_GATE_SCRIPT + f"$jobs = Join-Path ({self._directory}) 'jobs'; "
             "New-Item -ItemType Directory -Force -Path $jobs | Out-Null; "
             f"$path = Join-Path $jobs '{job_id}.cancel'; "
             "[IO.File]::WriteAllText($path, '')"

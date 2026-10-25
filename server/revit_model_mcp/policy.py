@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from revit_model_mcp.errors import POLICY_BLOCKED, READ_ONLY, READ_ONLY_MESSAGE, refusal
+from revit_model_mcp.errors import POLICY_BLOCKED, POLICY_LOCK_MESSAGE, refusal
 
 POLICY_REFUSAL_PREFIX = "Blocked by organization policy:"
 _REGISTRY_KEY = r"Software\Policies\RevitModelMcp"
@@ -213,11 +213,7 @@ def policy_read_only_refusal(policy: dict[str, Any] | None = None) -> str | None
     values = load_policy() if policy is None else policy
     if UNREADABLE_KEY in values:
         return POLICY_UNREADABLE_MESSAGE
-    return (
-        f"{POLICY_REFUSAL_PREFIX} the workstation is read-only."
-        if values.get("ReadOnly") is True
-        else None
-    )
+    return POLICY_LOCK_MESSAGE if values.get("ReadOnly") is True else None
 
 
 def policy_refusal(command: str, policy: dict[str, Any] | None = None) -> str | None:
@@ -246,9 +242,9 @@ def policy_refusal(command: str, policy: dict[str, Any] | None = None) -> str | 
 
 
 def policy_gate(
-    command: str, read_only: bool = False, *, label: str | None = None, mutating: bool = True
+    command: str, *, label: str | None = None, mutating: bool = True
 ) -> dict[str, Any] | None:
-    """Refuse a tool or command for the server flag, a read-only or unreadable policy, ToolDeny, ToolAllow or ExecuteCode.
+    """Refuse a tool or command for a read-only or unreadable policy, ToolDeny, ToolAllow or ExecuteCode.
 
     Returns the refusal response, or None when the call may proceed. ``label`` is the command name
     shown in the response. ``mutating=False`` skips the read-only checks.
@@ -256,8 +252,6 @@ def policy_gate(
     values = load_policy()
     shown = label or command
     if mutating:
-        if read_only:
-            return refusal(shown, READ_ONLY, READ_ONLY_MESSAGE)
         if UNREADABLE_KEY in values:
             return refusal(shown, POLICY_BLOCKED, POLICY_UNREADABLE_MESSAGE)
         if (text := policy_read_only_refusal(values)) is not None:
