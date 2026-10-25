@@ -6,7 +6,7 @@
 
 Toolsets limit visibility only. They are not a permission: read-only mode, confirmation tokens and the add-in's own checks apply to every listed tool.
 
-The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (20 tools, about 6.7k tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (20 tools, about 6,202 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
 
 | Toolset | Tools |
 | --- | --- |

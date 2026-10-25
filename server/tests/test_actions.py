@@ -1161,13 +1161,19 @@ def test_invalid_arguments_never_reach_channel(name, arguments):
     host.list_revit_instances.assert_not_awaited()
 
 
-@pytest.mark.parametrize("instances", [[], [{"processId": 1}, {"processId": 2}]])
-def test_actions_require_one_revit_instance(instances):
+@pytest.mark.parametrize(
+    "instances,message",
+    [
+        ([], "No running Revit instance with the add-in"),
+        ([{"processId": 1}, {"processId": 2}], "Several Revit instances"),
+    ],
+)
+def test_actions_require_one_revit_instance(instances, message):
     import asyncio
 
     server, execute, host = action_server()
     host.list_revit_instances.return_value = instances
-    with pytest.raises(Exception, match="exactly one"):
+    with pytest.raises(Exception, match=message):
         asyncio.run(server.call_tool("revit_select", {"element_ids": [1]}))
     execute.assert_not_awaited()
 
