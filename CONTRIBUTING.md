@@ -163,9 +163,48 @@ A threaded fake HTTP server covers health, authentication, busy responses, job p
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.
 
-Automated tests do not validate live Revit behavior; see [validation evidence](docs/validation.md).
+### Tests inside Revit
+
+`tests/RevitModelMcp.Addin.Tests` runs readers and action executors directly through Nice3point.TUnit.Revit.
+A licensed Revit installation and an interactive Windows user session are required.
+The solution lists the project under `tests` without a default build mapping; CI continues to run only Core tests.
+`RunRevitTests=true` opts into Revit test discovery.
+
+```powershell
+.\build\run-addin-tests.ps1 -Year 2027
+.\build\run-addin-tests.ps1 -Year 2022 -Model 'C:\Projects\rmm-test\2022\rac_basic_sample_project.rvt'
+```
+
+`-Model` defaults to `RMM_TEST_MODEL`, then `C:\Projects\rmm-test\2027\Snowdon Towers Sample Architectural.rvt`.
+Each test opens a private temporary copy and closes it without saving.
+Actions commit inside an outer transaction group that teardown rolls back.
+The tests compare summary text, the returned undo name, the distinct underlying action transaction name, and resulting model state.
+The fixture uses `RevitApiUiTest` because the add-in assembly and executor reference RevitAPIUI.
+The tests check the returned undo name and commit events; native undo menu inspection remains a manual check.
+The runner refuses to start while any `Revit.exe` exists and requires at least 15 passing tests.
+TRX files default to `C:\Projects\rmm-test\out\tests\addin-<year>.trx`; `-OutputDirectory` overrides the directory.
+A missing model skips the tests when the executable runs directly; the script treats that condition as an error.
+PR validation records the workstation years, TRX counters, and any failures.
+See [manual test plan](docs/manual-test-plan.md#workstation-regression-and-release-smoke) and [validation evidence](docs/validation.md).
 
 ## Release ritual
+
+Before merging the release PR, run the in-Revit regression command above for the oldest and newest supported years.
+Run the SingleUser installer smoke from an interactive Windows workstation with no running Revit:
+
+```powershell
+.\build\release-smoke.ps1 -Msi '.\output\RevitModelMcp-1.0.0-SingleUser.msi' -ExpectedVersion '1.0.0'
+```
+
+`-ExpectedVersion` matches the DLL ProductVersion before its commit suffix; prerelease suffixes remain significant.
+The smoke installs per user, checks manifests and DLL versions for installed Revit years, opens the test model in Revit 2027 through its own interactive scheduled task, waits for a fresh heartbeat, and calls `revit_ping` through `pipe/1` using the Python server source and `uv run`.
+`-ServerDirectory` selects the server checkout; `-Model` selects the 2027 test model.
+An existing SingleUser MSI installation requires `-PreviousMsi <full previous package>` with the same ProductCode.
+The smoke backs up that package and reinstalls it in its original scope before restoring the previous add-in files and settings.
+The smoke closes only its own Revit process, removes only its own `rmm-smoke-*` task, uninstalls the package, and restores the previous per-year add-in from a retained backup.
+The output directory contains MSI logs, the ping response, the backup, and a PASS/FAIL table with restored ProductVersions.
+A failure returns exit code 1; cleanup failures remain visible in the table.
+Attach the table and TRX counters to release validation before publication.
 
 1. Merge PRs with Conventional Commit titles.
 2. release-please maintains a `chore(main): release X.Y.Z` PR with generated changelog entries and version updates.

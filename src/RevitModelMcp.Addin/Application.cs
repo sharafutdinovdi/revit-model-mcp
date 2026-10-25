@@ -66,6 +66,8 @@ public sealed class Application : ExternalApplication
 #endif
         Policy.PolicyProvider.ApplyProcessEnvironment();
         PluginLog.Start();
+        AppDomain.CurrentDomain.UnhandledException += OnUnhandledException;
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.UnhandledException += OnDispatcherUnhandledException;
         _instance = this;
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         var (fileChannelEnabled, fileChannelWarning) = Output.ChannelDirectory.InitializeChannel();
@@ -181,8 +183,38 @@ public sealed class Application : ExternalApplication
         UpdateService.Start();
     }
 
+    private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs args)
+    {
+        if (args.ExceptionObject is Exception exception) LogUnhandledException(exception, "AppDomain");
+    }
+
+    private static void OnDispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
+    {
+        LogUnhandledException(args.Exception, "dispatcher");
+    }
+
+    private static void LogUnhandledException(Exception exception, string source)
+    {
+        try
+        {
+            for (Exception? current = exception; current is not null; current = current.InnerException)
+            {
+                if (new StackTrace(current).GetFrames()?.Any(frame =>
+                        frame.GetMethod()?.DeclaringType?.Assembly == typeof(Application).Assembly) != true) continue;
+                PluginLog.Error($"Unhandled {source} exception in Model MCP (observation only).", exception);
+                return;
+            }
+        }
+        catch (Exception loggingException)
+        {
+            PluginLog.Debug("Unhandled exception could not be logged.", loggingException);
+        }
+    }
+
     public override void OnShutdown()
     {
+        AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.UnhandledException -= OnDispatcherUnhandledException;
         PaneTheme.Changed -= RefreshRibbonImages;
         _ribbonButtons.Clear();
         _readOnlyRibbon?.Dispose();
@@ -655,6 +687,7 @@ internal static class RibbonBranding
     private const string TabIconName = "ModelMcpTabIcon";
     private static Autodesk.Windows.RibbonControl? _ribbon;
     private static long _lastLayoutCheck;
+    private static System.Windows.Threading.DispatcherOperation? _pendingApply;
     private static bool _applying;
     private static bool _missingHeaderLogged;
 
@@ -664,6 +697,7 @@ internal static class RibbonBranding
         _applying = true;
         try
         {
+            _lastLayoutCheck = Stopwatch.GetTimestamp();
             var ribbon = Autodesk.Windows.ComponentManager.Ribbon;
             if (ribbon is null) return;
             if (!ReferenceEquals(_ribbon, ribbon))
@@ -726,27 +760,66 @@ internal static class RibbonBranding
 
     internal static void Detach()
     {
-        if (_ribbon is null) return;
-        _ribbon.Loaded -= OnRibbonLoaded;
-        _ribbon.LayoutUpdated -= OnRibbonLayoutUpdated;
-        PaneTheme.Changed -= OnThemeChanged;
-        _ribbon = null;
+        try
+        {
+            _pendingApply?.Abort();
+            _pendingApply = null;
+            if (_ribbon is null) return;
+            _ribbon.Loaded -= OnRibbonLoaded;
+            _ribbon.LayoutUpdated -= OnRibbonLayoutUpdated;
+            PaneTheme.Changed -= OnThemeChanged;
+            _ribbon = null;
+        }
+        catch (Exception exception)
+        {
+            PluginLog.Debug("Ribbon branding could not be detached.", exception);
+        }
     }
 
-    private static void OnRibbonLoaded(object sender, System.Windows.RoutedEventArgs args) => ApplyTabIcon();
+    private static void OnRibbonLoaded(object sender, System.Windows.RoutedEventArgs args) => ScheduleTabIcon();
 
-    private static void OnRibbonLayoutUpdated(object? sender, EventArgs args)
+    private static void OnRibbonLayoutUpdated(object? sender, EventArgs args) => ScheduleTabIcon();
+
+    private static void ScheduleTabIcon()
     {
-        var timestamp = Stopwatch.GetTimestamp();
-        if (timestamp - _lastLayoutCheck < Stopwatch.Frequency / 4) return;
-        _lastLayoutCheck = timestamp;
-        ApplyTabIcon();
+        try
+        {
+            if (_ribbon is null || _pendingApply is not null) return;
+            if (Stopwatch.GetTimestamp() - _lastLayoutCheck < Stopwatch.Frequency / 2) return;
+            _pendingApply = _ribbon.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background,
+                new Action(() =>
+                {
+                    try
+                    {
+                        ApplyTabIcon();
+                    }
+                    catch (Exception exception)
+                    {
+                        PluginLog.Debug("Scheduled ribbon branding failed.", exception);
+                    }
+                    finally
+                    {
+                        _pendingApply = null;
+                    }
+                }));
+        }
+        catch (Exception exception)
+        {
+            PluginLog.Debug("Ribbon branding could not be scheduled.", exception);
+        }
     }
 
     private static void OnThemeChanged()
     {
-        ApplyPanelBackground();
-        ApplyTabIcon();
+        try
+        {
+            ApplyPanelBackground();
+            ScheduleTabIcon();
+        }
+        catch (Exception exception)
+        {
+            PluginLog.Debug("Ribbon theme update failed.", exception);
+        }
     }
 
     private static IEnumerable<System.Windows.DependencyObject> Descendants(System.Windows.DependencyObject parent)
