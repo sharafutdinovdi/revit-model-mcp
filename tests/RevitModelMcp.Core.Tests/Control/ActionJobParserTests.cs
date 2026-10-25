@@ -19,7 +19,8 @@ public sealed class ActionJobParserTests
         {
             result.Steps.Add(new BatchStepResult
             {
-                Index = result.Steps.Count, Command = command,
+                Index = result.Steps.Count,
+                Command = command,
                 Success = !failed || command != "delete",
                 Error = failed && command == "delete" ? "Step failed." : null
             });
@@ -58,7 +59,10 @@ public sealed class ActionJobParserTests
         {
             result.Steps.Add(new BatchStepResult
             {
-                Index = index, Command = "set-parameter", Success = true, Data = stepData
+                Index = index,
+                Command = "set-parameter",
+                Success = true,
+                Data = stepData
             });
             string? delivery = null;
             result.PublishBatchProgress(50, "set-parameter", content => delivery = content);
