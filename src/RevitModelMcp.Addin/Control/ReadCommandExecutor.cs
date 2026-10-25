@@ -38,6 +38,18 @@ internal static class ReadCommandExecutor
                 return;
             }
 
+            if (job.Kind == ControlJobKind.ApiLookup)
+            {
+                var lookup = ApiLookup.Lookup([typeof(Document).Assembly, typeof(UIApplication).Assembly],
+                    job.ApiLookup!, assembly =>
+                    {
+                        var path = System.IO.Path.ChangeExtension(assembly.Location, ".xml");
+                        return System.IO.File.Exists(path) ? path : null;
+                    });
+                WriteSuccess(output, job.Command, lookup, stopwatch);
+                return;
+            }
+
             if (job.Command == "family-audit")
             {
                 var reference = job.CoordinatorJob.TargetDocument;

@@ -107,7 +107,7 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
         "revit_build_report",
         "revit_process_models",
     ),
-    "code": ("revit_execute_code",),
+    "code": ("revit_execute_code", "revit_api_lookup"),
 }
 
 ALL = "all"

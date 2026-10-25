@@ -41,7 +41,7 @@ public sealed class Application : ExternalApplication
         "set-parameter", "delete", "batch", "process-models", "export-nwc", "export", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "activate-document", "activate-view", "close-views", "new-document",
-        "set-view-visibility", "remove-links", "execute-code", "undo-last",
+        "set-view-visibility", "remove-links", "execute-code", "api-lookup", "undo-last",
         "batch-supervisor-start", "batch-prepass", "batch-open", "batch-close", "model-snapshot"
     ];
     private ControlChannel _controlChannel = null!;

@@ -20,7 +20,7 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 | `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
 | `export` | `revit_export`, `revit_export_nwc`, `revit_nwc_settings_check`, `revit_issue_register` |
 | `batch` | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report`, `revit_process_models` |
-| `code` | `revit_execute_code` |
+| `code` | `revit_execute_code`, `revit_api_lookup` |
 
 ### Tool list size
 
@@ -92,6 +92,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. Refused for family documents. |
 | `revit_family_audit` | `families=null`, `detail="summary"`, `timeout_seconds=600` | Summary returns parameter counts and up to 20 unused parameter names, shared status, and purge candidates. `detail="full"` returns all parameter metadata with group IDs and `groupName` labels. `["*"]` audits the first 200 editable families sorted by name; `data.skipped` lists each remaining name and reason, with `skippedCount`. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
+| `revit_api_lookup` | `query`, `kind="search"`, `limit=25`, `include_inherited=false`, `include_obsolete=true`, `document=null`, `process_id=null` | Look up public types and members in the running Revit API. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null`, `open_timeout_minutes=null` | Start persistent read-only collection; see [batch collection](batch.md). |
 | `revit_batch_status` | `run_id` | Read persisted run and model status. |

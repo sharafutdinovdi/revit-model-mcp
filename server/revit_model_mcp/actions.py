@@ -1046,7 +1046,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Compile and run C# against the live Revit API on the Revit thread. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction="none" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction="auto"."""
+        """Compile and run C# against the live Revit API on the Revit thread. revit_api_lookup supplies reference metadata before writing C# for an unfamiliar type. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction="none" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction="auto"."""
         if dry_run:
             transaction = "auto"
         return await send(
