@@ -97,7 +97,7 @@ internal static class BatchCommands
     private static BatchPrePassResult PrePass(string? path)
     {
         EnsureWorker();
-        if (string.IsNullOrWhiteSpace(path) || path.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
+        if (path is null || string.IsNullOrWhiteSpace(path) || path.StartsWith("RSN://", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Local or UNC model path is required for BasicFileInfo.");
         using var info = BasicFileInfo.Extract(path);
         return new BatchPrePassResult
@@ -140,7 +140,7 @@ internal static class BatchCommands
         {
             EnsureWorker();
             var path = job.CoordinatorJob.Path;
-            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Model path is required.");
+            if (path is null || string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Model path is required.");
             var allowlistPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "RevitModelMcp", "batch-dialogs.json");
             var choices = BatchDialogPolicy.Load(allowlistPath);

@@ -9,7 +9,7 @@ FROM python:3.12-slim@sha256:ddb0207ae1f0356c2b724d740769b0c5f5f51cc54a0525178f7
 WORKDIR /app
 COPY server/ /app/
 RUN pip install --no-cache-dir --require-hashes -r requirements.docker.txt \
-    && pip install --no-cache-dir --no-deps .
+    && pip install --no-cache-dir --no-deps --editable .
 
 # 'local' host is a no-op at startup (no connection is opened); it only matters
 # when a tool is actually invoked, which Glama's introspection never does.

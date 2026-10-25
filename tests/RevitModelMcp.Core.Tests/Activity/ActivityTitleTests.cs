@@ -98,9 +98,16 @@ public sealed class ActivityTitleTests
 
 public sealed class TabActivityTrackerTests
 {
-    private DateTimeOffset _now = DateTimeOffset.Parse("2026-10-22T12:00:00Z");
+    private sealed class TestClock
+    {
+        public DateTimeOffset Now { get; private set; } = DateTimeOffset.Parse("2026-10-22T12:00:00Z");
 
-    private TabActivityTracker Tracker() => new(() => _now);
+        public void Advance(Func<DateTimeOffset, DateTimeOffset> step) => Now = step(Now);
+    }
+
+    private readonly TestClock _clock = new();
+
+    private TabActivityTracker Tracker() => new(() => _clock.Now);
 
     [Test]
     public async Task Action_HighlightsImmediately_WithClientAndSummary()
@@ -121,11 +128,11 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("job", "document", "Codex", command, detail: detail);
-        _now = _now.AddSeconds(4);
+        _clock.Advance(now => now.AddSeconds(4));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
         await Assert.That(tracker.NextChange).IsNull();
         tracker.End("job");
-        _now = _now.AddSeconds(5);
+        _clock.Advance(now => now.AddSeconds(5));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
         await Assert.That(tracker.NextChange).IsNull();
     }
@@ -153,12 +160,12 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("job", "document", "Codex", "move", "Moving elements…");
-        _now = _now.AddMilliseconds(100);
+        _clock.Advance(now => now.AddMilliseconds(100));
         tracker.End("job");
         await Assert.That(tracker.NextChange).IsEqualTo(TimeSpan.FromMilliseconds(1400));
-        _now = _now.AddMilliseconds(1399);
+        _clock.Advance(now => now.AddMilliseconds(1399));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
-        _now = _now.AddMilliseconds(1);
+        _clock.Advance(now => now.AddMilliseconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -167,12 +174,12 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("job", "document", "Codex", "move", "Moving elements…");
-        _now = _now.AddSeconds(3);
+        _clock.Advance(now => now.AddSeconds(3));
         tracker.End("job");
         await Assert.That(tracker.NextChange).IsEqualTo(TimeSpan.FromSeconds(1));
-        _now = _now.AddMilliseconds(999);
+        _clock.Advance(now => now.AddMilliseconds(999));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
-        _now = _now.AddMilliseconds(1);
+        _clock.Advance(now => now.AddMilliseconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -184,12 +191,12 @@ public sealed class TabActivityTrackerTests
         var tracker = Tracker();
         tracker.Start("job", "document", "Codex", "move");
         tracker.MarkVisible("document");
-        _now = _now.AddSeconds(3);
-        var responseDeliveredAt = _now;
-        _now = _now.AddMilliseconds(completionDelayMs);
+        _clock.Advance(now => now.AddSeconds(3));
+        var responseDeliveredAt = _clock.Now;
+        _clock.Advance(now => now.AddMilliseconds(completionDelayMs));
         tracker.End("job", responseDeliveredAt);
         await Assert.That(tracker.NextChange).IsEqualTo(TimeSpan.FromMilliseconds(remainingMs));
-        _now = _now.AddMilliseconds(remainingMs);
+        _clock.Advance(now => now.AddMilliseconds(remainingMs));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -199,14 +206,14 @@ public sealed class TabActivityTrackerTests
         var tracker = Tracker();
         tracker.Start("job", "document", "Codex", "move");
         tracker.MarkVisible("document");
-        _now = _now.AddMilliseconds(100);
-        var responseDeliveredAt = _now;
-        _now = _now.AddMilliseconds(400);
+        _clock.Advance(now => now.AddMilliseconds(100));
+        var responseDeliveredAt = _clock.Now;
+        _clock.Advance(now => now.AddMilliseconds(400));
         tracker.End("job", responseDeliveredAt);
         await Assert.That(tracker.NextChange).IsEqualTo(TimeSpan.FromSeconds(1));
-        _now = _now.AddMilliseconds(999);
+        _clock.Advance(now => now.AddMilliseconds(999));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
-        _now = _now.AddMilliseconds(1);
+        _clock.Advance(now => now.AddMilliseconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -215,13 +222,13 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("job", "document", "Codex", "model-snapshot");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         tracker.MarkVisible("document");
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
         tracker.End("job");
-        _now = _now.AddMilliseconds(1499);
+        _clock.Advance(now => now.AddMilliseconds(1499));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
-        _now = _now.AddMilliseconds(1);
+        _clock.Advance(now => now.AddMilliseconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -230,16 +237,16 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("first", "document", "Codex", "move", "Moving elements…");
-        _now = _now.AddSeconds(2);
+        _clock.Advance(now => now.AddSeconds(2));
         tracker.End("first");
-        _now = _now.AddMilliseconds(900);
+        _clock.Advance(now => now.AddMilliseconds(900));
         tracker.Start("second", "document", "Claude", "document-info");
-        _now = _now.AddMilliseconds(200);
+        _clock.Advance(now => now.AddMilliseconds(200));
         await Assert.That(tracker.Snapshot().Single().ToolTip).IsEqualTo("Model MCP: Claude running document-info");
         tracker.End("second");
-        _now = _now.AddMilliseconds(999);
+        _clock.Advance(now => now.AddMilliseconds(999));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
-        _now = _now.AddMilliseconds(1);
+        _clock.Advance(now => now.AddMilliseconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -249,13 +256,13 @@ public sealed class TabActivityTrackerTests
         var tracker = Tracker();
         tracker.Start("first", "A", "Codex", "move", "Moving elements…");
         tracker.Start("second", "B", "Claude", "model-snapshot");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(2);
         tracker.End("first");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         await Assert.That(tracker.Snapshot().Single().DocumentId).IsEqualTo("B");
         tracker.End("second");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -265,12 +272,12 @@ public sealed class TabActivityTrackerTests
         var tracker = Tracker();
         tracker.Start("first", "document", "Codex", "move", "Moving elements…");
         tracker.Start("second", "document", "Claude", "delete", "Deleting elements…");
-        _now = _now.AddSeconds(2);
+        _clock.Advance(now => now.AddSeconds(2));
         tracker.End("second");
         await Assert.That(tracker.Snapshot().Single().ToolTip).IsEqualTo("Model MCP: Codex running Moving elements…");
         await Assert.That(tracker.NextChange).IsNull();
         tracker.End("first");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -288,7 +295,7 @@ public sealed class TabActivityTrackerTests
         tracker.End("action");
         tracker.Start("read", "B", "Claude", "model-snapshot");
         tracker.Progress("read", 1, 3, "Ignored read summary");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         await Assert.That(tracker.Snapshot().Single(state => state.DocumentId == "B").ToolTip)
             .IsEqualTo("Model MCP: Claude running model-snapshot, step 1 of 3");
     }
@@ -301,7 +308,7 @@ public sealed class TabActivityTrackerTests
         tracker.Start("read", "B", "Claude", "document-info");
         tracker.Configure(false);
         tracker.Start("disabled", "C", "Codex", "move", "Moving elements…");
-        _now = _now.AddSeconds(10);
+        _clock.Advance(now => now.AddSeconds(10));
         tracker.Progress("action", 1, 2);
         tracker.End("action");
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
@@ -316,14 +323,14 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("action", "document", "Codex", "move", "Moving elements…");
-        _now = _now.AddSeconds(4);
+        _clock.Advance(now => now.AddSeconds(4));
         tracker.End("action");
         tracker.MarkVisible("document");
-        _now = _now.AddSeconds(1);
+        _clock.Advance(now => now.AddSeconds(1));
         tracker.MarkVisible("document");
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(1);
         await Assert.That(tracker.NextChange).IsEqualTo(TimeSpan.FromMilliseconds(500));
-        _now = _now.AddMilliseconds(500);
+        _clock.Advance(now => now.AddMilliseconds(500));
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
     }
 
@@ -332,7 +339,7 @@ public sealed class TabActivityTrackerTests
     {
         var tracker = Tracker();
         tracker.Start("read", "document", "Codex", "document-info");
-        _now = _now.AddSeconds(4);
+        _clock.Advance(now => now.AddSeconds(4));
         tracker.End("read");
         await Assert.That(tracker.Snapshot().Count).IsEqualTo(0);
         await Assert.That(tracker.NextChange).IsNull();

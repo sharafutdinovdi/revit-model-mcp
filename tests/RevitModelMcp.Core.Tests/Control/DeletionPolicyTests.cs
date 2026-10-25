@@ -7,7 +7,9 @@ public sealed class DeletionPolicyTests
     [Test]
     public async Task Threshold_IsFiveHundred()
     {
-        await Assert.That(DeletionPolicy.ConfirmationThreshold).IsEqualTo(500);
+        await Assert.That(DeletionPolicy.RequiresConfirmation(500)).IsFalse();
+        await Assert.That(DeletionPolicy.RequiresConfirmation(501)).IsTrue();
+        await Assert.That(DeletionPolicy.BatchRefusal(501)).Contains("500");
     }
 
     [Test]
