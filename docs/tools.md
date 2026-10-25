@@ -6,20 +6,20 @@
 
 Toolsets limit visibility only. They are not a permission: read-only mode, confirmation tokens and the add-in's own checks apply to every listed tool.
 
-The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (20 tools, about 6,202 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (21 tools, about 6,545 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
 
 | Toolset | Tools |
 | --- | --- |
 | `core` | `revit_ping`, `revit_list_instances`, `revit_documents`, `revit_document_info`, `revit_ui_state`, `revit_jobs`, `revit_cancel_job`, `revit_undo_last` |
-| `read` | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations`, `revit_model_health`, `revit_list_warnings`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check`, `revit_model_snapshot`, `revit_schedule_data` |
+| `read` | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations`, `revit_model_health`, `revit_model_audit`, `revit_list_warnings`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check`, `revit_model_snapshot`, `revit_schedule_data` |
 | `actions` | `revit_set_parameter`, `revit_update_parameters`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_delete`, `revit_run_actions` |
 | `documents` | `revit_open_document`, `revit_activate_document`, `revit_new_document`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
-| `views-sheets` | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_tag_elements`, `revit_create_schedule`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
+| `views-sheets` | `revit_list_sheets`, `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_tag_elements`, `revit_create_schedule`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
 | `family` | `revit_family_audit`, `revit_edit_families`, `revit_load_family`, `revit_place_family`, `revit_place_families` |
 | `links` | `revit_compare_link_datums`, `revit_align_link_datums`, `revit_remove_links` |
 | `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
 | `export` | `revit_export`, `revit_export_nwc`, `revit_nwc_settings_check`, `revit_issue_register` |
-| `batch` | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report`, `revit_process_models` |
+| `batch` | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report`, `revit_audit_report`, `revit_process_models` |
 | `code` | `revit_execute_code`, `revit_api_lookup` |
 
 ### Tool list size
@@ -30,20 +30,20 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
 | `core` | 8 | 6,836 | 1,709 |
-| `read` | 12 | 17,972 | 4,493 |
+| `read` | 13 | 19,347 | 4,836 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,952 | 1,238 |
-| `views-sheets` | 21 | 24,876 | 6,219 |
+| `views-sheets` | 22 | 25,837 | 6,459 |
 | `family` | 5 | 8,967 | 2,241 |
 | `links` | 3 | 4,104 | 1,026 |
 | `cad-mep` | 4 | 5,663 | 1,415 |
 | `export` | 4 | 7,283 | 1,820 |
-| `batch` | 6 | 7,557 | 1,889 |
-| `code` | 1 | 1,358 | 339 |
-| `all` (default) | 79 | 100,671 | 25,167 |
-| `core,read` | 20 | 24,808 | 6,202 |
+| `batch` | 7 | 8,149 | 2,037 |
+| `code` | 2 | 2,821 | 705 |
+| `all` (default) | 83 | 105,062 | 26,265 |
+| `core,read` | 21 | 26,183 | 6,545 |
 
-With the pickup timeout argument included, all 79 tools measure 104,125 bytes (about 26,031 tokens).
+These measurements use the default tool schemas. Optional server arguments can increase the payload.
 
 MEP routing, graphic overrides, view and sheet creation, element tagging, schedule creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 
@@ -54,7 +54,7 @@ Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` 
 
 Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120` and `document=null`.
+Every Revit-backed read tool except `revit_list_sheets`, `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120` and `document=null`.
 The server environment variable `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` configures the file-channel pickup timeout (default 300 seconds). `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Every timeout argument is named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
@@ -75,6 +75,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_list_catalog` | `section`, `name_contains=null`, `limit=200` (1 to 2000) | Discover names with a case-insensitive filter. Returns `total` before the limit and `hasMore`. |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
+| `revit_list_sheets` | `include_unplaced_views=true`, `offset=0`, `limit=200`, `document=null`; no timeout argument | Read sheets, title blocks, revisions, placed view IDs and unplaced views. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
@@ -101,6 +102,32 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_compare_link_datums` | `link`, `kinds=null` (grids and levels), `name_map=null` (no renames), `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 | `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. |
 | `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
+
+### List sheets
+
+`revit_list_sheets(include_unplaced_views=True, offset=0, limit=200, document=None)` reads the active or addressed document.
+It returns `data.sheets[{id,number,name,titleBlock,revisionCount,viewportCount,viewIds}]`, `data.unplacedViews[{id,name,viewType}]`, and `data.total`, `data.offset`, `data.limit`, `data.hasMore`.
+The response envelope includes `skipped` and `skippedCount`.
+Failed item reads are reported there.
+
+Sheets include placeholders and sort by number, then ID.
+Paging applies only to sheets.
+The limit accepts 1 to 5000.
+Total counts all sheets, including skipped rows.
+The title block is the type name of the first title block by ID, or null.
+Revision count includes all revisions on the sheet.
+Viewport count excludes schedules.
+View IDs include viewport views, schedules, and panel schedules, sorted and deduplicated.
+
+Unplaced views are returned in full on every page, sorted by ID.
+Setting `include_unplaced_views=False` returns an empty list.
+Templates, sheets, browsers, internal views, and walkthroughs are excluded.
+Printable plans, elevations, sections, details, drafting views, 3D views, legends, and renderings are eligible.
+User schedules and panel schedules are included only if they have no placement on any sheet.
+Internal keynote and title block revision schedules are excluded.
+A legend or schedule placed on any sheet is never unplaced.
+This read opens no transaction.
+
 ### Snapshot report
 
 `snapshots_dir` contains regular `*.json` files directly in that directory. Files are read in filename order. `output_path` is a client-machine `.xlsx` path; missing parent directories are created and an existing file is never overwritten. `previous_dir`, when supplied, follows the same input rules and matches models by `passport.title`. Duplicate titles are rejected. `findings` is an optional list with `model`, `severity`, `rule`, `element_ids` (or `elementIds`) and `recommendation`; IDs are integers.
@@ -245,3 +272,15 @@ Read `errorCode`, not the text of `error`. The wording of messages is not part o
 New codes can appear in a minor release; treat an unknown code as a failed action.
 A timed-out action is a tool error, not a result: the action may have changed the model, so inspect it before retrying.
 The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` and `revit_batch_cancel`. The last two start and stop Revit processes, so they are refused in read-only mode like any action; `revit_batch_status` and `revit_batch_fetch` stay available.
+
+
+## Model audits
+
+| Tool | Purpose |
+| --- | --- |
+| `revit_model_audit` | Read one addressed model against local YAML or JSON rules, inline rules or a builtin pack. Save immutable results and compare with earlier results. Toolset: `read`. |
+| `revit_audit_report` | Build new XLSX and self-contained HTML files from a local audit result without Revit. Toolset: `batch`. |
+
+See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html` or `both`).
+
+For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.

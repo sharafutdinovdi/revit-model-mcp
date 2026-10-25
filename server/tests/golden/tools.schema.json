@@ -483,6 +483,30 @@
     ],
     "type": "object"
   },
+  "revit_audit_report": {
+    "properties": {
+      "audit": {
+        "type": "string"
+      },
+      "format": {
+        "default": "both",
+        "enum": [
+          "xlsx",
+          "html",
+          "both"
+        ],
+        "type": "string"
+      },
+      "output": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "audit",
+      "output"
+    ],
+    "type": "object"
+  },
   "revit_batch_cancel": {
     "properties": {
       "run_id": {
@@ -2982,6 +3006,48 @@
     ],
     "type": "object"
   },
+  "revit_list_sheets": {
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_unplaced_views": {
+        "default": true,
+        "type": "boolean"
+      },
+      "limit": {
+        "default": 200,
+        "maximum": 5000,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "offset": {
+        "default": 0,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
   "revit_list_views": {
     "properties": {
       "document": {
@@ -3179,6 +3245,68 @@
       "element_ids",
       "point_mm"
     ],
+    "type": "object"
+  },
+  "revit_model_audit": {
+    "properties": {
+      "compare_with": {
+        "default": "previous",
+        "type": "string"
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "rules": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "rules_inline": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "save": {
+        "default": true,
+        "type": "boolean"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
     "type": "object"
   },
   "revit_model_health": {

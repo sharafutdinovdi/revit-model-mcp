@@ -11,6 +11,61 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task ListSheets_SerializesAuditContractAndDiagnostics()
+    {
+        var diagnostics = new SkippedReadDiagnostics();
+        diagnostics.Add("sheet 99", new InvalidOperationException("Unavailable"));
+        SkippedReadDiagnostics.Current = diagnostics;
+        try
+        {
+            var result = new SheetListData
+            {
+                Sheets = [new SheetListItem
+                {
+                    Id = 2147483648, Number = "A01", Name = "Ground floor", TitleBlock = "A1",
+                    RevisionCount = 2, ViewportCount = 1, ViewIds = [42, 43]
+                }, new SheetListItem { Id = 2, Number = "A02", Name = "Placeholder" }],
+                UnplacedViews = [new UnplacedViewItem { Id = 3, Name = "Doors", ViewType = "Schedule" }],
+                Total = 201, Offset = 0, Limit = 200, HasMore = true
+            };
+            var serialized = CommandResponseJsonSerializer.Serialize(CommandResponse<SheetListData>.Ok("list-sheets", result, 1));
+            using var json = JsonDocument.Parse(serialized);
+            var data = json.RootElement.GetProperty("data");
+            var sheet = data.GetProperty("sheets")[0];
+            await Assert.That(string.Join(",", sheet.EnumerateObject().Select(property => property.Name).OrderBy(name => name)))
+                .IsEqualTo("id,name,number,revisionCount,titleBlock,viewIds,viewportCount");
+            await Assert.That(sheet.GetProperty("id").GetInt64()).IsEqualTo(2147483648L);
+            await Assert.That(sheet.GetProperty("revisionCount").GetInt32()).IsEqualTo(2);
+            await Assert.That(sheet.GetProperty("viewportCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(sheet.GetProperty("viewIds").GetArrayLength()).IsEqualTo(2);
+            await Assert.That(data.GetProperty("sheets")[1].GetProperty("titleBlock").ValueKind).IsEqualTo(JsonValueKind.Null);
+            await Assert.That(data.GetProperty("unplacedViews")[0].GetProperty("viewType").GetString()).IsEqualTo("Schedule");
+            await Assert.That(data.GetProperty("total").GetInt32()).IsEqualTo(201);
+            await Assert.That(data.GetProperty("offset").GetInt32()).IsEqualTo(0);
+            await Assert.That(data.GetProperty("limit").GetInt32()).IsEqualTo(200);
+            await Assert.That(data.GetProperty("hasMore").GetBoolean()).IsTrue();
+            await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(json.RootElement.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("sheet 99");
+            var roundTrip = RoundTripCoordinator("list-sheets", result);
+            await Assert.That(roundTrip.Sheets[0].TitleBlock).IsEqualTo("A1");
+            await Assert.That(roundTrip.UnplacedViews[0].Id).IsEqualTo(3);
+        }
+        finally { SkippedReadDiagnostics.Current = null; }
+    }
+
+    [Test]
+    public async Task ListSheets_EmptyPagePreservesArraysAndPaging()
+    {
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<SheetListData>.Ok("list-sheets", new SheetListData { Offset = 200, Limit = 200 }, 1)));
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("sheets").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(data.GetProperty("unplacedViews").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(data.GetProperty("hasMore").GetBoolean()).IsFalse();
+        await Assert.That(data.GetProperty("offset").GetInt32()).IsEqualTo(200);
+    }
+
+    [Test]
     public async Task ApiLookup_RoundTripsPublicMetadataAndDiagnostics()
     {
         var data = new ApiLookupResult

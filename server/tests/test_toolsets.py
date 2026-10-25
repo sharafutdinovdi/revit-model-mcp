@@ -15,7 +15,8 @@ from revit_model_mcp.toolsets import (
     select_tools,
 )
 
-TOOLS_LIST_BUDGET_BYTES = 105_000
+# 2.0 adds list_sheets, set_read_only, api_lookup, audit tools.
+TOOLS_LIST_BUDGET_BYTES = 108_000
 
 
 def _registered() -> set[str]:

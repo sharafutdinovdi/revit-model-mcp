@@ -29,9 +29,11 @@ MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
     "revit_api_lookup",
+    "revit_model_audit",
     "revit_issue_register",
     "revit_capture_elements",
     "revit_build_report",
+    "revit_audit_report",
     "revit_jobs",
     "revit_model_health",
     "revit_model_snapshot",
@@ -43,6 +45,7 @@ EXPECTED_TOOLS = {
     "revit_documents",
     "revit_ui_state",
     "revit_list_views",
+    "revit_list_sheets",
     "revit_view_summary",
     "revit_view_info",
     "revit_export_view",
@@ -228,6 +231,15 @@ EXPECTED_PARAMETERS = {
         "timeout_seconds",
         "document",
     ],
+    "revit_model_audit": [
+        "rules",
+        "rules_inline",
+        "compare_with",
+        "save",
+        "timeout_seconds",
+        "document",
+    ],
+    "revit_audit_report": ["audit", "output", "format"],
     "revit_model_health": ["timeout_seconds", "document", "output_path"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
@@ -287,6 +299,7 @@ EXPECTED_PARAMETERS = {
         "timeout_seconds",
         "document",
     ],
+    "revit_list_sheets": ["include_unplaced_views", "offset", "limit", "document"],
     "revit_list_views": [
         "view_type",
         "name_contains",
@@ -349,6 +362,7 @@ UNADDRESSED_TOOLS = {
     "revit_batch_cancel",
     "revit_batch_fetch",
     "revit_build_report",
+    "revit_audit_report",
 }
 EXPECTED_PARAMETERS = {
     name: parameters if name in UNADDRESSED_TOOLS else [*parameters, "process_id"]
@@ -811,6 +825,36 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response["responder"]["documentPath"], r"C:\Models\Sample.rvt")
         with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "0"}):
             self.assertEqual(revit_server.redact_model_paths(response), response)
+
+    async def test_list_sheets_maps_arguments_and_document(self) -> None:
+        response = {
+            "success": True,
+            "data": {
+                "sheets": [],
+                "unplacedViews": [],
+                "total": 0,
+                "offset": 200,
+                "limit": 25,
+                "hasMore": False,
+            },
+        }
+        with patch.object(revit_server, "_execute", AsyncMock(return_value=response)) as execute:
+            result = await revit_server.revit_list_sheets(False, 200, 25, "Tower")
+        job, timeout, document = execute.call_args.args
+        self.assertEqual(job.command, "list-sheets")
+        self.assertEqual(
+            job.payload,
+            {"command": "list-sheets", "includeUnplacedViews": False, "offset": 200, "limit": 25},
+        )
+        self.assertEqual(timeout, revit_server.DEFAULT_TIMEOUT_SECONDS)
+        self.assertEqual(document, "Tower")
+        self.assertEqual(result, response)
+        with patch.object(revit_server, "_execute", AsyncMock(return_value=response)) as execute:
+            await revit_server.revit_list_sheets()
+        self.assertEqual(
+            execute.call_args.args[0].payload,
+            {"command": "list-sheets", "includeUnplacedViews": True, "offset": 0, "limit": 200},
+        )
 
     async def test_read_diagnostics_survive_tool_response_and_redact_reason(self) -> None:
         response = {

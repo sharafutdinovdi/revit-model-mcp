@@ -6,6 +6,34 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_ListSheets_DefaultsAndAddressing()
+    {
+        var parsed = ControlJobParser.Parse("""{"command":"list-sheets","targetDocument":" Model ","targetProcessId":42}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.ListSheets);
+        await Assert.That(parsed.Offset).IsEqualTo(0);
+        await Assert.That(parsed.Limit).IsEqualTo(200);
+        await Assert.That(parsed.IncludeUnplacedViews).IsTrue();
+        await Assert.That(parsed.TargetDocument).IsEqualTo("Model");
+        await Assert.That(parsed.TargetProcessId).IsEqualTo(42);
+        var explicitPage = ControlJobParser.Parse("""{"command":"list-sheets","offset":200,"limit":5000,"includeUnplacedViews":false}""");
+        await Assert.That(explicitPage.Kind).IsEqualTo(ControlJobKind.ListSheets);
+        await Assert.That(explicitPage.Offset).IsEqualTo(200);
+        await Assert.That(explicitPage.Limit).IsEqualTo(5000);
+        await Assert.That(explicitPage.IncludeUnplacedViews).IsFalse();
+    }
+
+    [Test]
+    [Arguments("\"offset\":-1")]
+    [Arguments("\"limit\":0")]
+    [Arguments("\"limit\":5001")]
+    [Arguments("\"includeUnplacedViews\":\"invalid\"")]
+    public async Task Parse_ListSheets_RejectsInvalidArguments(string fields)
+    {
+        var parsed = ControlJobParser.Parse("{\"command\":\"list-sheets\"," + fields + "}");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Invalid);
+    }
+
+    [Test]
     public async Task Parse_ApiLookup_DefaultsAndAddressing()
     {
         var parsed = ControlJobParser.Parse("""{"command":"api-lookup","query":" Document ","targetDocument":" Model ","targetProcessId":42}""");
