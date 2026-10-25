@@ -53,6 +53,8 @@ jobs:
           assert.deepEqual(manifest.tools.map(tool => tool.name).sort(), documentedTools);
           assert.equal(manifest.version, '0.0.0');
           assert.equal(manifest.user_config.REVIT_MCP_REDACT_PATHS.default, true);
+          assert.equal(Object.hasOwn(manifest.user_config, 'REVIT_MCP_READ_ONLY'), false);
+          assert.equal(Object.hasOwn(manifest.server.mcp_config.env, 'REVIT_MCP_READ_ONLY'), false);
           assert.equal(manifest.user_config.REVIT_MCP_TOKEN.sensitive, true);
           const launcher = 'uvx --offline --prerelease=disallow "revit-model-mcp>=0.7.0" || uvx --prerelease=disallow "revit-model-mcp>=0.7.0"';
           const win32Launcher = 'uvx --offline --prerelease=disallow revit-model-mcp^>=0.7.0 || uvx --prerelease=disallow revit-model-mcp^>=0.7.0';
