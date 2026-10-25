@@ -24,6 +24,12 @@
           "Microsoft.CodeAnalysis.Common": "[4.11.0]"
         }
       },
+      "Nice3point.Revit.Api.AdWindows": {
+        "type": "Direct",
+        "requested": "[2027.*, )",
+        "resolved": "2027.3.0",
+        "contentHash": "Xbm9cAZcgJgCoSdnpjR+S7OvlVSnp5PUlXIdPZpGf6hWt+uuNUWwOlhOhKMj1g8fAZxIV9xT6orIyyq60jElAQ=="
+      },
       "Nice3point.Revit.Api.RevitAPI": {
         "type": "Direct",
         "requested": "[2027.0.0, 2027.0.0]",
