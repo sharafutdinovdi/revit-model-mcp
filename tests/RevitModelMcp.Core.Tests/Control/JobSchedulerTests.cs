@@ -92,7 +92,9 @@ public sealed class JobSchedulerTests
             {
                 result.Steps.Add(new BatchStepResult
                 {
-                    Index = completed - 1, Command = "set-parameter", Success = true,
+                    Index = completed - 1,
+                    Command = "set-parameter",
+                    Success = true,
                     Data = new ActionResultData
                     {
                         Values = [new ParameterChange { Id = 42, OldValue = "", NewValue = "benchmark" }]
