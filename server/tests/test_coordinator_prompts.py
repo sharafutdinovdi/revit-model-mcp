@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from revit_model_mcp.server import mcp
+from revit_model_mcp.toolsets import select_tools
 
 ROOT = Path(__file__).resolve().parents[2]
 GUIDE = ROOT / "server" / "revit_model_mcp" / "guides" / "coordinator.md"
@@ -36,6 +37,23 @@ PROMPT_TOOLS = {
     },
     "warnings_triage": {"revit_model_health", "revit_list_warnings"},
     "parameter_fill_report": {"revit_list_catalog", "revit_parameter_fill_check"},
+    "daily_qa": {
+        "revit_document_info",
+        "revit_model_health",
+        "revit_list_warnings",
+        "revit_links_status",
+        "revit_shared_coordinates",
+        "revit_list_catalog",
+        "revit_parameter_fill_check",
+        "revit_family_audit",
+        "revit_model_snapshot",
+    },
+    "sheet_set": {
+        "revit_list_views",
+        "revit_create_sheet",
+        "revit_place_views_on_sheet",
+        "revit_run_actions",
+    },
     "batch_audit": {
         "revit_batch_start",
         "revit_batch_status",
@@ -93,12 +111,26 @@ def test_coordinator_prompts_are_registered_with_expected_arguments():
         "output_path"
     }
 
+    daily_arguments = {argument.name: argument for argument in prompts["daily_qa"].arguments}
+    assert set(daily_arguments) == {"required_parameters", "previous_snapshot"}
+    assert not any(argument.required for argument in daily_arguments.values())
+    sheet_arguments = prompts["sheet_set"].arguments
+    assert len(sheet_arguments) == 1
+    assert sheet_arguments[0].name == "rows" and sheet_arguments[0].required
+
 
 @pytest.mark.parametrize("name", list(PROMPT_TOOLS))
-def test_coordinator_prompts_render_read_only_workflows(name: str):
+def test_coordinator_prompts_render_expected_workflows(name: str):
     arguments = None
     if name == "parameter_fill_report":
         arguments = {"categories": "Walls, Doors", "parameters": "Mark, Comments"}
+    elif name == "daily_qa":
+        arguments = {
+            "required_parameters": "Mark, Comments",
+            "previous_snapshot": "C:/Reports/model_qa_2026-10-19.json",
+        }
+    elif name == "sheet_set":
+        arguments = {"rows": "sheet number,sheet name,view names\nA101,Ground floor,Level 0"}
     elif name == "batch_audit":
         arguments = {
             "folder": "C:/Projects/Models",
@@ -109,10 +141,18 @@ def test_coordinator_prompts_render_read_only_workflows(name: str):
         }
     rendered = prompt_text(name, arguments)
     assert RESOURCE_URI in rendered
-    assert "read-only" in rendered.lower()
-    assert "Do not call action tools" in rendered
     assert all(tool in rendered for tool in PROMPT_TOOLS[name])
-    assert not any(re.search(rf"\b{tool}\b", rendered) for tool in ACTION_TOOLS)
+    mentioned_tools = set(re.findall(r"\brevit_[a-z_]+\b", rendered))
+    assert mentioned_tools <= select_tools(None)
+    if name == "sheet_set":
+        assert "yes" in rendered
+        assert "cannot" in rendered and "undo" in rendered
+    else:
+        assert "read-only" in rendered.lower()
+        assert "Do not call action tools" in rendered
+        assert not mentioned_tools & ACTION_TOOLS
+    if name in {"daily_qa", "sheet_set"}:
+        assert len(rendered.splitlines()) < 40
     if arguments:
         assert all(value in rendered for value in arguments.values())
     if name == "batch_audit":
@@ -170,3 +210,18 @@ def test_generated_skill_matches_guide_and_has_frontmatter():
             "revit-model MCP server."
         ),
     }
+
+
+@pytest.mark.parametrize(
+    "skill_path", sorted((ROOT / "skills").glob("*/SKILL.md")), ids=lambda path: path.parent.name
+)
+def test_skill_tool_references_exist_in_registry(skill_path: Path):
+    mentioned_tools = set(re.findall(r"`(revit_[a-z_]+)`", skill_path.read_text(encoding="utf-8")))
+    assert mentioned_tools
+    assert mentioned_tools <= select_tools(None)
+
+
+def test_daily_qa_renders_without_optional_arguments():
+    rendered = prompt_text("daily_qa")
+    assert "ask once" in rendered
+    assert "remember" in rendered

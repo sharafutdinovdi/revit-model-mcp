@@ -1,8 +1,8 @@
 # Prompts and coordinator guide
 
 The server exposes MCP prompts for reviewing one open Revit model or auditing a batch of models.
-Each prompt is a read-only workflow.
-It does not call action tools.
+Review prompts are read-only and do not call action tools.
+The `sheet_set` prompt requires an explicit yes before model changes.
 The prompts refer to the guide resource at `revit://guides/coordinator`.
 Read that resource for the full review sequence, interpretation rules, and reporting format.
 
@@ -13,6 +13,8 @@ Read that resource for the full review sequence, interpretation rules, and repor
 | `warnings_triage` | None | Group and prioritize model warnings after checking model health. | Prioritized findings with affected element IDs and review or fix next steps. |
 | `parameter_fill_report` | `categories` and `parameters`, required comma-separated strings | Check localized category and parameter names, then inspect fill counts. | Per-category and per-parameter filled, empty, and missing counts with sample element IDs. |
 | `batch_audit` | Required `output_path`; optional `folder`, `paths`, `parameter_rules`, and `previous_dir` | Collect persistent read-only snapshots across models, inspect them, and build a report. Supply exactly one of `folder` or `paths`; interpret `paths` and `parameter_rules` strings as tool lists. | `.xlsx` report with findings and a short project-manager summary for each model, including failures and incomplete results. |
+| `daily_qa` | Optional `required_parameters` string and `previous_snapshot` path | Run the fixed daily or pre-hand-over QA routine. | Checks table with status, counts, comparable deltas, and completeness caveats. |
+| `sheet_set` | Required `rows` string, CSV or markdown table | Resolve views and plan sheet creation and placement with approval. | Created sheet and viewport IDs, action summaries, and verification warnings. Creation batches cover up to 10 sheets; placement needs separate undo entries. |
 
 The guide is also the source for the generated Claude skill at `skills/revit-model-coordinator/SKILL.md`.
 Run `python3 build/generate_coordinator_skill.py` after changing the guide.
@@ -26,3 +28,10 @@ For Claude Desktop, zip that skill folder and upload it as a skill.
 The hand-written [ISO 19650 issue register skill](../skills/iso19650-issue-register/SKILL.md) checks document requirements against the open model and calls `revit_issue_register` with evidence and element snapshots.
 For Claude Code, copy `skills/iso19650-issue-register` into `~/.claude/skills/`.
 For Claude Desktop, zip that skill folder and upload it as a skill.
+
+## Workflow skills
+
+| Skill | Purpose |
+| --- | --- |
+| [Revit daily QA](../skills/revit-daily-qa/SKILL.md) | Run a fixed read-only morning or pre-hand-over routine with counts, trends, and completeness caveats. |
+| [Revit sheet set](../skills/revit-sheet-set/SKILL.md) | Resolve a sheet list, confirm the plan, and create sheets and place views within current batching limits. |
