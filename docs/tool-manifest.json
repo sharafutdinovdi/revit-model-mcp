@@ -627,10 +627,10 @@
       "name": "revit_activate_document",
       "description": "Activate an already open document by title or path reference.",
       "toolset": "documents",
-      "access": "modifying",
+      "access": "read_only",
       "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
+        "readOnlyHint": true,
+        "destructiveHint": false,
         "idempotentHint": false
       },
       "irreversible": false,
@@ -646,10 +646,10 @@
       "name": "revit_activate_view",
       "description": "Activate a non-template view. Zoom to fit, preserve zoom, or frame element IDs.",
       "toolset": "views-sheets",
-      "access": "modifying",
+      "access": "read_only",
       "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
+        "readOnlyHint": true,
+        "destructiveHint": false,
         "idempotentHint": false
       },
       "irreversible": false,
@@ -665,10 +665,10 @@
       "name": "revit_close_views",
       "description": "Close open UI views in the active document.",
       "toolset": "views-sheets",
-      "access": "modifying",
+      "access": "read_only",
       "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": true,
+        "readOnlyHint": true,
+        "destructiveHint": false,
         "idempotentHint": false
       },
       "irreversible": false,
@@ -888,9 +888,9 @@
       "name": "revit_select",
       "description": "Select element IDs for inspection in Revit; an empty list clears the selection.",
       "toolset": "views-sheets",
-      "access": "modifying",
+      "access": "read_only",
       "annotations": {
-        "readOnlyHint": false,
+        "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true
       },
@@ -907,9 +907,9 @@
       "name": "revit_show",
       "description": "Display elements in Revit, optionally selecting them; opens a level plan or 3D view when needed.",
       "toolset": "views-sheets",
-      "access": "modifying",
+      "access": "read_only",
       "annotations": {
-        "readOnlyHint": false,
+        "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true
       },
@@ -926,9 +926,9 @@
       "name": "revit_isolate",
       "description": "Temporarily isolate element IDs in the active view; an empty list resets.",
       "toolset": "views-sheets",
-      "access": "modifying",
+      "access": "read_only",
       "annotations": {
-        "readOnlyHint": false,
+        "readOnlyHint": true,
         "destructiveHint": false,
         "idempotentHint": true
       },
