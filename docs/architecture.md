@@ -88,7 +88,9 @@ Cleanup never targets another instance's directory, and later discovery cannot r
 
 `document` maps to `targetDocument` in a job.
 Directed reads match active document titles or file names case-insensitively and require exactly one matching instance before publication.
-Actions and undirected reads require exactly one running instance, including processes without confirmed channels in that count.
+With one running Revit process, every call goes to it.
+With several, `document` or `process_id` selects one, and an unaddressed call fails before publication.
+Processes without confirmed channels count as running.
 The PID guard remains in the add-in.
 After claiming a directed read, the add-in rejects an active document that no longer matches; the correlated error consumes the job file.
 Actions retain their existing open-document resolution.

@@ -73,6 +73,16 @@ ACTION_TOOLS = {
 }
 
 
+SESSION_TOOLS = {
+    "revit_activate_view",
+    "revit_activate_document",
+    "revit_select",
+    "revit_show",
+    "revit_isolate",
+    "revit_close_views",
+}
+
+
 @pytest.mark.parametrize("read_only", [None, "0", "1", "true"])
 def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
     import asyncio
@@ -104,12 +114,10 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_walls_from_cad",
                 }
             )
-            assert tool.annotations.read_only_hint is False
+            assert tool.annotations.read_only_hint is (name in SESSION_TOOLS)
             assert tool.title and len(tool.title) <= 40
             assert tool.annotations.title == tool.title
-            assert tool.annotations.destructive_hint is (
-                name not in {"revit_select", "revit_show", "revit_isolate"}
-            )
+            assert tool.annotations.destructive_hint is (name not in SESSION_TOOLS)
         return tools
 
     asyncio.run(check())
@@ -1161,13 +1169,19 @@ def test_invalid_arguments_never_reach_channel(name, arguments):
     host.list_revit_instances.assert_not_awaited()
 
 
-@pytest.mark.parametrize("instances", [[], [{"processId": 1}, {"processId": 2}]])
-def test_actions_require_one_revit_instance(instances):
+@pytest.mark.parametrize(
+    "instances,message",
+    [
+        ([], "No running Revit instance with the add-in"),
+        ([{"processId": 1}, {"processId": 2}], "Several Revit instances"),
+    ],
+)
+def test_actions_require_one_revit_instance(instances, message):
     import asyncio
 
     server, execute, host = action_server()
     host.list_revit_instances.return_value = instances
-    with pytest.raises(Exception, match="exactly one"):
+    with pytest.raises(Exception, match=message):
         asyncio.run(server.call_tool("revit_select", {"element_ids": [1]}))
     execute.assert_not_awaited()
 
@@ -1486,10 +1500,8 @@ def test_in_process_action_titles():
     for tool in tools:
         assert tool.title and len(tool.title) <= 40
         assert tool.annotations.title == tool.title
-        assert tool.annotations.read_only_hint is False
-        assert tool.annotations.destructive_hint is (
-            tool.name not in {"revit_select", "revit_show", "revit_isolate"}
-        )
+        assert tool.annotations.read_only_hint is (tool.name in SESSION_TOOLS)
+        assert tool.annotations.destructive_hint is (tool.name not in SESSION_TOOLS)
 
 
 def test_edit_families_maps_discriminated_operations_and_defaults():

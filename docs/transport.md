@@ -450,8 +450,8 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 Response temporary files also remain in the selected instance directory.
 
 The server resolves a target before publishing any job.
-Actions and undirected reads require exactly one running Revit process.
-Directed reads require exactly one active document matching the case-insensitive title or file-name substring.
+With several running Revit processes, pass `document` (a unique title or file name) or `process_id` to choose one.
+A `document` must match exactly one active document by case-insensitive title or file-name substring.
 Zero or multiple matches fail before publication.
 Actions retain their open-document resolution inside the selected process.
 After pickup, a directed read resolves the target among open documents and can read an inactive document.
