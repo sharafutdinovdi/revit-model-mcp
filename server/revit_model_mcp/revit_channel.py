@@ -241,6 +241,9 @@ ACTION_COMMANDS = frozenset(
         "set-view-visibility",
         "remove-links",
         "execute-code",
+        "save-tool",
+        "delete-tool",
+        "run-tool",
     }
 )
 
@@ -892,7 +895,7 @@ class RevitChannel:
         candidate = (
             job.command in LONG_ACTION_COMMANDS
             or (job.command == "open-document" and job.payload.get("audit") is True)
-            or job.command == "execute-code"
+            or job.command in {"execute-code", "run-tool"}
         )
         budget = tool_budget_seconds() if candidate else 40
         instance = getattr(self.remote, "instance_info", {})
@@ -901,7 +904,7 @@ class RevitChannel:
         background = "jobs/persisted" in instance.get("commands", []) and (
             job.command in LONG_ACTION_COMMANDS
             or (job.command == "open-document" and job.payload.get("audit") is True)
-            or job.command == "execute-code"
+            or job.command in {"execute-code", "run-tool"}
         )
         loop = asyncio.get_running_loop()
         tool_deadline = loop.time() + budget if background else None

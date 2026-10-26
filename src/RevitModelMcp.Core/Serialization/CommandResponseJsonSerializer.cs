@@ -44,7 +44,7 @@ public static class CommandResponseJsonSerializer
         using var stream = new MemoryStream();
         ResponseSerializer<T>.Instance.WriteObject(stream, response);
         var json = Encoding.UTF8.GetString(stream.ToArray());
-        if (response is CommandResponse<ActionResultData> { Command: "execute-code", Data: { } action })
+        if (response is CommandResponse<ActionResultData> { Command: "execute-code" or "run-tool", Data: { } action })
         {
             const string dataStart = "\"data\":{";
             var index = json.IndexOf(dataStart, StringComparison.Ordinal);

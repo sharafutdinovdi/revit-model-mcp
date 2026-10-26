@@ -1820,6 +1820,35 @@
     ],
     "type": "object"
   },
+  "revit_delete_tool": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "name": {
+        "pattern": "^[a-z][a-z0-9_]{2,47}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
   "revit_document_info": {
     "annotations": {
       "destructiveHint": false,
@@ -2820,6 +2849,24 @@
     },
     "type": "object"
   },
+  "revit_get_tool": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
+    "properties": {
+      "name": {
+        "pattern": "^[a-z][a-z0-9_]{2,47}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "name"
+    ],
+    "type": "object"
+  },
   "revit_isolate": {
     "annotations": {
       "destructiveHint": false,
@@ -3310,6 +3357,16 @@
         "default": null
       }
     },
+    "type": "object"
+  },
+  "revit_list_tools": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
+    "properties": {},
     "type": "object"
   },
   "revit_list_views": {
@@ -5392,6 +5449,61 @@
     ],
     "type": "object"
   },
+  "revit_run_tool": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
+    "properties": {
+      "args": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "dry_run": {
+        "default": false,
+        "type": "boolean"
+      },
+      "name": {
+        "pattern": "^[a-z][a-z0-9_]{2,47}$",
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 600,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "args",
+      "name"
+    ],
+    "type": "object"
+  },
   "revit_save_document": {
     "annotations": {
       "destructiveHint": true,
@@ -5450,6 +5562,76 @@
     },
     "required": [
       "document"
+    ],
+    "type": "object"
+  },
+  "revit_save_tool": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
+    "properties": {
+      "code": {
+        "maxLength": 262144,
+        "minLength": 1,
+        "type": "string"
+      },
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "description": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "mode": {
+        "default": "action",
+        "enum": [
+          "read",
+          "action"
+        ],
+        "type": "string"
+      },
+      "name": {
+        "pattern": "^[a-z][a-z0-9_]{2,47}$",
+        "type": "string"
+      },
+      "parameters": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "tested_revit_years": {
+        "anyOf": [
+          {
+            "items": {
+              "maximum": 2027,
+              "minimum": 2022,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "code",
+      "description",
+      "name",
+      "parameters"
     ],
     "type": "object"
   },

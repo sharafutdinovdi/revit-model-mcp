@@ -263,3 +263,15 @@ Call `revit_set_read_only(enabled=false)` without a token and show the exact `co
 Only after explicit confirmation, retry with the returned `confirmToken` as `confirm_token`.
 The token is single use and expires after five minutes.
 A policy lock cannot be removed by chat or ribbon; ask the administrator.
+
+## Reusing successful procedures
+
+After a successful multi-step or C# procedure requested by the user, offer once to save it as a My tools procedure with parameters.
+Do not offer again after a refusal or save automatically.
+This offer does not authorize any action during a read-only coordinator workflow.
+Only after the user's yes, prepare the C# source, description, mode, and a simple parameter schema and call `revit_save_tool`.
+Show the full returned source, schema, revision hash, mode, and confirmation text.
+Repeat the identical call with `confirm_token` only after the user explicitly confirms the reviewed definition.
+Never save without the user's yes or infer approval from a successful execution.
+Use `revit_list_tools` and `revit_get_tool` to review an existing procedure before reuse.
+Saved C# follows ExecuteCode policy and the workstation read-only lock.

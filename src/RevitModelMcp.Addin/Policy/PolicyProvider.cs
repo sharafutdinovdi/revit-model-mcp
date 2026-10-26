@@ -61,6 +61,7 @@ internal static class PolicyProvider
         var policy = Current;
         if (policy.Refusal(command) is { } refusal) return refusal;
         if (!MachinePolicy.IsCodeCommand(command)) return null;
+        if (policy.Refusal("execute-code") is string codeRefusal) return codeRefusal;
         return CodeExecutionGate.Refusal(command, Channel, policy, UserExecuteCode(policy));
     }
 

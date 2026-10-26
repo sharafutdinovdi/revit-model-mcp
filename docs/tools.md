@@ -300,3 +300,10 @@ The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` 
 See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html` or `both`).
 
 For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.
+
+## My tools
+
+[My tools](my-tools.md) stores parameterized C# procedures on the Revit workstation.
+The stable catalog exposes `revit_save_tool`, `revit_list_tools`, `revit_get_tool`, `revit_run_tool`, and `revit_delete_tool` in the `code` toolset.
+List and get carry `readOnlyHint`; save and delete require confirmation, and run follows the saved mode and `execute_code` confirmation flow.
+Every saved tool command is unavailable wherever `execute_code` is disabled.

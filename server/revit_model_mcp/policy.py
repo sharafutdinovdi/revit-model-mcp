@@ -234,7 +234,13 @@ def policy_refusal(command: str, policy: dict[str, Any] | None = None) -> str | 
     allowed = listed("ToolAllow")
     if allowed and name not in allowed:
         return f"{POLICY_REFUSAL_PREFIX} the tool '{name}' is not in the allowed list."
-    if name == "execute-code" and str(values.get("ExecuteCode", "")).lower() == "off":
+    if name in {"save-tool", "list-tools", "get-tool", "run-tool", "delete-tool"}:
+        if (blocked := policy_refusal("execute-code", values)) is not None:
+            return blocked
+    if (
+        name in {"execute-code", "save-tool", "list-tools", "get-tool", "run-tool", "delete-tool"}
+        and str(values.get("ExecuteCode", "")).lower() == "off"
+    ):
         if UNREADABLE_KEY in values:
             return POLICY_UNREADABLE_MESSAGE
         return f"{POLICY_REFUSAL_PREFIX} running C# code is disabled."

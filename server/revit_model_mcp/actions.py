@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import math
 import os
 import re
@@ -737,7 +738,11 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         **payload,
     ) -> dict[str, Any]:
-        if (gate := policy_gate(command, mutating=command != "set-read-only")) is not None:
+        if (
+            gate := policy_gate(
+                command, mutating=command not in {"set-read-only", "list-tools", "get-tool"}
+            )
+        ) is not None:
             return gate
         return await _send_action(
             execute,
@@ -760,7 +765,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         }:
             function.__doc__ = (
                 inspect.cleandoc(function.__doc__ or "")
-                + " A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+                + " May commit; revit_jobs polls; retry repeats."
             )
         title = {
             "revit_set_read_only": "Set Workstation Read-only",
@@ -809,8 +814,15 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_remove_links": "Remove Links",
             "revit_undo_last": "Undo Last Action",
             "revit_execute_code": "Execute C# Code",
+            "revit_save_tool": "Save My Tool",
+            "revit_list_tools": "List My Tools",
+            "revit_get_tool": "Review My Tool",
+            "revit_run_tool": "Run My Tool",
+            "revit_delete_tool": "Delete My Tool",
         }[function.__name__]
         session_tool = function.__name__ in {
+            "revit_list_tools",
+            "revit_get_tool",
             "revit_activate_view",
             "revit_activate_document",
             "revit_select",
@@ -825,7 +837,14 @@ def register_actions(mcp, execute, host_provider) -> None:
                 readOnlyHint=session_tool,
                 destructiveHint=not session_tool,
                 idempotentHint=function.__name__
-                in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
+                in {
+                    "revit_select",
+                    "revit_show",
+                    "revit_isolate",
+                    "revit_set_parameter",
+                    "revit_list_tools",
+                    "revit_get_tool",
+                },
             ),
         )(with_client_identity(function))
 
@@ -1053,6 +1072,73 @@ def register_actions(mcp, execute, host_provider) -> None:
         )
 
     @action
+    async def revit_save_tool(
+        name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{2,47}$")],
+        description: Annotated[str, Field(min_length=1, max_length=4000)],
+        parameters: dict[str, Any],
+        code: Annotated[str, Field(min_length=1, max_length=262144)],
+        mode: Literal["read", "action"] = "action",
+        tested_revit_years: list[Annotated[int, Field(strict=True, ge=2022, le=2027)]]
+        | None = None,
+        confirm_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Compile C# and schema without execution. Returns full source, hash and confirm_token."""
+        if len(code.encode("utf-8")) > 262144:
+            raise ToolError("source exceeds 256 KB UTF-8.")
+        return await send(
+            "save-tool",
+            name=name,
+            toolDescription=description,
+            toolParameters=json.dumps(parameters, sort_keys=True, allow_nan=False),
+            code=code,
+            toolMode=mode,
+            toolYears=tested_revit_years or [],
+            confirmToken=confirm_token,
+        )
+
+    @action
+    async def revit_list_tools() -> dict[str, Any]:
+        """List saved tools and schemas without source."""
+        return await send("list-tools")
+
+    @action
+    async def revit_get_tool(
+        name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{2,47}$")],
+    ) -> dict[str, Any]:
+        """Return approved source and schema without execution."""
+        return await send("get-tool", name=name)
+
+    @action
+    async def revit_run_tool(
+        name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{2,47}$")],
+        args: dict[str, Any],
+        dry_run: bool = False,
+        confirm_token: str | None = None,
+        document: Annotated[
+            str | None, Field(validation_alias=AliasChoices("document", "targetDocument"))
+        ] = None,
+        timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
+    ) -> dict[str, Any]:
+        """Run a saved revision. Action needs confirm_token except dry_run; read and dry_run roll back. Uses execute_code gates and user rights. Timeouts may follow commit; revit_jobs polls."""
+        return await send(
+            "run-tool",
+            name=name,
+            toolArgs=json.dumps(args, sort_keys=True, allow_nan=False),
+            dryRun=dry_run,
+            confirmToken=confirm_token,
+            document=document,
+            timeout_seconds=timeout_seconds,
+        )
+
+    @action
+    async def revit_delete_tool(
+        name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{2,47}$")],
+        confirm_token: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete all revisions with confirm_token after a first confirmation challenge. No Undo."""
+        return await send("delete-tool", name=name, confirmToken=confirm_token)
+
+    @action
     async def revit_execute_code(
         code: Annotated[str, Field(min_length=1, max_length=200000)],
         transaction: Literal["auto", "none"] = "auto",
@@ -1061,7 +1147,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Compile and run C# against the live Revit API on the Revit thread. revit_api_lookup supplies reference metadata before writing C# for an unfamiliar type. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction="none" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction="auto"."""
+        """Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns one Undo; transaction="none" is refused. Needs confirm_token except dry_run, which rolls back."""
         if dry_run:
             transaction = "auto"
         return await send(

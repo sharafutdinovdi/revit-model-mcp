@@ -24,6 +24,9 @@ _bundle_spec.loader.exec_module(_bundle_manifest)
 tool_manifest_entry = _bundle_manifest.tool_manifest_entry
 
 CONFIRMATION = {
+    "revit_save_tool": ("always", "Every save after code and schema review."),
+    "revit_run_tool": ("conditional", "Action mode except dry_run."),
+    "revit_delete_tool": ("always", "Every deletion of a saved tool."),
     "revit_set_read_only": (
         "conditional",
         "Turning off the workstation read-only lock.",
@@ -58,6 +61,8 @@ CONFIRMATION = {
 }
 
 IRREVERSIBLE = {
+    "revit_delete_tool",
+    "revit_run_tool",
     "revit_remove_links",
     "revit_save_document",
     "revit_sync_document",
@@ -69,6 +74,23 @@ IRREVERSIBLE = {
 }
 
 FILE_SYSTEM = {
+    "revit_save_tool": (
+        "write",
+        "Approved C# revisions in the Windows user tools folder.",
+    ),
+    "revit_list_tools": (
+        "read",
+        "Approved tool metadata in the Windows user tools folder.",
+    ),
+    "revit_get_tool": ("read", "Approved C# source in the Windows user tools folder."),
+    "revit_delete_tool": (
+        "write",
+        "Deletes saved tool revisions in the Windows user tools folder.",
+    ),
+    "revit_run_tool": (
+        "read_write",
+        "Confirmed saved C# runs with the user rights; read mode also has file access.",
+    ),
     "revit_set_read_only": (
         "write",
         "Per-user read-only lock file on the Revit workstation.",
@@ -117,7 +139,7 @@ FILE_SYSTEM = {
     ),
 }
 
-UNRESTRICTED_NETWORK = {"revit_execute_code", "revit_process_models"}
+UNRESTRICTED_NETWORK = {"revit_execute_code", "revit_process_models", "revit_run_tool"}
 
 _UPDATE_CHECK_DISABLE = (
     "Install with UPDATEMODE=off (or UPDATECHECK=0), set updateMode to off "

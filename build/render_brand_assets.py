@@ -220,6 +220,7 @@ def tooltip_svg(name: str, scheme: str) -> str:
         "about": "About",
         "update": "Check for updates",
         "settings": "Local settings",
+        "mytools": "My tools",
         "connect": "Connect AI app",
         "activity": "MCP activity",
         "readonly": "Read-only",
@@ -305,6 +306,16 @@ def tooltip_svg(name: str, scheme: str) -> str:
                 label(115, 157, "Result in Activity", 14, accent),
             )
         )
+    elif name == "mytools":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("mytools", 32, 91, 58),
+                label(109, 96, "Review saved C# tools"),
+                label(109, 126, "Show code or delete", 14, accent),
+                label(109, 154, "Run through the AI app"),
+            )
+        )
     elif name == "settings":
         parts.extend(
             (
@@ -358,6 +369,7 @@ def render_tooltips(browser: Browser, contact_sheet: Path | None = None) -> None
         "connect",
         "activity",
         "readonly",
+        "mytools",
         "help",
         "issue",
         "support",
