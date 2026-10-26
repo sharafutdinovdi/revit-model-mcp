@@ -2218,7 +2218,7 @@ def test_set_read_only_unlock_forwards_confirmation_and_summary():
         "success": True,
         "data": {
             "needsConfirmation": True,
-            "confirmationText": "Turn off read-only for all Revit versions of Alice on PC? The assistant will be able to change models.",
+            "confirmationText": "Turn off read-only for all Revit versions of this Windows user on this PC? The assistant will be able to change models.",
             "confirmToken": "workstation-token",
             "summary": "Needs confirmation to turn off read-only.",
         },

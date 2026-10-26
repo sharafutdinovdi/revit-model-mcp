@@ -80,7 +80,7 @@ public sealed class ReadOnlyLockTests : IDisposable
         await Assert.That(locked.Summary).Contains("turned on");
         var preview = service.SetFromChat(false, null, tokens, "Alice", "DESKTOP");
         await Assert.That(preview.NeedsConfirmation).IsTrue();
-        await Assert.That(preview.ConfirmationText).IsEqualTo("Turn off read-only for all Revit versions of Alice on DESKTOP? The assistant will be able to change models.");
+        await Assert.That(preview.ConfirmationText).IsEqualTo("Turn off read-only for all Revit versions of this Windows user on this PC? The assistant will be able to change models.");
         await Assert.That(service.IsLocked).IsTrue();
         var unlocked = service.SetFromChat(false, preview.ConfirmToken, tokens, "Alice", "DESKTOP");
         await Assert.That(service.IsLocked).IsFalse();
