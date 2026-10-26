@@ -6,6 +6,8 @@
 
 Toolsets limit visibility only. They are not a permission: read-only mode, confirmation tokens and the add-in's own checks apply to every listed tool.
 
+Session tools `revit_activate_view`, `revit_activate_document`, `revit_select`, `revit_show`, `revit_isolate` (temporary view state) and `revit_close_views` do not change the model. Their MCP annotations are `readOnlyHint=true` and `destructiveHint=false`. Model-changing tools retain their action annotations. These hints describe model access; workstation locks and policy checks still apply.
+
 The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (21 tools, about 6,545 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
 
 | Toolset | Tools |

@@ -260,6 +260,8 @@ public sealed class Application : ExternalApplication
 
     private static void ConfigureRibbonButton(RibbonButton button, string icon, string tooltip, string description, string helpUrl)
     {
+        if (button is PushButton pushButton)
+            pushButton.SetAvailabilityController<ZeroDocumentAvailability>();
         var suffix = string.Empty;
 #if REVIT2024_OR_GREATER
         if (UIThemeManager.CurrentTheme == UITheme.Dark) suffix = "-dark";
@@ -751,4 +753,10 @@ internal static class RibbonBranding
             PluginLog.Debug("Ribbon panel branding could not be applied.", exception);
         }
     }
+}
+
+[UsedImplicitly]
+public sealed class ZeroDocumentAvailability : IExternalCommandAvailability
+{
+    public bool IsCommandAvailable(UIApplication applicationData, CategorySet selectedCategories) => true;
 }

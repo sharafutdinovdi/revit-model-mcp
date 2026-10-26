@@ -586,7 +586,17 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
-        self.assertTrue(all(not tool.annotations.read_only_hint for tool in action_tools.values()))
+        session_tools = {
+            "revit_activate_view",
+            "revit_activate_document",
+            "revit_select",
+            "revit_show",
+            "revit_isolate",
+            "revit_close_views",
+        }
+        for name, tool in action_tools.items():
+            self.assertIs(tool.annotations.read_only_hint, name in session_tools)
+            self.assertIs(tool.annotations.destructive_hint, name not in session_tools)
         for name, required in {
             "revit_override_graphics": {"element_ids"},
             "revit_create_view": {"kind"},
