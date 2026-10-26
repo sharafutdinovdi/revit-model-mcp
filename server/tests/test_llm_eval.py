@@ -1350,3 +1350,438 @@ def test_daily_qa_accepts_all_milestone_orders_but_requires_every_check():
     assert not eval_run.score(calls[:-1], scenario)["sequence_match"]
     calls[-2]["args"] = {"categories": ["Walls"], "parameters": ["Mark"]}
     assert not eval_run.score(calls, scenario)["sequence_match"]
+
+
+FAMILY = eval_run.family_module()
+FAMILY_SCENARIOS = eval_run.load_scenarios(ROOT / "build/llm-eval/family-scenarios.yaml", "family")
+
+
+def test_family_scenarios_have_original_prompts_and_rules():
+    assert [scenario["id"] for scenario in FAMILY_SCENARIOS] == list("ABCDE")
+    assert "400×300×200" in FAMILY_SCENARIOS[0]["prompt"]
+    assert "LegOffset = Width / 10" in FAMILY_SCENARIOS[1]["prompt"]
+    assert "Отдельный проём в проекте создавать нельзя" in FAMILY_SCENARIOS[2]["prompt"]
+    assert "Близкое расположение без соединения не считается" in FAMILY_SCENARIOS[3]["prompt"]
+    assert all(f"`R{index}`" in FAMILY_SCENARIOS[4]["prompt"] for index in range(1, 6))
+    for scenario in FAMILY_SCENARIOS:
+        assert [row["check_id"] for row in scenario["checks"]] == [
+            scenario["id"] + str(index) for index in range(1, 6)
+        ]
+
+
+@pytest.mark.parametrize("change", ["duplicate", "missing", "extra", "invalid"])
+def test_family_scenario_schema_is_strict(tmp_path, change):
+    data = json.loads(json.dumps({"profile": "family", "scenarios": FAMILY_SCENARIOS}))
+    if change == "duplicate":
+        data["scenarios"][1]["id"] = "A"
+    elif change == "missing":
+        del data["scenarios"][0]["checks"]
+    elif change == "extra":
+        data["scenarios"].append(data["scenarios"][0])
+    else:
+        data["scenarios"][0]["id"] = "F"
+    path = tmp_path / "family.yaml"
+    path.write_text(json.dumps(data))
+    with pytest.raises((ValueError, jsonschema.ValidationError)):
+        eval_run.load_scenarios(path, "family")
+
+
+def check_row(check_id="parameters", status="pass"):
+    return {
+        "check_id": check_id,
+        "status": status,
+        "expected": "Length type parameters",
+        "actual": ["Width", "Depth", "Height"],
+        "document": "eval",
+        "ids": [],
+        "reason": "API",
+    }
+
+
+@pytest.mark.parametrize("wrapper", ["plain", "data", "returnValue", "json"])
+def test_family_verifier_result_parsing(wrapper):
+    payload = {"checks": [check_row()]}
+    if wrapper == "data":
+        payload = {"data": payload}
+    elif wrapper == "returnValue":
+        payload = {"data": {"returnValue": payload}}
+    elif wrapper == "json":
+        payload = {"data": {"returnValue": json.dumps(payload)}}
+    parsed = FAMILY.parse_checks({"payload": payload, "error": False}, ["parameters"])
+    assert parsed == [check_row()]
+
+
+@pytest.mark.parametrize(
+    "rows,error",
+    [
+        ([], False),
+        ([check_row(), check_row()], False),
+        ([check_row()], True),
+        ([{"check_id": "parameters", "status": "pass"}], False),
+        ([check_row(status="maybe")], False),
+        ("bad", False),
+    ],
+)
+def test_family_verifier_missing_or_ambiguous_evidence_never_passes(rows, error):
+    result = FAMILY.parse_checks({"payload": {"checks": rows}, "error": error}, ["parameters"])
+    assert result[0]["status"] == "not_verified"
+
+
+def test_family_scoring_keeps_artifact_and_agent_errors_independent():
+    report = FAMILY.score_family(
+        [check_row(), check_row("flex", "not_verified")],
+        {"seconds": 4.5, "trace": [{"error": True}, {"error": False}]},
+        [{"kind": "challenge"}, {"kind": "approved", "seconds": 1.2}, {"kind": "denied"}],
+    )
+    assert report["checks_passed"] == 1
+    assert report["checks_total"] == 2
+    assert not report["artifact_pass"]
+    assert report["calls"] == 2 and report["tool_errors"] == 1
+    assert report["human_approvals"] == 1 and report["denials"] == 1
+    assert report["approval_wait_seconds"] == 1.2
+    assert report["underlying_operations"] is None
+    assert FAMILY.score_family([check_row()], {}, [])["artifact_pass"]
+    assert not FAMILY.score_family([], {}, [])["artifact_pass"]
+
+
+def test_family_cleanup_plan_closes_without_save_and_deletes_only_owned_files():
+    plan = FAMILY.cleanup_plan(r"C:\Eval\run1", ["family", "project"], [r"C:\Eval\run1\box.rfa"])
+    assert plan["close"] == [
+        {"document": "project", "save": False},
+        {"document": "family", "save": False},
+    ]
+    assert plan["delete"] == [r"C:\Eval\run1\box.rfa"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:\Eval\other\box.rfa",
+        r"C:\Eval\run1\..\source.rfa",
+        r"C:\Eval\run1\evidence.json",
+        r"D:\Eval\run1\box.rfa",
+    ],
+)
+def test_family_cleanup_plan_rejects_unowned_files(path):
+    with pytest.raises(ValueError):
+        FAMILY.cleanup_plan(r"C:\Eval\run1", ["family"], [path])
+
+
+def test_family_server_selector_and_defaults(monkeypatch, tmp_path):
+    monkeypatch.setenv(eval_run.SERVER_COMMAND_ENV, "fallback")
+    args = eval_run.parse_args(
+        [
+            "--profile",
+            "family",
+            "--family-fixtures",
+            str(tmp_path / "fixtures.json"),
+            "--server-command",
+            "ssh host rvt-mcp",
+            "--verifier-command",
+            "ssh host model-mcp",
+            "--toolbaker",
+        ]
+    )
+    assert args.server_command == "ssh host rvt-mcp"
+    assert args.verifier_command == "ssh host model-mcp"
+    assert args.max_calls == 120 and args.scenario_timeout == 1800
+    assert args.toolbaker
+    assert eval_run.parse_args([]).max_calls == 40
+
+
+@pytest.mark.parametrize("failure", [None, "TimeoutError", "CliError"])
+def test_family_post_verifier_runs_despite_agent_failure(monkeypatch, failure):
+    calls = []
+
+    async def call(session, name, arguments):
+        calls.append((name, arguments))
+        assert arguments["dry_run"] is True
+        assert arguments["transaction"] == "auto"
+        return {"payload": {"checks": [check_row()]}, "error": False}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    rows = asyncio.run(
+        eval_run.verify_family(
+            None, FAMILY_SCENARIOS[0], "family", "project", {"failure": failure}, {}
+        )
+    )
+    assert [args["document"] for _, args in calls] == ["family", "project"]
+    assert any(row["check_id"] == "flex" and row["status"] == "not_verified" for row in rows)
+
+
+def test_family_document_routing_preserves_family_and_project(monkeypatch):
+    session = FakeSession()
+    tools = {
+        "revit_read": {
+            "read_only": True,
+            "schema": {"type": "object", "properties": {"document": {"type": "string"}}},
+        }
+    }
+    scope = eval_run.family_scope(
+        list({"name": name, **tool} for name, tool in tools.items()), ["family", "project"]
+    )
+    for document in ("family", "project"):
+        result = asyncio.run(
+            eval_run.execute_call(
+                session,
+                tools,
+                {"tool": "revit_read", "args": {"document": document}},
+                scope,
+                "project",
+            )
+        )
+        assert result["args"]["document"] == document
+    refused = asyncio.run(
+        eval_run.execute_call(
+            session,
+            tools,
+            {"tool": "revit_read", "args": {"document": "production"}},
+            scope,
+            "project",
+        )
+    )
+    assert refused["error"]
+
+
+def test_family_rule_report_matches_seeded_ids():
+    manifest = {"plane_ids": ["plane-x", "plane-y"], "origin_ids": ["plane-x", "body"]}
+    report = {
+        "before_violations": [
+            {"rule_id": "R1", "defect_id": "origin", "element_unique_ids": ["body"]},
+            {
+                "rule_id": "R2",
+                "defect_id": "plane_names",
+                "element_unique_ids": ["plane-x", "plane-y"],
+            },
+            {"rule_id": "R3", "defect_id": "parameter_name", "parameter_name": "w"},
+        ],
+        "after_violations": [],
+    }
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == "pass"
+    report["before_violations"][1]["element_unique_ids"] = ["invented"]
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == "fail"
+
+
+def test_family_explicit_approval_and_redaction(monkeypatch):
+    calls = []
+
+    async def call(session, name, arguments):
+        calls.append(arguments)
+        return (
+            {
+                "error": False,
+                "payload": {"data": {"confirmToken": "secret", "needsConfirmation": True}},
+            }
+            if len(calls) == 1
+            else {"error": False, "payload": {"data": {"saved": True}}}
+        )
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    monkeypatch.setattr("builtins.input", lambda _: "yes")
+    approvals = []
+    result = asyncio.run(
+        eval_run.family_call(None, "revit_save_document", {"document": "eval"}, approvals)
+    )
+    assert not result["error"]
+    assert calls[1]["confirm_token"] == "secret"
+    assert [event["kind"] for event in approvals] == ["challenge", "approved"]
+    assert "secret" not in json.dumps(approvals)
+
+
+def test_family_eof_never_approves(monkeypatch):
+    async def call(*args):
+        return {"error": False, "payload": {"confirmToken": "secret"}}
+
+    def eof(_):
+        raise EOFError
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    monkeypatch.setattr("builtins.input", eof)
+    approvals = []
+    result = asyncio.run(eval_run.family_call(None, "revit_save_document", {}, approvals))
+    assert result["error"]
+    assert approvals[-1]["kind"] == "denied"
+
+
+def test_family_cli_proxy_reuses_one_upstream(monkeypatch, tmp_path):
+    """The proxy cannot launch its deliberately invalid upstream command."""
+    import shlex
+    import sys
+
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    forwarded = []
+
+    async def call(session, name, arguments, approvals):
+        forwarded.append((session, name, arguments))
+        return {"error": False, "payload": {"success": True, "total": 5}}
+
+    monkeypatch.setattr(eval_run, "family_call", call)
+    upstream_session = object()
+
+    async def check():
+        async with eval_run.family_relay(upstream_session, []) as relay:
+            config = tmp_path / "proxy.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "server_command": shlex.join(["no-such-upstream-must-not-start"]),
+                        "relay": relay,
+                        "tools": TOOLS,
+                        "scenario": {"actions": [], "read_only": True},
+                        "document": "fixture",
+                        "max_calls": 2,
+                        "trace": str(tmp_path / "trace.jsonl"),
+                    }
+                )
+            )
+            parameters = StdioServerParameters(
+                command=sys.executable,
+                args=[str(ROOT / "build/llm-eval/run.py"), "--stdio-proxy", str(config)],
+            )
+            async with (
+                stdio_client(parameters) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                result = await session.call_tool("revit_query_elements", {})
+                assert not result.is_error
+                assert json.loads(result.content[0].text)["total"] == 5
+
+    asyncio.run(check())
+    assert len(forwarded) == 1
+    assert forwarded[0][0] is upstream_session
+
+
+def test_family_cleanup_denial_preserves_files(monkeypatch):
+    calls = []
+
+    async def call(session, name, args, approvals):
+        calls.append(name)
+        return {"error": True, "payload": {"error": "operator_denied"}}
+
+    monkeypatch.setattr(eval_run, "family_call", call)
+    plan = FAMILY.cleanup_plan(r"C:\Eval\run1", ["family"], [r"C:\Eval\run1\box.rfa"])
+    assert asyncio.run(eval_run.family_cleanup(None, plan, [], "Organizer"))["status"] == "failed"
+    assert calls == ["revit_close_document"]
+
+
+def test_family_verifier_errors_are_incomplete_checks(monkeypatch):
+    async def unavailable(*args):
+        raise TimeoutError
+
+    monkeypatch.setattr(eval_run, "call_mcp", unavailable)
+    rows = asyncio.run(
+        eval_run.verify_family(None, FAMILY_SCENARIOS[3], "family", "project", {}, {})
+    )
+    assert rows and all(row["status"] == "not_verified" for row in rows)
+
+
+@pytest.mark.parametrize("failure", [None, "CliError", "TimeoutError"])
+def test_family_runner_prepares_fresh_fixtures_and_probes_before_cleanup(
+    monkeypatch, tmp_path, failure
+):
+    import mcp
+    import mcp.client.stdio
+
+    events = []
+    documents = {"Organizer"}
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def initialize(self):
+            return SimpleNamespace(server_info=SimpleNamespace(model_dump=lambda: {"name": "fake"}))
+
+        async def list_tools(self, **kwargs):
+            return SimpleNamespace(tools=[], next_cursor=None)
+
+    @asynccontextmanager
+    async def stdio(_):
+        yield None, None
+
+    class Agent:
+        def __init__(self, family, model):
+            self.model = model
+
+        async def run(self, prompt, command, tools, scope, document, *args, **kwargs):
+            events.append(("agent", document))
+            documents.add("EVAL_Box" if "EVAL_Box" in prompt else "EVAL_Table")
+            return {"failure": failure, "trace": [], "seconds": 1, "answer": "Done"}
+
+    async def call(session, name, arguments):
+        events.append((name, dict(arguments)))
+        if name == "revit_documents":
+            return {"error": False, "payload": {"data": [{"title": title} for title in documents]}}
+        if name in {"revit_open_document", "revit_new_document"}:
+            from pathlib import PureWindowsPath
+
+            documents.add(PureWindowsPath(arguments.get("path", arguments.get("save_as"))).stem)
+        if name == "revit_close_document":
+            documents.remove(arguments["document"])
+        return {
+            "error": False,
+            "payload": {"data": {"returnValue": {"removed": True, "checks": []}}},
+        }
+
+    monkeypatch.setattr(mcp, "ClientSession", lambda *args: Session())
+    monkeypatch.setattr(mcp.client.stdio, "stdio_client", stdio)
+    monkeypatch.setattr(eval_run, "CliProvider", Agent)
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    fixtures = tmp_path / "fixtures.json"
+    fixtures.write_text(
+        json.dumps(
+            {
+                "output_root": r"C:\Eval",
+                "scenarios": {
+                    letter: {
+                        "project": r"C:\Fixtures\project.rvt",
+                        "template": r"C:\Templates\family.rft",
+                    }
+                    for letter in "AB"
+                },
+            }
+        )
+    )
+    args = eval_run.parse_args(
+        [
+            "--profile",
+            "family",
+            "--provider",
+            "codex-cli",
+            "--family-fixtures",
+            str(fixtures),
+            "--server-command",
+            "fake",
+            "--document",
+            "Organizer",
+            "--scenarios",
+            "A,B",
+        ]
+    )
+    result = asyncio.run(eval_run.family_main(args))
+    agent_indices = [index for index, event in enumerate(events) if event[0] == "agent"]
+    assert len(agent_indices) == (1 if failure == "TimeoutError" else 2)
+    for index in agent_indices:
+        assert events[index + 1][0] == "revit_execute_code"
+        assert events[index + 1][1]["dry_run"] is True
+    copies = [
+        event[1]["code"]
+        for event in events
+        if event[0] == "revit_execute_code" and "Directory.CreateDirectory" in event[1]["code"]
+    ]
+    assert len(set(copies)) == len(agent_indices)
+    if failure == "TimeoutError":
+        assert result["stopped"]
+        assert not any(event[0] == "revit_close_document" for event in events)
+        assert not any(
+            event[0] == "revit_open_document" for event in events[agent_indices[0] + 1 :]
+        )
+    else:
+        assert documents == {"Organizer"}
+        assert all(run["cleanup"]["status"] == "cleaned" for run in result["runs"])

@@ -34,4 +34,5 @@ For Claude Desktop, zip that skill folder and upload it as a skill.
 | Skill | Purpose |
 | --- | --- |
 | [Revit daily QA](../skills/revit-daily-qa/SKILL.md) | Run a fixed read-only morning or pre-hand-over routine with counts, trends, and completeness caveats. |
+| [Revit family authoring](../skills/revit-family-authoring/SKILL.md) | Create and check families against company rules, then verify flex and placement in Revit. |
 | [Revit sheet set](../skills/revit-sheet-set/SKILL.md) | Resolve a sheet list, confirm the plan, and create sheets and place views within current batching limits. |

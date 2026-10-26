@@ -196,3 +196,78 @@ The API adapters follow the official
 and [Anthropic tool call guide](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls).
 
 CLI event formats follow the [Claude Agent SDK message types](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/types.py) and [Codex non-interactive mode](https://developers.openai.com/codex/noninteractive/).
+
+## Family profile
+
+`--profile family` selects the Russian A..E prompts in `family-scenarios.yaml`.
+The profile uses independent Revit API probes in `family_verifier.py`, without an LLM judge or sequence score.
+The default limits are 120 agent calls and 1,800 seconds per scenario.
+The agent receives explicit family and project document identities; the proxy does not replace every target with the project.
+A CLI proxy shares the organizer's single upstream process through an authenticated loopback bridge.
+`--server-command` selects the agent server, including an installed bimwright rvt-mcp gateway.
+`--verifier-command` selects a separate Model MCP server for setup, probes, and cleanup when the agent uses another server.
+The verifier command defaults to the agent command for Model MCP runs.
+
+`--family-fixtures` reads a local JSON manifest with this structure:
+
+```json
+{
+  "output_root": "C:\\RMM-Eval\\runs",
+  "scenarios": {
+    "A": {"template": "C:\\Templates\\Generic Model.rft", "project": "C:\\RMM-Eval\\fixture.rvt"},
+    "B": {"template": "C:\\Templates\\Furniture.rft", "project": "C:\\RMM-Eval\\fixture.rvt"},
+    "C": {"template": "C:\\Templates\\Window.rft", "project": "C:\\RMM-Eval\\fixture.rvt"},
+    "D": {"template": "C:\\Templates\\Mechanical Equipment.rft", "project": "C:\\RMM-Eval\\fixture.rvt"},
+    "E": {"template": "C:\\Templates\\Generic Model.rft", "project": "C:\\RMM-Eval\\fixture.rvt"}
+  }
+}
+```
+
+Paths resolve on the workstation.
+Templates must match the selected Revit year.
+The clean project fixture contains Level 0 at Z=0, the unjoined 6,000 by 3,000 mm wall, wall types at 150 and 300 mm, a round duct type, and a Supply Air system type.
+`--document` identifies a separate open organizer document for filesystem setup and cleanup transactions.
+Each scenario receives a unique output folder and copied project.
+The organizer creates a fresh family from the template before timing the agent.
+For E, a fixed C# probe generates the non-compliant RFA and its defect manifest at run start; no binary fixture is committed.
+
+```sh
+uv run build/llm-eval/run.py --profile family --provider codex-cli \
+  --server-command 'ssh workstation model-mcp-command' \
+  --family-fixtures work/family-fixtures.json --document Organizer \
+  --scenarios A --out work/ws/v2/llm-eval
+```
+
+Native server challenges prompt the operator for an explicit `yes`.
+The journal records decisions, timestamps, code hashes, and wait time; tokens are redacted from family evidence.
+EOF denies a challenge.
+The harness never unlocks the workstation or changes machine policy.
+CLI permission bypass flags do not count as human approval.
+
+The verifier runs after failed or timed-out agent responses and before cleanup.
+It checks family metadata, nominal types, three flex value sets, solids, labels, locked reference associations, visibility, host cut volume, reciprocal MEP connections, system membership, and the E report against seeded defect identities.
+Saved RFA copies reopen for a second family probe.
+Each check records status, expected and actual values, document identity, object IDs, and reason.
+Missing or malformed evidence yields `not_verified`.
+The artifact score counts passed checks; time, calls, tool errors, and approvals remain separate metrics.
+Probe and cleanup calls do not enter the agent call count.
+
+The dry-run contract rolls back the outer transaction.
+Commit-time failure processing remains unverified and is excluded from the scored checks.
+The result records this limitation explicitly; artifact pass means all implemented dry-run checks pass.
+Constraints with unresolved or equivalent sketch references require workstation calibration before comparative scoring.
+The current probes do not establish D connection stability after a fresh reload and placement, the exact window frame strip, or every G1..G5 isolation invariant in the design.
+Offline tests validate the harness contract, not those Revit behaviors.
+These limits must remain visible in any pilot report.
+
+Cleanup closes run documents without saving and deletes temporary RFA/RVT files and their Revit backups only under the unique eval folder.
+JSON evidence remains in `--out`.
+A denied close, unknown document inventory, failed deletion, or timeout stops the series for workstation recovery.
+A timed-out action may have committed; the operator must resolve pending jobs before cleanup approval.
+
+`--toolbaker` requests A followed by A-prime on fresh documents.
+Transfer is gated on a fully verified A and availability of a saved or baked tool index.
+The runner records training time and the index separately and never accepts a suggestion automatically.
+This flag is transfer scaffolding; isolated catalogs, suggestion acceptance, three paired control/treatment repeats, and amortization remain workstation protocol steps.
+A failed training artifact is `blocked_training`; absent tool support or an empty index is `bake_unavailable`.
+No speedup is inferred from this flag alone.
