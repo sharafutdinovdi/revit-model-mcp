@@ -50,7 +50,7 @@ internal sealed class MyToolsWindow : Window
         root.Children.Add(buttons);
         DockPanel.SetDock(_status, Dock.Top);
         root.Children.Add(_status);
-        foreach (var (heading, property) in new[] { ("Name", "Name"), ("Description", "Description"), ("Mode", "Mode"), ("Revision", "RevisionShort"), ("Revit years", "Years"), ("Updated (UTC)", "Created") })
+        foreach (var (heading, property) in new[] { ("Name", "Name"), ("Description", "Description"), ("Mode", "Mode"), ("Revision", "RevisionShort"), ("Revit years", "Years"), ("Saved (UTC)", "Created"), ("Replacement", "Replacement") })
             _list.Columns.Add(new DataGridTextColumn { Header = heading, Binding = new Binding(property), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         root.Children.Add(_list);
         Content = root;
@@ -61,14 +61,15 @@ internal sealed class MyToolsWindow : Window
         Loaded += (_, _) => Refresh();
     }
 
-    private sealed record Row(ToolDefinition Tool)
+    private sealed record Row(string Name, ToolDefinition? Tool, string? Reason = null)
     {
-        public string Name => Tool.Name;
-        public string Description => Tool.Description;
-        public string Mode => Tool.Mode;
-        public string RevisionShort => Tool.Revision[..12];
-        public string Years => string.Join(", ", Tool.TestedRevitYears);
-        public string Created => Tool.Created;
+        public string Description => Tool?.Description ?? Reason ?? "";
+        public string Mode => Tool?.Mode ?? "not approved";
+        public string RevisionShort => Tool?.Revision[..12] ?? "not approved";
+        public string Years => Tool is null ? "" : string.Join(", ", Tool.TestedRevitYears);
+        public string Created => Tool?.Created ?? "";
+        public string Replacement => Tool is null || string.IsNullOrEmpty(Tool.ReplacedRevision)
+            ? "" : $"Replaced {Tool.ReplacedRevision[..12]} on {Tool.Created}";
     }
 
     private void Refresh()
@@ -77,9 +78,9 @@ internal sealed class MyToolsWindow : Window
         try
         {
             if (PolicyProvider.Refusal("list-tools") is string refusal) throw new InvalidOperationException(refusal);
-            var tools = MyTools.Store.List();
-            _list.ItemsSource = tools.Select(tool => new Row(tool)).ToList();
-            _status.Text = tools.Count == 0
+            var tools = MyTools.Store.List(out var invalid);
+            _list.ItemsSource = tools.Select(tool => new Row(tool.Name, tool)).Concat(invalid.Select(tool => new Row(tool.Name, null, tool.Reason))).ToList();
+            _status.Text = tools.Count == 0 && invalid.Count == 0
                 ? "No saved tools yet. After a successful procedure, ask the AI app to save it as a tool. Review its code and confirm the save in the AI app."
                 : "Select a tool to review its source or delete it. Run tools through the AI app.";
         }
@@ -89,7 +90,7 @@ internal sealed class MyToolsWindow : Window
 
     private void UpdateButtons()
     {
-        _showCode.IsEnabled = _list.SelectedItem is Row;
+        _showCode.IsEnabled = _list.SelectedItem is Row { Tool: not null };
         _delete.IsEnabled = _list.SelectedItem is Row && !ActionCommandExecutor.ReadOnlyMode && PolicyProvider.Refusal("delete-tool") is null;
     }
 
@@ -132,7 +133,7 @@ internal sealed class MyToolsWindow : Window
             ActionCommandExecutor.ReadOnlyLock.Refresh();
             if (ActionCommandExecutor.ReadOnlyMode) throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
             if (PolicyProvider.Refusal("delete-tool") is string refusal) throw new InvalidOperationException(refusal);
-            var tool = MyTools.Store.Get(row.Name);
+            var binding = MyTools.Store.DeletionBinding(row.Name);
             var dialog = new TaskDialog("My tools")
             {
                 MainInstruction = $"Delete {row.Name}?",
@@ -142,7 +143,7 @@ internal sealed class MyToolsWindow : Window
                 MainIcon = TaskDialogIcon.TaskDialogIconWarning
             };
             if (dialog.Show() != TaskDialogResult.Yes) return;
-            MyTools.Store.Delete(row.Name, tool.ApprovalBinding());
+            MyTools.Store.Delete(row.Name, binding);
             RevitModelMcp.Activity.ActivityRecorder.RecordSystemNotice($"Deleted saved tool {row.Name}.");
             Refresh();
         }

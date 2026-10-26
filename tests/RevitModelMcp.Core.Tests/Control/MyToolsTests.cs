@@ -257,6 +257,159 @@ public sealed class MyToolsTests
         await Assert.That(Capture(() => ToolArguments.Validate(enumOnly, "{\"value\":9007199254740993}"))).Contains("enum");
     }
 
+
+    [Test]
+    [Arguments("read", false)]
+    [Arguments("read", true)]
+    [Arguments("action", true)]
+    [Arguments("action", false)]
+    public async Task Session_RequiresFirstRunConfirmationForEveryRevision(string mode, bool dryRun)
+    {
+        var session = new ToolSession();
+        var tool = Definition() with { Mode = mode };
+        await Assert.That(session.RequiresConfirmation(tool.Name, tool.Revision, mode, dryRun)).IsTrue();
+        session.Confirm(tool.Name, tool.Revision);
+        await Assert.That(session.RequiresConfirmation(tool.Name, tool.Revision, mode, dryRun)).IsEqualTo(mode == "action" && !dryRun);
+        await Assert.That(session.RequiresConfirmation(tool.Name, ToolDefinition.Hash("return 2;"), mode, dryRun)).IsTrue();
+        await Assert.That(session.RequiresConfirmation("other_tool", tool.Revision, mode, dryRun)).IsTrue();
+        await Assert.That(new ToolSession().RequiresConfirmation(tool.Name, tool.Revision, mode, dryRun)).IsTrue();
+    }
+
+    [Test]
+    public async Task Session_StoreSignatureDoesNotAuthorizeForgedRevision()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var session = new ToolSession();
+            var store = new ToolStore(folder);
+            var initial = Definition() with { Mode = "read" };
+            store.Save(initial);
+            session.Confirm(initial.Name, initial.Revision);
+            var forged = Definition(code: "return 999;") with { Mode = "read" };
+            store.Save(forged);
+            var active = store.Get(forged.Name);
+            await Assert.That(session.RequiresConfirmation(active.Name, active.Revision, active.Mode, false)).IsTrue();
+            await Assert.That(typeof(ToolStore).IsPublic).IsFalse();
+            await Assert.That(typeof(ToolDefinition).IsPublic).IsFalse();
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    [Test]
+    public async Task ConfirmationText_ShowsValidatedArgsAndReplacement()
+    {
+        var previous = Definition() with { Mode = "read" };
+        var tool = Definition(code: "return 2;") with { ReplacedRevision = previous.Revision };
+        var args = ToolArguments.Validate(Schema, "{\"count\":2e0}");
+        var text = ToolSession.RunText(tool, args);
+        foreach (var expected in new[] { tool.Name, "mode action", tool.Revision[..12], tool.Created, "replaced " + previous.Revision[..12], "\"count\":2" })
+            await Assert.That(text).Contains(expected);
+        var save = ToolSession.SaveText(tool, previous);
+        await Assert.That(save).Contains($"replaces {previous.Revision[..12]}, mode read -> action");
+        var longText = ToolSession.RunText(tool, new Dictionary<string, object> { ["text"] = new string('x', 400) });
+        var preview = longText.Split(["Validated args: "], StringSplitOptions.None)[1].Split([". C#"], StringSplitOptions.None)[0];
+        await Assert.That(preview.Length).IsEqualTo(300);
+        await Assert.That(ToolSession.CacheKey(tool.Revision)).IsEqualTo("tool:" + tool.Revision);
+        var audit = ToolSession.AuditText(tool.Name, tool.Revision, args.Keys);
+        await Assert.That(audit).Contains(tool.Name);
+        await Assert.That(audit).Contains(tool.Revision);
+        await Assert.That(audit).Contains("arg names=[\"count\"]");
+        await Assert.That(audit).IsEqualTo($"Tool run: name={tool.Name}; revision={tool.Revision}; arg names=[\"count\"]");
+    }
+
+    [Test]
+    [Arguments("\u200b")]
+    [Arguments("\u202e")]
+    [Arguments("\u2066")]
+    [Arguments("\ufeff")]
+    [Arguments("\U000e0001")]
+    public async Task Validate_RejectsFormatCharacters(string character)
+    {
+        var tool = Definition();
+        foreach (var changed in new[] { tool with { Name = "my" + character + "tool" }, tool with { Code = "//" + character }, tool with { Description = "test" + character }, tool with { Parameters = "{\"type\":\"object\",\"properties\":{\"a" + character + "\":{\"type\":\"string\"}}}" } })
+            await Assert.That(Capture(changed.Validate)).Contains("Format characters");
+    }
+
+    [Test]
+    public async Task Store_ListsValidAndInvalidAndDeletesBrokenFolder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new ToolStore(folder);
+            store.Save(Definition());
+            Directory.CreateDirectory(Path.Combine(folder, "broken_tool"));
+            File.WriteAllText(Path.Combine(folder, "broken_tool", "active"), "bad");
+            var tools = store.List(out var invalid);
+            await Assert.That(tools.Count).IsEqualTo(1);
+            await Assert.That(invalid.Single().Name).IsEqualTo("broken_tool");
+            await Assert.That(invalid.Single().Reason).IsEqualTo("revision not approved");
+            await Assert.That(Capture(() => store.Get("broken_tool"))).Contains("revision not approved");
+            var response = CommandResponse<ActionResultData>.Ok("list-tools", new ActionResultData { Tools = tools.ToList(), Invalid = invalid }, 0);
+            await Assert.That(CommandResponseJsonSerializer.Serialize(response)).Contains("\"invalid\":[{\"name\":\"broken_tool\"");
+            store.Delete("broken_tool", store.DeletionBinding("broken_tool"));
+            store.List(out invalid);
+            await Assert.That(invalid.Count).IsEqualTo(0);
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    [Test]
+    public async Task Store_CapsRevisionsAtTwentyAndKeepsActive()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new ToolStore(folder);
+            for (var index = 0; index < 25; index++) store.Save(Definition(code: $"return {index};"));
+            var active = store.Get("my_tool");
+            await Assert.That(active.Code).IsEqualTo("return 24;\n");
+            await Assert.That(Directory.GetFiles(Path.Combine(folder, "my_tool"), "*.json").Length).IsEqualTo(20);
+            await Assert.That(Directory.GetFiles(Path.Combine(folder, "my_tool"), "*.approved").Length).IsEqualTo(20);
+            await Assert.That(File.Exists(Path.Combine(folder, "my_tool", Definition().Revision + ".json"))).IsFalse();
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    [Test]
+    public async Task Store_LockBusyHasNoPathAndRetries()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var store = new ToolStore(folder);
+            using (var held = new FileStream(Path.Combine(folder, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            {
+                await Assert.That(Capture(() => store.Save(Definition()))).IsEqualTo("My tools store is busy");
+                await Assert.That(Capture(() => store.Delete("my_tool"))).IsEqualTo("My tools store is busy");
+            }
+            var retryLock = new FileStream(Path.Combine(folder, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var release = Task.Run(async () => { await Task.Delay(100); retryLock.Dispose(); });
+            store.Save(Definition());
+            await release;
+            await Assert.That(store.Get("my_tool").Name).IsEqualTo("my_tool");
+        }
+        finally { Directory.Delete(folder, true); }
+    }
+
+    [Test]
+    [Arguments("get-tool")]
+    [Arguments("save-tool")]
+    public async Task Redaction_PreservesToolPreviewAndRedactsModelPath(string command)
+    {
+        const string source = "return @\"\\\\server\\share\\file.txt\";";
+        var tool = Definition(code: source) with { Description = @"Review \\server\share\file.txt", Parameters = "{\"type\":\"object\",\"properties\":{\"label\":{\"type\":\"string\",\"description\":\"C:\\\\Private\\\\file.txt\"}}}" };
+        var response = CommandResponse<ActionResultData>.Ok(command, new ActionResultData { Tool = tool, Summary = @"Model C:\Private\Model.rvt" }, 0);
+        var json = CommandResponseJsonSerializer.RedactPaths(CommandResponseJsonSerializer.Serialize(response));
+        var parsed = ToolJson.Deserialize<CommandResponse<ActionResultData>>(json);
+        await Assert.That(parsed.Data!.Tool!.Code).IsEqualTo(tool.Code);
+        await Assert.That(parsed.Data.Tool.Description).IsEqualTo(tool.Description);
+        await Assert.That(parsed.Data.Tool.Parameters).IsEqualTo(tool.Parameters);
+        await Assert.That(parsed.Data.Summary).IsEqualTo("Model Model.rvt");
+    }
+
     private static string Capture(Action action)
     {
         try { action(); return ""; }

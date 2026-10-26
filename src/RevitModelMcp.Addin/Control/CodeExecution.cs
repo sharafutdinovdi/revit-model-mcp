@@ -78,12 +78,14 @@ internal static class CodeExecution
         if (action.TransactionMode == "none")
             result.Warning = "The script owns transactions and document lifecycle. Undo is not guaranteed.";
         if (!compileOnly) WriteAudit(code, clientName, document?.Title, document?.PathName, action.TransactionMode, jobId);
-        var key = action.ToolRevision ?? CodeSource.CacheKey(code, action.TransactionMode);
+        if (!compileOnly && action.ToolName is not null)
+            PluginLog.Info(ToolSession.AuditText(action.ToolName, action.ToolRevision!, action.Args.Keys));
+        var key = action.ToolRevision is null ? CodeSource.CacheKey(code, action.TransactionMode) : ToolSession.CacheKey(action.ToolRevision);
         if (!Cache.TryGet(key, out var compiled) || compileOnly)
         {
             var source = CodeSource.BuildSource(code);
             var references = GetReferences();
-            var compilation = CSharpCompilation.Create("McpScript_" + key.Substring(0, 16),
+            var compilation = CSharpCompilation.Create("McpScript_" + key.Replace(":", "_").Substring(0, 16),
                 [CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest))],
                 references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                     optimizationLevel: OptimizationLevel.Release));

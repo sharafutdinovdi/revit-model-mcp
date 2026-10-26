@@ -882,6 +882,7 @@ public sealed class ActionJobContract
     public int[] ToolYears { get; set; } = [];
     public string? ToolName { get; set; }
     public string? ToolRevision { get; set; }
+    internal string? ToolConfirmationText { get; set; }
     public string? ToolApprovalBinding { get; set; }
     public IReadOnlyDictionary<string, object> Args { get; set; } = new Dictionary<string, object>();
     public ProcessModelsJob? ProcessModels { get; set; }
@@ -1771,8 +1772,9 @@ public sealed class SkippedByReason
 [KnownType(typeof(SkippedByReason))]
 public sealed class ActionResultData
 {
-    [DataMember(Name = "tool", EmitDefaultValue = false)] public ToolDefinition? Tool { get; set; }
-    [DataMember(Name = "tools", EmitDefaultValue = false)] public List<ToolDefinition>? Tools { get; set; }
+    [DataMember(Name = "tool", EmitDefaultValue = false)] internal ToolDefinition? Tool { get; set; }
+    [DataMember(Name = "invalid", EmitDefaultValue = false)] internal List<InvalidTool>? Invalid { get; set; }
+    [DataMember(Name = "tools", EmitDefaultValue = false)] internal List<ToolDefinition>? Tools { get; set; }
     [DataMember(Name = "currentIndex", EmitDefaultValue = false)] public int? CurrentIndex { get; set; }
     [DataMember(Name = "currentPath", EmitDefaultValue = false)] public string? CurrentPath { get; set; }
     [DataMember(Name = "cancelled", EmitDefaultValue = false)] public bool? Cancelled { get; set; }

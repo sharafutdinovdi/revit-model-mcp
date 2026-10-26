@@ -10,7 +10,7 @@ using System.Xml.Linq;
 namespace RevitModelMcp.Core.Control;
 
 [DataContract]
-public sealed record ToolDefinition
+internal sealed record ToolDefinition
 {
     [DataMember(Name = "name")] public string Name { get; init; } = "";
     [DataMember(Name = "description")] public string Description { get; init; } = "";
@@ -21,21 +21,32 @@ public sealed record ToolDefinition
     [DataMember(Name = "created")] public string Created { get; init; } = "";
     [DataMember(Name = "author")] public string Author { get; init; } = "";
     [DataMember(Name = "revision")] public string Revision { get; init; } = "";
+    [DataMember(Name = "replacedRevision")] public string ReplacedRevision { get; init; } = "";
 
     public static string Normalize(string source) => source.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
     public static string Hash(string source) => CodeSource.CodeHash(Normalize(source));
 
     public void Validate()
     {
+        RejectFormat(Name);
+        RejectFormat(Description);
+        RejectFormat(Code);
         ToolStore.ValidateName(Name);
         if (string.IsNullOrWhiteSpace(Description) || Description.Length > 4000)
             throw new ArgumentException("description must contain 1 to 4000 characters.");
         if (Mode is not ("read" or "action")) throw new ArgumentException("mode must be read or action.");
         if (string.IsNullOrWhiteSpace(Code) || Encoding.UTF8.GetByteCount(Code) > ToolStore.MaxSourceBytes)
             throw new ArgumentException("source must contain 1 to 256 KB of UTF-8 text.");
-        if (TestedRevitYears.Any(year => year is < 2022 or > 2027))
+        if (TestedRevitYears is null || TestedRevitYears.Any(year => year is < 2022 or > 2027))
             throw new ArgumentException("tested Revit years must be between 2022 and 2027.");
         ToolArguments.ValidateSchema(Parameters);
+    }
+
+    internal static void RejectFormat(string? text)
+    {
+        if (text is null) throw new ArgumentException("Tool definition text is required.");
+        if (Enumerable.Range(0, text.Length).Any(index => CharUnicodeInfo.GetUnicodeCategory(text, index) == UnicodeCategory.Format))
+            throw new ArgumentException("Unicode Format characters are not allowed in tool definitions.");
     }
 
     public string ApprovalBinding() => CodeSource.CodeHash(ToolJson.Serialize(this with { Created = "", Author = "" }));
@@ -72,6 +83,7 @@ public static class ToolArguments
         var properties = schema.TryGetValue("properties", out var propertyNode) ? Members(propertyNode) : [];
         foreach (var property in properties)
         {
+            ToolDefinition.RejectFormat(property.Key);
             var rules = Members(property.Value);
             if (rules.Keys.Except(["type", "description", "enum", "minimum", "maximum", "maxLength"]).Any())
                 throw new ArgumentException($"parameters.{property.Key}: unsupported schema keyword.");
@@ -159,7 +171,7 @@ public static class ToolArguments
     }
 }
 
-public sealed class ToolStore(string directory)
+internal sealed class ToolStore(string directory)
 {
     public const int MaxSourceBytes = 256 * 1024;
     public const int MaxTools = 200;
@@ -172,15 +184,38 @@ public sealed class ToolStore(string directory)
             throw new ArgumentException("name must match ^[a-z][a-z0-9_]{2,47}$.");
     }
 
-    public IReadOnlyList<ToolDefinition> List() => !Directory.Exists(_directory) ? [] :
-        Directory.GetDirectories(_directory).Where(path => File.Exists(Path.Combine(path, "active")))
-            .Select(path => Get(Path.GetFileName(path))).OrderBy(tool => tool.Name, StringComparer.Ordinal).ToList();
+    public IReadOnlyList<ToolDefinition> List() => List(out _);
+
+    public IReadOnlyList<ToolDefinition> List(out List<InvalidTool> invalid)
+    {
+        invalid = [];
+        var tools = new List<ToolDefinition>();
+        if (!Directory.Exists(_directory)) return tools;
+        foreach (var folder in Directory.GetDirectories(_directory).OrderBy(Path.GetFileName, StringComparer.Ordinal))
+        {
+            var name = Path.GetFileName(folder);
+            try { tools.Add(Get(name)); }
+            catch (Exception exception) when (exception is InvalidOperationException or ArgumentException)
+            {
+                invalid.Add(new InvalidTool { Name = name, Reason = "revision not approved" });
+            }
+        }
+        return tools;
+    }
+
+    public string DeletionBinding(string name)
+    {
+        ValidateName(name);
+        if (!Directory.Exists(Path.Combine(_directory, name))) throw new InvalidOperationException("Tool not found.");
+        try { return Get(name).ApprovalBinding(); }
+        catch (InvalidOperationException) { return "not approved"; }
+    }
 
     public ToolDefinition Get(string name)
     {
         ValidateName(name);
         try { return ReadApproved(name); }
-        catch (Exception exception) when (exception is IOException or SerializationException or XmlException or ArgumentException or InvalidOperationException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or SerializationException or XmlException or ArgumentException or InvalidOperationException)
         {
             throw new InvalidOperationException("revision not approved");
         }
@@ -211,7 +246,7 @@ public sealed class ToolStore(string directory)
         definition.Validate();
         if (definition.Revision != ToolDefinition.Hash(definition.Code)) throw new InvalidOperationException("revision not approved");
         Directory.CreateDirectory(_directory);
-        using var storeLock = new FileStream(Path.Combine(_directory, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using var storeLock = AcquireLock();
         var folder = Path.Combine(_directory, definition.Name);
         if (!File.Exists(Path.Combine(folder, "active")) && Directory.GetDirectories(_directory).Count(path => File.Exists(Path.Combine(path, "active"))) >= MaxTools)
             throw new InvalidOperationException("The saved tool limit is 200.");
@@ -229,6 +264,13 @@ public sealed class ToolStore(string directory)
         AtomicWrite(Path.Combine(folder, definition.Revision + ".json"), ToolJson.Serialize(definition));
         AtomicWrite(Path.Combine(folder, definition.Revision + ".approved"), ApprovalSignature(definition));
         AtomicWrite(Path.Combine(folder, "active"), definition.Revision);
+        foreach (var old in Directory.GetFiles(folder, "*.json")
+                     .Where(path => Path.GetFileNameWithoutExtension(path) != definition.Revision)
+                     .OrderByDescending(File.GetLastWriteTimeUtc).ThenBy(path => path, StringComparer.Ordinal).Skip(19))
+        {
+            File.Delete(old);
+            File.Delete(Path.ChangeExtension(old, ".approved"));
+        }
     }
 
     private string ApprovalSignature(ToolDefinition definition)
@@ -244,10 +286,24 @@ public sealed class ToolStore(string directory)
     public void Delete(string name, string? expectedApprovalBinding = null)
     {
         ValidateName(name);
-        using var storeLock = new FileStream(Path.Combine(_directory, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        if (expectedApprovalBinding is not null && Get(name).ApprovalBinding() != expectedApprovalBinding)
+        using var storeLock = AcquireLock();
+        if (expectedApprovalBinding is not null && DeletionBinding(name) != expectedApprovalBinding)
             throw new InvalidOperationException("The tool changed. Review it again before deleting.");
         Directory.Delete(Path.Combine(_directory, name), true);
+    }
+
+    private FileStream AcquireLock()
+    {
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
+        {
+            try { return new FileStream(Path.Combine(_directory, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                if (timer.ElapsedMilliseconds >= 2000) throw new InvalidOperationException("My tools store is busy");
+                Thread.Sleep(25);
+            }
+        }
     }
 
     private static void AtomicWrite(string path, string text)
@@ -281,4 +337,39 @@ public static class ToolJson
         using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
         return (T)new DataContractJsonSerializer(typeof(T)).ReadObject(stream)!;
     }
+}
+
+[DataContract]
+internal sealed record InvalidTool
+{
+    [DataMember(Name = "name")] public string Name { get; init; } = "";
+    [DataMember(Name = "reason")] public string Reason { get; init; } = "";
+}
+
+internal sealed class ToolSession
+{
+    private readonly HashSet<string> _confirmed = new(StringComparer.Ordinal);
+
+    public bool RequiresConfirmation(string name, string revision, string mode, bool dryRun) =>
+        !_confirmed.Contains(name + ":" + revision) || mode == "action" && !dryRun;
+
+    public void Confirm(string name, string revision) => _confirmed.Add(name + ":" + revision);
+
+    public static string CacheKey(string revision) => "tool:" + revision;
+
+    public static string AuditText(string name, string revision, IEnumerable<string> argumentNames) =>
+        $"Tool run: name={name}; revision={revision}; arg names={ToolJson.Serialize(argumentNames.ToArray())}";
+
+    public static string RunText(ToolDefinition tool, IReadOnlyDictionary<string, object> args)
+    {
+        var validated = CodeResultLimiter.ToJson(args);
+        if (validated.Length > 300) validated = validated[..300];
+        var replaced = string.IsNullOrEmpty(tool.ReplacedRevision) ? "no earlier revision" : "replaced " + tool.ReplacedRevision[..12];
+        return $"Run {tool.Name}, mode {tool.Mode}, revision {tool.Revision[..12]}, saved {tool.Created}, {replaced}. Validated args: {validated}. C# has the user's file, network and Revit API rights.";
+    }
+
+    public static string SaveText(ToolDefinition tool, ToolDefinition? previous) =>
+        $"Save {tool.Name}, mode {tool.Mode}, revision {tool.Revision[..12]}" +
+        (previous is null ? "." : $", replaces {previous.Revision[..12]}, mode {previous.Mode} -> {tool.Mode}.") +
+        " Review the full source and parameters. Saved C# has the user's file, network and Revit API rights.";
 }
