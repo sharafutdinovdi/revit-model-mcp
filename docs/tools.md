@@ -48,6 +48,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 These measurements use the default tool schemas. Optional server arguments can increase the payload.
 
 MEP routing, graphic overrides, view and sheet creation, element tagging, schedule creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
+`revit_place_views_on_sheet` accepts a sheet element ID (integer or numeric string), sheet number, or sheet name; an unmatched reference returns candidate sheets.
 
 Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` runs on the MCP client machine from snapshot files and needs no Revit transport or running instance.
 `revit_capture_elements` downloads a highlighted element PNG over local or SSH transport; HTTP is unavailable.
@@ -105,6 +106,13 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_compare_link_datums` | `link`, `kinds=null` (grids and levels), `name_map=null` (no renames), `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 | `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. |
 | `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
+
+### Pinned elements
+
+`pinned` is a built-in boolean field read from `Element.Pinned`. Use it in `revit_query_elements` fields and `revit_aggregate_elements` group_by.
+Filter it with `parameter_filters=[{"parameter":"pinned","operator":"equals","value":"true"}]` (or `"false"`).
+It also supports `exists`, `empty` and `not-empty`; the field always has a value.
+Returned values use `value="true"` or `"false"` and `numericValue=1` or `0`.
 
 ### List sheets
 

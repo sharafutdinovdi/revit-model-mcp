@@ -64,6 +64,8 @@ public sealed class FamilyParameterData
 [DataContract]
 public sealed class FamilyEditData
 {
+    [DataMember(Name = "skipped")] public List<SkippedRead> Skipped { get; set; } = [];
+
     [DataMember(Name = "mode")] public string Mode { get; set; } = string.Empty;
     [DataMember(Name = "dryRun")] public bool DryRun { get; set; }
     [DataMember(Name = "committed")] public bool Committed { get; set; }

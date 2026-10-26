@@ -396,6 +396,7 @@ internal sealed class InstanceHeartbeat : IDisposable
     private bool _disposed;
     private int? _httpPort;
     private HttpListenerStatus? _httpStatus;
+    private int _heartbeatWriteFailures;
 
     public InstanceHeartbeat(string directory, int processId, string revitVersion, string instanceId, string? pipeName)
     {
@@ -496,7 +497,13 @@ internal sealed class InstanceHeartbeat : IDisposable
                 File.Move(_temporaryPath, _path);
             }
 
+            _heartbeatWriteFailures = 0;
             DeleteStaleFiles();
+        }
+        catch (IOException)
+        {
+            if (++_heartbeatWriteFailures > 1)
+                PluginLog.Warn("Instance heartbeat write failed repeatedly. Retrying on the next tick.");
         }
         catch (Exception exception)
         {

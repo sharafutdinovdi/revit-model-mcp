@@ -1,16 +1,12 @@
 using System.Globalization;
 using Autodesk.Revit.DB;
 using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Query;
 
 namespace RevitModelMcp.Capture;
 
 internal sealed class ElementFieldReader
 {
-    private static readonly HashSet<string> BuiltInFields = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "id", "category", "family", "type", "name", "level", "workset", "phase", "areaScheme", "hasWarnings"
-    };
-
     private readonly Document _document;
     private readonly Lazy<HashSet<long>> _warningIds;
     private readonly Dictionary<ElementId, Element?> _typeElements = new();
@@ -18,7 +14,7 @@ internal sealed class ElementFieldReader
 
     private enum FieldKind
     {
-        Parameter, Id, Category, Family, Type, Name, Level, Workset, Phase, AreaScheme, HasWarnings
+        Parameter, Id, Category, Family, Type, Name, Level, Workset, Phase, AreaScheme, HasWarnings, Pinned
     }
 
     private sealed class FieldSelection
@@ -33,7 +29,7 @@ internal sealed class ElementFieldReader
             Requested = fields.ToArray();
             Fields = Requested.Distinct(StringComparer.OrdinalIgnoreCase)
                 .Select(field => new KeyValuePair<string, FieldKind>(field,
-                    BuiltInFields.Contains(field) && Enum.TryParse<FieldKind>(field, true, out var kind)
+                    IsBuiltInField(field) && Enum.TryParse<FieldKind>(field, true, out var kind)
                         ? kind : FieldKind.Parameter))
                 .ToArray();
         }
@@ -45,7 +41,7 @@ internal sealed class ElementFieldReader
         _warningIds = new Lazy<HashSet<long>>(() => ReadCommandReader.ReadWarningElementIds(document));
     }
 
-    public static bool IsBuiltInField(string name) => BuiltInFields.Contains(name);
+    public static bool IsBuiltInField(string name) => QueryParameterValidator.IsBuiltInField(name);
 
     public PreparedQueryRecord Prepare(Element element, IEnumerable<string> fields)
     {
@@ -150,6 +146,12 @@ internal sealed class ElementFieldReader
         if (kind == FieldKind.AreaScheme)
         {
             return Text((element as Area)?.AreaScheme?.Name);
+        }
+
+        if (kind == FieldKind.Pinned)
+        {
+            var pinned = element.Pinned;
+            return new PreparedQueryValue { Text = pinned ? "true" : "false", Number = pinned ? 1 : 0 };
         }
 
         if (kind == FieldKind.HasWarnings)

@@ -4575,9 +4575,18 @@
         "type": "boolean"
       },
       "sheet": {
-        "minLength": 1,
-        "pattern": "\\S",
-        "type": "string"
+        "anyOf": [
+          {
+            "minLength": 1,
+            "pattern": "\\S",
+            "type": "string"
+          },
+          {
+            "exclusiveMinimum": 0,
+            "maximum": 9223372036854775807,
+            "type": "integer"
+          }
+        ]
       },
       "views": {
         "items": {

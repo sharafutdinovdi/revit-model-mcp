@@ -13,6 +13,22 @@ public static class BatchDialogPolicy
 
     public const int MaximumRecords = 20;
 
+    public static IReadOnlyList<int> FamilyAuditDialogResults(string runtimeType, int dialogType = 0)
+    {
+        return runtimeType switch
+        {
+            "MessageBoxShowingEventArgs" => (dialogType & 0xF) switch
+            {
+                0 => [1],
+                1 or 3 or 5 or 6 => [2],
+                2 => [3],
+                4 => [7],
+                _ => [2]
+            },
+            _ => [2, 1]
+        };
+    }
+
     public static IReadOnlyDictionary<(string Id, string Type), int> Load(string path,
         IReadOnlyDictionary<(string Id, string Type), int>? builtInChoices = null)
     {

@@ -1620,7 +1620,7 @@ def register_actions(mcp, execute, host_provider) -> None:
 
     @action
     async def revit_place_views_on_sheet(
-        sheet: Name,
+        sheet: Name | ElementId,
         views: Annotated[list[SheetPlacement], Field(min_length=1)],
         dry_run: bool = False,
         document: Document = None,
@@ -1629,7 +1629,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         placements = [{"view": item.view, "xMm": item.x_mm, "yMm": item.y_mm} for item in views]
         return await send(
             "place-views-on-sheet",
-            sheet=sheet,
+            sheet=str(sheet),
             placements=placements,
             dryRun=dry_run,
             document=document,
