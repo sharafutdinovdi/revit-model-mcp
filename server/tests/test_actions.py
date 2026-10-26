@@ -2447,3 +2447,69 @@ def test_my_tools_maps_typed_args_and_enforces_utf8_source_limit():
             )
         )
     execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize("command", ["get-tool", "save-tool", "list-tools"])
+def test_my_tools_redaction_preserves_definition_previews(command):
+    definition = {
+        "code": r'return @"\\server\share\file.txt";',
+        "description": r"Review C:\Private\file.txt",
+        "parameters": json.dumps({"description": r"C:\Private\file.txt"}),
+    }
+    data = {"tools": [definition]} if command == "list-tools" else {"tool": definition}
+    response = {
+        "command": command,
+        "data": {**data, "summary": r"Model C:\Private\Model.rvt"},
+        "progress": {"currentPath": r"C:\Private\Model.rvt"},
+        "returnValue": {"tool": {"path": r"C:\Private\Model.rvt"}},
+    }
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        redacted = redact_model_paths(response)
+    assert redacted["data"] == {**data, "summary": "Model Model.rvt"}
+    assert redacted["progress"]["currentPath"] == "Model.rvt"
+    assert redacted["returnValue"]["tool"]["path"] == "Model.rvt"
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_my_tools_first_session_challenge_is_forwarded_for_read_and_dry_run(dry_run):
+    import asyncio
+
+    server, execute, _ = action_server()
+    challenge = {
+        "success": True,
+        "data": {
+            "needsConfirmation": True,
+            "confirmToken": "session-review",
+            "confirmationText": "Run count_tool, mode read, revision abc, saved today. Validated args: {}",
+        },
+    }
+    execute.side_effect = [challenge, {"success": True, "data": {"returnValue": 2}}]
+    arguments = {"name": "count_tool", "args": {}, "dry_run": dry_run}
+    first = asyncio.run(server.call_tool("revit_run_tool", arguments))
+    assert "session-review" in str(first)
+    asyncio.run(
+        server.call_tool("revit_run_tool", {**arguments, "confirm_token": "session-review"})
+    )
+    assert execute.await_args.args[0].payload["confirmToken"] == "session-review"
+    assert execute.await_args.args[0].payload["dryRun"] is dry_run
+
+
+def test_my_tools_invalid_catalog_entries_and_delete_are_forwarded():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.return_value = {
+        "success": True,
+        "data": {
+            "tools": [{"name": "valid_tool"}],
+            "invalid": [{"name": "broken_tool", "reason": "revision not approved"}],
+        },
+    }
+    result = asyncio.run(server.call_tool("revit_list_tools", {}))
+    assert "valid_tool" in str(result)
+    assert "broken_tool" in str(result)
+    assert "revision not approved" in str(result)
+    execute.return_value = {"success": True, "data": {"needsConfirmation": True}}
+    asyncio.run(server.call_tool("revit_delete_tool", {"name": "broken_tool"}))
+    assert execute.await_args.args[0].command == "delete-tool"
+    assert execute.await_args.args[0].payload["name"] == "broken_tool"

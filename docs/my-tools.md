@@ -53,12 +53,17 @@ Source is limited to 256 KB UTF-8, and the active catalog holds at most 200 tool
 
 `revit_list_tools` lists names, descriptions, parameters, modes, revisions, tested years, authors, and revision dates without source.
 `revit_get_tool(name)` returns the full active revision for review.
+The list returns valid entries in `tools` and damaged folders in `invalid`, with a name and generic reason.
+A damaged folder does not prevent listing or confirmed deletion, and cannot run.
 The `parameters` field in workstation responses contains JSON schema text.
 
 `revit_run_tool(name, args, dry_run, confirm_token)` validates arguments and verifies approval before compilation or execution.
 Action mode uses the same confirmation flow as `revit_execute_code`: a first real call runs nothing and returns a token, and a confirmed retry runs the identical revision and arguments.
-A dry run executes and rolls back model changes without a token.
-Read mode always rolls back the model transaction and requires no run token.
+The first run of every name and revision hash in each Revit process requires a `confirm_token`, including read mode and dry runs.
+The confirmation shows the tool name, mode, short revision hash, saved timestamp, replaced revision hash when present, and validated arguments truncated to 300 characters.
+After a confirmed run, read mode and dry runs require no further token for that revision in that session.
+Action runs that commit changes still require confirmation for each call.
+Read mode and dry runs roll back model changes.
 Both modes require an open target document and use `document` for addressing.
 The script cannot own the transaction.
 A committed model change has one undo entry named `Model MCP: <tool name>`, an Activity record, and a summary.
@@ -71,7 +76,9 @@ Resubmitting can repeat that change.
 
 The **My tools** ribbon button opens without a document.
 The static window has no animation and uses 0 ms transitions.
-Its list shows name, description, mode, short revision, tested Revit years, and updated date.
+Its list shows name, description, mode, short revision, tested Revit years, and Saved timestamp.
+Replacement rows show `Replaced <old hash> on <date>`.
+Invalid rows show `not approved` and allow deletion with confirmation.
 **Show code** opens a read-only source and parameter viewer.
 **Delete** uses a Revit confirmation dialog with No selected by default.
 Tools run through the MCP client; the ribbon has no run command.
@@ -88,7 +95,9 @@ Revisions live under `%LOCALAPPDATA%\RevitModelMcp\tools\<name>\<revision>.json`
 The `active` file selects one revision.
 Writes use temporary files, flush to disk, and atomically replace each destination.
 A store lock serializes saves and deletions across Revit processes.
-New revisions retain earlier source files.
+Each tool retains at most 20 revisions.
+Saves delete the oldest non-active revisions above that limit.
+Lock acquisition retries for up to two seconds and then reports `My tools store is busy` without a path.
 The revision hash covers source normalized to LF line endings with outer whitespace removed and one final newline.
 Approval also covers metadata and schema with a store-local HMAC signature.
 A changed source, signature, schema, mode, or pointer causes `revision not approved` at run time.
@@ -102,8 +111,22 @@ The workstation read-only lock blocks saving, deleting, and running tools, inclu
 List and review remain available while locked.
 All saved tool commands inherit `ExecuteCode`, channel defaults, and restrictions on `execute-code` in addition to their own tool policies.
 An administrator's policy cannot be lifted through chat or ribbon.
-Source and response path redaction follow the existing execution pipeline.
+Response path redaction preserves tool source, parameters, and description in save and get previews.
+Model paths elsewhere in responses remain redacted.
+Tool run audit lines record name, revision, and argument names without argument values.
+Validation rejects Unicode Format characters in source, names, descriptions, and parameter names.
 Saved source itself remains local user data and must not contain credentials.
+
+## My tools threat model
+
+Approval protects against silent tool replacement between sessions by requiring a first-run confirmation in every Revit session.
+The confirmed set exists only in Revit process memory, keyed by tool name and revision hash.
+Saving a revision with a valid HMAC does not add it to that set.
+The approval key is readable by code executing as the Windows user.
+Approval does not protect against a client that can already execute code in the current session.
+`execute_code` dry-run semantics remain unchanged; rollback covers Revit model changes and does not sandbox file or network access.
+Internal `ToolStore` and `ToolDefinition` types prevent direct script calls through the Core assembly surface as defense in depth, not as a security guarantee.
+My tools use the same machine policy, workstation read-only lock, transport authentication, and execution gates as `execute_code`.
 
 ## Verification
 

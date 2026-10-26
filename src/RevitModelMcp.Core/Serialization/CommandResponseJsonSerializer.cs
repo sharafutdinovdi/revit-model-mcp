@@ -10,8 +10,6 @@ namespace RevitModelMcp.Core.Serialization;
 
 public static class CommandResponseJsonSerializer
 {
-    private static readonly DataContractJsonSerializer StringSerializer = new(typeof(string));
-
     private static class ResponseSerializer<T>
     {
         internal static readonly DataContractJsonSerializer Instance = new(
@@ -23,16 +21,26 @@ public static class CommandResponseJsonSerializer
             });
     }
 
-    public static string RedactPaths(string json) => Regex.Replace(json, "\"(?:\\\\.|[^\"\\\\])*\"", match =>
+    public static string RedactPaths(string json)
     {
-        using var input = new MemoryStream(Encoding.UTF8.GetBytes(match.Value));
-        var value = (string)StringSerializer.ReadObject(input)!;
-        value = Regex.Replace(value, @"(?:(?<![A-Za-z])[A-Za-z]:[\\/]|\\\\|RSN://)[^""'\r\n,;<>|]+",
-            path => Path.GetFileName(path.Value.Replace('\\', '/')));
+        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json), System.Xml.XmlDictionaryReaderQuotas.Max);
+        var root = System.Xml.Linq.XElement.Load(reader);
+        var tool = root.Element("data")?.Element("tool");
+        var tools = root.Element("data")?.Element("tools");
+        foreach (var element in root.DescendantsAndSelf().Where(element => (string?)element.Attribute("type") == "string"))
+        {
+            var name = (string?)element.Attribute("item") ?? element.Name.LocalName;
+            if (name is "code" or "parameters" or "description" &&
+                (tool is not null && element.Parent == tool || tools is not null && element.Parent?.Parent == tools)) continue;
+            element.Value = Regex.Replace(element.Value, @"(?:(?<![A-Za-z])[A-Za-z]:[\\/]|\\\\|RSN://)[^""'\r\n,;<>|]+",
+                path => Path.GetFileName(path.Value.Replace('\\', '/')));
+        }
+        foreach (var element in root.DescendantsAndSelf().Where(element => (string?)element.Attribute("type") == "null"))
+            element.RemoveNodes();
         using var output = new MemoryStream();
-        StringSerializer.WriteObject(output, value);
+        using (var writer = JsonReaderWriterFactory.CreateJsonWriter(output, Encoding.UTF8, false)) root.WriteTo(writer);
         return Encoding.UTF8.GetString(output.ToArray());
-    });
+    }
 
     public static string Serialize<T>(CommandResponse<T> response)
     {

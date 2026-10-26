@@ -226,7 +226,7 @@
     },
     {
       "name": "revit_run_tool",
-      "description": "Run a saved revision. Action needs confirm_token except dry_run; read and dry_run roll back. Uses execute_code gates and user rights. Timeouts may follow commit; revit_jobs polls."
+      "description": "Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates. Timeouts may follow commit."
     },
     {
       "name": "revit_delete_tool",

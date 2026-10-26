@@ -663,17 +663,20 @@ def redact_model_paths(value: Any) -> Any:
     if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return value
 
-    def scrub(item: Any, text_field: bool = False) -> Any:
+    def scrub(item: Any, text_field: bool = False, path: tuple[str, ...] = ()) -> Any:
         if isinstance(item, dict):
             return {
-                key: PureWindowsPath(nested).name
+                key: nested
+                if path in {("data", "tool"), ("data", "tools", "[]")}
+                and key in {"code", "parameters", "description"}
+                else PureWindowsPath(nested).name
                 if key in {"documentPath", "path", "currentPath", "centralPath", "folder", "saved"}
                 and isinstance(nested, str)
-                else scrub(nested, key in _TEXT_FIELDS)
+                else scrub(nested, key in _TEXT_FIELDS, (*path, key))
                 for key, nested in item.items()
             }
         if isinstance(item, list):
-            return [scrub(nested, text_field) for nested in item]
+            return [scrub(nested, text_field, (*path, "[]")) for nested in item]
         if text_field and isinstance(item, str):
             return _WINDOWS_PATH.sub(lambda match: PureWindowsPath(match.group()).name, item)
         return item
@@ -1119,7 +1122,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         ] = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Run a saved revision. Action needs confirm_token except dry_run; read and dry_run roll back. Uses execute_code gates and user rights. Timeouts may follow commit; revit_jobs polls."""
+        """Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates. Timeouts may follow commit."""
         return await send(
             "run-tool",
             name=name,
