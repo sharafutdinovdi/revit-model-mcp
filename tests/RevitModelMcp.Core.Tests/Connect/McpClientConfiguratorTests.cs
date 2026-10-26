@@ -13,6 +13,17 @@ public sealed class McpClientConfiguratorTests
         temp.Combine(".codex", "config.toml"), McpConfigFormat.Toml);
 
     [Test]
+    public async Task CodexRestartNamesDesktopAppAndCli()
+    {
+        await Assert.That(RevitModelMcp.Connect.ConnectText.Added("Codex", null)).IsEqualTo(
+            "Added to Codex. Restart Codex (the ChatGPT app or the codex CLI) to load it.");
+        await Assert.That(RevitModelMcp.Connect.ConnectText.Updated("Codex", null)).IsEqualTo(
+            "Updated in Codex. Restart Codex (the ChatGPT app or the codex CLI) to load it.");
+        await Assert.That(RevitModelMcp.Connect.ConnectText.Added("Cursor", null)).IsEqualTo(
+            "Added to Cursor. Restart Cursor to load it.");
+    }
+
+    [Test]
     public async Task MissingFolderIsNotInstalledAndAddRefuses()
     {
         using var temp = new TempDirectory();
