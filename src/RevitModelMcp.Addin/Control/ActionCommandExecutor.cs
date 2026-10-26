@@ -916,7 +916,8 @@ internal static class ActionCommandExecutor
             action.ElementIds = ids.Select(RevitValueReader.GetId).ToList();
         }
         skips.InGroup.Sort();
-        var group = wrapGroup ? new TransactionGroup(document, "MCP action") : null;
+        var group = wrapGroup || command == "move" && action.DryRun
+            ? new TransactionGroup(document, "MCP action") : null;
         if (group is not null && group.Start() != TransactionStatus.Started)
             throw new InvalidOperationException("Could not start the action transaction group.");
         var changedElementCount = 0;
@@ -945,10 +946,17 @@ internal static class ActionCommandExecutor
                 // Revit removes more elements at commit (empty groups, dimensions) than Delete returns.
                 var deletionSnapshot = command == "delete" && !action.DryRun ? SnapshotElementIds(document) : null;
                 var data = Mutate(document, command, action, ids, preflight);
+                // Move previews process commit-time failures inside a group that is rolled back.
+                if (command == "move")
+                {
+                    document.Regenerate();
+                    if (transaction.Commit() != TransactionStatus.Committed)
+                        throw new InvalidOperationException(failures.Message ?? "The move transaction was rolled back.");
+                }
                 var changedIds = ids;
                 if (poses is not null)
                 {
-                    document.Regenerate();
+                    if (command != "move") document.Regenerate();
                     changedIds = [];
                     for (var index = 0; index < ids.Count; index++)
                     {
@@ -961,7 +969,8 @@ internal static class ActionCommandExecutor
                     }
                     if (changedIds.Count == 0)
                         throw new InvalidOperationException(TransformSkipPolicy.NoneChangedMessage(command, requestedCount, skips));
-                    data.Count = changedIds.Count;
+                    data.Count = command == "move"
+                        ? TransformSkipPolicy.ChangedCount(requestedCount, skips) : changedIds.Count;
                     data.Verification = new ActionVerification { Changed = changedIds.Select(RevitValueReader.GetId).ToList() };
                 }
                 if (TransformSkipPolicy.Total(skips) > 0)
@@ -994,7 +1003,7 @@ internal static class ActionCommandExecutor
                     ConfirmationStore.Gate("delete", identity, deleteArguments, ConfirmationStore.State(document),
                         action.ConfirmToken, string.Empty, string.Empty, changedMessage);
                 }
-                document.Regenerate();
+                if (command != "move") document.Regenerate();
                 ActionVerifier.CaptureAfter(document, command, action, data);
                 CaptureViewSheetAfter(document, command, action, data);
                 if (action.DryRun && command == "set-parameter")
@@ -1002,15 +1011,16 @@ internal static class ActionCommandExecutor
                 data.Summary = BuildSummary(command, action, data, document.Title, changedIds);
                 if (action.DryRun)
                 {
-                    // Dry runs must never commit: some deletions are irreversible.
-                    if (transaction.RollBack() != TransactionStatus.RolledBack)
+                    // Other dry runs never commit: some deletions are irreversible.
+                    if (command != "move" && transaction.RollBack() != TransactionStatus.RolledBack)
                         throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
                     data.RolledBack = true;
-                    group?.RollBack();
+                    if (group is not null && group.RollBack() != TransactionStatus.RolledBack)
+                        throw new InvalidOperationException("Could not roll back the dry-run transaction group.");
                 }
                 else
                 {
-                    if (transaction.Commit() != TransactionStatus.Committed)
+                    if (command != "move" && transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
                     if (counting && changedElementCount == 0)
                     {
@@ -1066,10 +1076,32 @@ internal static class ActionCommandExecutor
                 throw;
             }
         }
-        catch
+        catch (Exception exception)
         {
             if (group is not null && group.GetStatus() == TransactionStatus.Started) group.RollBack();
-            throw;
+            if (command != "move" || !wrapGroup) throw;
+            foreach (var id in ids.Select(RevitValueReader.GetId))
+                if (!(skips.Hosted?.Contains(id) == true || skips.Constrained?.Contains(id) == true))
+                    TransformSkipPolicy.Add(skips, TransformSkipReason.Constrained, id);
+            var error = $"Could not move elements {string.Join(", ", ids.Select(RevitValueReader.GetId))}: {exception.Message} Nothing was changed.";
+            return new ActionResultData
+            {
+                Count = TransformSkipPolicy.ChangedCount(requestedCount, skips),
+                Skipped = skips,
+                DryRun = action.DryRun,
+                RolledBack = true,
+                Committed = false,
+                CodeError = error,
+                Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                {
+                    Command = command,
+                    DocumentTitle = document.Title,
+                    Count = 0,
+                    DryRun = action.DryRun
+                }),
+                Warning = TransformSkipPolicy.Warning(skips),
+                Verification = new ActionVerification { Changed = [] }
+            };
         }
         finally
         {
@@ -1143,7 +1175,8 @@ internal static class ActionCommandExecutor
     {
         var count = command switch
         {
-            "move" or "rotate" or "change-type" or "select" or "isolate" or "override-graphics" => ids?.Count ?? 0,
+            "move" => data.Count ?? 0,
+            "rotate" or "change-type" or "select" or "isolate" or "override-graphics" => ids?.Count ?? 0,
             "copy" or "mirror" or "update-parameters" => data.Count ?? 0,
             "show" => data.Count ?? ids?.Count ?? 0,
             "delete" => data.Verification?.Changed?.Count ?? ids?.Count ?? 0,
@@ -1397,7 +1430,8 @@ internal static class ActionCommandExecutor
                     continue;
                 }
 
-                errors.Add(description);
+                var failingIds = failure.GetFailingElementIds().Select(RevitValueReader.GetId);
+                errors.Add($"{description} (element ids: {string.Join(", ", failingIds)})");
                 if (disposition == ActionFailureDisposition.ResolveError)
                 {
                     try
