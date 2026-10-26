@@ -59,7 +59,8 @@ Signing starts with the first release after the project's application is approve
 ### The Model MCP ribbon tab
 
 The **Model MCP** tab contains the **Model MCP** panel.
-Press F1 while the pointer is on a button to open its help page.
+Command buttons provide contextual help through F1.
+The Read-only toggle has an expanded tooltip with its lock scope and policy rules.
 
 - **Model MCP** opens the product menu.
 - **About** shows the product version, Revit year, update channel, and project links.
@@ -67,9 +68,14 @@ Press F1 while the pointer is on a button to open its help page.
 - **Settings** opens `%LOCALAPPDATA%\RevitModelMcp` in Explorer for local settings and policy files.
 - **Connect AI app** registers the server in the AI apps on this computer; see [Connect an AI app](#connect-an-ai-app).
 - **Activity** shows or hides the activity pane.
+- **Read-only** toggles one workstation lock for all running Revit versions under the current Windows user.
+  While locked, Model MCP reads models and refuses actions.
+  The button shows the lock state and becomes disabled when workstation policy enforces read-only mode.
+  `revit_set_read_only` controls the same lock; turning it off from chat requires explicit confirmation.
+  Ribbon and chat controls cannot override machine policy.
 - **Help** opens the installation documentation.
 - **Report issue** opens the GitHub issue chooser.
-- **Support developer** opens the project's contribution page.
+- **Support developer** opens the project's Ko-fi page.
 
 Document tabs show a 3 px blue border while Model MCP works in that document.
 Actions activate it immediately. Reads activate it after 1 second.

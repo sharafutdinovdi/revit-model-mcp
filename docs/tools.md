@@ -1,4 +1,8 @@
-# Read tool reference
+# Tool reference
+
+The default tool list contains 84 tools, about 26,450 tokens.
+The `core,read` selection contains 22 tools, about 6,730 tokens.
+These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
 ## Toolsets
 
@@ -12,7 +16,7 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 
 | Toolset | Tools |
 | --- | --- |
-| `core` | `revit_ping`, `revit_list_instances`, `revit_documents`, `revit_document_info`, `revit_ui_state`, `revit_jobs`, `revit_cancel_job`, `revit_undo_last` |
+| `core` | `revit_ping`, `revit_list_instances`, `revit_documents`, `revit_document_info`, `revit_ui_state`, `revit_set_read_only`, `revit_jobs`, `revit_cancel_job`, `revit_undo_last` |
 | `read` | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations`, `revit_model_health`, `revit_model_audit`, `revit_list_warnings`, `revit_links_status`, `revit_shared_coordinates`, `revit_parameter_fill_check`, `revit_model_snapshot`, `revit_schedule_data` |
 | `actions` | `revit_set_parameter`, `revit_update_parameters`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_delete`, `revit_run_actions` |
 | `documents` | `revit_open_document`, `revit_activate_document`, `revit_new_document`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |

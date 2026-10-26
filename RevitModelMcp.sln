@@ -26,6 +26,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitModelMcp.Updater", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitModelMcp.BatchSupervisor", "src\RevitModelMcp.BatchSupervisor\RevitModelMcp.BatchSupervisor.csproj", "{A6DD43AB-C339-4E93-9D45-31B2B9756F12}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RevitModelMcp.Addin.Tests", "tests\RevitModelMcp.Addin.Tests\RevitModelMcp.Addin.Tests.csproj", "{D85160C9-69EC-46D5-B195-8F5CE0212793}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug.R22|Any CPU = Debug.R22|Any CPU
@@ -40,6 +42,18 @@ Global
 		Release.R26|Any CPU = Release.R26|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Debug.R22|Any CPU.ActiveCfg = Debug.R22|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Debug.R23|Any CPU.ActiveCfg = Debug.R23|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Debug.R24|Any CPU.ActiveCfg = Debug.R24|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Debug.R25|Any CPU.ActiveCfg = Debug.R25|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Debug.R26|Any CPU.ActiveCfg = Debug.R26|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Debug.R27|Any CPU.ActiveCfg = Debug.R27|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Release.R22|Any CPU.ActiveCfg = Release.R22|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Release.R23|Any CPU.ActiveCfg = Release.R23|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Release.R24|Any CPU.ActiveCfg = Release.R24|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Release.R25|Any CPU.ActiveCfg = Release.R25|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Release.R26|Any CPU.ActiveCfg = Release.R26|Any CPU
+		{D85160C9-69EC-46D5-B195-8F5CE0212793}.Release.R27|Any CPU.ActiveCfg = Release.R27|Any CPU
 		{6C9288BA-A6A8-49DD-858A-2AA547311629}.Debug.R22|Any CPU.ActiveCfg = Debug|Any CPU
 		{6C9288BA-A6A8-49DD-858A-2AA547311629}.Debug.R23|Any CPU.ActiveCfg = Debug|Any CPU
 		{6C9288BA-A6A8-49DD-858A-2AA547311629}.Debug.R24|Any CPU.ActiveCfg = Debug|Any CPU
@@ -152,6 +166,7 @@ Global
 		{A6DD43AB-C339-4E93-9D45-31B2B9756F12}.Release.R26|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{D85160C9-69EC-46D5-B195-8F5CE0212793} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{6C9288BA-A6A8-49DD-858A-2AA547311629} = {FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}
 		{FBA9C274-55AD-46A0-9524-3962FE1E55A1} = {FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF}
 		{3577BD3C-A32F-4985-99B5-FD7BBC07516B} = {B8EFCA5F-814F-285C-A8CB-F00F14650265}

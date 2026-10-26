@@ -12,22 +12,6 @@ Every change is one named undo entry in Revit, and read-only mode is one switch 
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) [![Codecov](https://codecov.io/gh/sharafutdinovdi/revit-model-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/sharafutdinovdi/revit-model-mcp) [![PyPI](https://img.shields.io/pypi/v/revit-model-mcp?style=flat-square)](https://pypi.org/project/revit-model-mcp/) ![Revit 2022-2027](https://img.shields.io/badge/Revit-2022--2027-368EF5?style=flat-square) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sharafutdinovdi/revit-model-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/sharafutdinovdi/revit-model-mcp) [![MIT](https://img.shields.io/badge/license-MIT-5C6F88?style=flat-square)](LICENSE)
 <!-- best practices badge: add after the project id exists -->
 
-<img alt="Claude Desktop conversation on the left, Revit 2026 on the right: Claude reads the open model, finds the largest room, opens its plan and selects it, isolates it, places a chair and moves it, then cleans up" src="docs/screenshots/revit-model-mcp_claude-desktop.gif" width="100%">
-
-Claude Desktop runs on a Mac and connects to Revit 2026 on a Windows workstation.
-Actions are enabled in this recording.
-
-<details markdown="1">
-<summary>What happens in the recording</summary>
-
-1. "What model is open in Revit right now?" The client reads the document, levels and room counts.
-2. "Which level has the most room area? Find the largest room and show it to me." The client aggregates room areas by level and queries the largest room.
-   `revit_show` opens a matching plan and selects the room.
-3. "Isolate that room, place a Chair-Breuer at its centre and move it 800 mm along X." `revit_isolate`, then `revit_place_family` at the room's `roomCenterMm`, then `revit_move`. Each mutation is its own Revit transaction.
-4. Cleanup afterwards is one more sentence: reset the view, delete the chair.
-
-</details>
-
 ## Quick start
 
 You need two parts: the add-in inside Revit on Windows, and the server next to your MCP client.
@@ -93,6 +77,29 @@ Report bugs in [Issues](https://github.com/sharafutdinovdi/revit-model-mcp/issue
 - **Installs like normal software.** MSI installers, with deployment guides for SCCM, Intune and Group Policy.
 - **Works from a Mac.** MCP stdio runs through SSH to the Windows workstation, so no port opens.
 
+## Features in 2.0
+
+- **Model MCP ribbon tab.** The product menu contains About, Check for updates, and Settings.
+  The panel provides Connect AI app, Activity, Read-only, Help, Report issue, and Support developer.
+  Update checks depend on the release channel.
+  Buttons have contextual help and themed tooltips.
+  See the [ribbon guide](docs/install.md#the-model-mcp-ribbon-tab).
+- **Workstation read-only lock.** The ribbon and `revit_set_read_only` control one lock across running Revit versions for the Windows user.
+  Chat unlock requires explicit confirmation.
+  Machine policy remains enforced.
+- **Model audits.** `revit_model_audit` checks one model against YAML, JSON, inline rules, or a builtin pack.
+  Saved results support history comparisons.
+  `revit_audit_report` produces XLSX and HTML reports.
+  See [model audit](docs/model-audit.md).
+- **Sheet inspection.** `revit_list_sheets` reads sheets, title blocks, revisions, placed views, and unplaced views.
+- **Revit API lookup.** `revit_api_lookup` reads public types and members from the running Revit API before C# execution.
+- **Progress notifications.** Clients that supply a progress token receive queue state, Revit API availability, and batch step counters during long requests.
+  See [progress notifications](docs/transport.md#progress-notifications).
+- **Document tab highlight.** A border marks the document handling MCP work and clears after completion.
+  The [ribbon guide](docs/install.md#the-model-mcp-ribbon-tab) covers timing and settings.
+- **Reusable skills.** Coordinator, daily QA, sheet set, and ISO 19650 issue register workflows ship in the repository.
+  See [prompts and skills](#prompts-and-skills).
+
 ## Try these prompts
 
 Paste any of these into your MCP client with a model open in Revit.
@@ -131,12 +138,6 @@ The tables list every tool by name; the [tool reference](https://sharafutdinovdi
 
 Read the model, find problems and show them in Revit.
 Reads change nothing in the document.
-Exported pictures are the PNG files saved by `revit_export_view`; the image below is one of them, untouched.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/revit-model-mcp_export-view_dark.png">
-  <img alt="View exported by revit_export_view from the Revit sample project" src="docs/screenshots/revit-model-mcp_export-view_light.png" width="100%">
-</picture>
 
 <details markdown="1">
 <summary>Tools for reviewing a model</summary>
@@ -145,9 +146,9 @@ Exported pictures are the PNG files saved by `revit_export_view`; the image belo
 | --- | --- |
 | Check the connection and open documents | `revit_ping`, `revit_ui_state`, `revit_documents`, `revit_document_info`, `revit_list_instances` |
 | Find and count elements | `revit_list_catalog`, `revit_aggregate_elements`, `revit_query_elements`, `revit_element_details`, `revit_list_relations` |
-| Read views and schedules | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_schedule_data` |
+| Read views and schedules | `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_schedule_data`, `revit_list_sheets` |
 | Read warnings | `revit_list_warnings`, `revit_view_warnings` |
-| Check model quality | `revit_model_health`, `revit_parameter_fill_check`, `revit_family_audit` |
+| Check model quality | `revit_model_health`, `revit_parameter_fill_check`, `revit_family_audit`, `revit_model_audit` |
 | Get a picture | `revit_export_view`, `revit_capture_elements` |
 | Point at things in Revit | `revit_activate_view`, `revit_select`, `revit_show`, `revit_isolate`, `revit_override_graphics` |
 
@@ -189,7 +190,7 @@ See [safety](#safety).
 | Tag elements and create schedules | `revit_tag_elements`, `revit_create_schedule` |
 | Open, save and close documents | `revit_open_document`, `revit_new_document`, `revit_activate_document`, `revit_close_views`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
 | Export files | `revit_export` |
-| Run C# in Revit | `revit_execute_code` |
+| Look up the API and run C# in Revit | `revit_api_lookup`, `revit_execute_code` |
 | Undo | `revit_undo_last` |
 
 </details>
@@ -223,6 +224,7 @@ Snapshots also let you audit models later without Revit running.
 | Take a snapshot of a model | `revit_model_snapshot` |
 | Write an issue register | `revit_issue_register` |
 | Build a report from snapshots | `revit_build_report` |
+| Report saved audit results | `revit_audit_report` |
 
 </details>
 
@@ -234,6 +236,10 @@ For Claude Desktop, zip that skill folder and upload it as a skill.
 
 The hand-written [ISO 19650 issue register skill](skills/iso19650-issue-register/SKILL.md) reviews a model against EIR/BEP requirements and writes an Excel register with element snapshots.
 Install it the same way: copy `skills/iso19650-issue-register` into `~/.claude/skills/`, or zip the folder and upload it in Claude Desktop.
+
+The [daily QA skill](skills/revit-daily-qa/SKILL.md) checks model health, warnings, links, parameters, and families without changing the model.
+The [sheet set skill](skills/revit-sheet-set/SKILL.md) resolves a sheet list, confirms the layout, and creates sheets with placed views.
+Install either folder with the same copy or ZIP procedure.
 
 ## Safety
 
