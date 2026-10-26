@@ -268,6 +268,8 @@ public sealed class Application : ExternalApplication
 
     private void ConfigureRibbonButton(RibbonButton button, string icon, string tooltip, string description, string helpUrl)
     {
+        if (button is PushButton pushButton)
+            pushButton.SetAvailabilityController<ZeroDocumentAvailability>();
         _ribbonButtons.Add((button, icon));
         ApplyRibbonImages(button, icon);
         button.ToolTip = tooltip;
@@ -768,4 +770,10 @@ internal static class RibbonBranding
             PluginLog.Debug("Ribbon panel branding could not be applied.", exception);
         }
     }
+}
+
+[UsedImplicitly]
+public sealed class ZeroDocumentAvailability : IExternalCommandAvailability
+{
+    public bool IsCommandAvailable(UIApplication applicationData, CategorySet selectedCategories) => true;
 }
