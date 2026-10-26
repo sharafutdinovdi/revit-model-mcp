@@ -99,7 +99,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: server/uv.lock
       - name: Test server
-        run: uv run --frozen --with pytest==9.1.1 --with pytest-cov==7.1.0 pytest -q --cov=revit_model_mcp --cov-report=xml
+        run: uv run --frozen --with pytest==9.1.1 --with pytest-cov==7.1.0 --with hypothesis pytest -q --cov=revit_model_mcp --cov-report=xml
       - name: Upload Python coverage
         continue-on-error: true
         uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
