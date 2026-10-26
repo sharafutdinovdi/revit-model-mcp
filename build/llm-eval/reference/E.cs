@@ -1,0 +1,18 @@
+var document = ctx.Document;
+var manager = document.FamilyManager;
+var planes = new FilteredElementCollector(document).OfClass(typeof(ReferencePlane)).Cast<ReferencePlane>().ToArray();
+var centerX = planes.Single(plane => plane.Name == "Reference Plane 1");
+var centerY = planes.Single(plane => plane.Name == "Reference Plane 2");
+foreach (var plane in planes) plane.Pinned = false;
+ElementTransformUtils.MoveElement(document, centerX.Id, new XYZ(-ctx.FromMm(100), 0, 0));
+centerX.Name = "ORG_Center_X";
+centerY.Name = "ORG_Center_Y";
+centerX.get_Parameter(BuiltInParameter.DATUM_PLANE_DEFINES_ORIGIN).Set(1);
+centerY.get_Parameter(BuiltInParameter.DATUM_PLANE_DEFINES_ORIGIN).Set(1);
+manager.RenameParameter(manager.get_Parameter("w"), "ORG_Width");
+foreach (var plane in new[] { centerX, centerY, planes.Single(plane => plane.Name == "ORG_Bottom") }) plane.Pinned = true;
+manager.Set(manager.get_Parameter("ORG_Width"), ctx.FromMm(800));
+manager.Set(manager.get_Parameter("ORG_Depth"), ctx.FromMm(600));
+manager.Set(manager.get_Parameter("ORG_Height"), ctx.FromMm(500));
+document.Regenerate();
+return new { summary = "Repair origin and names while retaining geometry and parameter identities" };

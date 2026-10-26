@@ -203,6 +203,9 @@ CLI event formats follow the [Claude Agent SDK message types](https://github.com
 The profile uses independent Revit API probes in `family_verifier.py`, without an LLM judge or sequence score.
 The default limits are 120 agent calls and 1,800 seconds per scenario.
 The agent receives explicit family and project document identities; the proxy does not replace every target with the project.
+Document-free discovery permits `revit_documents`, `revit_ping`, `revit_list_instances`, `revit_ui_state`, and `revit_list_catalog`.
+An explicit document must still belong to the run.
+Harness refusals return a fixed explanation to the agent without exposing exception details.
 A CLI proxy shares the organizer's single upstream process through an authenticated loopback bridge.
 `--server-command` selects the agent server, including an installed bimwright rvt-mcp gateway.
 `--verifier-command` selects a separate Model MCP server for setup, probes, and cleanup when the agent uses another server.
@@ -248,7 +251,8 @@ The verifier runs after failed or timed-out agent responses and before cleanup.
 It checks family metadata, nominal types, three flex value sets, solids, labels, locked reference associations, visibility, host cut volume, reciprocal MEP connections, system membership, and the E report against seeded defect identities.
 Saved RFA copies reopen for a second family probe.
 Each check records status, expected and actual values, document identity, object IDs, and reason.
-Missing or malformed evidence yields `not_verified`.
+Missing, malformed, or failed evidence yields `fail` with a reason for every expected check.
+A probe can report `not_applicable` with a reason; calibration requires every reference check to pass.
 The artifact score counts passed checks; time, calls, tool errors, and approvals remain separate metrics.
 Probe and cleanup calls do not enter the agent call count.
 
@@ -271,3 +275,43 @@ The runner records training time and the index separately and never accepts a su
 This flag is transfer scaffolding; isolated catalogs, suggestion acceptance, three paired control/treatment repeats, and amortization remain workstation protocol steps.
 A failed training artifact is `blocked_training`; absent tool support or an empty index is `bake_unavailable`.
 No speedup is inferred from this flag alone.
+
+## Family verifier calibration
+
+`--calibrate` executes the fixed C# solutions in [reference/](reference/) without an LLM provider or credentials.
+Each selected scenario runs twice on separate fresh family/project copies: the reference, then the reference with its `.broken.cs` mutation.
+The shared [project.cs](reference/project.cs) places each family and connects the D duct through the connector-based `Duct.Create` overload.
+The same probes, saved-copy verification, native confirmations, and cleanup apply to both variants and agent runs.
+`--toolbaker` cannot be combined with calibration.
+
+```sh
+uv run build/llm-eval/run.py --profile family --calibrate \
+  --server-command 'ssh workstation model-mcp-command' \
+  --family-fixtures work/family-fixtures.json --document Organizer \
+  --scenarios A,B,C,D,E --out work/ws/v2/llm-eval-calibration
+```
+
+The CLI exits successfully only when every reference check passes, every mutation produces an explicit failure of its targeted check, and every run cleans up.
+Missing probe evidence cannot satisfy a negative control.
+The JSON records `calibration_variant`, `calibration_target`, `passed`, lifecycle calls, and raw probe responses.
+A low check score on a broken variant is expected; `passed` reports calibration success.
+
+| Scenario | Deliberate defect | Targeted check |
+| --- | --- | --- |
+| A | Left face alignment unlocked | `alignments` |
+| B | LegOffset formula removed | `formula` |
+| C | Small Width changed to 1000 mm | `types` |
+| D | Equipment disconnected from the duct | `connector_connected` |
+| E | Defines Origin disabled on ORG_Center_X | `rule_origin` |
+
+D interprets the design's `Out` requirement as the authored connector setting: `AssignedFlowDirection` must be `Out`.
+The final `Direction` is read after connection and regeneration and may be `Out` or `Bidirectional` in this open-ended teaching system.
+Autodesk defines [Direction](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/2b1dc55a-6597-7143-4af9-6e92e4c4d024.htm) as instantaneous and system-calculated; [AssignedFlowDirection](https://help.autodesk.com/cloudhelp/2026/ENU/Revit-API-MainReference/files/html/17222532-ea11-5ce8-9529-be2a17202693.htm) records the assigned setting.
+An assigned `In` or `Bidirectional`, or a final calculated `In`, fails.
+The reference uses connector-based duct creation; all authoring paths must satisfy the same final predicate.
+System membership checks the equipment in `MEPSystem.Elements` and the connected duct in `MechanicalSystem.DuctNetwork`.
+The reference fixtures calibrate the implemented oracle; the design coverage limitations above still apply.
+
+A and E pin only the central planes and Bottom.
+The outer planes remain movable under the labeled dimensions and locked face alignments.
+Pinning all outer planes prevents the required flex and is not part of the design's plane contract.

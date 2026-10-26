@@ -1424,7 +1424,7 @@ def test_family_verifier_result_parsing(wrapper):
 )
 def test_family_verifier_missing_or_ambiguous_evidence_never_passes(rows, error):
     result = FAMILY.parse_checks({"payload": {"checks": rows}, "error": error}, ["parameters"])
-    assert result[0]["status"] == "not_verified"
+    assert result[0]["status"] == "fail"
 
 
 def test_family_scoring_keeps_artifact_and_agent_errors_independent():
@@ -1506,7 +1506,7 @@ def test_family_post_verifier_runs_despite_agent_failure(monkeypatch, failure):
         )
     )
     assert [args["document"] for _, args in calls] == ["family", "project"]
-    assert any(row["check_id"] == "flex" and row["status"] == "not_verified" for row in rows)
+    assert any(row["check_id"] == "flex" and row["status"] == "fail" for row in rows)
 
 
 def test_family_document_routing_preserves_family_and_project(monkeypatch):
@@ -1675,7 +1675,7 @@ def test_family_verifier_errors_are_incomplete_checks(monkeypatch):
     rows = asyncio.run(
         eval_run.verify_family(None, FAMILY_SCENARIOS[3], "family", "project", {}, {})
     )
-    assert rows and all(row["status"] == "not_verified" for row in rows)
+    assert rows and all(row["status"] == "fail" for row in rows)
 
 
 @pytest.mark.parametrize("failure", [None, "CliError", "TimeoutError"])
@@ -1785,3 +1785,110 @@ def test_family_runner_prepares_fresh_fixtures_and_probes_before_cleanup(
     else:
         assert documents == {"Organizer"}
         assert all(run["cleanup"]["status"] == "cleaned" for run in result["runs"])
+
+
+@pytest.mark.parametrize("name", sorted(eval_run.DOCUMENT_FREE_DISCOVERY))
+@pytest.mark.parametrize("arguments", [{}, {"document": None}])
+def test_family_discovery_does_not_require_document(monkeypatch, name, arguments):
+    forwarded = []
+
+    async def call(session, tool, args):
+        forwarded.append((tool, args))
+        return {"error": False, "payload": {"discovered": True}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    tools = {
+        name: {
+            "read_only": True,
+            "schema": {"type": "object", "properties": {"document": {"type": ["string", "null"]}}},
+        }
+    }
+    scope = eval_run.family_scope([{"name": name}], ["family", "project"])
+    result = asyncio.run(
+        eval_run.execute_call(None, tools, {"tool": name, "args": arguments}, scope, "family")
+    )
+    assert not result["error"]
+    assert forwarded == [(name, arguments)]
+
+
+@pytest.mark.parametrize("name", ["revit_ping", "revit_read"])
+def test_family_refusal_returns_safe_explanation(monkeypatch, name):
+    async def unexpected(*args):
+        pytest.fail("Refused request reached upstream")
+
+    monkeypatch.setattr(eval_run, "call_mcp", unexpected)
+    tools = {name: {"read_only": True, "schema": {"properties": {"document": {"type": "string"}}}}}
+    scope = eval_run.family_scope([{"name": name}], ["family"])
+    result = asyncio.run(
+        eval_run.execute_call(
+            None, tools, {"tool": name, "args": {"document": "foreign"}}, scope, "family"
+        )
+    )
+    assert result["error"]
+    assert result["result"]["message"] == "Family calls require an explicit run-owned document"
+    assert "foreign" not in json.dumps(result["result"])
+
+
+def test_family_verifier_retains_every_expected_check_with_reason():
+    rows = [
+        check_row("labels", "pass"),
+        check_row("planes", "fail"),
+        check_row("optional", "not_applicable"),
+    ]
+    expected = ["labels", "planes", "optional", "alignments"]
+    parsed = FAMILY.parse_checks({"payload": {"checks": rows}, "error": False}, expected)
+    assert [row["check_id"] for row in parsed] == expected
+    assert [row["status"] for row in parsed] == ["pass", "fail", "not_applicable", "fail"]
+    assert all(row["reason"] for row in parsed)
+
+
+def test_family_calibrate_parser_needs_no_provider_credentials(monkeypatch, tmp_path):
+    monkeypatch.setenv(eval_run.SERVER_COMMAND_ENV, "fake-server")
+    args = eval_run.parse_args(
+        ["--profile", "family", "--family-fixtures", str(tmp_path / "fixtures.json"), "--calibrate"]
+    )
+    assert args.calibrate
+    assert not args.toolbaker
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--calibrate"],
+        ["--profile", "family", "--family-fixtures", "fixtures.json", "--calibrate", "--toolbaker"],
+    ],
+)
+def test_family_calibrate_parser_rejects_incompatible_modes(monkeypatch, options):
+    monkeypatch.setenv(eval_run.SERVER_COMMAND_ENV, "fake-server")
+    with pytest.raises(SystemExit):
+        eval_run.parse_args(options)
+
+
+def test_family_dimension_exception_still_emits_every_check(monkeypatch):
+    async def call(session, name, arguments):
+        if arguments["document"] == "family":
+            return {
+                "error": True,
+                "payload": {
+                    "message": "InvalidOperationException: This dimension can not be labeled"
+                },
+            }
+        return {"error": False, "payload": {"checks": [check_row("placement")]}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    run = {}
+    rows = asyncio.run(
+        eval_run.verify_family(None, FAMILY_SCENARIOS[0], "family", "project", run, {})
+    )
+    assert [row["check_id"] for row in rows] == FAMILY.expected_checks("A") + ["placement"]
+    assert all(row["status"] == "fail" and row["reason"] for row in rows[:-1])
+    assert rows[-1]["status"] == "pass"
+    assert "can not be labeled" in run["probes"][0]["result"]["payload"]["message"]
+
+
+@pytest.mark.parametrize("reason", ["", " ", None, 42])
+def test_family_verifier_requires_a_reason(reason):
+    row = {**check_row(), "reason": reason}
+    parsed = FAMILY.parse_checks({"error": False, "payload": {"checks": [row]}}, ["parameters"])
+    assert parsed[0]["status"] == "fail"
+    assert parsed[0]["reason"]

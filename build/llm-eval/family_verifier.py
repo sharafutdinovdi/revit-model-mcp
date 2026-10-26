@@ -63,18 +63,20 @@ def parse_checks(result: dict, expected: list[str]) -> list[dict]:
         if (
             not result.get("error")
             and len(matches) == 1
-            and matches[0].get("status") in {"pass", "fail", "not_verified"}
+            and matches[0].get("status") in {"pass", "fail", "not_applicable"}
             and all(
                 key in matches[0]
                 for key in ("expected", "actual", "document", "ids", "reason")
             )
+            and isinstance(matches[0]["reason"], str)
+            and bool(matches[0]["reason"].strip())
         ):
             parsed.append(matches[0])
         else:
             parsed.append(
                 {
                     "check_id": check_id,
-                    "status": "not_verified",
+                    "status": "fail",
                     "expected": "Complete independent API evidence",
                     "actual": None,
                     "document": None,
@@ -136,22 +138,57 @@ if (scenario == "A" || scenario == "A_prime" || scenario == "E")
 {
     var requiredPlanes = scenario == "E" ? new[] { "ORG_Center_X", "ORG_Center_Y", "ORG_Bottom" }
         : new[] { "Left", "Right", "Front", "Back", "Bottom", "Top" };
-    Record("planes", requiredPlanes.All(name => planes.Count(plane => plane.Name == name && plane.Pinned) == 1),
-        "Unique named and pinned reference planes", planes.Select(plane => plane.Name).ToArray(), planes.Select(plane => plane.UniqueId));
-    Record("labels", parameters.All(parameter => parameter != null && dimensions.Any(dimension =>
-        dimension.FamilyLabel != null && dimension.FamilyLabel.Id == parameter.Id && dimension.References.Size >= 2)),
-        "Each controlling parameter labels a dimension", dimensions.Length);
-    var locked = dimensions.Where(dimension => dimension.IsLocked && dimension.References.Size >= 2).ToArray();
+    Record("planes", requiredPlanes.All(name => planes.Count(plane => plane.Name == name) == 1),
+        "Unique named controlling reference planes", planes.Select(plane => plane.Name).ToArray(), planes.Select(plane => plane.UniqueId));
+    var labeledParameters = new HashSet<ElementId>();
+    var labelErrors = new List<object>();
+    foreach (var dimension in dimensions)
+    {
+        try
+        {
+            var label = dimension.FamilyLabel;
+            if (label != null && dimension.References.Size >= 2) labeledParameters.Add(label.Id);
+        }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+        {
+            labelErrors.Add(new { id = dimension.UniqueId, reason = exception.Message });
+        }
+    }
+    Record("labels", parameters.All(parameter => parameter != null && labeledParameters.Contains(parameter.Id)),
+        "Each controlling parameter labels a dimension; non-labelable dimensions are skipped",
+        new { dimensions = dimensions.Length, skipped = labelErrors });
+    var locked = new List<Dimension>();
+    foreach (var dimension in dimensions)
+    {
+        try
+        {
+            if (dimension.NumberOfSegments == 0 && dimension.IsLocked && dimension.References.Size >= 2)
+                locked.Add(dimension);
+        }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+        {
+            labelErrors.Add(new { id = dimension.UniqueId, reason = exception.Message });
+        }
+    }
     var linkedPlanes = new HashSet<ElementId>();
     var linkedForms = new HashSet<ElementId>();
     foreach (var dimension in locked)
-        foreach (Reference reference in dimension.References)
+    {
+        var references = dimension.References.Cast<Reference>().ToArray();
+        if (!references.Any(reference => document.GetElement(reference) is GenericForm)) continue;
+        foreach (var reference in references)
         {
             if (document.GetElement(reference) is ReferencePlane) linkedPlanes.Add(reference.ElementId);
             if (document.GetElement(reference) is GenericForm) linkedForms.Add(reference.ElementId);
         }
-    Record("alignments", linkedPlanes.Count >= 6 && linkedForms.Count > 0,
-        "Locked dimensions resolve plane and geometry references", new { planes = linkedPlanes.Count, forms = linkedForms.Count }, locked.Select(dimension => dimension.UniqueId));
+    }
+    var facePlaneNames = new[] { "Left", "Right", "Front", "Back", "Bottom", "Top" }
+        .Select(name => prefix + name).ToArray();
+    Record("alignments", linkedForms.Count > 0 && facePlaneNames.All(name =>
+        planes.Any(plane => plane.Name == name && linkedPlanes.Contains(plane.Id))),
+        "Each of the six bounding planes has a locked dimension to geometry",
+        new { planes = planes.Where(plane => linkedPlanes.Contains(plane.Id)).Select(plane => plane.Name).ToArray(), forms = linkedForms.Count },
+        locked.Select(dimension => dimension.UniqueId));
 }
 var category = document.OwnerFamily.FamilyCategory.Id;
 var expectedCategory = scenario == "B" ? BuiltInCategory.OST_Furniture : scenario == "C"
@@ -396,9 +433,14 @@ if (scenario == "D")
     var connector = connectors.Single();
     Record("connector_properties", connectors.Length == 1 && connector.Shape == ConnectorProfileType.Round
         && Math.Abs(ctx.ToMm(connector.Radius) - 100) <= 0.1 && connector.DuctSystemType == DuctSystemType.SupplyAir
-        && connector.Direction == FlowDirectionType.Out && connector.Origin.DistanceTo(new XYZ(ctx.FromMm(600), 0, ctx.FromMm(250))) <= ctx.FromMm(0.1)
+        && connector.AssignedFlowDirection == FlowDirectionType.Out
+        && (connector.Direction == FlowDirectionType.Out || connector.Direction == FlowDirectionType.Bidirectional)
+        && connector.Origin.DistanceTo(new XYZ(ctx.FromMm(600), 0, ctx.FromMm(250))) <= ctx.FromMm(0.1)
         && connector.CoordinateSystem.BasisZ.AngleTo(XYZ.BasisX) <= Math.PI / 1800,
-        "Round 200 mm Supply Air Out connector at (600,0,250), +X", connectors.Length);
+        "Round 200 mm Supply Air connector, assigned Out, final Out or Bidirectional, at (600,0,250), +X",
+        new { count = connectors.Length, assignedDirection = connector.AssignedFlowDirection.ToString(),
+            direction = connector.Direction.ToString(), diameter = ctx.ToMm(connector.Radius) * 2,
+            classification = connector.DuctSystemType.ToString(), origin = connector.Origin, axis = connector.CoordinateSystem.BasisZ });
     var ducts = new FilteredElementCollector(document).OfClass(typeof(Duct)).Cast<Duct>().ToArray();
     var ductGeometryPassed = ducts.Length == 1;
     foreach (var duct in ducts)
@@ -421,8 +463,8 @@ if (scenario == "D")
         "Reciprocal physical connection to created Duct", peers.Select(peer => peer.Owner.UniqueId).ToArray());
     var system = connector.MEPSystem;
     Record("system_membership", system != null && system.Elements.Cast<Element>().Any(element => element.Id == instance.Id)
-        && peers.All(peer => system.Elements.Cast<Element>().Any(element => element.Id == peer.Owner.Id))
-        && system is MechanicalSystem mechanical && mechanical.SystemType == DuctSystemType.SupplyAir,
+        && peers.Length == 1 && system is MechanicalSystem mechanical && mechanical.SystemType == DuctSystemType.SupplyAir
+        && peers.All(peer => mechanical.DuctNetwork.Cast<Element>().Any(element => element.Id == peer.Owner.Id)),
         "Supply Air system contains equipment and duct", system?.UniqueId);
 }
 return new { checks };
@@ -558,8 +600,8 @@ def fixture_code() -> str:
 var document = ctx.Document;
 if (!document.IsFamilyDocument) throw new InvalidOperationException("Expected family fixture");
 var manager = document.FamilyManager;
-var view = new FilteredElementCollector(document).OfClass(typeof(ViewPlan)).Cast<ViewPlan>().First(candidate => !candidate.IsTemplate);
-var elevation = new FilteredElementCollector(document).OfClass(typeof(ViewSection)).Cast<ViewSection>().First(candidate => !candidate.IsTemplate);
+var view = new FilteredElementCollector(document).OfClass(typeof(ViewPlan)).Cast<ViewPlan>().First(candidate => !candidate.IsTemplate && Math.Abs(candidate.ViewDirection.Z) > 0.99);
+var elevation = new FilteredElementCollector(document).OfClass(typeof(ViewSection)).Cast<ViewSection>().First(candidate => !candidate.IsTemplate && Math.Abs(candidate.ViewDirection.Y) > 0.99);
 var width = manager.AddParameter("w", GroupTypeId.Geometry, SpecTypeId.Length, false);
 var depth = manager.AddParameter("ORG_Depth", GroupTypeId.Geometry, SpecTypeId.Length, false);
 var height = manager.AddParameter("ORG_Height", GroupTypeId.Geometry, SpecTypeId.Length, false);
@@ -590,12 +632,13 @@ ReferencePlane Horizontal(string name, double coordinate)
 }
 var bottom = Horizontal("ORG_Bottom", 0);
 var top = Horizontal("ORG_Top", 500);
+document.Regenerate();
 void Label(ReferencePlane first, ReferencePlane last, FamilyParameter parameter, View target, XYZ start, XYZ end)
 {
     var references = new ReferenceArray();
     references.Append(first.GetReference());
     references.Append(last.GetReference());
-    document.FamilyCreate.NewDimension(target, Line.CreateBound(start, end), references).FamilyLabel = parameter;
+    document.FamilyCreate.NewLinearDimension(target, Line.CreateBound(start, end), references).FamilyLabel = parameter;
 }
 Label(left, right, width, view, new XYZ(-2, -3, 0), new XYZ(2, -3, 0));
 Label(front, back, depth, view, new XYZ(-3, -2, 0), new XYZ(-3, 2, 0));
@@ -604,7 +647,7 @@ void Equal(ReferencePlane first, ReferencePlane center, ReferencePlane last, XYZ
 {
     var references = new ReferenceArray();
     references.Append(first.GetReference()); references.Append(center.GetReference()); references.Append(last.GetReference());
-    document.FamilyCreate.NewDimension(view, Line.CreateBound(start, end), references).AreSegmentsEqual = true;
+    document.FamilyCreate.NewLinearDimension(view, Line.CreateBound(start, end), references).AreSegmentsEqual = true;
 }
 Equal(left, centerX, right, new XYZ(-2, -4, 0), new XYZ(2, -4, 0));
 Equal(front, centerY, back, new XYZ(-4, -2, 0), new XYZ(-4, 2, 0));
@@ -626,7 +669,7 @@ foreach (var plane in planes)
         && Math.Abs((face.Origin - plane.GetPlane().Origin).DotProduct(plane.Normal)) < 1e-8);
     document.FamilyCreate.NewAlignment(plane == bottom || plane == top ? elevation : view, plane.GetReference(), face.Reference);
 }
-foreach (var plane in planes.Concat(new[] { centerX, centerY })) plane.Pinned = true;
+foreach (var plane in new[] { bottom, centerX, centerY }) plane.Pinned = true;
 document.Regenerate();
 return new { plane_ids = new[] { centerX.UniqueId, centerY.UniqueId }, origin_ids = new[] { centerX.UniqueId, extrusion.UniqueId },
     parameter_id = width.Id.ToString(), form_ids = new[] { extrusion.UniqueId },

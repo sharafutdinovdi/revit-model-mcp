@@ -23,6 +23,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+DOCUMENT_FREE_DISCOVERY = {
+    "revit_documents",
+    "revit_ping",
+    "revit_list_instances",
+    "revit_ui_state",
+    "revit_list_catalog",
+}
+
+
+class CallRefused(ValueError):
+    """A fixed, safe explanation of a harness policy refusal."""
+
+
 SERVER_COMMAND_ENV = "RMM_EVAL_SERVER_COMMAND"
 DEFAULT_MODELS = {
     "openai": "gpt-6.1-sol",
@@ -784,7 +797,7 @@ async def execute_call(
     try:
         name = request["tool"]
         if scenario.get("profile") == "family" and name not in scenario["actions"]:
-            raise ValueError("Tool outside family scope")
+            raise CallRefused("Tool outside family scope")
         tool = available[name]
         arguments = request["args"]
         if isinstance(arguments, str):
@@ -794,8 +807,10 @@ async def execute_call(
         arguments = dict(arguments)
         if "document" in tool["schema"].get("properties", {}):
             if scenario.get("profile") == "family":
-                if arguments.get("document") not in scenario["documents"]:
-                    raise ValueError(
+                if arguments.get("document") not in scenario["documents"] and not (
+                    name in DOCUMENT_FREE_DISCOVERY and not arguments.get("document")
+                ):
+                    raise CallRefused(
                         "Family calls require an explicit run-owned document"
                     )
             else:
@@ -805,16 +820,16 @@ async def execute_call(
         if not tool["read_only"]:
             if scenario.get("read_only"):
                 entry["refused"] = True
-                raise ValueError(
+                raise CallRefused(
                     "Read-only evaluation: action refused. No change was sent."
                 )
             if name not in scenario["actions"]:
-                raise ValueError("Action outside scenario scope")
+                raise CallRefused("Action outside scenario scope")
             if (
                 name == "revit_execute_code"
                 and arguments.get("transaction", "auto") != "auto"
             ):
-                raise ValueError("API lookup scenario permits transaction=auto only")
+                raise CallRefused("API lookup scenario permits transaction=auto only")
         result = await call_mcp(session, name, arguments)
         entry.update(error=result["error"], result=result["payload"])
     except Exception as exc:  # noqa: BLE001 - Return tool failures to the model.
@@ -822,7 +837,10 @@ async def execute_call(
         entry.update(
             error=True,
             result={
-                "error": "read_only_refusal" if entry["refused"] else type(exc).__name__
+                "error": "read_only_refusal"
+                if entry["refused"]
+                else type(exc).__name__,
+                **({"message": str(exc)} if isinstance(exc, CallRefused) else {}),
             },
         )
     entry["seconds"] = time.perf_counter() - tick
@@ -1071,7 +1089,7 @@ def markdown(result: dict) -> str:
         ]
         for run in result["runs"]:
             lines.append(
-                f"| {run['scenario']} | {run['model']} | {run['checks_passed']}/{run['checks_total']} | {run['seconds']:.2f} | {run['calls']} | {run['tool_errors']} | {run['human_approvals']} | {run['cleanup']['status']} |"
+                f"| {run['scenario']}{':' + run['calibration_variant'] if run.get('calibration_variant') else ''} | {run['model']} | {run['checks_passed']}/{run['checks_total']} | {run['seconds']:.2f} | {run['calls']} | {run['tool_errors']} | {run['human_approvals']} | {run['cleanup']['status']} |"
             )
         return "\n".join(lines) + "\n"
     lines = [
@@ -1280,6 +1298,13 @@ async def verify_family(
             )
         except Exception:  # noqa: BLE001 - Probe failures remain separate from agent errors.
             result = {"error": True}
+        run.setdefault("probes", []).append(
+            {
+                "document": document,
+                "project": is_project,
+                "result": redact_confirmation(result),
+            }
+        )
         checks.extend(verifier.parse_checks(result, expected))
     if scenario["id"] == "E":
         checks.append(verifier.rule_report(run.get("answer", ""), manifest, family))
@@ -1321,6 +1346,67 @@ async def family_cleanup(
     return {"status": "cleaned" if removed else "failed", "evidence": evidence}
 
 
+async def run_reference(
+    required, scenario: dict, family: str, project: str, output: str, manifest: dict
+) -> dict:
+    """Execute fixed C# steps through the same native action/confirmation path."""
+    directory = Path(__file__).with_name("reference")
+    scenario_id = scenario["id"]
+    broken = scenario.get("calibration_variant") == "broken"
+    mutation = (directory / f"{scenario_id}.broken.cs").read_text()
+
+    async def execute(document, code):
+        return await required(
+            "revit_execute_code",
+            {
+                "document": document,
+                "transaction": "auto",
+                "code": code,
+            },
+        )
+
+    started = time.perf_counter()
+    await execute(family, (directory / f"{scenario_id}.cs").read_text())
+    if broken and "// @project" not in mutation:
+        await execute(family, mutation)
+    await required("revit_save_document", {"document": family, "save_as": output})
+    await required("revit_load_family", {"document": project, "paths": [output]})
+    project_code = (
+        (directory / "project.cs")
+        .read_text()
+        .replace("__NAME__", json.dumps(scenario["family_name"]))
+        .replace("__SCENARIO__", json.dumps(scenario_id))
+    )
+    await execute(project, project_code)
+    if broken and "// @project" in mutation:
+        await execute(project, mutation)
+    answer = "Reference C# solution"
+    if scenario_id == "E":
+        answer = json.dumps(
+            {
+                "before_violations": [
+                    {
+                        "rule_id": "R1",
+                        "defect_id": "origin",
+                        "element_unique_ids": manifest["origin_ids"],
+                    },
+                    {
+                        "rule_id": "R2",
+                        "defect_id": "plane_names",
+                        "element_unique_ids": manifest["plane_ids"],
+                    },
+                    {
+                        "rule_id": "R3",
+                        "defect_id": "parameter_name",
+                        "parameter_name": "w",
+                    },
+                ],
+                "after_violations": [],
+            }
+        )
+    return {"answer": answer, "seconds": time.perf_counter() - started}
+
+
 async def family_main(args: argparse.Namespace) -> dict:
     from pathlib import PureWindowsPath
 
@@ -1340,8 +1426,13 @@ async def family_main(args: argparse.Namespace) -> dict:
     root = fixtures["output_root"]
     verifier.cleanup_plan(root, [], [])
     provider_type = CliProvider if args.provider.endswith("-cli") else Provider
-    provider = provider_type(args.provider, args.model or DEFAULT_MODELS[args.provider])
+    provider = (
+        None
+        if args.calibrate
+        else provider_type(args.provider, args.model or DEFAULT_MODELS[args.provider])
+    )
     result = {
+        "calibration": args.calibrate,
         "profile": "family",
         "started": datetime.now(UTC).isoformat(),
         "provider": args.provider,
@@ -1385,6 +1476,12 @@ async def family_main(args: argparse.Namespace) -> dict:
                 break
         result["tool_schemas"] = tools
         queue = [scenario for scenario in scenarios if scenario["id"] in selected]
+        if args.calibrate:
+            queue = [
+                {**scenario, "calibration_variant": variant}
+                for scenario in queue
+                for variant in ("reference", "broken")
+            ]
         for scenario in queue:
             scenario_id = scenario["id"]
             fixture = fixtures["scenarios"][
@@ -1427,7 +1524,8 @@ async def family_main(args: argparse.Namespace) -> dict:
                 )
             run = {
                 "scenario": scenario_id,
-                "model": provider.model,
+                "model": "reference-csharp" if args.calibrate else provider.model,
+                "calibration_variant": scenario.get("calibration_variant"),
                 "trace": [],
                 "answer": "",
                 "failure": None,
@@ -1441,8 +1539,11 @@ async def family_main(args: argparse.Namespace) -> dict:
             agent_approval_start = len(approvals)
             try:
 
-                async def required(name, arguments):
+                async def required(name, arguments, run=run):
                     response = await family_call(oracle, name, arguments, approvals)
+                    run.setdefault("lifecycle", []).append(
+                        {"tool": name, "args": arguments, "result": response}
+                    )
                     if response["error"]:
                         raise RuntimeError("Fixture lifecycle capability unavailable")
                     data = result_data(response)
@@ -1530,7 +1631,19 @@ async def family_main(args: argparse.Namespace) -> dict:
                     prompt += "\nПосле успешной проверки предложи сохранить параметризованную процедуру как принятый инструмент. Используй только доступный штатный механизм сервера. Подтверждение человека обязательно. Перед вариантом A-prime проверь индекс принятых инструментов и используй подходящий инструмент с новыми размерами."
                 run["prompt"] = prompt
                 agent_approval_start = len(approvals)
-                if isinstance(provider, CliProvider):
+                if args.calibrate:
+                    async with asyncio.timeout(args.scenario_timeout):
+                        run.update(
+                            await run_reference(
+                                required,
+                                scenario,
+                                family_title,
+                                project_title,
+                                output,
+                                manifest,
+                            )
+                        )
+                elif isinstance(provider, CliProvider):
                     async with family_relay(agent, approvals) as relay:
                         run.update(
                             await provider.run(
@@ -1573,7 +1686,7 @@ async def family_main(args: argparse.Namespace) -> dict:
                             args.scenario_timeout,
                         )
                     )
-                run["model"] = provider.model
+                run["model"] = "reference-csharp" if args.calibrate else provider.model
             except Exception as exc:  # noqa: BLE001 - Retain setup failure and still probe before cleanup.
                 run["failure"] = type(exc).__name__
             agent_approvals = approvals[agent_approval_start:]
@@ -1603,6 +1716,11 @@ async def family_main(args: argparse.Namespace) -> dict:
                     )
                 )
             # Reopening a separate saved copy proves that the saved artifact, not just live state, is checked.
+            expected = [
+                name
+                for name in verifier.expected_checks(scenario_id)
+                if name != "rule_violations"
+            ]
             try:
                 if run.get("failure") == "TimeoutError":
                     raise RuntimeError(
@@ -1630,16 +1748,16 @@ async def family_main(args: argparse.Namespace) -> dict:
                         "code": verifier.probe_code(scenario_id),
                     },
                 )
-                expected = [
-                    name
-                    for name in verifier.expected_checks(scenario_id)
-                    if name != "rule_violations"
-                ]
+                run["saved_probe"] = redact_confirmation(saved)
                 run["checks"].extend(
                     {**row, "check_id": "saved_" + row["check_id"]}
                     for row in verifier.parse_checks(saved, expected)
                 )
             except Exception:  # noqa: BLE001 - A missing saved RFA is a failed artifact check.
+                run["checks"].extend(
+                    {**row, "check_id": "saved_" + row["check_id"]}
+                    for row in verifier.parse_checks({"error": True}, expected)
+                )
                 run["checks"].append(
                     {
                         "check_id": "saved_artifact",
@@ -1708,6 +1826,29 @@ async def family_main(args: argparse.Namespace) -> dict:
                 and not run["failure"]
                 and run["cleanup"]["status"] == "cleaned"
             )
+            if args.calibrate:
+                target = (
+                    (Path(__file__).with_name("reference") / f"{scenario_id}.broken.cs")
+                    .read_text()
+                    .splitlines()[0]
+                    .removeprefix("// @target ")
+                )
+                run["calibration_target"] = target
+                verdict = (
+                    run["artifact_pass"]
+                    if scenario["calibration_variant"] == "reference"
+                    else any(
+                        row["check_id"] == target
+                        and row["status"] == "fail"
+                        and row["reason"] != "Missing, ambiguous, or failed probe"
+                        for row in run["checks"]
+                    )
+                )
+                run["passed"] = (
+                    verdict
+                    and not run["failure"]
+                    and run["cleanup"]["status"] == "cleaned"
+                )
             result["runs"].append(run)
             if run["cleanup"]["status"] != "cleaned":
                 result["stopped"] = (
@@ -1947,6 +2088,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Optional verified A then A-prime transfer",
     )
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Run reference and deliberately broken C# solutions against the live family verifier",
+    )
     parser.add_argument("--provider", choices=DEFAULT_MODELS, default="openai")
     parser.add_argument(
         "--model", help="Exact model ID. An explicit ID never falls back."
@@ -1983,6 +2129,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--profile family requires --family-fixtures")
     if args.toolbaker and args.profile != "family":
         parser.error("--toolbaker requires --profile family")
+    if args.calibrate and (args.profile != "family" or args.toolbaker):
+        parser.error("--calibrate requires --profile family and excludes --toolbaker")
     if args.max_calls is None:
         args.max_calls = 120 if args.profile == "family" else 40
     args.scenario_timeout = (
