@@ -107,7 +107,7 @@ The local approval key remains in the per-user tools directory.
 Saved C# has full Revit API access and the Windows user's file and network rights.
 Neither read mode nor dry run is a sandbox for file or network operations.
 The approval files defend against accidental edits and unapproved imports, not an attacker who controls the Windows account and its approval key.
-The workstation read-only lock blocks saving, deleting, and running tools, including read-mode and dry-run execution.
+The workstation read-only lock blocks saving, deleting, and running tools, including read-mode and dry-run execution, just as it blocks `revit_execute_code` with `dry_run=true`.
 List and review remain available while locked.
 All saved tool commands inherit `ExecuteCode`, channel defaults, and restrictions on `execute-code` in addition to their own tool policies.
 An administrator's policy cannot be lifted through chat or ribbon.
