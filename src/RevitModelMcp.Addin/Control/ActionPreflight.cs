@@ -18,6 +18,25 @@ internal sealed class PreflightState
 
 internal static class ActionPreflight
 {
+    internal static bool CanShareParameterTransaction(Document document, string command, ActionJobContract action)
+    {
+        if (command != "set-parameter" || action.DryRun || Policy.PolicyProvider.Refusal(command) is not null) return false;
+        var element = document.GetElement(ActionCommandExecutor.CreateId(action.ElementId));
+        if (element is null) return false;
+        try
+        {
+            var (parameter, candidate) = ActionMutations.ResolveParameter(element, action.Parameter!, action.ParameterId);
+            // Group errors appear at commit; type and geometry edits retain their per-step preflight.
+            return BatchParameterPolicy.CanShareTransaction(command, action.DryRun, candidate.Owner == "instance",
+                parameter.StorageType == StorageType.String, element.GroupId != ElementId.InvalidElementId);
+        }
+        catch (ArgumentException)
+        {
+            // The normal step path reports unresolved parameters with their batch step index.
+            return false;
+        }
+    }
+
     internal static PreflightState? Run(Document document, string command, ActionJobContract action, List<ElementId> ids)
     {
         if (command is "update-parameters" or "set-parameter")
