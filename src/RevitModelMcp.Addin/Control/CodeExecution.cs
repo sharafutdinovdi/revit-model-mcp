@@ -151,7 +151,7 @@ internal static class CodeExecution
         if (counting) application.Application.DocumentChanged += CountChanges;
 #if !NETFRAMEWORK
         var loadContext = new AssemblyLoadContext("McpScript_" + key.Substring(0, 12), isCollectible: true);
-        loadContext.Resolving += (_, name) => AppDomain.CurrentDomain.GetAssemblies()
+        loadContext.Resolving += (_, name) => GetBoundAssemblies().Concat(AppDomain.CurrentDomain.GetAssemblies())
             .FirstOrDefault(item => item.GetName().Name == name.Name);
 #endif
         try
@@ -267,23 +267,26 @@ internal static class CodeExecution
         return result;
     }
 
+    private static IEnumerable<Assembly> GetBoundAssemblies() =>
+        new[] { typeof(ScriptContext).Assembly, typeof(Document).Assembly, typeof(UIApplication).Assembly,
+            typeof(Enumerable).Assembly, typeof(Nice3point.Revit.Extensions.FilteredElementCollectorExtensions).Assembly }.Distinct();
+
     private static IEnumerable<MetadataReference> GetReferences()
     {
-        var paths = new List<string>();
-#if !NETFRAMEWORK
-        paths.AddRange(((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty)
-            .Split(Path.PathSeparator).Where(File.Exists));
-#endif
-        paths.AddRange(AppDomain.CurrentDomain.GetAssemblies()
+        var extensionType = typeof(Nice3point.Revit.Extensions.FilteredElementCollectorExtensions);
+        var bound = GetBoundAssemblies().ToList();
+        CodeSource.AssemblyReference Describe(Assembly assembly) => new(assembly.FullName!, assembly.Location,
+            assembly.GetType(extensionType.FullName!) is not null);
+        var references = AppDomain.CurrentDomain.GetAssemblies()
             .Where(assembly => !assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location))
-            .Select(assembly => assembly.Location));
-        paths.Add(typeof(ScriptContext).Assembly.Location);
-        paths.Add(typeof(Document).Assembly.Location);
-        paths.Add(typeof(UIApplication).Assembly.Location);
-        paths.Add(typeof(Enumerable).Assembly.Location);
-        return paths.GroupBy(Path.GetFileNameWithoutExtension, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .Select(path => MetadataReference.CreateFromFile(path));
+            .Select(Describe).ToList();
+#if !NETFRAMEWORK
+        references.AddRange(((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty)
+            .Split(Path.PathSeparator).Where(File.Exists)
+            .Select(path => new CodeSource.AssemblyReference(AssemblyName.GetAssemblyName(path).FullName!, path)));
+#endif
+        return CodeSource.SelectReferences(references, bound.Select(Describe).ToList())
+            .Select(reference => MetadataReference.CreateFromFile(reference.Location));
     }
 
     private static object? ConvertSpecial(object value) => value switch

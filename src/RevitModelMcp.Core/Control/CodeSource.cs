@@ -12,6 +12,24 @@ public static class CodeSource
 {
     private static readonly Regex ScriptClass = new(@"\bpublic\s+static\s+class\s+Script\b", RegexOptions.Compiled);
 
+    internal sealed record AssemblyReference(string Identity, string Location, bool DefinesRevitExtensions = false);
+
+    internal static IReadOnlyList<AssemblyReference> SelectReferences(
+        IEnumerable<AssemblyReference> candidates, IReadOnlyList<AssemblyReference> boundAssemblies)
+    {
+        if (candidates is null) throw new ArgumentNullException(nameof(candidates));
+        if (boundAssemblies is null) throw new ArgumentNullException(nameof(boundAssemblies));
+        var extensionOwner = boundAssemblies.Single(reference => reference.DefinesRevitExtensions);
+        var preferred = boundAssemblies.ToDictionary(reference => new AssemblyName(reference.Identity).Name!,
+            StringComparer.OrdinalIgnoreCase);
+        return boundAssemblies.Concat(candidates)
+            .Where(reference => !reference.DefinesRevitExtensions ||
+                string.Equals(reference.Location, extensionOwner.Location, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(reference => new AssemblyName(reference.Identity).Name!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => preferred.TryGetValue(group.Key, out var bound) ? bound : group.First())
+            .ToList();
+    }
+
     public static bool IsCompilationUnit(string code) => ScriptClass.IsMatch(code);
 
     public static string CacheKey(string code, string transaction)

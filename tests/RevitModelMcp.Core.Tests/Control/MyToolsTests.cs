@@ -25,6 +25,58 @@ public sealed class MyToolsTests
     };
 
     [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task References_UseBoundIdentityAndExcludeOtherExtensionOwners(bool merged)
+    {
+        var owner = new CodeSource.AssemblyReference(
+            merged ? "RevitModelMcp, Version=1.0.0.0" : "Nice3point.Revit.Extensions, Version=2027.0.0.0",
+            "/ours/owner.dll", true);
+        var foreign = new CodeSource.AssemblyReference("Nice3point.Revit.Extensions, Version=2026.0.0.0", "/foreign/extensions.dll", true);
+        var otherMerged = new CodeSource.AssemblyReference("OtherAddin, Version=1.0.0.0", "/foreign/merged.dll", true);
+        var duplicate = owner with { Location = "/foreign/same-identity.dll" };
+        var framework = new CodeSource.AssemblyReference("System.Runtime, Version=8.0.0.0", "/framework/runtime.dll");
+        var references = CodeSource.SelectReferences([foreign, otherMerged, duplicate, framework, owner,
+            framework with { Location = "/duplicate/runtime.dll" }], [owner]);
+        await Assert.That(references.Count).IsEqualTo(2);
+        await Assert.That(references[0]).IsEqualTo(owner);
+        await Assert.That(references[1]).IsEqualTo(framework);
+    }
+
+    [Test]
+    public async Task References_DeduplicateSimpleNamesAcrossVersionsAndFileNames()
+    {
+        var owner = new CodeSource.AssemblyReference("RevitModelMcp, Version=1.0.0.0", "/ours/addin.dll", true);
+        var bound = new CodeSource.AssemblyReference("RevitAPI, Version=27.0.0.0", "/ours/api.dll");
+        var foreign = new CodeSource.AssemblyReference("RevitAPI, Version=26.0.0.0", "/foreign/RevitAPI.dll");
+        var references = CodeSource.SelectReferences([foreign, bound, owner], [owner, bound]);
+        await Assert.That(references.Count).IsEqualTo(2);
+        await Assert.That(references[1]).IsEqualTo(bound);
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ReadOnlyLock_RefusesSavedReadToolsAndExecuteCodeRegardlessOfDryRun(bool dryRun)
+    {
+        var readTool = ActionJobParser.Parse("run-tool", new ControlJobContract
+        {
+            Name = "read_tool",
+            ToolMode = "read",
+            DryRun = dryRun
+        });
+        var code = ActionJobParser.Parse("execute-code", new ControlJobContract
+        {
+            Code = "return 1;",
+            DryRun = dryRun
+        });
+        await Assert.That(readTool.Error).IsNull();
+        await Assert.That(code.Error).IsNull();
+        await Assert.That(ReadOnlyGatePolicy.RefusesSubmission(readTool.Command)).IsTrue();
+        await Assert.That(ReadOnlyGatePolicy.RefusesSubmission(code.Command)).IsTrue();
+    }
+
+    [Test]
     public async Task Hash_NormalizesLineEndingsAndOuterWhitespace()
     {
         await Assert.That(ToolDefinition.Hash(" \r\nreturn 1;\r\n")).IsEqualTo(ToolDefinition.Hash("return 1;\n"));

@@ -1,15 +1,19 @@
+using System.Collections;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.UI;
 using JetBrains.Annotations;
 using Nice3point.Revit.Toolkit.External;
+using RevitModelMcp.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Policy;
 using Binding = System.Windows.Data.Binding;
 using TextBox = System.Windows.Controls.TextBox;
+using WpfControl = System.Windows.Controls.Control;
 
 namespace RevitModelMcp.Control;
 
@@ -34,6 +38,7 @@ internal sealed class MyToolsWindow : Window
 
     internal MyToolsWindow()
     {
+        FollowTheme(this);
         Title = "My tools";
         Width = 1000;
         Height = 550;
@@ -54,11 +59,71 @@ internal sealed class MyToolsWindow : Window
             _list.Columns.Add(new DataGridTextColumn { Header = heading, Binding = new Binding(property), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
         root.Children.Add(_list);
         Content = root;
+        _list.SetResourceReference(DataGrid.HorizontalGridLinesBrushProperty, "HairlineBrush");
+        _list.SetResourceReference(DataGrid.VerticalGridLinesBrushProperty, "HairlineBrush");
         _list.SelectionChanged += (_, _) => UpdateButtons();
         _showCode.Click += (_, _) => ShowCode();
         _delete.Click += (_, _) => Delete();
         PreviewKeyDown += (_, args) => { if (args.Key == Key.Escape) Close(); };
         Loaded += (_, _) => Refresh();
+    }
+
+    private static void FollowTheme(Window window)
+    {
+        var palette = new ResourceDictionary
+        {
+            Source = new Uri("/RevitModelMcp;component/Activity/ActivityTheme.xaml", UriKind.Relative)
+        };
+        void ApplyTheme()
+        {
+            var variant = (ResourceDictionary)palette[PaneTheme.IsDark ? "Dark" : "Light"];
+            foreach (DictionaryEntry token in variant) window.Resources[token.Key] = token.Value;
+        }
+        void ThemeChanged() => window.Dispatcher.Invoke(ApplyTheme);
+        ApplyTheme();
+        window.SetResourceReference(BackgroundProperty, "SurfaceBrush");
+        window.SetResourceReference(ForegroundProperty, "TextPrimaryBrush");
+        foreach (var controlType in new[] { typeof(Button), typeof(TextBox), typeof(DataGrid),
+                     typeof(DataGridRow), typeof(DataGridCell), typeof(DataGridColumnHeader) })
+        {
+            var style = new Style(controlType);
+            style.Setters.Add(new Setter(WpfControl.BackgroundProperty, new DynamicResourceExtension("SurfaceRaisedBrush")));
+            style.Setters.Add(new Setter(WpfControl.ForegroundProperty, new DynamicResourceExtension("TextPrimaryBrush")));
+            style.Setters.Add(new Setter(WpfControl.BorderBrushProperty, new DynamicResourceExtension("HairlineBrush")));
+            if (controlType == typeof(Button))
+            {
+                var template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("""
+                    <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Control">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource RunningBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter Property="BorderBrush" Value="{DynamicResource RunningBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                    """);
+                style.Setters.Add(new Setter(WpfControl.TemplateProperty, template));
+            }
+            if (controlType == typeof(DataGridRow) || controlType == typeof(DataGridCell))
+            {
+                var selected = new Trigger { Property = controlType == typeof(DataGridRow) ? DataGridRow.IsSelectedProperty : DataGridCell.IsSelectedProperty, Value = true };
+                selected.Setters.Add(new Setter(WpfControl.BackgroundProperty, new DynamicResourceExtension(SystemColors.HighlightBrushKey)));
+                selected.Setters.Add(new Setter(WpfControl.ForegroundProperty, new DynamicResourceExtension(SystemColors.HighlightTextBrushKey)));
+                style.Triggers.Add(selected);
+            }
+            window.Resources[controlType] = style;
+        }
+        PaneTheme.Changed += ThemeChanged;
+        window.Closed += (_, _) => PaneTheme.Changed -= ThemeChanged;
     }
 
     private sealed record Row(string Name, ToolDefinition? Tool, string? Reason = null)
@@ -119,6 +184,7 @@ internal sealed class MyToolsWindow : Window
                     Margin = new Thickness(12)
                 }
             };
+            FollowTheme(viewer);
             viewer.PreviewKeyDown += (_, args) => { if (args.Key == Key.Escape) viewer.Close(); };
             viewer.ShowDialog();
         }
