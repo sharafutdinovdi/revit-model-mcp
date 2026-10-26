@@ -44,17 +44,20 @@ internal static class ConnectText
     };
 
     public static string Added(string app, string? backup) =>
-        $"Added to {app}. Restart {app} to load it." + BackupNote(backup);
+        $"Added to {app}. Restart {RestartApp(app)} to load it." + BackupNote(backup);
 
     public static string Removed(string app, string? backup) =>
         $"Removed from {app}. Restart {app} to apply it." + BackupNote(backup);
 
     public static string Updated(string app, string? backup) =>
-        $"Updated in {app}. Restart {app} to load it." + BackupNote(backup);
+        $"Updated in {app}. Restart {RestartApp(app)} to load it." + BackupNote(backup);
 
     public static string Unchanged(string app) => $"{app} already had that state; nothing was changed.";
 
     public static string Failed(string app, string reason) => $"{app}: {reason}";
+
+    private static string RestartApp(string app) =>
+        app == "Codex" ? "Codex (the ChatGPT app or the codex CLI)" : app;
 
     private static string BackupNote(string? backup) => backup is null ? string.Empty : $" Backup: {backup}";
 }
