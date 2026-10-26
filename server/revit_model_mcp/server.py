@@ -572,6 +572,7 @@ def addressed_tool(function):
         "revit_list_instances": "List Instances",
         "revit_model_health": "Model Health Check",
         "revit_model_snapshot": "Model Snapshot",
+        "revit_api_lookup": "Look up Revit API types and members",
         "revit_links_status": "Links Status",
         "revit_shared_coordinates": "Shared Coordinates",
         "revit_parameter_fill_check": "Parameter Fill Check",
@@ -718,6 +719,36 @@ async def revit_ui_state() -> dict[str, Any]:
         Job("ui-state", {"command": "ui-state"}),
         DEFAULT_TIMEOUT_SECONDS,
         None,
+    )
+
+
+@addressed_tool
+async def revit_api_lookup(
+    query: Annotated[str, Field(min_length=1, max_length=200)],
+    kind: Literal["type", "member", "search"] = "search",
+    limit: Annotated[int, Field(strict=True, ge=1, le=100)] = 25,
+    include_inherited: bool = False,
+    include_obsolete: bool = True,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Look up public Revit API types and members. The agent calls this before writing C# for an unfamiliar type. Results describe the running Revit's API version only. XML summaries are optional."""
+    if not query.strip():
+        raise ToolError("query must contain 1 to 200 characters.")
+    return await _execute(
+        Job(
+            "api-lookup",
+            {
+                "command": "api-lookup",
+                "query": query,
+                "kind": kind,
+                "limit": limit,
+                "includeInherited": include_inherited,
+                "includeObsolete": include_obsolete,
+            },
+        ),
+        timeout_seconds,
+        document,
     )
 
 

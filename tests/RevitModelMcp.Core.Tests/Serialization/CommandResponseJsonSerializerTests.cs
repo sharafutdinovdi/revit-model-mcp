@@ -11,6 +11,44 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task ApiLookup_RoundTripsPublicMetadataAndDiagnostics()
+    {
+        var data = new ApiLookupResult
+        {
+            Types = [new ApiTypeInfo { FullName = "Autodesk.Revit.DB.Element", Kind = "class", BaseType = "System.Object" }],
+            Members = [new ApiMemberInfo
+            {
+                DeclaringType = "Autodesk.Revit.DB.Element", Name = "Old", MemberKind = "method",
+                Signature = "public static void Old(int count = default)", ReturnType = "void", IsStatic = true,
+                IsObsolete = true, ObsoleteMessage = "Use Current.", Summary = "An old method.",
+                Parameters = [new ApiParameterInfo { Name = "count", Type = "int", IsOptional = true }]
+            }],
+            Candidates = ["Autodesk.Revit.DB.Element"],
+            Truncated = true,
+            AssemblyVersions = [new ApiAssemblyVersion { Name = "RevitAPI", Version = "27.0.0.0" }],
+            Skipped = [new SkippedRead { What = "RevitAPI", Reason = "A type could not be loaded." }],
+            SkippedCount = 1
+        };
+        var serialized = CommandResponseJsonSerializer.Serialize(CommandResponse<ApiLookupResult>.Ok("api-lookup", data, 5));
+        using var json = JsonDocument.Parse(serialized);
+        var payload = json.RootElement.GetProperty("data");
+        await Assert.That(payload.GetProperty("types")[0].GetProperty("summary").ValueKind).IsEqualTo(JsonValueKind.Null);
+        await Assert.That(payload.GetProperty("members")[0].GetProperty("memberKind").GetString()).IsEqualTo("method");
+        await Assert.That(payload.GetProperty("members")[0].GetProperty("parameters")[0].GetProperty("isOptional").GetBoolean()).IsTrue();
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(serialized));
+        var restored = (CommandResponse<ApiLookupResult>)new DataContractJsonSerializer(typeof(CommandResponse<ApiLookupResult>)).ReadObject(stream)!;
+        await Assert.That(restored.Data!.Types.Single()).IsEqualTo(data.Types.Single());
+        await Assert.That(restored.Data.Members.Single().Signature).IsEqualTo(data.Members.Single().Signature);
+        await Assert.That(restored.Data.Members.Single().Parameters.Single()).IsEqualTo(data.Members.Single().Parameters.Single());
+        await Assert.That(restored.Data.Members.Single().ObsoleteMessage).IsEqualTo("Use Current.");
+        await Assert.That(restored.Data.Candidates.Single()).IsEqualTo(data.Candidates.Single());
+        await Assert.That(restored.Data.Truncated).IsTrue();
+        await Assert.That(restored.Data.AssemblyVersions.Single()).IsEqualTo(data.AssemblyVersions.Single());
+        await Assert.That(restored.Data.SkippedCount).IsEqualTo(1);
+        await Assert.That(restored.Data.Skipped.Single()).IsEqualTo(data.Skipped.Single());
+    }
+
+    [Test]
     [Arguments("https://host/a/b", "https://host/a/b")]
     [Arguments("file:///a/b.rvt", "file:///a/b.rvt")]
     [Arguments(@"C:\a\b.rvt", "b.rvt")]

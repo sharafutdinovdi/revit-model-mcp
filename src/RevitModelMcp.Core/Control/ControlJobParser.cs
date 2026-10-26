@@ -15,6 +15,7 @@ public enum ControlJobKind
     UiState,
     ModelHealth,
     ModelSnapshot,
+    ApiLookup,
     LinksStatus,
     SharedCoordinates,
     ParameterFillCheck,
@@ -61,6 +62,7 @@ public sealed class ControlJobParseResult
     public string? JobId { get; internal set; }
     public string ClientId { get; internal set; } = "unknown";
     public string ClientName { get; internal set; } = "unknown";
+    public ApiLookupRequest? ApiLookup { get; internal set; }
     public string? View { get; internal set; }
     public string? ViewType { get; internal set; }
     public string? NameContains { get; internal set; }
@@ -182,6 +184,7 @@ public sealed class ControlJobParseResult
             "jobs" => Create(ControlJobKind.Jobs, command),
             "model-health" => Create(ControlJobKind.ModelHealth, command),
             "model-snapshot" => ParseModelSnapshot(job),
+            "api-lookup" => ParseApiLookup(job),
             "links-status" => Create(ControlJobKind.LinksStatus, command),
             "shared-coordinates" => Create(ControlJobKind.SharedCoordinates, command),
             "parameter-fill-check" => ParseParameterFill(job),
@@ -218,6 +221,23 @@ public sealed class ControlJobParseResult
         result.TargetProcessId = job.TargetProcessId;
         if (job.TargetProcessId is <= 0)
             return Invalid(command, "targetProcessId must be a strict positive integer.");
+        return result;
+    }
+
+    private static ControlJobParseResult ParseApiLookup(ControlJobContract job)
+    {
+        const string command = "api-lookup";
+        var query = Normalize(job.Query);
+        if (query is null || job.Query!.Length > 200)
+            return Invalid(command, "query must contain 1 to 200 characters.");
+        var kind = job.DocumentKind ?? "search";
+        if (kind is not ("type" or "member" or "search"))
+            return Invalid(command, "kind must be type, member, or search.");
+        var limit = job.Limit ?? 25;
+        if (limit is < 1 or > 100)
+            return Invalid(command, "limit must be between 1 and 100.");
+        var result = Create(ControlJobKind.ApiLookup, command);
+        result.ApiLookup = new ApiLookupRequest(query, kind, limit, job.IncludeInherited ?? false, job.IncludeObsolete ?? true);
         return result;
     }
 
@@ -468,6 +488,9 @@ public static class ControlJobParser
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "query")] public string? Query { get; set; }
+    [DataMember(Name = "includeInherited")] public bool? IncludeInherited { get; set; }
+    [DataMember(Name = "includeObsolete")] public bool? IncludeObsolete { get; set; }
     [DataMember(Name = "runId", EmitDefaultValue = false)]
     public string? RunId { get; set; }
     [DataMember(Name = "jobId", EmitDefaultValue = false)]
