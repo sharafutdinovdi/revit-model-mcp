@@ -1,5 +1,11 @@
 {
   "revit_activate_document": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "minLength": 1,
@@ -25,6 +31,12 @@
     "type": "object"
   },
   "revit_activate_view": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "activate_document": {
         "default": false,
@@ -97,6 +109,12 @@
     "type": "object"
   },
   "revit_aggregate_elements": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "area_scheme": {
         "anyOf": [
@@ -256,6 +274,12 @@
     "type": "object"
   },
   "revit_align_link_datums": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "create_missing": {
         "default": true,
@@ -384,6 +408,12 @@
     "type": "object"
   },
   "revit_api_lookup": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -446,6 +476,12 @@
     "type": "object"
   },
   "revit_apply_view_template": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -484,6 +520,12 @@
     "type": "object"
   },
   "revit_audit_report": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "audit": {
         "type": "string"
@@ -508,6 +550,12 @@
     "type": "object"
   },
   "revit_batch_cancel": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "run_id": {
         "type": "string"
@@ -519,6 +567,12 @@
     "type": "object"
   },
   "revit_batch_fetch": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "output_dir": {
         "type": "string"
@@ -534,6 +588,12 @@
     "type": "object"
   },
   "revit_batch_start": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "folder": {
         "anyOf": [
@@ -610,6 +670,12 @@
     "type": "object"
   },
   "revit_batch_status": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "run_id": {
         "type": "string"
@@ -621,6 +687,12 @@
     "type": "object"
   },
   "revit_build_report": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "findings": {
         "anyOf": [
@@ -662,6 +734,12 @@
     "type": "object"
   },
   "revit_cancel_job": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -696,6 +774,12 @@
     "type": "object"
   },
   "revit_capture_elements": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -757,6 +841,12 @@
     "type": "object"
   },
   "revit_change_type": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -808,6 +898,12 @@
     "type": "object"
   },
   "revit_close_document": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "confirm_token": {
         "anyOf": [
@@ -848,6 +944,12 @@
     "type": "object"
   },
   "revit_close_views": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "keep_active": {
         "default": true,
@@ -885,6 +987,12 @@
     "type": "object"
   },
   "revit_compare_link_datums": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -970,6 +1078,12 @@
     "type": "object"
   },
   "revit_copy": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "count": {
         "default": 1,
@@ -1020,6 +1134,12 @@
     "type": "object"
   },
   "revit_create_mep_run": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "connect_to": {
         "anyOf": [
@@ -1244,6 +1364,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "category": {
         "minLength": 1,
@@ -1330,6 +1456,12 @@
     "type": "object"
   },
   "revit_create_sheet": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -1404,6 +1536,12 @@
         ],
         "type": "object"
       }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
     },
     "properties": {
       "box": {
@@ -1564,6 +1702,12 @@
     "type": "object"
   },
   "revit_create_wall": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -1628,6 +1772,12 @@
     "type": "object"
   },
   "revit_delete": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "confirm_token": {
         "anyOf": [
@@ -1671,6 +1821,12 @@
     "type": "object"
   },
   "revit_document_info": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -1702,6 +1858,12 @@
     "type": "object"
   },
   "revit_documents": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -1737,6 +1899,12 @@
     "type": "object"
   },
   "revit_duplicate_view": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -1917,6 +2085,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2001,6 +2175,12 @@
     "type": "object"
   },
   "revit_element_details": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2039,6 +2219,12 @@
     "type": "object"
   },
   "revit_execute_code": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "code": {
         "maxLength": 200000,
@@ -2092,6 +2278,12 @@
     "type": "object"
   },
   "revit_export": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "all_sheets": {
         "default": false,
@@ -2229,6 +2421,12 @@
     "type": "object"
   },
   "revit_export_nwc": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "confirm_token": {
         "anyOf": [
@@ -2504,6 +2702,12 @@
     "type": "object"
   },
   "revit_export_view": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2554,6 +2758,12 @@
     "type": "object"
   },
   "revit_family_audit": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "detail": {
         "default": "summary",
@@ -2611,6 +2821,12 @@
     "type": "object"
   },
   "revit_isolate": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2642,6 +2858,12 @@
     "type": "object"
   },
   "revit_issue_register": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2694,6 +2916,12 @@
     "type": "object"
   },
   "revit_jobs": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2742,6 +2970,12 @@
     "type": "object"
   },
   "revit_link_cad": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2847,6 +3081,12 @@
     "type": "object"
   },
   "revit_links_status": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2878,6 +3118,12 @@
     "type": "object"
   },
   "revit_list_catalog": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2932,6 +3178,12 @@
     "type": "object"
   },
   "revit_list_instances": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -2948,6 +3200,12 @@
     "type": "object"
   },
   "revit_list_relations": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3007,6 +3265,12 @@
     "type": "object"
   },
   "revit_list_sheets": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3049,6 +3313,12 @@
     "type": "object"
   },
   "revit_list_views": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3102,6 +3372,12 @@
     "type": "object"
   },
   "revit_list_warnings": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3148,6 +3424,12 @@
     "type": "object"
   },
   "revit_load_family": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3195,6 +3477,12 @@
     "type": "object"
   },
   "revit_mirror": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "axis": {
         "enum": [
@@ -3248,6 +3536,12 @@
     "type": "object"
   },
   "revit_model_audit": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "compare_with": {
         "default": "previous",
@@ -3310,6 +3604,12 @@
     "type": "object"
   },
   "revit_model_health": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3370,6 +3670,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3415,6 +3721,12 @@
     "type": "object"
   },
   "revit_move": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3459,6 +3771,12 @@
     "type": "object"
   },
   "revit_new_document": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "activate": {
         "default": true,
@@ -3521,6 +3839,12 @@
     "type": "object"
   },
   "revit_nwc_settings_check": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -3558,6 +3882,12 @@
     "type": "object"
   },
   "revit_open_document": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "activate": {
         "default": false,
@@ -3624,6 +3954,12 @@
     "type": "object"
   },
   "revit_override_graphics": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "color": {
         "default": "#FF0000",
@@ -3722,6 +4058,12 @@
     "type": "object"
   },
   "revit_parameter_fill_check": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "categories": {
         "items": {
@@ -3816,6 +4158,12 @@
     "type": "object"
   },
   "revit_ping": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -4020,6 +4368,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "at_rooms": {
         "anyOf": [
@@ -4095,6 +4449,12 @@
     "type": "object"
   },
   "revit_place_family": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -4191,6 +4551,12 @@
         ],
         "type": "object"
       }
+    },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
     },
     "properties": {
       "document": {
@@ -4482,6 +4848,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "code": {
         "anyOf": [
@@ -4622,6 +4994,12 @@
     "type": "object"
   },
   "revit_query_elements": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "area_scheme": {
         "anyOf": [
@@ -4795,6 +5173,12 @@
     "type": "object"
   },
   "revit_remove_links": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "confirm_token": {
         "anyOf": [
@@ -4874,6 +5258,12 @@
     "type": "object"
   },
   "revit_rotate": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "angle_deg": {
         "type": "number"
@@ -4966,6 +5356,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -4997,6 +5393,12 @@
     "type": "object"
   },
   "revit_save_document": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "compact": {
         "default": false,
@@ -5052,6 +5454,12 @@
     "type": "object"
   },
   "revit_schedule_data": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5096,6 +5504,12 @@
     "type": "object"
   },
   "revit_select": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5123,6 +5537,12 @@
     "type": "object"
   },
   "revit_set_parameter": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5183,6 +5603,12 @@
     "type": "object"
   },
   "revit_set_read_only": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "confirm_token": {
         "anyOf": [
@@ -5205,6 +5631,12 @@
     "type": "object"
   },
   "revit_set_view_visibility": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "category_classes": {
         "anyOf": [
@@ -5351,6 +5783,12 @@
     "type": "object"
   },
   "revit_shared_coordinates": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5382,6 +5820,12 @@
     "type": "object"
   },
   "revit_show": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5414,6 +5858,12 @@
     "type": "object"
   },
   "revit_sync_document": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "comment": {
         "minLength": 1,
@@ -5486,6 +5936,12 @@
     "type": "object"
   },
   "revit_tag_elements": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "categories": {
         "anyOf": [
@@ -5592,6 +6048,12 @@
     "type": "object"
   },
   "revit_ui_state": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "process_id": {
         "anyOf": [
@@ -5608,6 +6070,12 @@
     "type": "object"
   },
   "revit_undo_last": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5738,6 +6206,12 @@
         "type": "object"
       }
     },
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5806,6 +6280,12 @@
     "type": "object"
   },
   "revit_view_elements": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "categories": {
         "anyOf": [
@@ -5867,6 +6347,12 @@
     "type": "object"
   },
   "revit_view_info": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5904,6 +6390,12 @@
     "type": "object"
   },
   "revit_view_summary": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5941,6 +6433,12 @@
     "type": "object"
   },
   "revit_view_warnings": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
     "properties": {
       "document": {
         "anyOf": [
@@ -5978,6 +6476,12 @@
     "type": "object"
   },
   "revit_walls_from_cad": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
     "properties": {
       "cad_id": {
         "exclusiveMinimum": 0,

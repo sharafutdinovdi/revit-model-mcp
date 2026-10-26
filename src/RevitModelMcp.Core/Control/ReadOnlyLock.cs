@@ -79,7 +79,7 @@ public sealed class ReadOnlyLock : IDisposable
                 return new ActionResultData
                 {
                     NeedsConfirmation = true,
-                    ConfirmationText = $"Turn off read-only for all Revit versions of {user} on {machine}? The assistant will be able to change models.",
+                    ConfirmationText = "Turn off read-only for all Revit versions of this Windows user on this PC? The assistant will be able to change models.",
                     ConfirmToken = tokens.Issue("set-read-only", identity, "false", binding),
                     Summary = "Needs confirmation to turn off read-only."
                 };
