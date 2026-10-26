@@ -26,7 +26,10 @@ public sealed class CommandResponseJsonSerializerTests
                     RevisionCount = 2, ViewportCount = 1, ViewIds = [42, 43]
                 }, new SheetListItem { Id = 2, Number = "A02", Name = "Placeholder" }],
                 UnplacedViews = [new UnplacedViewItem { Id = 3, Name = "Doors", ViewType = "Schedule" }],
-                Total = 201, Offset = 0, Limit = 200, HasMore = true
+                Total = 201,
+                Offset = 0,
+                Limit = 200,
+                HasMore = true
             };
             var serialized = CommandResponseJsonSerializer.Serialize(CommandResponse<SheetListData>.Ok("list-sheets", result, 1));
             using var json = JsonDocument.Parse(serialized);
