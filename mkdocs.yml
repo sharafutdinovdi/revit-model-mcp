@@ -117,6 +117,7 @@ nav:
       - How it works: how-it-works.md
       - Transport: transport.md
       - Batch: batch.md
+      - Model audit: model-audit.md
       - Security: security.md
       - Architecture: architecture.md
       - Automatic updates: updates.md

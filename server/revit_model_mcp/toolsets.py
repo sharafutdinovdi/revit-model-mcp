@@ -26,6 +26,7 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
         "revit_element_details",
         "revit_list_relations",
         "revit_model_health",
+        "revit_model_audit",
         "revit_list_warnings",
         "revit_links_status",
         "revit_shared_coordinates",
@@ -53,6 +54,7 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
         "revit_sync_document",
     ),
     "views-sheets": (
+        "revit_list_sheets",
         "revit_list_views",
         "revit_view_info",
         "revit_view_summary",
@@ -105,6 +107,7 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
         "revit_batch_cancel",
         "revit_batch_fetch",
         "revit_build_report",
+        "revit_audit_report",
         "revit_process_models",
     ),
     "code": ("revit_execute_code", "revit_api_lookup"),

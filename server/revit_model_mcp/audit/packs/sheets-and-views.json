@@ -1,0 +1,40 @@
+{
+  "schema": 1,
+  "name": "sheets-and-views",
+  "rules": [
+    {
+      "id": "SHEETS-title-block",
+      "title": "Sheets have title blocks",
+      "severity": "major",
+      "check": {
+        "type": "sheets",
+        "metric": "missing_title_block"
+      }
+    },
+    {
+      "id": "SHEETS-unplaced",
+      "title": "Views are placed on sheets",
+      "severity": "major",
+      "check": {
+        "type": "sheets",
+        "metric": "unplaced_views"
+      }
+    },
+    {
+      "id": "VIEWS-names",
+      "title": "Review default view names",
+      "severity": "major",
+      "check": {
+        "type": "name_matches",
+        "pattern": "^(?!.*(?:Copy|Unnamed|\\{3D\\})).+$"
+      },
+      "scope": {
+        "categories": [
+          {
+            "builtin": "OST_Views"
+          }
+        ]
+      }
+    }
+  ]
+}

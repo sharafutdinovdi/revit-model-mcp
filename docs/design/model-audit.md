@@ -2,7 +2,7 @@
 
 This page records the design decisions for `revit_model_audit` ([#98](https://github.com/sharafutdinovdi/revit-model-mcp/issues/98)).
 It answers the three open questions of the epic and blocks the implementation issues [#212](https://github.com/sharafutdinovdi/revit-model-mcp/issues/212) to [#216](https://github.com/sharafutdinovdi/revit-model-mcp/issues/216).
-Nothing here is implemented yet. Tool names and limits below are the contract the first slice builds to.
+The first server slice implements rule packs, bounded live and snapshot evaluation, immutable audit history, XLSX and HTML reports, and issue register mapping. Unsupported evidence is `not_assessed`. Workset checks (#213), multi-model batch audits (#215), BCF and report images remain unimplemented. The implementation guide is [Model audit](../model-audit.md). Storage uses the existing server state root; the historical storage proposal below is superseded by that guide.
 
 ## Goals and non-goals
 

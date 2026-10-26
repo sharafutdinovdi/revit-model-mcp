@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "name": "iso19650-information",
+  "rules": [
+    {
+      "id": "INFO-required",
+      "title": "Required information is filled",
+      "severity": "info",
+      "scope": {
+        "categories": [
+          {
+            "builtin": "OST_Walls"
+          },
+          {
+            "builtin": "OST_Doors"
+          }
+        ]
+      },
+      "check": {
+        "type": "parameter_filled",
+        "parameter": {
+          "names": [
+            "Description",
+            "\u041e\u043f\u0438\u0441\u0430\u043d\u0438\u0435"
+          ]
+        }
+      },
+      "threshold": {
+        "min_percent": 100
+      },
+      "reference": {
+        "source": "Review default",
+        "text": "Review default. Replace with the project EIR or BEP requirement."
+      }
+    },
+    {
+      "id": "INFO-name",
+      "title": "Naming field is filled",
+      "severity": "info",
+      "scope": {
+        "categories": [
+          {
+            "builtin": "OST_Walls"
+          },
+          {
+            "builtin": "OST_Doors"
+          }
+        ]
+      },
+      "check": {
+        "type": "parameter_filled",
+        "parameter": {
+          "names": [
+            "Mark",
+            "\u041c\u0430\u0440\u043a\u0430"
+          ]
+        }
+      },
+      "threshold": {
+        "min_percent": 100
+      },
+      "reference": {
+        "source": "Review default",
+        "text": "Review default. Replace with the project EIR or BEP requirement."
+      }
+    },
+    {
+      "id": "INFO-classification",
+      "title": "Classification code is filled",
+      "severity": "info",
+      "scope": {
+        "categories": [
+          {
+            "builtin": "OST_Walls"
+          },
+          {
+            "builtin": "OST_Doors"
+          }
+        ]
+      },
+      "check": {
+        "type": "parameter_filled",
+        "parameter": {
+          "names": [
+            "Classification Code",
+            "\u041a\u043e\u0434 \u043a\u043b\u0430\u0441\u0441\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u0438"
+          ]
+        }
+      },
+      "threshold": {
+        "min_percent": 100
+      },
+      "reference": {
+        "source": "Review default",
+        "text": "Review default. Replace with the project EIR or BEP requirement."
+      }
+    }
+  ]
+}

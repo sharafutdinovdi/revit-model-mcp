@@ -1,0 +1,412 @@
+{
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": 1,
+      "type": "integer"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extends": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "references": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "enum": [
+              "critical",
+              "major",
+              "minor",
+              "info"
+            ]
+          },
+          "scope": {
+            "type": "object",
+            "properties": {
+              "categories": {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "builtin": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "builtin"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "guid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "guid"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "names": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "minItems": 1
+                        }
+                      },
+                      "required": [
+                        "names"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "include_templates": {
+                "type": "boolean"
+              },
+              "level": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "view": {
+                "type": "string",
+                "minLength": 1
+              },
+              "phase": {
+                "type": "string",
+                "minLength": 1
+              },
+              "family": {
+                "type": "string",
+                "minLength": 1
+              },
+              "type_name": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "check": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "parameter_filled",
+                  "parameter_in",
+                  "parameter_matches",
+                  "name_matches",
+                  "count",
+                  "model_health",
+                  "coordinates",
+                  "sheets",
+                  "worksets"
+                ]
+              },
+              "parameter": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "builtin": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "builtin"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "guid": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "required": [
+                      "guid"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "names": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "minItems": 1
+                      }
+                    },
+                    "required": [
+                      "names"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "metric": {
+                "type": "string",
+                "minLength": 1
+              },
+              "pattern": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "values": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "minItems": 1
+              },
+              "field": {
+                "enum": [
+                  "name",
+                  "number"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "parameter_filled",
+                        "parameter_in",
+                        "parameter_matches"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "parameter"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "parameter_matches",
+                        "name_matches"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "pattern"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "parameter_in"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "values"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "model_health",
+                        "coordinates",
+                        "sheets",
+                        "worksets"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "metric"
+                  ]
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "sheets"
+                    },
+                    "metric": {
+                      "const": "name_matches"
+                    }
+                  },
+                  "required": [
+                    "metric"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "pattern"
+                  ]
+                }
+              }
+            ]
+          },
+          "threshold": {
+            "type": "object",
+            "properties": {
+              "max_count": {
+                "type": "number",
+                "minimum": 0
+              },
+              "max_percent": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "min_percent": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "required": [],
+            "additionalProperties": false,
+            "minProperties": 1,
+            "maxProperties": 1
+          },
+          "reference": {
+            "type": "object",
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "clause": {
+                "type": "string",
+                "minLength": 1
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          },
+          "recommendation": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false,
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "check": {
+                  "properties": {
+                    "type": {
+                      "const": "parameter_filled"
+                    }
+                  }
+                }
+              },
+              "required": [
+                "check"
+              ]
+            },
+            "then": {
+              "properties": {
+                "threshold": {
+                  "required": [
+                    "min_percent"
+                  ]
+                }
+              }
+            }
+          }
+        ]
+      },
+      "maxItems": 200
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "rules"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

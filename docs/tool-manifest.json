@@ -314,6 +314,25 @@
       "networkAccess": "none"
     },
     {
+      "name": "revit_list_sheets",
+      "description": "List sheets with title blocks, revisions and placed view IDs, plus unplaced views. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
+      "toolset": "views-sheets",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
       "name": "revit_list_views",
       "description": "List non-template views with id, name, type, level, scale and template. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "views-sheets",
@@ -1520,6 +1539,44 @@
       "fileSystem": {
         "access": "write",
         "scope": "New snapshot files on the client; existing files are not overwritten."
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_model_audit",
+      "description": "Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
+      "toolset": "read",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
+      "name": "revit_audit_report",
+      "description": "Write new XLSX and self-contained HTML reports from a local audit JSON file. Paths resolve on the server machine. Existing files are refused.",
+      "toolset": "batch",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
       },
       "networkAccess": "none"
     },
