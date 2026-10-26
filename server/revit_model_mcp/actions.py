@@ -810,13 +810,20 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_undo_last": "Undo Last Action",
             "revit_execute_code": "Execute C# Code",
         }[function.__name__]
+        session_tool = function.__name__ in {
+            "revit_activate_view",
+            "revit_activate_document",
+            "revit_select",
+            "revit_show",
+            "revit_isolate",
+            "revit_close_views",
+        }
         return mcp.tool(
             title=title,
             annotations=ToolAnnotations(
                 title=title,
-                readOnlyHint=False,
-                destructiveHint=function.__name__
-                not in {"revit_select", "revit_show", "revit_isolate"},
+                readOnlyHint=session_tool,
+                destructiveHint=not session_tool,
                 idempotentHint=function.__name__
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
             ),

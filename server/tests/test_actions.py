@@ -75,6 +75,16 @@ ACTION_TOOLS = {
 }
 
 
+SESSION_TOOLS = {
+    "revit_activate_view",
+    "revit_activate_document",
+    "revit_select",
+    "revit_show",
+    "revit_isolate",
+    "revit_close_views",
+}
+
+
 @pytest.mark.parametrize("read_only", [None, "0", "1", "true"])
 def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
     import asyncio
@@ -106,12 +116,10 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_walls_from_cad",
                 }
             )
-            assert tool.annotations.read_only_hint is False
+            assert tool.annotations.read_only_hint is (name in SESSION_TOOLS)
             assert tool.title and len(tool.title) <= 40
             assert tool.annotations.title == tool.title
-            assert tool.annotations.destructive_hint is (
-                name not in {"revit_select", "revit_show", "revit_isolate"}
-            )
+            assert tool.annotations.destructive_hint is (name not in SESSION_TOOLS)
         return tools
 
     asyncio.run(check())
@@ -1504,10 +1512,8 @@ def test_in_process_action_titles():
     for tool in tools:
         assert tool.title and len(tool.title) <= 40
         assert tool.annotations.title == tool.title
-        assert tool.annotations.read_only_hint is False
-        assert tool.annotations.destructive_hint is (
-            tool.name not in {"revit_select", "revit_show", "revit_isolate"}
-        )
+        assert tool.annotations.read_only_hint is (tool.name in SESSION_TOOLS)
+        assert tool.annotations.destructive_hint is (tool.name not in SESSION_TOOLS)
 
 
 def test_edit_families_maps_discriminated_operations_and_defaults():
@@ -2229,7 +2235,7 @@ def test_set_read_only_unlock_forwards_confirmation_and_summary():
         "success": True,
         "data": {
             "needsConfirmation": True,
-            "confirmationText": "Turn off read-only for all Revit versions of Alice on PC? The assistant will be able to change models.",
+            "confirmationText": "Turn off read-only for all Revit versions of this Windows user on this PC? The assistant will be able to change models.",
             "confirmToken": "workstation-token",
             "summary": "Needs confirmation to turn off read-only.",
         },
