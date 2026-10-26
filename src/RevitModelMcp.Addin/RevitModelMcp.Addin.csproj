@@ -63,6 +63,10 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" Condition="'$(TargetFramework)' == 'net48'"/>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Net.Http"/>
+  </ItemGroup>
+
   <ItemGroup>
     <AssemblyMetadata Include="ManagedInstall" Value="$(ManagedInstall)"/>
     <AssemblyMetadata Include="UpdateChannel" Value="$(UpdateChannel)"/>

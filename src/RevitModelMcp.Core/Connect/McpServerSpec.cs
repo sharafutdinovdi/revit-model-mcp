@@ -54,9 +54,9 @@ public sealed record McpServerSpec(string Command, IReadOnlyList<string> Args)
         if (contents is not null)
             candidates.Add(Combine(contents, "server", ExecutableName));
         if (!string.IsNullOrWhiteSpace(programFiles))
-            candidates.Add(Combine(programFiles, "Model MCP", "server", ExecutableName));
+            candidates.Add(Combine(programFiles!, "Model MCP", "server", ExecutableName));
         if (!string.IsNullOrWhiteSpace(localAppData))
-            candidates.Add(Combine(localAppData, "Programs", "Model MCP", "server", ExecutableName));
+            candidates.Add(Combine(localAppData!, "Programs", "Model MCP", "server", ExecutableName));
         return candidates;
     }
 
