@@ -156,7 +156,12 @@ Restart Revit after a change.
 | `requestReadTimeoutSeconds` | integer | `30` | See [Limits](#limits). |
 | `shutdownDrainSeconds` | integer | `5` | See [Limits](#limits). |
 
-The workstation `read-only` gate is a file next to `settings.json`, not a key.
+The workstation `read-only` lock is a file next to `settings.json`.
+It applies to all Revit versions and instances of the same Windows user.
+The Model MCP ribbon or `revit_set_read_only` controls it.
+Chat unlock requires explicit user confirmation through a five-minute, single-use token.
+Machine policy overrides the user lock.
+See [read-only mode](actions.md#read-only-mode).
 
 ### Listener status
 
@@ -230,7 +235,7 @@ uv run --directory server revit-model-mcp
 HTTP has no built-in TLS.
 Use an SSH tunnel, Tailscale or a TLS reverse proxy; the client validates HTTPS certificates.
 Redirects are rejected to prevent forwarding the bearer token to another endpoint.
-`/health` is unauthenticated and reveals the Revit and add-in versions, supported commands, protocol version, active document name, process ID, startup identity (`startedUtc`) and read-only state.
+`/health` is unauthenticated and reveals the Revit and add-in versions, supported commands, protocol version, active document name, process ID, startup identity (`startedUtc`) and `readOnly: { enabled, source, setBy, setAtUtc }`.
 The Python client sends a fresh 32-byte random base64url nonce in `X-RevitMcp-Nonce` on every health request.
 The add-in answers with `X-RevitMcp-Proof`, the unpadded base64url HMAC-SHA256 of `revit-model-mcp/health/v1\n` followed by the decoded nonce.
 The HMAC key is the UTF-8 bytes of the token text sent after `Bearer `, including for an overridden `REVIT_MCP_TOKEN`.
@@ -272,7 +277,11 @@ Read submissions do not enforce this format; `GET /jobs/{id}`, `POST /jobs/{id}/
 The Python HTTP transport URL-encodes lookup IDs and checks pending responses for a non-empty string ID, without GUID validation.
 
 HTTP 403 rejects action jobs while the workstation `read-only` gate file is present.
-MCP action tools return `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` when `REVIT_MCP_READ_ONLY=1` in the Python process. A read-only refusal from the pipe or HTTP transport (pipe error `read_only`, HTTP 403) is returned the same way for actions.
+MCP action tools return `success:false` and `errorCode:"read_only"` while the workstation lock is on.
+The message names its source, time, and removal options.
+Policy refusal returns `errorCode:"policy_blocked"` and asks for administrator help.
+The pipe and HTTP transports preserve these messages.
+The authenticated `set-read-only` command can run while locked.
 HTTP and file jobs share one per-Revit scheduler. The add-in executes one job at a time and rotates between clients.
 Jobs are limited to 1 MiB. The add-in returns HTTP 413 before reading a body
 whose `Content-Length` exceeds that limit, and also enforces the limit while

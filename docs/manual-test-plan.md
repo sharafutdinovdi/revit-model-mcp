@@ -121,7 +121,7 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 - [ ] Cause the first family edit to fail with `stop_on_error=true`. Verify `success:false`, `committed:false`, `failedFamily`, and `rolledBack:true`; confirm the project is unchanged.
 - [ ] Audit enough families for the call to take over 60 seconds. Verify the complete audit returns `success:true` within the configured response timeout.
 
-Actions run by default; either `REVIT_MCP_READ_ONLY=1` **or** the workstation `read-only` file independently switches them off. Direct HTTP callers also need the bearer token.
+Actions run by default; the single workstation read-only lock (Read-only ribbon button or `revit_set_read_only`) switches them off, and the machine policy wins. Direct HTTP callers also need the bearer token.
 
 ### NWC export
 
@@ -149,7 +149,7 @@ Actions run by default; either `REVIT_MCP_READ_ONLY=1` **or** the workstation `r
 | delete / cleanup | delete the test instance | element gone | model back to baseline | [ ] |
 | _(others)_ | | | | [ ] |
 
-- [ ] **4.1 Gate negative test**: with `REVIT_MCP_READ_ONLY=1`, or the workstation `read-only` file present, an action is **refused** with `read-only mode`; the tool stays listed and read tools still work.
+- [ ] **4.1 Gate negative test**: with the Read-only ribbon button on, an action is **refused** with `errorCode:"read_only"`; the tool stays listed and read tools still work. Turning it off with `revit_set_read_only` first returns a confirmation token and changes nothing until the user confirms.
 - [ ] **4.2 HTTP token gate**: a direct HTTP action without the bearer token is refused; `/health` works without token.
 - [ ] **4.3 Transaction safety**: every action wraps a Revit transaction; a failed action leaves the model unchanged (no partial edits).
 - [ ] **4.4 Model restored**: after the action suite, the model matches its pre-test baseline (re-run `revit_aggregate_elements`).

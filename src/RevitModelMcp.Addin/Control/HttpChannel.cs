@@ -202,7 +202,7 @@ internal sealed class HttpChannel : IDisposable
                     ["documentName"] = _documentName,
                     ["processId"] = _processId,
                     ["startedUtc"] = ChannelDirectory.StartedUtc,
-                    ["readOnly"] = ActionCommandExecutor.ReadOnlyMode,
+                    ["readOnly"] = ActionCommandExecutor.ReadOnlyLock.State,
                     ["policy"] = PolicyProvider.Summary()
                 }).ConfigureAwait(false);
                 return;

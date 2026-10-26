@@ -14,7 +14,7 @@ Changes to this policy are recorded in the repository history.
 
 Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
-Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
+Actions change Revit data by default. The workstation read-only lock disables them: use the Read-only ribbon button or `revit_set_read_only`. The machine policy wins over the lock.
 The maintainer collects no personal data, accounts or usage statistics.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
 

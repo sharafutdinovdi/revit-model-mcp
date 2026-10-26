@@ -70,6 +70,9 @@ public sealed class CommandResponse<T>
     [DataMember(Name = "policy", Order = 20, EmitDefaultValue = false)]
     public Dictionary<string, string>? Policy { get; set; }
 
+    [DataMember(Name = "readOnly", Order = 21, EmitDefaultValue = false)]
+    public Control.ReadOnlyLockState? ReadOnly { get; set; }
+
     [OnSerializing]
     private void AddJobMetadata(StreamingContext context)
     {

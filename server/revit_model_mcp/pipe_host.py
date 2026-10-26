@@ -281,7 +281,10 @@ def _policy_text(reply: dict[str, Any]) -> str | None:
         message
         if reply.get("error") in ("read_only", "policy_blocked")
         and isinstance(message, str)
-        and message.startswith(POLICY_REFUSAL_PREFIX)
+        and (
+            message.startswith(POLICY_REFUSAL_PREFIX)
+            or message == "Read-only is enforced by workstation policy; ask your administrator."
+        )
         else None
     )
 
@@ -295,7 +298,7 @@ def _refusal_error(reply: dict[str, Any]) -> RevitChannelError:
             else RevitChannelError(text)
         )
     if reply.get("error") == "read_only":
-        return ReadOnlyRefusedError(_error_text(reply))
+        return ReadOnlyRefusedError(reply.get("message") or _error_text(reply))
     return RevitChannelError(_error_text(reply))
 
 

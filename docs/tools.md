@@ -8,7 +8,7 @@ Toolsets limit visibility only. They are not a permission: read-only mode, confi
 
 Session tools `revit_activate_view`, `revit_activate_document`, `revit_select`, `revit_show`, `revit_isolate` (temporary view state) and `revit_close_views` do not change the model. Their MCP annotations are `readOnlyHint=true` and `destructiveHint=false`. Model-changing tools retain their action annotations. These hints describe model access; workstation locks and policy checks still apply.
 
-The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (21 tools, about 6,545 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (22 tools, about 6,730 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
 
 | Toolset | Tools |
 | --- | --- |
@@ -31,7 +31,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 8 | 6,836 | 1,709 |
+| `core` | 9 | 7,574 | 1,893 |
 | `read` | 13 | 19,347 | 4,836 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,952 | 1,238 |
@@ -42,8 +42,8 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `export` | 4 | 7,283 | 1,820 |
 | `batch` | 7 | 8,149 | 2,037 |
 | `code` | 2 | 2,821 | 705 |
-| `all` (default) | 83 | 105,062 | 26,265 |
-| `core,read` | 21 | 26,183 | 6,545 |
+| `all` (default) | 84 | 105,800 | 26,450 |
+| `core,read` | 22 | 26,921 | 6,730 |
 
 These measurements use the default tool schemas. Optional server arguments can increase the payload.
 
@@ -68,7 +68,8 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
-| `revit_ping` | None | Check connectivity; returns `data:"pong"`. |
+| `revit_ping` | None | Check connectivity; returns `data:"pong"` and `readOnly: { enabled, source, setBy, setAtUtc }`. |
+| `revit_set_read_only` | `enabled`, `confirm_token=null` | Control the shared workstation lock. Lock immediately. Unlock only after an explicit user request and confirmation with the returned token. Policy locks cannot be changed. See [read-only mode](actions.md#read-only-mode). |
 | `revit_jobs` | `job_id=null`, `wait_seconds=40` | List jobs, or wait up to 50 seconds for an action job (0 through 50, default 40; poll again for longer jobs). Returns progress or the original final action response. |
 | `revit_nwc_settings_check` | `settings_xml` | Parse exporter XML on the Revit workstation without exporting; return values, mapping, notApplied and ignored. |
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
@@ -262,11 +263,12 @@ Every tool follows one rule.
 
 A tool rejects an argument it does not declare and names it. If the argument is a former name, the message names the new one. Documented aliases such as `timeoutSeconds` are accepted.
 
-Read `errorCode`, not the text of `error`. The wording of messages is not part of the contract. The `error` value `read-only mode` is.
+Read `errorCode` for programmatic handling.
+Read-only messages identify the workstation lock and explain how to remove it.
 
 | `errorCode` | Meaning |
 | --- | --- |
-| `read_only` | Refused because the server runs with `REVIT_MCP_READ_ONLY=1`, the workstation `read-only` file exists, or the transport reported a read-only refusal. `error` is `read-only mode`. |
+| `read_only` | Refused because the workstation user lock is on. The message names `ribbon`, `chat`, or `file`, its UTC time, and removal options. |
 | `policy_blocked` | Refused by the machine policy an administrator set, for example a denied tool or disabled code execution. `error` starts with `Blocked by organization policy:`. See the [policy reference](admin/policy-reference.md). |
 | `transport_unavailable` | Revit cannot be reached over SSH, a named pipe, or HTTP. `retryable` is `true`. Retry when the workstation or tunnel is back. |
 | `action_failed` | The add-in tried the action and reported a failure. `error` holds the add-in's message. |

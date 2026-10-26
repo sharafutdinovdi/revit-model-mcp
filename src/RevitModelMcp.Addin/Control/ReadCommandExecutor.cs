@@ -33,7 +33,9 @@ internal static class ReadCommandExecutor
             if (job.Kind == ControlJobKind.Ping)
             {
                 stopwatch.Stop();
-                output.Write(ReadCommandResponseFactory.Ping(stopwatch.ElapsedMilliseconds, PolicyProvider.Summary()));
+                var response = ReadCommandResponseFactory.Ping(stopwatch.ElapsedMilliseconds, PolicyProvider.Summary());
+                response.ReadOnly = ActionCommandExecutor.ReadOnlyLock.State;
+                output.Write(response);
                 LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
                 return;
             }

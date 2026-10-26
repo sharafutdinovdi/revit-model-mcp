@@ -155,7 +155,7 @@ def test_tool_captures_sequentially_with_addressing_and_continues_on_error(tmp_p
     ]
     with (
         patch.object(server.channel, "execute", side_effect=capture),
-        patch.dict("os.environ", {"REVIT_MCP_READ_ONLY": "1"}),
+        patch.dict("os.environ", {server.LEGACY_READ_ONLY_VARIABLE: "1"}),
     ):
         result = asyncio.run(
             server.mcp.call_tool(

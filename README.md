@@ -243,7 +243,7 @@ Install it the same way: copy `skills/iso19650-issue-register` into `~/.claude/s
 
 <a id="actions-opt-in"></a>
 
-- **Actions are on by default.** Set `REVIT_MCP_READ_ONLY=1` in the server environment, or create the workstation `read-only` file, to refuse every action. Action tools stay listed and return `errorCode: "read_only"` instead of running.
+- **Actions are on by default.** One workstation read-only lock refuses every action. Turn it on with the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs your explicit confirmation. The machine policy wins over the lock. Action tools stay listed and return `errorCode: "read_only"` instead of running. See [Actions](docs/actions.md#read-only-mode).
 - **One undo per change.** A committed action is one named Revit undo entry, shown in Revit's Undo list and in the add-in's "MCP activity" pane. `revit_undo_last` undoes it while it is still Revit's last change.
 - **Confirmation tokens for irreversible actions.** Saving, synchronizing, removing links and running C# always need one. Closing with changes, deleting more than 500 elements, overwriting existing export files and in-place saves in batch runs need one too. The first call changes nothing and returns the text to show you; the retry needs your explicit agreement. A token is single use and expires after five minutes.
 - **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export` and `revit_process_models` accept `dry_run` to preview the result without committing it.

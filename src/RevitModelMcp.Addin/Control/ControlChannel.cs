@@ -303,7 +303,7 @@ internal sealed class ControlChannel
     private JobCancellation CancelJob(string jobId, string clientId, bool isAction)
     {
         var job = _scheduler.Status(jobId);
-        if (job is not null && ActionJobParser.IsAction(job.Command) && ActionCommandExecutor.ReadOnlyMode)
+        if (job is not null && ReadOnlyGatePolicy.RefusesSubmission(job.Command) && ActionCommandExecutor.ReadOnlyMode)
             return new(false, job.State, PolicyProvider.ReadOnlyMessage);
         var cancellation = _scheduler.Cancel(jobId, clientId,
             isAction && job is not null && ActionJobParser.IsAction(job.Command));
@@ -335,8 +335,9 @@ internal sealed class ControlChannel
     private void ProcessJob(UIApplication application, ControlJobParseResult parsed)
     {
         var startedAt = _currentStartedAt;
+        ActionCommandExecutor.ReadOnlyLock.Refresh();
         if (Environment.GetEnvironmentVariable("REVIT_MCP_BATCH_WORKER") == "1" &&
-            !BatchReadOnlyPolicy.Allows(parsed.Command))
+            parsed.Command != "set-read-only" && !BatchReadOnlyPolicy.Allows(parsed.Command))
         {
             TryWriteError(application, parsed.Command, "read-only batch mode", startedAt, parsed.CorrelationId);
             return;
