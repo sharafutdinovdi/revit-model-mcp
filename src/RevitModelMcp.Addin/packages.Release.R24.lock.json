@@ -41,6 +41,12 @@
           "Microsoft.NETFramework.ReferenceAssemblies.net48": "1.0.3"
         }
       },
+      "Nice3point.Revit.Api.AdWindows": {
+        "type": "Direct",
+        "requested": "[2024.*, )",
+        "resolved": "2024.3.60",
+        "contentHash": "reLhUt3QQN7JJcDj87fw7NR++x+2XN1IsP8VBVi6CyZD4ohngXOKQnMj2Z70NHVWsi/sjwTv6c5H7ELHp6D7DA=="
+      },
       "Nice3point.Revit.Api.RevitAPI": {
         "type": "Direct",
         "requested": "[2024.0.0, 2024.0.0]",
