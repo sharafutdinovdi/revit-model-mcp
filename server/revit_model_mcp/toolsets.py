@@ -111,7 +111,15 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
         "revit_audit_report",
         "revit_process_models",
     ),
-    "code": ("revit_execute_code", "revit_api_lookup"),
+    "code": (
+        "revit_execute_code",
+        "revit_api_lookup",
+        "revit_save_tool",
+        "revit_list_tools",
+        "revit_get_tool",
+        "revit_run_tool",
+        "revit_delete_tool",
+    ),
 }
 
 ALL = "all"

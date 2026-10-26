@@ -41,7 +41,7 @@ public sealed class Application : ExternalApplication
         "set-parameter", "delete", "batch", "process-models", "export-nwc", "export", "edit-families",
         "align-link-datums", "open-document", "close-document", "save-document",
         "sync-document", "activate-document", "activate-view", "close-views", "new-document",
-        "list-sheets", "set-view-visibility", "remove-links", "execute-code", "api-lookup", "undo-last",
+        "list-sheets", "set-view-visibility", "remove-links", "execute-code", "save-tool", "list-tools", "get-tool", "run-tool", "delete-tool", "api-lookup", "undo-last",
         "batch-supervisor-start", "batch-prepass", "batch-open", "batch-close", "model-snapshot"
     ];
     private readonly List<(RibbonButton Button, string Icon)> _ribbonButtons = [];
@@ -282,6 +282,11 @@ public sealed class Application : ExternalApplication
             RibbonText.ConnectToolTip, RibbonText.ConnectDescription, HelpLinks.AddinHelpUrl);
         ConfigureRibbonButton(panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton), "Activity",
             RibbonText.ActivityToolTip, RibbonText.ActivityDescription, HelpLinks.AddinHelpUrl);
+        ConfigureRibbonButton(panel.AddPushButton<MyToolsCommand>("My tools"), "Mytools",
+            "Review and manage saved C# tools.",
+            "Open the saved tool list to review names, descriptions, modes, revisions and tested Revit years. " +
+            "Show code opens a read-only source viewer. Delete requires confirmation. " +
+            "Run tools through an AI app. Saved tools follow the ExecuteCode policy and workstation read-only lock.", HelpLinks.AddinHelpUrl);
         var items = panel.AddStackedItems(
             UrlButtonData<HelpCommand>("Help"),
             UrlButtonData<ReportIssueCommand>("Report issue"),

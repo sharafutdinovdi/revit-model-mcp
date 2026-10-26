@@ -20,7 +20,7 @@ public static class ActionJobParser
     }
 
     public static bool IsAction(string command) => command is
-        "set-read-only" or "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet" or "tag-elements" or "create-schedule";
+        "save-tool" or "run-tool" or "delete-tool" or "list-tools" or "get-tool" or "set-read-only" or "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet" or "tag-elements" or "create-schedule";
 
     public static ControlJobParseResult Parse(string command, ControlJobContract job, IReadOnlyCollection<string>? trustedNetworkRoots = null)
     {
@@ -29,6 +29,12 @@ public static class ActionJobParser
             if (command == "set-read-only" && job.Enabled is null) throw new ArgumentException("enabled is required.");
             var action = new ActionJobContract
             {
+                ToolParameters = job.ToolParameters,
+                ToolArgs = job.ToolArgs ?? "{}",
+                ToolDescription = job.ToolDescription,
+                ToolMode = job.ToolMode ?? "action",
+                ToolYears = job.ToolYears ?? [],
+                Code = job.Code,
                 Enabled = job.Enabled ?? false,
                 DryRun = job.DryRun ?? false,
                 ElementIds = (job.ElementIds ?? []).Distinct().ToList(),
@@ -869,6 +875,15 @@ public static class DeletionPolicy
 
 public sealed class ActionJobContract
 {
+    public string? ToolParameters { get; set; }
+    public string ToolArgs { get; set; } = "{}";
+    public string? ToolDescription { get; set; }
+    public string ToolMode { get; set; } = "action";
+    public int[] ToolYears { get; set; } = [];
+    public string? ToolName { get; set; }
+    public string? ToolRevision { get; set; }
+    public string? ToolApprovalBinding { get; set; }
+    public IReadOnlyDictionary<string, object> Args { get; set; } = new Dictionary<string, object>();
     public ProcessModelsJob? ProcessModels { get; set; }
     public string? Code { get; set; }
     public string TransactionMode { get; set; } = "auto";
@@ -1499,6 +1514,11 @@ public sealed class LinkRemovalResult
 
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "toolParameters")] public string? ToolParameters { get; set; }
+    [DataMember(Name = "toolArgs")] public string? ToolArgs { get; set; }
+    [DataMember(Name = "toolDescription")] public string? ToolDescription { get; set; }
+    [DataMember(Name = "toolMode")] public string? ToolMode { get; set; }
+    [DataMember(Name = "toolYears")] public int[]? ToolYears { get; set; }
     [DataMember(Name = "process")] public ProcessModelsJob? ProcessModels { get; set; }
     [DataMember(Name = "code")] public string? Code { get; set; }
     [DataMember(Name = "transaction")] public string? Transaction { get; set; }
@@ -1751,6 +1771,8 @@ public sealed class SkippedByReason
 [KnownType(typeof(SkippedByReason))]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "tool", EmitDefaultValue = false)] public ToolDefinition? Tool { get; set; }
+    [DataMember(Name = "tools", EmitDefaultValue = false)] public List<ToolDefinition>? Tools { get; set; }
     [DataMember(Name = "currentIndex", EmitDefaultValue = false)] public int? CurrentIndex { get; set; }
     [DataMember(Name = "currentPath", EmitDefaultValue = false)] public string? CurrentPath { get; set; }
     [DataMember(Name = "cancelled", EmitDefaultValue = false)] public bool? Cancelled { get; set; }

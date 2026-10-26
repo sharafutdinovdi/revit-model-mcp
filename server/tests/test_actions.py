@@ -30,6 +30,11 @@ ACTION_TOOLS = {
     "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
+    "revit_save_tool",
+    "revit_list_tools",
+    "revit_get_tool",
+    "revit_run_tool",
+    "revit_delete_tool",
     "revit_select",
     "revit_show",
     "revit_isolate",
@@ -76,6 +81,8 @@ ACTION_TOOLS = {
 
 
 SESSION_TOOLS = {
+    "revit_list_tools",
+    "revit_get_tool",
     "revit_activate_view",
     "revit_activate_document",
     "revit_select",
@@ -108,6 +115,7 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_edit_families",
                     "revit_align_link_datums",
                     "revit_execute_code",
+                    "revit_run_tool",
                     "revit_export",
                     "revit_process_models",
                     "revit_load_family",
@@ -2284,3 +2292,158 @@ def test_set_read_only_uses_one_instance_for_the_shared_workstation_lock():
     host.list_revit_instances.return_value = [{"processId": 100}, {"processId": 42}]
     asyncio.run(server.call_tool("revit_set_read_only", {"enabled": True}))
     assert execute.await_args.args[0].payload["targetProcessId"] == 42
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "command"),
+    [
+        (
+            "revit_save_tool",
+            {
+                "name": "my_tool",
+                "description": "Count",
+                "parameters": {"type": "object"},
+                "code": "return 1;",
+            },
+            "save-tool",
+        ),
+        ("revit_run_tool", {"name": "my_tool", "args": {"count": 2}}, "run-tool"),
+        ("revit_delete_tool", {"name": "my_tool"}, "delete-tool"),
+    ],
+)
+def test_my_tools_confirmation_round_trip(tool, arguments, command):
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.side_effect = [
+        {
+            "success": True,
+            "data": {
+                "needsConfirmation": True,
+                "confirmToken": "review-token",
+                "summary": "Review",
+                "tool": {"revision": "a" * 64, "code": "return 1;"},
+            },
+        },
+        {"success": True, "data": {"summary": "Done"}},
+    ]
+    first = asyncio.run(server.call_tool(tool, arguments))
+    assert "review-token" in str(first)
+    assert execute.await_args.args[0].command == command
+    preview = execute.await_args.args[0].payload.copy()
+    assert preview["confirmToken"] is None
+    asyncio.run(server.call_tool(tool, {**arguments, "confirm_token": "review-token"}))
+    confirmed = execute.await_args.args[0].payload.copy()
+    assert confirmed.pop("confirmToken") == "review-token"
+    preview.pop("confirmToken")
+    assert confirmed == preview
+    assert execute.await_count == 2
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "revit_save_tool",
+        "revit_list_tools",
+        "revit_get_tool",
+        "revit_run_tool",
+        "revit_delete_tool",
+    ],
+)
+def test_my_tools_follow_execute_code_policy(tool):
+    import asyncio
+
+    arguments = {
+        "revit_save_tool": {
+            "name": "my_tool",
+            "description": "Count",
+            "parameters": {"type": "object"},
+            "code": "return 1;",
+        },
+        "revit_list_tools": {},
+        "revit_get_tool": {"name": "my_tool"},
+        "revit_run_tool": {"name": "my_tool", "args": {}},
+        "revit_delete_tool": {"name": "my_tool"},
+    }[tool]
+    server, execute, host = action_server()
+    for policy in [{"ExecuteCode": "off"}, {"ToolDeny": ["revit_execute_code"]}]:
+        with patch("revit_model_mcp.policy.load_policy", return_value=policy):
+            result = asyncio.run(server.call_tool(tool, arguments))
+        assert "Blocked by organization policy" in str(result)
+    execute.assert_not_awaited()
+    host.list_revit_instances.assert_not_awaited()
+
+
+def test_my_tools_read_only_and_discovery_annotations():
+    import asyncio
+
+    server, execute, _ = action_server()
+    with patch("revit_model_mcp.policy.load_policy", return_value={"ReadOnly": True}):
+        for tool, arguments in [
+            ("revit_run_tool", {"name": "my_tool", "args": {}, "dry_run": True}),
+            (
+                "revit_save_tool",
+                {
+                    "name": "my_tool",
+                    "description": "Count",
+                    "parameters": {"type": "object"},
+                    "code": "return 1;",
+                },
+            ),
+            ("revit_delete_tool", {"name": "my_tool"}),
+        ]:
+            result = asyncio.run(server.call_tool(tool, arguments))
+            assert "policy_blocked" in str(result)
+        execute.assert_not_awaited()
+        asyncio.run(server.call_tool("revit_list_tools", {}))
+        asyncio.run(server.call_tool("revit_get_tool", {"name": "my_tool"}))
+    assert execute.await_count == 2
+    tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    for name in ["revit_list_tools", "revit_get_tool"]:
+        assert tools[name].annotations.read_only_hint is True
+        assert tools[name].annotations.destructive_hint is False
+    for name in ["revit_save_tool", "revit_run_tool", "revit_delete_tool"]:
+        assert tools[name].annotations.read_only_hint is False
+        assert "confirm_token" in tools[name].input_schema["properties"]
+    assert (
+        tools["revit_save_tool"].input_schema["properties"]["name"]["pattern"]
+        == "^[a-z][a-z0-9_]{2,47}$"
+    )
+
+
+def test_my_tools_maps_typed_args_and_enforces_utf8_source_limit():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_run_tool",
+            {
+                "name": "my_tool",
+                "args": {"label": "ok", "count": 2, "size": 1.5, "enabled": True},
+                "dry_run": True,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert json.loads(payload["toolArgs"]) == {
+        "label": "ok",
+        "count": 2,
+        "size": 1.5,
+        "enabled": True,
+    }
+    assert payload["dryRun"] is True
+    execute.reset_mock()
+    with pytest.raises(ToolError, match="256 KB"):
+        asyncio.run(
+            server.call_tool(
+                "revit_save_tool",
+                {
+                    "name": "my_tool",
+                    "description": "Count",
+                    "parameters": {"type": "object"},
+                    "code": "é" * 131073,
+                },
+            )
+        )
+    execute.assert_not_awaited()

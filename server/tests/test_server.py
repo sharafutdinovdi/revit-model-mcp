@@ -72,6 +72,11 @@ ACTION_TOOL_NAMES = {
     "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
+    "revit_save_tool",
+    "revit_list_tools",
+    "revit_get_tool",
+    "revit_run_tool",
+    "revit_delete_tool",
     "revit_select",
     "revit_show",
     "revit_isolate",
@@ -588,6 +593,8 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
         session_tools = {
+            "revit_list_tools",
+            "revit_get_tool",
             "revit_activate_view",
             "revit_activate_document",
             "revit_select",

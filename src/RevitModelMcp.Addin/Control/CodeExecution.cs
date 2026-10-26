@@ -33,6 +33,7 @@ public sealed class ScriptContext
     public UIDocument? UiDocument { get; }
     public Document? Document { get; }
     public IReadOnlyList<string> Lines => _log;
+    public IReadOnlyDictionary<string, object> Args { get; internal set; } = new Dictionary<string, object>();
     public void Log(string message)
     {
         foreach (var line in (message ?? string.Empty).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
@@ -57,7 +58,7 @@ internal static class CodeExecution
     private static readonly BoundedLruCache<string, CompiledCode> Cache = new(32);
 
     public static ActionResultData Execute(UIApplication application, Document? document, UIDocument? uiDocument,
-        ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId)
+        ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId, bool compileOnly = false)
     {
         var stopwatch = Stopwatch.StartNew();
         var code = action.Code ?? throw new ArgumentException("code is required.");
@@ -76,9 +77,9 @@ internal static class CodeExecution
         };
         if (action.TransactionMode == "none")
             result.Warning = "The script owns transactions and document lifecycle. Undo is not guaranteed.";
-        WriteAudit(code, clientName, document?.Title, document?.PathName, action.TransactionMode, jobId);
-        var key = CodeSource.CacheKey(code, action.TransactionMode);
-        if (!Cache.TryGet(key, out var compiled))
+        if (!compileOnly) WriteAudit(code, clientName, document?.Title, document?.PathName, action.TransactionMode, jobId);
+        var key = action.ToolRevision ?? CodeSource.CacheKey(code, action.TransactionMode);
+        if (!Cache.TryGet(key, out var compiled) || compileOnly)
         {
             var source = CodeSource.BuildSource(code);
             var references = GetReferences();
@@ -114,11 +115,26 @@ internal static class CodeExecution
                 result.ElapsedMs = stopwatch.ElapsedMilliseconds;
                 return result;
             }
+            if (compileOnly)
+            {
+                var scripts = compilation.GetSymbolsWithName("Script", SymbolFilter.Type).OfType<INamedTypeSymbol>()
+                    .Where(type => type.DeclaredAccessibility == Microsoft.CodeAnalysis.Accessibility.Public).ToList();
+                var methods = scripts.SelectMany(type => type.GetMembers("Execute").OfType<IMethodSymbol>()).ToList();
+                if (scripts.Count != 1 || methods.Count != 1 || methods[0].DeclaredAccessibility != Microsoft.CodeAnalysis.Accessibility.Public ||
+                    !methods[0].IsStatic || methods[0].ReturnType.SpecialType != Microsoft.CodeAnalysis.SpecialType.System_Object ||
+                    methods[0].Parameters.Length != 1 || methods[0].Parameters[0].Type.ToDisplayString() != typeof(ScriptContext).FullName)
+                {
+                    result.CodeError = "Script must declare public static object Execute(ScriptContext ctx).";
+                    result.Summary = "Tool was not saved: invalid Script.Execute signature.";
+                    return result;
+                }
+            }
             compiled = new CompiledCode(assemblyStream.ToArray(), symbolsStream.ToArray());
             Cache.Set(key, compiled);
         }
 
-        var context = new ScriptContext(application, uiDocument, document);
+        if (compileOnly) return result;
+        var context = new ScriptContext(application, uiDocument, document) { Args = action.Args };
         TransactionGroup? group = null;
         Transaction? transaction = null;
         var changedElementCount = 0;
@@ -178,7 +194,7 @@ internal static class CodeExecution
             result.Log = context.Lines.ToList();
             if (transaction is not null)
             {
-                if (action.DryRun)
+                if (action.DryRun || action.ToolMode == "read" && action.ToolName is not null)
                 {
                     if (transaction.RollBack() != TransactionStatus.RolledBack)
                         throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
@@ -205,7 +221,9 @@ internal static class CodeExecution
                     }
                     else
                     {
-                        var undoName = ActionSummaryBuilder.BuildGroupName(clientName, "Execute code");
+                        var undoName = action.ToolName is null
+                            ? ActionSummaryBuilder.BuildGroupName(clientName, "Execute code")
+                            : "Model MCP: " + action.ToolName;
                         group!.SetName(undoName);
                         if (group.Assimilate() != TransactionStatus.Committed)
                             throw new InvalidOperationException("Could not assimilate the action transaction group.");
@@ -243,6 +261,7 @@ internal static class CodeExecution
 #endif
             result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         }
+        if (action.ToolName is not null) result.Summary = $"{action.ToolName}: {result.Summary}";
         return result;
     }
 
