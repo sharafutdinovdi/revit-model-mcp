@@ -708,7 +708,10 @@ foreach (var plane in planes)
 }
 foreach (var plane in new[] { bottom, centerX, centerY }) plane.Pinned = true;
 document.Regenerate();
-return new { plane_ids = new[] { centerX.UniqueId, centerY.UniqueId }, origin_ids = new[] { centerX.UniqueId, extrusion.UniqueId },
+var originIds = new List<string> { centerX.UniqueId, extrusion.UniqueId };
+if (centerY.get_Parameter(BuiltInParameter.DATUM_PLANE_DEFINES_ORIGIN).AsInteger() != 1)
+    originIds.Add(centerY.UniqueId);
+return new { plane_ids = new[] { centerX.UniqueId, centerY.UniqueId }, origin_ids = originIds.ToArray(),
     parameter_id = width.Id.ToString(), form_ids = new[] { extrusion.UniqueId },
     defect_ids = new[] { "origin", "plane_names", "parameter_name" } };
 """

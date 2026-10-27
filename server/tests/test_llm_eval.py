@@ -2110,3 +2110,21 @@ def test_native_target_confirmation_requires_operator_decision(monkeypatch):
     assert response["error"]
     assert not calls
     assert [row["kind"] for row in approvals] == ["challenge", "denied"]
+
+
+@pytest.mark.parametrize("include_y", [True, False])
+def test_rule_report_covers_every_seeded_origin_violation(include_y):
+    manifest = {"plane_ids": ["x", "y"], "origin_ids": ["body", "x", "y"]}
+    report = {
+        "before_violations": [
+            {"rule_id": "R1", "element_unique_ids": ["body", "x"]},
+            {"rule_id": "R2", "element_unique_ids": ["x", "y"]},
+            {"rule_id": "R3", "parameter_name": "w"},
+        ],
+        "after_violations": [],
+    }
+    if include_y:
+        report["before_violations"].append({"rule_id": "R1", "element_unique_ids": ["y"]})
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == (
+        "pass" if include_y else "fail"
+    )
