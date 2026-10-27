@@ -1662,12 +1662,16 @@ def test_family_cli_proxy_reuses_one_upstream(monkeypatch, tmp_path):
     assert forwarded[0][0] is upstream_session
 
 
-def test_family_cleanup_denial_preserves_files(monkeypatch):
+@pytest.mark.parametrize("denied", ["revit_open_document", "revit_close_document"])
+def test_family_cleanup_denial_preserves_files(monkeypatch, denied):
     calls = []
 
     async def call(session, name, args, approvals):
         calls.append(name)
-        return {"error": True, "payload": {"error": "operator_denied"}}
+        return {
+            "error": name == denied,
+            "payload": {"error": "operator_denied"} if name == denied else {},
+        }
 
     async def inventory(*args):
         return {
@@ -1679,7 +1683,10 @@ def test_family_cleanup_denial_preserves_files(monkeypatch):
     monkeypatch.setattr(eval_run, "family_call", call)
     plan = FAMILY.cleanup_plan(r"C:\Eval\run1", ["family"], [r"C:\Eval\run1\box.rfa"])
     assert asyncio.run(eval_run.family_cleanup(None, plan, [], "Organizer"))["status"] == "failed"
-    assert calls == ["revit_open_document"]
+    expected = ["revit_open_document"]
+    if denied == "revit_close_document":
+        expected.append("revit_close_document")
+    assert calls == expected
 
 
 def test_family_verifier_errors_are_incomplete_checks(monkeypatch):
