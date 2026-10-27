@@ -12,17 +12,18 @@ foreach (var templateType in manager.Types.Cast<FamilyType>().Where(type => type
 foreach (FamilyType familyType in manager.Types)
 {
     manager.CurrentType = familyType;
-    manager.Set(manager.get_Parameter("Default Sill Height"), 0);
+    manager.Set(manager.get_Parameter("Default Sill Height"), ctx.FromMm(800));
 }
 manager.CurrentType = manager.Types.Cast<FamilyType>().Single(type => type.Name == "Large");
 document.Regenerate();
 var sketch = SketchPlane.Create(document, Plane.CreateByNormalAndOrigin(-XYZ.BasisY, XYZ.Zero));
+var localSill = ctx.FromMm(800);
 var loops = new CurveArrArray();
 foreach (var offset in new[] { ctx.FromMm(50), 0 })
 {
-    var vertices = new[] { new XYZ(-ctx.FromMm(750) - offset, 0, -offset),
-        new XYZ(ctx.FromMm(750) + offset, 0, -offset), new XYZ(ctx.FromMm(750) + offset, 0, ctx.FromMm(1500) + offset),
-        new XYZ(-ctx.FromMm(750) - offset, 0, ctx.FromMm(1500) + offset) };
+    var vertices = new[] { new XYZ(-ctx.FromMm(750) - offset, 0, localSill - offset),
+        new XYZ(ctx.FromMm(750) + offset, 0, localSill - offset), new XYZ(ctx.FromMm(750) + offset, 0, localSill + ctx.FromMm(1500) + offset),
+        new XYZ(-ctx.FromMm(750) - offset, 0, localSill + ctx.FromMm(1500) + offset) };
     var profile = new CurveArray();
     for (var index = 0; index < 4; index++) profile.Append(Line.CreateBound(vertices[index], vertices[(index + 1) % 4]));
     loops.Append(profile);

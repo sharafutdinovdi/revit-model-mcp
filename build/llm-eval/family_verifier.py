@@ -214,7 +214,7 @@ var flexSets = __FLEX__;
 var flexResults = new List<object>();
 var flexPassed = true;
 var baselineWarnings = new HashSet<string>(document.GetWarnings().Select(warning => warning.GetFailureDefinitionId().Guid.ToString() + warning.GetDescriptionText()));
-foreach (var values in flexSets)
+foreach (var values in scenario == "D" ? new double[0][] : flexSets)
 {
     using var flex = new SubTransaction(document);
     flex.Start();
@@ -261,14 +261,6 @@ foreach (var values in flexSets)
                 new[] { -(values[0] / 2 - offset), -10.0, values[2] - 110 },
                 new[] { values[0] / 2 - offset, 10.0, values[2] - 90 })) == 1;
         }
-        if (scenario == "D")
-        {
-            var lower = new[] { 0.0, -200, 0 };
-            var upper = new[] { 600.0, 200, 500 };
-            passed &= vertices.Length > 0 && Enumerable.Range(0, 3).All(axis =>
-                Math.Abs(ctx.ToMm(vertices.Min(point => point[axis])) - lower[axis]) <= 0.1
-                && Math.Abs(ctx.ToMm(vertices.Max(point => point[axis])) - upper[axis]) <= 0.1);
-        }
         passed &= !document.GetWarnings().Any(warning => !baselineWarnings.Contains(warning.GetFailureDefinitionId().Guid.ToString() + warning.GetDescriptionText()));
         flexPassed &= passed;
         flexResults.Add(new { values, volume, passed, warnings = document.GetWarnings().Select(warning => warning.GetFailureDefinitionId().Guid.ToString()).ToArray() });
@@ -280,7 +272,19 @@ foreach (var values in flexSets)
     }
     finally { flex.RollBack(); }
 }
-Record("flex", flexPassed && flexResults.Count == 3, "Three independent value sets regenerate with matching geometry", flexResults);
+if (scenario != "D")
+    Record("flex", flexPassed && flexResults.Count == 3, "Three independent value sets regenerate with matching geometry", flexResults);
+else
+{
+    var vertices = forms.SelectMany(form => Solids(form.get_Geometry(options)))
+        .SelectMany(solid => solid.Edges.Cast<Edge>().SelectMany(edge => edge.Tessellate())).ToArray();
+    var lower = new[] { 0.0, -200, 0 };
+    var upper = new[] { 600.0, 200, 500 };
+    Record("geometry", vertices.Length > 0 && Enumerable.Range(0, 3).All(axis =>
+        Math.Abs(ctx.ToMm(vertices.Min(point => point[axis])) - lower[axis]) <= 0.1
+        && Math.Abs(ctx.ToMm(vertices.Max(point => point[axis])) - upper[axis]) <= 0.1),
+        "Static equipment body bounds (0,-200,0) to (600,200,500) mm", vertices.Length);
+}
 checks.Add(new { check_id = "flex_commit", status = "not_verified", expected = "Commit without new warnings or failures",
     actual = "dry_run rolls back the outer transaction", document = document.Title, ids = new string[0],
     reason = "Requires commit and failure-processing validation on disposable workstation copies" });
@@ -347,6 +351,14 @@ void Record(string name, bool passed, string expected, object actual)
         document = document.Title, ids = instanceUniqueIds, reason = "Independent project API probe" });
 }
 Record("placement", instances.Length == 1, "One placed result family", instances.Length);
+if (instances.Length != 1)
+{
+    foreach (var check in __DEPENDENT_CHECKS__)
+        checks.Add(new { check_id = check, status = "fail", expected = "One placed result family",
+            actual = instances.Length, document = document.Title, ids = instanceUniqueIds,
+            reason = "Project checks require exactly one result instance" });
+    return new { checks };
+}
 if (scenario == "C")
 {
     var instance = instances.Single();
@@ -390,19 +402,23 @@ if (scenario == "C")
             var passed = instance.Host.Id == wall.Id && instance.FacingFlipped == flipped;
             var wallSolids = wall.get_Geometry(new Options()).OfType<Solid>().Where(solid => solid.Volume > 1e-9).ToArray();
             var transform = instance.GetTransform();
+            var familyPoints = symbol.get_Geometry(new Options()).OfType<Solid>()
+                .Where(solid => solid.Volume > 1e-9)
+                .SelectMany(solid => solid.Edges.Cast<Edge>().SelectMany(edge => edge.Tessellate())).ToArray();
+            var localSill = familyPoints.Min(point => point.Z) + ctx.FromMm(50);
             var direction = instance.FacingOrientation.Normalize();
             var rayLength = wall.Width + ctx.FromMm(100);
             foreach (var horizontal in new[] { -0.45, 0.0, 0.45 })
             foreach (var vertical in new[] { 0.1, 0.5, 0.9 })
             {
-                var point = transform.OfPoint(new XYZ(horizontal * openingWidth, 0, vertical * openingHeight));
+                var point = transform.OfPoint(new XYZ(horizontal * openingWidth, 0, localSill + vertical * openingHeight));
                 var ray = Line.CreateBound(point - direction * rayLength, point + direction * rayLength);
                 using var intersectionOptions = new SolidCurveIntersectionOptions();
                 passed &= wallSolids.All(solid => solid.IntersectWithCurve(ray, intersectionOptions).SegmentCount == 0);
             }
             foreach (var side in new[] { -1, 1 })
             {
-                var point = transform.OfPoint(new XYZ(side * (openingWidth / 2 + ctx.FromMm(100)), 0, openingHeight / 2));
+                var point = transform.OfPoint(new XYZ(side * (openingWidth / 2 + ctx.FromMm(100)), 0, localSill + openingHeight / 2));
                 var ray = Line.CreateBound(point - direction * rayLength, point + direction * rayLength);
                 using var intersectionOptions = new SolidCurveIntersectionOptions();
                 passed &= wallSolids.Any(solid => solid.IntersectWithCurve(ray, intersectionOptions).SegmentCount > 0);
@@ -412,7 +428,7 @@ if (scenario == "C")
             var restoredVolume = wall.get_Parameter(BuiltInParameter.HOST_VOLUME_COMPUTED).AsDouble();
             passed &= Math.Abs((restoredVolume - cutVolume) / (openingWidth * openingHeight * wall.Width) - 1) < 0.005;
             matrixPassed &= passed;
-            variants.Add(new { type = symbol.Name, thickness = ctx.ToMm(wallType.Width), flipped, passed });
+            variants.Add(new { type = symbol.Name, thickness = ctx.ToMm(wallType.Width), localSill = ctx.ToMm(localSill), flipped, passed });
         }
         catch (Exception exception)
         {
@@ -430,6 +446,14 @@ if (scenario == "D")
     var instance = instances.Single();
     var connectors = instance.MEPModel.ConnectorManager.Connectors.Cast<Connector>()
         .Where(connector => connector.Domain == Domain.DomainHvac && connector.ConnectorType == ConnectorType.End).ToArray();
+    if (connectors.Length != 1)
+    {
+        foreach (var check in __DEPENDENT_CHECKS__)
+            checks.Add(new { check_id = check, status = "fail", expected = "One physical HVAC connector",
+                actual = connectors.Length, document = document.Title, ids = instanceUniqueIds,
+                reason = "Connection checks require exactly one physical HVAC connector" });
+        return new { checks };
+    }
     var connector = connectors.Single();
     Record("connector_properties", connectors.Length == 1 && connector.Shape == ConnectorProfileType.Round
         && Math.Abs(ctx.ToMm(connector.Radius) - 100) <= 0.1 && connector.DuctSystemType == DuctSystemType.SupplyAir
@@ -520,7 +544,16 @@ def probe_code(scenario: str, *, project: bool = False) -> str:
         + "}"
     )
     return (
-        code.replace("__SCENARIO__", json.dumps(scenario))
+        code.replace(
+            "__DEPENDENT_CHECKS__",
+            "new string[] {"
+            + ",".join(
+                json.dumps(check)
+                for check in expected_checks(scenario, project=True)[1:]
+            )
+            + "}",
+        )
+        .replace("__SCENARIO__", json.dumps(scenario))
         .replace("__NAME__", json.dumps(FAMILY_NAMES[scenario]))
         .replace("__TYPES__", types)
         .replace("__FLEX__", flex)
@@ -545,7 +578,12 @@ def expected_checks(scenario: str, *, project: bool = False) -> list[str]:
                 ],
             }.get(scenario, [])
         )
-    checks = ["parameters", "category", "types", "flex"]
+    checks = [
+        "parameters",
+        "category",
+        "types",
+        "geometry" if scenario == "D" else "flex",
+    ]
     if scenario in {"A", "A_prime", "E"}:
         checks += ["planes", "labels", "alignments"]
     if scenario == "B":
@@ -561,32 +599,31 @@ def rule_report(answer: str, manifest: dict, document: str) -> dict:
     try:
         report = json.loads(answer[answer.index("{") : answer.rindex("}") + 1])
         before = report["before_violations"]
-        defects = {row["defect_id"]: row for row in before}
-        valid = len(before) == 3 and set(defects) == {
-            "origin",
-            "plane_names",
-            "parameter_name",
-        }
-        for name, rule in (
-            ("origin", "R1"),
-            ("plane_names", "R2"),
-            ("parameter_name", "R3"),
-        ):
-            valid &= defects[name]["rule_id"] == rule
-        valid &= set(defects["plane_names"]["element_unique_ids"]) == set(
-            manifest["plane_ids"]
-        )
-        valid &= defects["parameter_name"]["parameter_name"] == "w"
-        valid &= bool(defects["origin"].get("element_unique_ids")) and set(
-            defects["origin"]["element_unique_ids"]
-        ) <= set(manifest["origin_ids"])
+        identities = {"R1": set(), "R2": set()}
+        parameter_reported = False
+        valid = isinstance(before, list) and bool(before)
+        for row in before:
+            rule = row["rule_id"]
+            if rule in identities:
+                supplied = set(row["element_unique_ids"])
+                allowed = set(manifest["origin_ids" if rule == "R1" else "plane_ids"])
+                valid &= bool(supplied) and supplied <= allowed
+                identities[rule].update(supplied)
+            elif rule == "R3":
+                valid &= row["parameter_name"] == "w"
+                parameter_reported = True
+            else:
+                valid = False
+        valid &= identities["R1"] == set(manifest["origin_ids"])
+        valid &= identities["R2"] == set(manifest["plane_ids"])
+        valid &= parameter_reported
         valid &= report["after_violations"] == []
     except (ValueError, KeyError, TypeError):
         valid = False
     return {
         "check_id": "rule_violations",
         "status": "pass" if valid else "fail",
-        "expected": "Exactly the seeded R1/R2/R3 violations with matching object identities; no remaining violations",
+        "expected": "Seeded R1/R2/R3 violations cover the affected object identities and legacy parameter; no remaining violations",
         "actual": valid,
         "document": document,
         "ids": manifest.get("plane_ids", []),
@@ -702,4 +739,18 @@ using var algorithm = System.Security.Cryptography.SHA256.Create();
 var hash = BitConverter.ToString(algorithm.ComputeHash(System.IO.File.ReadAllBytes({json.dumps(source)}))).Replace("-", "").ToLowerInvariant();
 Record("source_unchanged", hash == {json.dumps(source_hash)}, "R5: Source RFA hash unchanged", hash);
 return new {{ checks }};
+"""
+
+
+def project_fixture_code() -> str:
+    """Assign unambiguous Type Marks in the disposable project copy."""
+    return r"""
+var document = ctx.Document;
+var wallTypes = new FilteredElementCollector(document).OfClass(typeof(WallType)).Cast<WallType>().ToArray();
+foreach (var wallType in wallTypes)
+{
+    var mark = wallType.get_Parameter(BuiltInParameter.ALL_MODEL_TYPE_MARK);
+    if (mark != null && !mark.IsReadOnly) mark.Set("EVAL_" + wallType.UniqueId);
+}
+return new { prepared = wallTypes.Length };
 """
