@@ -1992,6 +1992,26 @@ def test_static_equipment_contract_has_geometry_without_flex():
     assert "flex не требуются" in prompt
 
 
+@pytest.mark.parametrize("control", [True, False])
+def test_toolbaker_catalog_isolates_saved_procedure(monkeypatch, control):
+    async def call(*args):
+        return {
+            "error": False,
+            "payload": {"data": {"tools": [{"name": "personal"}, {"name": "eval_owned"}]}},
+        }
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    scope = {"saved_tool_name": "eval_owned", "tool_control": control}
+    result = asyncio.run(eval_run.isolated_tool_call(None, "revit_list_tools", {}, scope))
+    assert eval_run.result_data(result)["tools"] == ([] if control else [{"name": "eval_owned"}])
+    for name in ("revit_run_tool", "revit_get_tool", "revit_save_tool"):
+        with pytest.raises(eval_run.CallRefused):
+            asyncio.run(eval_run.isolated_tool_call(None, name, {"name": "personal"}, scope))
+        if control:
+            with pytest.raises(eval_run.CallRefused):
+                asyncio.run(eval_run.isolated_tool_call(None, name, {"name": "eval_owned"}, scope))
+
+
 @pytest.mark.parametrize("scenario", ["C", "D"])
 def test_absent_instance_keeps_each_project_failure_and_reason(monkeypatch, scenario):
     expected = FAMILY.expected_checks(scenario, project=True)
@@ -2017,3 +2037,28 @@ def test_absent_instance_keeps_each_project_failure_and_reason(monkeypatch, scen
     assert all(
         row["reason"] == "Project checks require exactly one result instance" for row in project
     )
+
+
+@pytest.mark.parametrize("case", ["new", "preexisting", "failed_save", "other_name", "empty"])
+def test_toolbaker_training_requires_new_run_owned_save(case):
+    entries = [{"name": "eval_owned"}]
+    trace = [{"tool": "revit_save_tool", "args": {"name": "eval_owned"}, "error": False}]
+    if case == "preexisting":
+        trace = []
+    elif case == "failed_save":
+        trace[0]["error"] = True
+    elif case == "other_name":
+        trace[0]["args"]["name"] = "personal"
+    elif case == "empty":
+        entries = []
+    assert eval_run.training_tool_saved(trace, entries, "eval_owned") is (case == "new")
+
+
+def test_toolbaker_control_and_treatment_have_identical_task():
+    control, treatment = eval_run.transfer_variants(FAMILY_SCENARIOS[0])
+    assert control.pop("tool_control") is True
+    assert treatment.pop("tool_control") is False
+    assert control == treatment
+    assert "500×350×250" in control["prompt"]
+    assert "1000×700×650" in control["prompt"]
+    assert "1400×1000×1100" in control["prompt"]

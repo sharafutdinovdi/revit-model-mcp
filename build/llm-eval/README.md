@@ -269,12 +269,23 @@ JSON evidence remains in `--out`.
 A denied close, unknown document inventory, failed deletion, or timeout stops the series for workstation recovery.
 A timed-out action may have committed; the operator must resolve pending jobs before cleanup approval.
 
-`--toolbaker` requests A followed by A-prime on fresh documents.
-Transfer is gated on a fully verified A and availability of a saved or baked tool index.
-The runner records training time and the index separately and never accepts a suggestion automatically.
-This flag is transfer scaffolding; isolated catalogs, suggestion acceptance, three paired control/treatment repeats, and amortization remain workstation protocol steps.
-A failed training artifact is `blocked_training`; absent tool support or an empty index is `bake_unavailable`.
-No speedup is inferred from this flag alone.
+`--toolbaker` requests training A and a paired A-prime control/treatment on fresh documents.
+The catalog exposes only a unique run-owned tool name; personal tools remain inaccessible through list/get/run/save.
+Training must save a new procedure and pass all artifact checks.
+The control sees an empty index and cannot invoke saved tools.
+The treatment sees only the training procedure and cannot modify it.
+The organizer deletes the run-owned procedure through native confirmation after the experiment.
+Servers without the required isolation and deletion surface report `isolation_unavailable`.
+Three repeated pairs, adaptive suggestion acceptance, and amortization remain workstation protocol steps.
+Speedup is the control time divided by treatment time only when both artifacts and cleanup pass.
+
+The common prompt requires artifact behavior and preserves native confirmations and warnings.
+Undo names, activity entries, and server summaries remain diagnostic evidence outside artifact scoring.
+D retains the design's explicit single Standard type; its static body uses a bounds check instead of flex.
+E reports `before_violations` and `after_violations` with rule IDs and affected Revit UniqueIds, or the legacy parameter name `w`.
+All affected R1 and R2 identities must be covered, including when a rule has several report rows.
+Defect labels and row counts do not affect scoring.
+Project copies receive unique wall Type Marks before agent execution; the source fixture remains unchanged.
 
 ## Family verifier calibration
 
