@@ -2039,9 +2039,25 @@ def test_absent_instance_keeps_each_project_failure_and_reason(monkeypatch, scen
     )
 
 
-@pytest.mark.parametrize("case", ["new", "preexisting", "failed_save", "other_name", "empty"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "new",
+        "preexisting",
+        "failed_save",
+        "other_name",
+        "empty",
+        "scale_only",
+        "optional_dimensions",
+    ],
+)
 def test_toolbaker_training_requires_new_run_owned_save(case):
-    entries = [{"name": "eval_owned"}]
+    schema = {
+        "type": "object",
+        "properties": {key: {"type": "number"} for key in eval_run.TRANSFER_DIMENSIONS},
+        "required": eval_run.TRANSFER_DIMENSIONS,
+    }
+    entries = [{"name": "eval_owned", "parameters": json.dumps(schema)}]
     trace = [{"tool": "revit_save_tool", "args": {"name": "eval_owned"}, "error": False}]
     if case == "preexisting":
         trace = []
@@ -2051,6 +2067,11 @@ def test_toolbaker_training_requires_new_run_owned_save(case):
         trace[0]["args"]["name"] = "personal"
     elif case == "empty":
         entries = []
+    elif case == "scale_only":
+        entries[0]["parameters"] = {"properties": {"scale": {"type": "number"}}}
+    elif case == "optional_dimensions":
+        schema["required"] = []
+        entries[0]["parameters"] = schema
     assert eval_run.training_tool_saved(trace, entries, "eval_owned") is (case == "new")
 
 
@@ -2062,6 +2083,8 @@ def test_toolbaker_control_and_treatment_have_identical_task():
     assert "500×350×250" in control["prompt"]
     assert "1000×700×650" in control["prompt"]
     assert "1400×1000×1100" in control["prompt"]
+    assert "вызови его штатным инструментом запуска" in control["prompt"]
+    assert "Копирование исходника" in control["prompt"]
 
 
 def test_calibration_routes_reference_authoring_through_selected_executor():

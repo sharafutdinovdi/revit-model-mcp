@@ -271,7 +271,9 @@ A timed-out action may have committed; the operator must resolve pending jobs be
 
 `--toolbaker` requests training A and a paired A-prime control/treatment on fresh documents.
 The catalog exposes only a unique run-owned tool name; personal tools remain inaccessible through list/get/run/save.
-Training must save a new procedure and pass all artifact checks.
+Training must save a new procedure with required independent millimetre dimensions for every type and pass all artifact checks.
+A uniform scale input does not satisfy transfer to new aspect ratios.
+The treatment must invoke the accepted procedure through the native run tool; copying its source into a general C# executor does not establish ToolBaker transfer.
 The control sees an empty index and cannot invoke saved tools.
 The treatment sees only the training procedure and cannot modify it.
 The organizer deletes the run-owned procedure through native confirmation after the experiment.
