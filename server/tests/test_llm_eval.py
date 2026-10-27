@@ -1988,7 +1988,7 @@ def test_static_equipment_contract_has_geometry_without_flex():
     assert "geometry" in FAMILY.expected_checks("D")
     assert "flex" not in FAMILY.expected_checks("D")
     prompt = next(row["prompt"] for row in FAMILY_SCENARIOS if row["id"] == "D")
-    assert "Standard" in prompt
+    assert "ровно один явный тип семейства" in prompt
     assert "flex не требуются" in prompt
 
 
@@ -2062,3 +2062,51 @@ def test_toolbaker_control_and_treatment_have_identical_task():
     assert "500×350×250" in control["prompt"]
     assert "1000×700×650" in control["prompt"]
     assert "1400×1000×1100" in control["prompt"]
+
+
+def test_calibration_routes_reference_authoring_through_selected_executor():
+    lifecycle = []
+    authored = []
+
+    async def required(name, arguments):
+        lifecycle.append(name)
+        return {}
+
+    async def execute(document, code):
+        authored.append((document, bool(code)))
+        return {}
+
+    result = asyncio.run(
+        eval_run.run_reference(
+            required,
+            FAMILY_SCENARIOS[0],
+            "family",
+            "project",
+            r"C:\Eval\box.rfa",
+            {},
+            execute_code=execute,
+        )
+    )
+    assert authored == [("family", True), ("project", True)]
+    assert lifecycle == ["revit_save_document", "revit_load_family"]
+    assert result["answer"] == "Reference C# solution"
+
+
+def test_native_target_confirmation_requires_operator_decision(monkeypatch):
+    calls = []
+
+    async def call(*args):
+        calls.append(args)
+        return {"error": False, "payload": {}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    monkeypatch.setattr("builtins.input", lambda _: "no")
+    approvals = []
+    response = asyncio.run(
+        eval_run.family_call(
+            None, "revit_switch_target", {"version": "pid:123", "verify": True}, approvals
+        )
+    )
+    assert response["error"]
+    assert not calls
+    assert [row["kind"] for row in approvals] == ["challenge", "denied"]

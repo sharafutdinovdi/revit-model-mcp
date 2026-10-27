@@ -1182,6 +1182,7 @@ async def family_call(
         "revit_accept_bake_suggestion",
         "revit_accept_target",
         "revit_confirm_target",
+        "revit_switch_target",
     }:
         approvals.append(
             {
@@ -1461,7 +1462,13 @@ async def family_cleanup(
 
 
 async def run_reference(
-    required, scenario: dict, family: str, project: str, output: str, manifest: dict
+    required,
+    scenario: dict,
+    family: str,
+    project: str,
+    output: str,
+    manifest: dict,
+    execute_code=None,
 ) -> dict:
     """Execute fixed C# steps through the same native action/confirmation path."""
     directory = Path(__file__).with_name("reference")
@@ -1470,6 +1477,8 @@ async def run_reference(
     mutation = (directory / f"{scenario_id}.broken.cs").read_text()
 
     async def execute(document, code):
+        if execute_code is not None:
+            return await execute_code(document, code)
         return await required(
             "revit_execute_code",
             {
@@ -1814,6 +1823,81 @@ async def family_main(args: argparse.Namespace) -> dict:
                 run["prompt"] = prompt
                 agent_approval_start = len(approvals)
                 if args.calibrate:
+
+                    async def reference_code(document, code, run=run):
+                        if "revit_send_code_to_revit" not in {
+                            tool["name"] for tool in tools
+                        }:
+                            return await required(
+                                "revit_execute_code",
+                                {
+                                    "document": document,
+                                    "code": code,
+                                    "transaction": "auto",
+                                },
+                            )
+                        current = await call_mcp(
+                            agent, "revit_get_current_view_info", {}
+                        )
+                        target = result_data(current).get("_target", {})
+                        if current["error"] or not target.get("document_id"):
+                            raise RuntimeError("Reference target identity unavailable")
+                        binding = {
+                            "version": "id:" + target["target_id"],
+                            "verify": True,
+                            "expectedDocumentId": target["document_id"],
+                        }
+                        confirmation = await family_call(
+                            agent, "revit_switch_target", binding, approvals
+                        )
+                        run.setdefault("lifecycle", []).append(
+                            {
+                                "tool": "revit_switch_target",
+                                "args": binding,
+                                "result": confirmation,
+                            }
+                        )
+                        if confirmation["error"]:
+                            raise RuntimeError("Reference target not confirmed")
+                        body = (
+                            code.replace("ctx.Document", "targetDocument")
+                            .replace("ctx.FromMm", "FromMm")
+                            .replace("ctx.ToMm", "ToMm")
+                        )
+                        wrapped = (
+                            "using System; using System.Linq; using System.Collections.Generic;\n"
+                            "using Autodesk.Revit.DB; using Autodesk.Revit.UI; using Autodesk.Revit.DB.Mechanical;\n"
+                            "public class McpDynamicScript { public static object Run(UIApplication app) {\n"
+                            f"var targetDocument = app.Application.Documents.Cast<Document>().Single(candidate => candidate.Title == {json.dumps(document)});\n"
+                            "double FromMm(double value) => UnitUtils.ConvertToInternalUnits(value, UnitTypeId.Millimeters);\n"
+                            "double ToMm(double value) => UnitUtils.ConvertFromInternalUnits(value, UnitTypeId.Millimeters);\n"
+                            "object ExecuteReference() {\n" + body + "\n}\n"
+                            'using var transaction = new Transaction(targetDocument, "Family calibration");\n'
+                            "transaction.Start();\n"
+                            "var failureOptions = transaction.GetFailureHandlingOptions();\n"
+                            "failureOptions.SetFailuresPreprocessor(new RvtMcp.Plugin.SafeFailuresPreprocessor());\n"
+                            "transaction.SetFailureHandlingOptions(failureOptions);\n"
+                            "var result = ExecuteReference();\n"
+                            'if (transaction.Commit() != TransactionStatus.Committed) throw new InvalidOperationException("Reference transaction did not commit");\n'
+                            "return result;\n} }"
+                        )
+                        response = await family_call(
+                            agent,
+                            "revit_send_code_to_revit",
+                            {"code": wrapped},
+                            approvals,
+                        )
+                        run.setdefault("lifecycle", []).append(
+                            {
+                                "tool": "revit_send_code_to_revit",
+                                "args": {"code": wrapped},
+                                "result": response,
+                            }
+                        )
+                        if response["error"]:
+                            raise RuntimeError("Reference authoring failed")
+                        return result_data(response)
+
                     async with asyncio.timeout(args.scenario_timeout):
                         run.update(
                             await run_reference(
@@ -1823,6 +1907,7 @@ async def family_main(args: argparse.Namespace) -> dict:
                                 project_title,
                                 output,
                                 manifest,
+                                execute_code=reference_code,
                             )
                         )
                 elif isinstance(provider, CliProvider):

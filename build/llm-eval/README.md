@@ -281,7 +281,7 @@ Speedup is the control time divided by treatment time only when both artifacts a
 
 The common prompt requires artifact behavior and preserves native confirmations and warnings.
 Undo names, activity entries, and server summaries remain diagnostic evidence outside artifact scoring.
-D retains the design's explicit single Standard type; its static body uses a bounds check instead of flex.
+D retains the design's explicit single family type; its static body uses a bounds check instead of flex.
 E reports `before_violations` and `after_violations` with rule IDs and affected Revit UniqueIds, or the legacy parameter name `w`.
 All affected R1 and R2 identities must be covered, including when a rule has several report rows.
 Defect labels and row counts do not affect scoring.
@@ -294,6 +294,9 @@ Each selected scenario runs twice on separate fresh family/project copies: the r
 The shared [project.cs](reference/project.cs) places each family and connects the D duct through the connector-based `Duct.Create` overload.
 The same probes, saved-copy verification, native confirmations, and cleanup apply to both variants and agent runs.
 `--toolbaker` cannot be combined with calibration.
+When the selected server exposes `revit_send_code_to_revit`, calibration submits the fixed authoring steps as `McpDynamicScript` with explicit document selection and native transactions.
+The independent Model MCP `--verifier-command` handles fixture setup, save/load, probes, and cleanup.
+The C reference retains an 800 mm local sill offset; project rays derive the opening baseline from the required 50 mm frame.
 
 ```sh
 uv run build/llm-eval/run.py --profile family --calibrate \
