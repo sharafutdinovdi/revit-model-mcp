@@ -235,7 +235,7 @@ DATA_HANDLING = {
         "user's own agreement."
     ),
     "readOnlyMode": (
-        "Actions are refused while the shared workstation read-only lock is on. The ribbon or revit_set_read_only controls it. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by either control."
+        "Actions are refused while the shared workstation read-only lock is on. The ribbon or revit_set_read_only controls it. Chat unlock requires a two-step AI app token handshake. The AI app is expected to show the action; Model MCP does not show its own dialog. The token does not prove human approval. Machine policy cannot be lifted by either control."
     ),
     "localChannels": (
         "Named pipe (current Windows user only), a file channel under "

@@ -345,7 +345,7 @@ mcp = RevitMCPServer(
         "process_id selects one. REVIT_MCP_TOOLSETS limits which tools are listed. "
         "The workstation read-only lock disables actions without hiding them. "
         "revit_set_read_only and the Model MCP ribbon switch it. Unlocking from chat requires "
-        "explicit user confirmation. Every read "
+        "a two-step AI app token handshake. The token does not prove human approval. Every read "
         "result has skipped and skippedCount; a non-empty skipped list means the answer is "
         "incomplete. The guide revit://guides/coordinator describes the recommended tool order."
     ),

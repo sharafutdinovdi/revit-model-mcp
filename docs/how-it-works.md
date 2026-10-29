@@ -27,7 +27,7 @@ The [feed format](feed-format.md) documents paths and response fields.
 The default tools read model data or export a view to PNG.
 Exports and diagnostics write files outside the Revit model.
 Actions run by default; a committed change assimilates into one named, undoable Revit change and reports a `summary`.
-One workstation read-only lock refuses actions without hiding the tools. Turn it on with the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs explicit user confirmation. The machine policy wins over the lock.
+One workstation read-only lock refuses actions without hiding the tools. Turn it on with the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs a two-step AI app token handshake. The AI app is expected to show the action; Model MCP does not show its own dialog. The token does not prove human approval. The machine policy wins over the lock.
 Turning the lock off re-enables action execution without restarting Revit.
 Either read-only setting is checked independently; direct HTTP callers require the token and are refused while the workstation `read-only` file exists.
 
