@@ -247,8 +247,8 @@ internal sealed class BatchSupervisor(
                         case BatchStartupDecision.WorkerExited:
                             throw new InvalidOperationException("Worker exited before its heartbeat.");
                         case BatchStartupDecision.TrustPrompt:
-                            var trustMessage = BatchStartupTrustPolicy.Message(year);
-                            _startupAvailability.MarkTrustPrompt(year);
+                            var trustMessage = BatchStartupTrustPolicy.Message(year, worker.TrustPromptText);
+                            _startupAvailability.MarkTrustPrompt(year, worker.TrustPromptText);
                             throw new InvalidOperationException(trustMessage);
                         case BatchStartupDecision.StartupDeadline:
                             deadlineReached = true;

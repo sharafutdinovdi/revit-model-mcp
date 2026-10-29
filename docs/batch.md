@@ -9,10 +9,21 @@ For changes, scripts, exports, or saved copies across many models, use [`revit_p
 
 ## Before the first batch run
 
-For each installed Revit year, start Revit once and verify that any unsigned add-in trust dialog names Model MCP and `RevitModelMcp.dll`.
-Choose Always Load, then close Revit normally before starting a batch run.
-Revit remembers Always Load for the same add-in location and AddInId; replacing identical DLL contents or changing only the file timestamp does not require trust again.
-If a batch worker encounters this dialog, startup fails with the affected year and the worker is stopped.
+Each installed Revit year must start without an unsigned add-in prompt under the Windows account that runs the supervisor.
+An interactive start must use the same Revit year, Windows user profile, and installed add-in paths as the worker.
+Verify the name and location in every trust dialog, including dialogs for other installed add-ins.
+Choose Always Load only for trusted add-ins, then close Revit normally before starting a batch run.
+Load Once does not persist trust; untrusted add-ins must be disabled before unattended startup.
+Trust for a development installation under `Revit\Addins` does not cover a store installation under `ApplicationPlugins\RevitModelMcp.bundle`.
+The worker inherits the supervisor's Windows account and environment and starts Revit with `/language ENU`; it does not select a separate user profile or add-in path.
+If a batch worker encounters an unsigned add-in prompt, startup fails with the affected year, add-in name, and DLL location read from the dialog, and the worker is stopped.
+Missing dialog fields are reported as unknown, without attributing the prompt to Model MCP.
+
+The v16a workstation replay recorded Always Load for Model MCP at the store bundle path.
+The next interactive start recorded repeated prompts only for QuantiMEP and R1 MCP, both previously loaded once.
+The replay did not capture the worker's prompt text; its generic Model MCP error does not identify the blocking add-in or establish a Model MCP trust persistence failure.
+A successful batch collection still requires a workstation replay after all installed add-ins allow unattended startup.
+
 If a worker reaches its startup deadline before any heartbeat, the supervisor skips worker startup for later models that need the same Revit year.
 Those models fail immediately with the original startup failure.
 Other Revit years continue in the same run.
