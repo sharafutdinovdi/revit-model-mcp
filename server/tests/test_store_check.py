@@ -140,3 +140,12 @@ def test_store_registry_import_without_update_module(tmp_path):
     actual = json.loads(result.stdout)
     assert actual["channel"] == "store"
     assert {tool["name"] for tool in actual["tools"]} == {tool.name for tool in registry()[0]}
+
+
+def test_source_checks_reject_native_task_dialog(tmp_path):
+    addin = tmp_path / "src/RevitModelMcp.Addin"
+    addin.mkdir(parents=True)
+    (addin / "Fixture.cs").write_text('Autodesk.Revit.UI.TaskDialog.Show("Title", "Message");')
+    assert CHECK["check_sources"](tmp_path) == [
+        "Native TaskDialog requires an owned app dialog: Fixture.cs"
+    ]

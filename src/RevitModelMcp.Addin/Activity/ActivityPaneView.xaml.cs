@@ -443,17 +443,17 @@ public partial class ActivityPaneView : UserControl
 
     private void OnUndoClick(object sender, RoutedEventArgs e)
     {
-        if (ActionCommandExecutor.ReadOnlyMode)
-        {
-            TaskDialog.Show(PaneText.Caption, PaneText.ReadOnlyUndo);
-            return;
-        }
         ActivityHost.Dispatch(application =>
         {
+            if (ActionCommandExecutor.ReadOnlyMode)
+            {
+                ActivityDialog.Show(PaneText.ReadOnlyUndo, application.MainWindowHandle);
+                return;
+            }
             var uiDocument = application.ActiveUIDocument;
             if (uiDocument is null)
             {
-                TaskDialog.Show(PaneText.Caption, PaneText.NoActiveDocument);
+                ActivityDialog.Show(PaneText.NoActiveDocument, application.MainWindowHandle);
                 return;
             }
             try
@@ -462,7 +462,7 @@ public partial class ActivityPaneView : UserControl
             }
             catch (Exception exception)
             {
-                TaskDialog.Show(PaneText.Caption, exception.Message);
+                ActivityDialog.Show(exception.Message, application.MainWindowHandle);
             }
         });
     }
@@ -472,4 +472,35 @@ public partial class ActivityPaneView : UserControl
         if ((sender as FrameworkElement)?.DataContext is not QueueRowView row) return;
         ActivityHost.CancelJob?.Invoke(row.Job.JobId, row.Job.ClientId);
     }
+}
+
+internal sealed class ActivityDialog : Window
+{
+    private ActivityDialog(string message, IntPtr owner)
+    {
+        Title = "Model MCP";
+        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
+        Width = 460;
+        SizeToContent = SizeToContent.Height;
+        ResizeMode = ResizeMode.NoResize;
+        ShowInTaskbar = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        new System.Windows.Interop.WindowInteropHelper(this).Owner = owner;
+        var content = new StackPanel { Margin = new Thickness(16) };
+        content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        var close = new Button { Content = "OK", MinWidth = 80, IsDefault = true, IsCancel = true };
+        close.Click += (_, _) => DialogResult = false;
+        buttons.Children.Add(close);
+        content.Children.Add(buttons);
+        Content = content;
+        Loaded += (_, _) => close.Focus();
+    }
+
+    internal static void Show(string message, IntPtr owner) => new ActivityDialog(message, owner).ShowDialog();
 }

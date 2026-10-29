@@ -65,6 +65,10 @@ def check_sources(root: Path) -> list[str]:
         return ["Add-in source directory is missing"]
     for path in addin.rglob("*.cs"):
         text = path.read_text(encoding="utf-8")
+        if re.search(r"\bTaskDialog\b", text):
+            errors.append(
+                f"Native TaskDialog requires an owned app dialog: {path.name}"
+            )
         for match in re.finditer(
             r"class\s+(\w+)\s*:\s*(?:System\.Windows\.)?Window\b", text
         ):
