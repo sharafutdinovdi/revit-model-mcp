@@ -203,3 +203,30 @@ def test_saved_tools_describe_client_handshakes():
     for tool in live:
         if tool["name"] in {"revit_save_tool", "revit_delete_tool", "revit_run_tool"}:
             assert "two-step AI app token handshake" in tool["description"]
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le"])
+def test_update_endpoints_are_precise(encoding):
+    for url in (
+        "https://www.python.org/download/releases/2.3/mro/",
+        "https://example.com/releases",
+        "https://api.github.com.example.com/",
+        "https://pypi.org.example.com/",
+        "https://github.com/owner/repo/releases-notes",
+    ):
+        assert CHECK["check_bytes"](url.encode(encoding), "fixture.dll") == []
+    for url in (
+        "https://api.github.com/repos/owner/repo",
+        "https://pypi.org/pypi/package/json",
+        "https://github.com/another-owner/another-repo/releases/latest",
+    ):
+        assert CHECK["check_bytes"](url.encode(encoding), "fixture.dll")
+
+
+def test_source_checks_reject_native_task_dialog(tmp_path):
+    addin = tmp_path / "src/RevitModelMcp.Addin"
+    addin.mkdir(parents=True)
+    (addin / "Fixture.cs").write_text('Autodesk.Revit.UI.TaskDialog.Show("Title", "Message");')
+    assert CHECK["check_sources"](tmp_path) == [
+        "Native TaskDialog requires an owned app dialog: Fixture.cs"
+    ]
