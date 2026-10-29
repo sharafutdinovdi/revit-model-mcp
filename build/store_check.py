@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import fnmatch
+import glob
 import json
 import re
 import subprocess
 import sys
 import tempfile
 import types
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -58,6 +61,50 @@ def store_source(text: str, store: bool = True) -> str:
     return "\n".join(result)
 
 
+def check_icon_resources(addin: Path) -> list[str]:
+    """Resolve icon pack URIs against existing WPF Resource items."""
+    references = []
+    for path in addin.rglob("*"):
+        if path.suffix not in {".cs", ".xaml"} or {"bin", "obj"}.intersection(
+            path.relative_to(addin).parts
+        ):
+            continue
+        for match in re.finditer(
+            r"/([^/\";]+);component/(Resources/Icons/[^\"\s]+?\.png)",
+            path.read_text(encoding="utf-8"),
+        ):
+            references.append((path.name, match[1], match[2]))
+    if not references:
+        return []
+    project = addin / "RevitModelMcp.Addin.csproj"
+    if not project.is_file():
+        return ["Icon pack URIs require the add-in project Resource items"]
+    tree = ET.parse(project)
+    assembly = tree.findtext(".//AssemblyName")
+    resources = set()
+    for item in tree.iter("Resource"):
+        include = item.get("Include", "").replace("\\", "/")
+        for filename in glob.glob(str(addin / include)):
+            source = Path(filename)
+            if source.is_file():
+                link = item.get("Link") or item.findtext("Link")
+                resources.add(
+                    (link or source.relative_to(addin).as_posix())
+                    .replace("\\", "/")
+                    .casefold()
+                )
+    errors = []
+    for filename, owner, resource in references:
+        pattern = re.sub(r"\{[^{}]+\}", "*", resource).casefold()
+        if owner != assembly or not any(
+            fnmatch.fnmatchcase(candidate, pattern) for candidate in resources
+        ):
+            errors.append(
+                f"Icon pack URI without matching Resource: {filename}:{owner};component/{resource}"
+            )
+    return errors
+
+
 def check_sources(root: Path) -> list[str]:
     errors = []
     addin = root / "src/RevitModelMcp.Addin"
@@ -73,7 +120,10 @@ def check_sources(root: Path) -> list[str]:
             r"class\s+(\w+)\s*:\s*(?:System\.Windows\.)?Window\b", text
         ):
             body = text[match.end() :]
-            if not re.search(r"\bIcon\s*=.*(?:Resources/Icons/|AppIcon)", body):
+            if not (
+                re.search(r"\bIcon\s*=", body)
+                and re.search(r"Resources/Icons/|AppIcon", body)
+            ):
                 errors.append(f"Window without app Icon: {path.name}:{match[1]}")
         if re.search(r'CreatePanel\(\s*"MCP"\s*\)', text):
             errors.append(f"Generic MCP panel: {path.name}")
@@ -89,6 +139,7 @@ def check_sources(root: Path) -> list[str]:
                 r"\bIcon\s*=", code.read_text(encoding="utf-8")
             ):
                 errors.append(f"XAML Window without app Icon: {path.name}")
+    errors.extend(check_icon_resources(addin))
     settings = addin / "Control/HttpChannel.cs"
     if settings.exists() and 'DataMember(Name = "updateCheck"' in store_source(
         settings.read_text(encoding="utf-8")

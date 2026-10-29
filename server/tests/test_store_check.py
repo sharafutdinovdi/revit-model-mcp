@@ -82,6 +82,10 @@ def test_source_checks(tmp_path):
     settings.write_text('#if !STORE_CHANNEL\n[DataMember(Name = "updateCheck")]\n#endif')
     window.write_text("class Fixture : Window { Icon = AppIcon; }")
     assert CHECK["check_sources"](tmp_path) == []
+    window.write_text(
+        'class Fixture : Window { icon.UriSource = "Resources/Icons/App32.png"; Icon = icon; }'
+    )
+    assert CHECK["check_sources"](tmp_path) == []
     window.write_text('class Fixture : Window {}\nApplication.CreatePanel("MCP");')
     assert len(CHECK["check_sources"](tmp_path)) == 2
     settings.write_text('[DataMember(Name = "updateCheck")]')
@@ -167,3 +171,57 @@ def test_source_checks_reject_native_task_dialog(tmp_path):
     assert CHECK["check_sources"](tmp_path) == [
         "Native TaskDialog requires an owned app dialog: Fixture.cs"
     ]
+
+
+@pytest.mark.parametrize("linked", [False, True])
+@pytest.mark.parametrize("source_kind", ["cs", "xaml"])
+def test_icon_pack_uri_requires_existing_wpf_resource(tmp_path, linked, source_kind):
+    addin = tmp_path / "src/RevitModelMcp.Addin"
+    icons = addin / "Resources/Icons"
+    icons.mkdir(parents=True)
+    icon = icons / "App32.png"
+    icon.write_bytes(b"icon fixture")
+    project = addin / "RevitModelMcp.Addin.csproj"
+    if linked:
+        icon = tmp_path / "app.png"
+        icon.write_bytes(b"linked fixture")
+        resource = '<Resource Include="../../app.png" Link="Resources/Icons/App32.png" />'
+    else:
+        resource = '<Resource Include="Resources\\Icons\\*.png" />'
+    content = (
+        "<Project><PropertyGroup><AssemblyName>RevitModelMcp</AssemblyName>"
+        f"</PropertyGroup><ItemGroup>{resource}</ItemGroup></Project>"
+    )
+    project.write_text(content)
+    source = addin / f"Fixture.{source_kind}"
+    uri = "pack://application:,,,/RevitModelMcp;component/Resources/Icons/App32.png"
+    source.write_text(f'Icon = "{uri}"')
+    assert CHECK["check_sources"](tmp_path) == []
+    source.write_text(f'Icon = "{uri.replace("App32", "Missing32")}"')
+    assert "Icon pack URI without matching Resource" in CHECK["check_sources"](tmp_path)[0]
+    source.write_text(f'Icon = "{uri.replace("RevitModelMcp;", "WrongAssembly;")}"')
+    assert CHECK["check_sources"](tmp_path)
+    source.write_text(f'Icon = "{uri}"')
+    project.write_text(content.replace("Resource", "EmbeddedResource"))
+    assert CHECK["check_sources"](tmp_path)
+    project.write_text(content)
+    icon.unlink()
+    assert CHECK["check_sources"](tmp_path)
+
+
+def test_icon_pack_uri_checks_interpolated_resources(tmp_path):
+    addin = tmp_path / "src/RevitModelMcp.Addin"
+    icons = addin / "Resources/Icons"
+    icons.mkdir(parents=True)
+    (icons / "Logo32-dark.png").write_bytes(b"fixture")
+    (addin / "RevitModelMcp.Addin.csproj").write_text(
+        "<Project><AssemblyName>RevitModelMcp</AssemblyName>"
+        '<ItemGroup><Resource Include="Resources/Icons/*.png" /></ItemGroup></Project>'
+    )
+    source = addin / "Fixture.cs"
+    source.write_text(
+        'Icon = $"pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32{suffix}.png"'
+    )
+    assert CHECK["check_sources"](tmp_path) == []
+    source.write_text(source.read_text().replace("Logo32", "Missing32"))
+    assert CHECK["check_sources"](tmp_path)
