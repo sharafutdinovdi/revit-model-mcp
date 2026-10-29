@@ -27,10 +27,20 @@ public static class BatchStartupTrustPolicy
 
     public static (string Name, string Path) ParsePrompt(string text)
     {
-        var name = Regex.Match(text, @"(?im)^\s*Name:[ \t]*(.+)$").Groups[1].Value.Trim();
-        var path = Regex.Match(text, @"(?im)^\s*Location:[ \t]*(.+)$").Groups[1].Value.Trim();
+        var name = ReadField(text, "Name");
+        var path = ReadField(text, "Location");
         return (name.Length == 0 ? "unknown add-in" : name,
             path.Length == 0 ? "location unavailable" : path);
+    }
+
+    private static string ReadField(string text, string field)
+    {
+        foreach (Match match in Regex.Matches(text, $@"(?im)^[ \t]*{field}:[ \t]*([^\r\n]*)\r?$"))
+        {
+            var value = match.Groups[1].Value.Trim();
+            if (value.Length > 0) return value;
+        }
+        return string.Empty;
     }
 
     public static string Message(int year, string text = "")

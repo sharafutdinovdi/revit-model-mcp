@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Automation;
 using RevitModelMcp.Core.Batch;
 
 namespace RevitModelMcp.BatchSupervisor;
@@ -97,7 +98,19 @@ internal sealed class RevitWorkerProcess : IDisposable
         _dialogText.AppendLine(title);
         EnumChildWindows(window, _childCallback, IntPtr.Zero);
         _trustPromptVisible = BatchStartupTrustPolicy.MatchesPrompt(title, _dialogText.ToString());
-        if (_trustPromptVisible) TrustPromptText = _dialogText.ToString();
+        if (_trustPromptVisible)
+        {
+            try
+            {
+                var content = AutomationElement.FromHandle(window).FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "ContentText"));
+                if (content is not null) _dialogText.AppendLine(content.Current.Name);
+            }
+            catch (ElementNotAvailableException) { }
+            catch (InvalidOperationException) { }
+            catch (COMException) { }
+            TrustPromptText = _dialogText.ToString();
+        }
         return !_trustPromptVisible;
     }
 

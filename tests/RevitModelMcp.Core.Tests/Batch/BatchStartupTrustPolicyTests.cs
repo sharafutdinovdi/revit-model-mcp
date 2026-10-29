@@ -71,6 +71,81 @@ public sealed class BatchStartupTrustPolicyTests
     }
 
     [Test]
+    public async Task ParsePrompt_CapturedQuantiMepContentText()
+    {
+        var body = """
+            Name:                QuantiMEP
+            Publisher:           Unknown Publisher
+            Location:            C:\Users\flesh\AppData\Roaming\Autodesk\Revit\Addins\2027\QuantiMEP\QuantiMEP.dll
+            Issuer:                 None
+            Date:                   2026-10-24 15:52:52
+
+            Make sure that this add-in comes from a trusted source.
+            """;
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(body);
+        await Assert.That(prompt.Name).IsEqualTo("QuantiMEP");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Users\flesh\AppData\Roaming\Autodesk\Revit\Addins\2027\QuantiMEP\QuantiMEP.dll");
+        var message = BatchStartupTrustPolicy.Message(2027, body);
+        await Assert.That(message.Contains(prompt.Name)).IsTrue();
+        await Assert.That(message.Contains(prompt.Path)).IsTrue();
+        await Assert.That(BatchStartupTrustPolicy.ParsePrompt(body.Replace("\n", "\r\n")))
+            .IsEqualTo(prompt);
+    }
+
+    [Test]
+    public async Task ParsePrompt_CapturedR1McpContentText()
+    {
+        var body = """
+            Name:                R1 MCP
+            Publisher:           Unknown Publisher
+            Location:            C:\Users\flesh\AppData\Roaming\Autodesk\Revit\Addins\2027\R1Mcp\R1Mcp.dll
+            Issuer:                 None
+            Date:                   2026-10-28 03:18:10
+
+            Make sure that this add-in comes from a trusted source.
+            """;
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(body);
+        await Assert.That(prompt.Name).IsEqualTo("R1 MCP");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Users\flesh\AppData\Roaming\Autodesk\Revit\Addins\2027\R1Mcp\R1Mcp.dll");
+        var message = BatchStartupTrustPolicy.Message(2027, body);
+        await Assert.That(message.Contains(prompt.Name)).IsTrue();
+        await Assert.That(message.Contains(prompt.Path)).IsTrue();
+        await Assert.That(BatchStartupTrustPolicy.ParsePrompt(body.Replace("\n", "\r\n")))
+            .IsEqualTo(prompt);
+    }
+
+    [Test]
+    public async Task ParsePrompt_CapturedModelMcpContentText()
+    {
+        var body = """
+            Name:                Model MCP
+            Publisher:           Unknown Publisher
+            Location:            C:\Users\flesh\AppData\Roaming\Autodesk\ApplicationPlugins\RevitModelMcp.bundle\.\Contents\2027\RevitModelMcp\RevitModelMcp.dll
+            Issuer:                 None
+            Date:                   2026-10-29 17:13:24
+
+            Make sure that this add-in comes from a trusted source.
+            """;
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(body);
+        await Assert.That(prompt.Name).IsEqualTo("Model MCP");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Users\flesh\AppData\Roaming\Autodesk\ApplicationPlugins\RevitModelMcp.bundle\.\Contents\2027\RevitModelMcp\RevitModelMcp.dll");
+        var message = BatchStartupTrustPolicy.Message(2027, body);
+        await Assert.That(message.Contains(prompt.Name)).IsTrue();
+        await Assert.That(message.Contains(prompt.Path)).IsTrue();
+        await Assert.That(BatchStartupTrustPolicy.ParsePrompt(body.Replace("\n", "\r\n")))
+            .IsEqualTo(prompt);
+    }
+
+    [Test]
+    public async Task ParsePrompt_UsesContentTextAfterEmptyNativeControls()
+    {
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(
+            "Name: \r\nLocation: \r\nName: QuantiMEP\r\nLocation: C:\\Addins\\QuantiMEP.dll\r\n");
+        await Assert.That(prompt.Name).IsEqualTo("QuantiMEP");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Addins\QuantiMEP.dll");
+    }
+
+    [Test]
     public async Task ParsePrompt_MissingFieldsDoNotImplyModelMcp()
     {
         var prompt = BatchStartupTrustPolicy.ParsePrompt("Security - Unsigned Add-In");
