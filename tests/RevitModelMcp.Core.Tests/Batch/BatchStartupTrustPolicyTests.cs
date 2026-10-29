@@ -71,6 +71,81 @@ public sealed class BatchStartupTrustPolicyTests
     }
 
     [Test]
+    public async Task ParsePrompt_CapturedContosoToolsContentText()
+    {
+        var body = """
+            Name:                Contoso Tools
+            Publisher:           Unknown Publisher
+            Location:            C:\Users\user\AppData\Roaming\Autodesk\Revit\Addins\2027\ContosoTools\ContosoTools.dll
+            Issuer:                 None
+            Date:                   2026-10-24 15:52:52
+
+            Make sure that this add-in comes from a trusted source.
+            """;
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(body);
+        await Assert.That(prompt.Name).IsEqualTo("Contoso Tools");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Users\user\AppData\Roaming\Autodesk\Revit\Addins\2027\ContosoTools\ContosoTools.dll");
+        var message = BatchStartupTrustPolicy.Message(2027, body);
+        await Assert.That(message.Contains(prompt.Name)).IsTrue();
+        await Assert.That(message.Contains(prompt.Path)).IsTrue();
+        await Assert.That(BatchStartupTrustPolicy.ParsePrompt(body.Replace("\n", "\r\n")))
+            .IsEqualTo(prompt);
+    }
+
+    [Test]
+    public async Task ParsePrompt_CapturedFabrikamLinkContentText()
+    {
+        var body = """
+            Name:                Fabrikam Link
+            Publisher:           Unknown Publisher
+            Location:            C:\Users\user\AppData\Roaming\Autodesk\Revit\Addins\2027\FabrikamLink\FabrikamLink.dll
+            Issuer:                 None
+            Date:                   2026-10-28 03:18:10
+
+            Make sure that this add-in comes from a trusted source.
+            """;
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(body);
+        await Assert.That(prompt.Name).IsEqualTo("Fabrikam Link");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Users\user\AppData\Roaming\Autodesk\Revit\Addins\2027\FabrikamLink\FabrikamLink.dll");
+        var message = BatchStartupTrustPolicy.Message(2027, body);
+        await Assert.That(message.Contains(prompt.Name)).IsTrue();
+        await Assert.That(message.Contains(prompt.Path)).IsTrue();
+        await Assert.That(BatchStartupTrustPolicy.ParsePrompt(body.Replace("\n", "\r\n")))
+            .IsEqualTo(prompt);
+    }
+
+    [Test]
+    public async Task ParsePrompt_CapturedModelMcpContentText()
+    {
+        var body = """
+            Name:                Model MCP
+            Publisher:           Unknown Publisher
+            Location:            C:\Users\user\AppData\Roaming\Autodesk\ApplicationPlugins\RevitModelMcp.bundle\.\Contents\2027\RevitModelMcp\RevitModelMcp.dll
+            Issuer:                 None
+            Date:                   2026-10-29 17:13:24
+
+            Make sure that this add-in comes from a trusted source.
+            """;
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(body);
+        await Assert.That(prompt.Name).IsEqualTo("Model MCP");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Users\user\AppData\Roaming\Autodesk\ApplicationPlugins\RevitModelMcp.bundle\.\Contents\2027\RevitModelMcp\RevitModelMcp.dll");
+        var message = BatchStartupTrustPolicy.Message(2027, body);
+        await Assert.That(message.Contains(prompt.Name)).IsTrue();
+        await Assert.That(message.Contains(prompt.Path)).IsTrue();
+        await Assert.That(BatchStartupTrustPolicy.ParsePrompt(body.Replace("\n", "\r\n")))
+            .IsEqualTo(prompt);
+    }
+
+    [Test]
+    public async Task ParsePrompt_UsesContentTextAfterEmptyNativeControls()
+    {
+        var prompt = BatchStartupTrustPolicy.ParsePrompt(
+            "Name: \r\nLocation: \r\nName: Contoso Tools\r\nLocation: C:\\Addins\\ContosoTools.dll\r\n");
+        await Assert.That(prompt.Name).IsEqualTo("Contoso Tools");
+        await Assert.That(prompt.Path).IsEqualTo(@"C:\Addins\ContosoTools.dll");
+    }
+
+    [Test]
     public async Task ParsePrompt_MissingFieldsDoNotImplyModelMcp()
     {
         var prompt = BatchStartupTrustPolicy.ParsePrompt("Security - Unsigned Add-In");

@@ -14,5 +14,7 @@
     <ProjectReference Include="..\RevitModelMcp.Core\RevitModelMcp.Core.csproj" />
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Net.Http" />
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
   </ItemGroup>
 </Project>
