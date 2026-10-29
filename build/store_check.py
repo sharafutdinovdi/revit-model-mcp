@@ -134,10 +134,22 @@ def check_manifest(manifest: dict, registry: list[dict]) -> list[str]:
 
 def check_bytes(data: bytes, name: str) -> list[str]:
     errors = []
-    lowered = data.lower()
-    for value in FORBIDDEN:
-        if value in lowered or value.decode().encode("utf-16-le") in lowered:
-            errors.append(f"Forbidden string {value.decode()} in {name}")
+    patterns = (
+        rb"(?<![a-z0-9_.-])api\.github\.com(?![a-z0-9_.-])",
+        rb"(?<![a-z0-9_.-])pypi\.org(?![a-z0-9_.-])",
+        rb"(?<![a-z0-9_.-])github\.com/[a-z0-9_.-]+/[a-z0-9_.-]+/releases(?=[/?#\s\x00]|$)",
+    )
+    texts = [data.lower()]
+    for offset in (0, 1):
+        texts.append(
+            data[offset:].decode("utf-16-le", errors="ignore").lower().encode("utf-8")
+        )
+    for text in texts:
+        for pattern in patterns:
+            if match := re.search(pattern, text):
+                error = f"Forbidden string {match[0].decode()} in {name}"
+                if error not in errors:
+                    errors.append(error)
     return errors
 
 
