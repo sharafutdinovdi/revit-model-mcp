@@ -23,22 +23,22 @@ Revit shows its unsigned add-in security dialog again when the add-in DLL conten
 
 ## Channels
 
-Each build carries a channel, set at build time with the MSBuild property `UpdateChannel`. The default is `release`.
+Each build carries a channel, set at build time with the MSBuild property `Channel`, with values `github` (default) and `store`. Invalid values fail the build. Managed installs use `ManagedInstall=true`; development versions retain their existing update behavior.
 
 | Channel | Network access for updates | Updater | Use |
 | --- | --- | --- | --- |
 | `release` | Yes, subject to the mode | Included | MSI, WinGet and zip downloads from GitHub. |
 | `managed` | Never | Not copied | Your deployment tool delivers updates. `-p:ManagedInstall=true` is an alias. |
-| `store` | Never | Not copied | Autodesk App Store builds. Updates arrive through the Autodesk App Manager. The build also ships the bundled server, which never checks for updates, and keeps C# code execution off by default (see below). |
+| `store` | Never | Excluded from compilation and packaging | Autodesk App Store builds. Updates arrive through the Autodesk App Manager. The build also ships the bundled server, which never checks for updates, and keeps C# code execution off by default (see below). |
 | `dev` | Only when policy or settings turn it on, and then notify only | Included | Builds whose version contains `-dev`. They are never installed over. |
 
-Example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:UpdateChannel=managed`. A `managed` or `store` build ignores every mode setting and never contacts the network for updates. An unknown channel name is treated as `managed`.
+Example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:ManagedInstall=true`. A `managed` or `store` build ignores every mode setting and never contacts the network for updates. The store build excludes updater sources, updater packaging, and the server update module. First-run settings omit updateCheck.
 
 ### The store channel
 
-The release workflow builds the store variant with `-p:UpdateChannel=store` and attaches `RevitModelMcp-<version>-SingleUser-store.msi` and `revit-model-mcp-<version>-store.bundle.zip`. Neither contains `RevitModelMcp.Updater.exe`; the workflow and `build/validate_bundle.py --store` fail the release if one does. The add-in makes no update request, and no setting, policy or environment variable changes that.
+The release workflow builds the store variant with `-p:Channel=store` and attaches `RevitModelMcp-<version>-SingleUser-store.msi` and `revit-model-mcp-<version>-store.bundle.zip`. Neither contains `RevitModelMcp.Updater.exe`; the workflow and `build/validate_bundle.py --store` fail the release if one does. The add-in makes no update request, and no setting, policy or environment variable changes that.
 
-The store channel also turns C# code execution (`revit_execute_code` and code steps in `revit_process_models`) off until the user sets `"executeCode": "confirm"` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`, or an administrator sets the `ExecuteCode` policy to `confirm`. The `ExecuteCode=off` policy always wins. Other channels are unchanged: code execution stays available with its confirmation.
+In the store channel, only an administrator can enable C# execution with the ExecuteCode machine policy set to confirm. The user executeCode value in settings.json is ignored. revit_ping reports executeCodeSource as policy or store-default. GitHub builds keep their existing behavior.
 
 ## Dev and prerelease builds
 

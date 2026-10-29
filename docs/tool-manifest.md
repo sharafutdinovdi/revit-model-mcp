@@ -12,8 +12,11 @@ cd server && uv run python ../build/tool_manifest.py --check
 `--check` fails when the committed file is stale.
 
 `--managed` writes the manifest for the managed install variant to `output/tool-manifest-managed.json`, or to `--output`. That variant has no external endpoints, because the add-in makes no update check and the server runs with `REVIT_MCP_NO_UPDATE_CHECK=1`. The committed file describes the regular build.
-`--export-snake-case PATH` writes the Autodesk MCP manifest fields (`mcp_manifest_version`, `app_model`, `mcp_spec_version`, `server`, `tools`, `resources`, `prompts`, `external_endpoints`, `autodesk_apis_used`, `ai_llm_providers`) to PATH. The release workflow runs it with `--managed` for the store build, which makes no external request, and attaches `revit-model-mcp-<version>-store.mcp-manifest.json`.
-Each tool in the store export includes `inputSchema` exactly as the server advertises it.
+`--export-snake-case PATH` writes the Autodesk MCP manifest fields (`mcp_manifest_version`, `app_model`, `mcp_spec_version`, `server`, `tools`, `resources`, `prompts`, `external_endpoints`, `autodesk_apis_used`, `ai_llm_providers`) to PATH. The release workflow runs it with `--managed` for the store build, which excludes update code and declares optional user-configured workstation transports, and attaches `revit-model-mcp-<version>-store.mcp-manifest.json`.
+Each tool in the store export includes `inputSchema` and annotations as the server advertises them.
+The export declares stdio and named pipe defaults, optional loopback HTTP, and user-configured SSH.
+`confirm_token` is a two-step handshake with the AI app.
+The AI app is expected to show the action to you; Model MCP does not show its own dialog.
 The server tests run the same comparison, so a PR that changes a tool without regenerating the manifest fails CI.
 Tool names and descriptions are identical to `bundle/manifest.json`.
 
@@ -42,7 +45,7 @@ Tool names and descriptions are identical to `bundle/manifest.json`.
 | `irreversible` | `true` when `revit_undo_last` does not cover the effect (save, synchronize, close, link removal, file export, C# execution) |
 | `confirmation` | `required` is `never`, `conditional` or `always`; the mechanism is the single-use `confirm_token`, and `condition` says when it applies |
 | `fileSystem` | `access` is `none`, `read`, `write` or `read_write`, with a `scope` text |
-| `networkAccess` | `none`, or `unrestricted_by_confirmed_code` for tools that run user-confirmed C# |
+| `networkAccess` | `none`, or `unrestricted_by_confirmed_code` for tools that run enabled C# through the client token handshake |
 
 The policy tables behind `irreversible`, `confirmation` and `fileSystem` live in `build/tool_manifest.py`.
 A test fails when a tool that takes `confirm_token` is missing from the confirmation table or a table names an unknown tool.
@@ -72,3 +75,42 @@ With `--managed-version`, the check also requires a `README.txt` that pins `revi
 It checks the `PackageContents.xml` attributes (numeric `AppVersion`, braced `ProductCode` and `UpgradeCode`, company details), one `Components` entry per year with `SeriesMin` and `SeriesMax` set to `R<year>`, that every `ModuleName` and every `.addin` assembly path exists in the archive, and that no Revit API assemblies are packed.
 CI builds the bundle after all six Revit years compile, validates it and uploads it as the `revit-model-mcp-bundle` artifact.
 `ProductCode` is derived from the upgrade code and the version, so rebuilding the same version gives the same code.
+
+## Store packaging
+
+From the repository root on Windows:
+
+```powershell
+python build/server-exe/build.py --channel store
+foreach ($year in '22', '23', '24', '25', '26', '27') {
+    dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:Channel=store -p:DeployAddin=false -m:1 -nr:false
+    if ($LASTEXITCODE -ne 0) { throw "R$year store build failed" }
+}
+$env:Bundle__Store = 'true'
+dotnet run --project build -- bundle
+Remove-Item Env:Bundle__Store
+uv run --frozen --directory server python ../build/tool_manifest.py --managed --export-snake-case ../output/store.mcp-manifest.json
+```
+
+On Windows, run `output/server-exe/venv/Scripts/python.exe build/store_check.py output/revit-model-mcp-<version>-store.bundle.zip --manifest output/store.mcp-manifest.json` from the repository root.
+The check reads compressed Python code, scans binary strings, starts the bundled server to compare its live registry, and checks settings and UI source rules.
+For a macOS add-in-only publish check, pass `--registry-source` and the publish directory instead of a ZIP.
+That mode does not verify the bundled server.
+The store workflow builds all supported years and uploads the ZIP and manifest without publishing them.
+
+Store bundles use `Channel=store` for the add-in and Core and a separately frozen store server.
+The store excludes updater implementations and update endpoints; `ManagedInstall` remains an independent deployment setting.
+The supervisor ships in every year folder before PublishAddin.
+Repacking consumes the add-in target framework Core before the net48 supervisor Core replaces the loose copy.
+The release stages the GitHub assets before rebuilding the store channel from the same checkout.
+The checked ZIP and manifest form the store submission artifact.
+See the [release ritual](../CONTRIBUTING.md#release-ritual) for workstation validation and submission.
+
+Read-only annotations describe durable model, file, and saved-tool effects.
+View activation, selection, show, isolation, and closing views change only the current Revit session.
+They retain read-only annotations; the workstation lock can still refuse these session actions.
+`revit_family_audit` reads family data without saving or loading changes.
+`revit_edit_families` modifies families and remains modifying.
+`revit_model_audit` and report tools can write server files and remain modifying even when a particular call omits saving.
+My tools save, delete, and run remain modifying; list and get remain read-only.
+Saved C# in read mode can have file, network, or process effects outside the rolled-back transaction.

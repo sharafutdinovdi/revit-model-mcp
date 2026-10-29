@@ -522,9 +522,9 @@
   "revit_audit_report": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "audit": {
@@ -554,7 +554,7 @@
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "run_id": {
@@ -571,7 +571,7 @@
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "output_dir": {
@@ -592,7 +592,7 @@
       "destructiveHint": false,
       "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "folder": {
@@ -672,7 +672,7 @@
   "revit_batch_status": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": false,
+      "idempotentHint": true,
       "openWorldHint": null,
       "readOnlyHint": true
     },
@@ -689,9 +689,9 @@
   "revit_build_report": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "findings": {
@@ -776,9 +776,9 @@
   "revit_capture_elements": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "document": {
@@ -2733,9 +2733,9 @@
   "revit_export_view": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "document": {
@@ -2907,9 +2907,9 @@
   "revit_issue_register": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "document": {
@@ -3595,9 +3595,9 @@
   "revit_model_audit": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "compare_with": {
@@ -3663,9 +3663,9 @@
   "revit_model_health": {
     "annotations": {
       "destructiveHint": false,
-      "idempotentHint": true,
+      "idempotentHint": false,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "document": {

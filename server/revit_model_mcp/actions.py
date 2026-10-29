@@ -758,6 +758,11 @@ def register_actions(mcp, execute, host_provider) -> None:
         )
 
     def action(function):
+        if function.__name__ in {"revit_save_tool", "revit_run_tool", "revit_delete_tool"}:
+            function.__doc__ = (
+                inspect.cleandoc(function.__doc__ or "")
+                + " Uses a two-step AI app token handshake."
+            )
         if function.__name__ in {
             "revit_process_models",
             "revit_export",
@@ -1085,7 +1090,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         | None = None,
         confirm_token: str | None = None,
     ) -> dict[str, Any]:
-        """Compile C# and schema without execution. Returns full source, hash and confirm_token."""
+        """Compile C# and schema without execution, then save a revision after the token handshake. Returns full source, hash and confirm_token."""
         if len(code.encode("utf-8")) > 262144:
             raise ToolError("source exceeds 256 KB UTF-8.")
         return await send(
@@ -1122,7 +1127,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         ] = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates. Timeouts may follow commit."""
+        """Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit."""
         return await send(
             "run-tool",
             name=name,
@@ -1838,7 +1843,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call."""
+        """Save PDF, DWG, IFC or schedule CSV files to a folder the user names with output_dir on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog."""
         return await send(
             "export",
             format=format,
@@ -1882,7 +1887,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call."""
+        """Save an NWC file to a folder the user names through path on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog."""
         if scope == "view" and not view:
             raise ToolError("view is required for scope=view.")
         if scope == "selection" and not element_ids:

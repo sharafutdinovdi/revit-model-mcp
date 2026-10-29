@@ -15,6 +15,7 @@ from pathlib import Path
 
 LOGGER = logging.getLogger(__name__)
 PACKAGE = "revit-model-mcp"
+RELEASES_URL = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest"
 PYPI_URL = f"https://pypi.org/pypi/{PACKAGE}/json"
 CHECK_INTERVAL = timedelta(hours=24)
 STABLE_VERSION = re.compile(

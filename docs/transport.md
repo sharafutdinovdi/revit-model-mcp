@@ -1,5 +1,7 @@
 # Transport
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 `REVIT_MCP_HOST` selects `local`, `ssh:<alias>`, `http://host:port` or `https://host:port`.
 `--host` overrides it.
 `local`, the default, talks to the add-in over a per-process named pipe and falls back to the file channel.

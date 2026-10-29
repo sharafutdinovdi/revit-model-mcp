@@ -1,5 +1,7 @@
 # Security whitepaper
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 This paper describes how Model MCP is built, what data it touches, which controls exist, and which risks remain. It is written for security reviewers. Statements describe the code of the release you install; the [questionnaire answers](security-questionnaire.md) give short answers to common review questions.
 
 Model MCP is an open-source project (MIT). It is not a hosted service. The maintainer operates no server that receives customer data.

@@ -19,7 +19,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
-from revit_model_mcp import package_version
+from revit_model_mcp import CHANNEL, package_version
 from revit_model_mcp.actions import env_flag, redact_model_paths, register_actions
 from revit_model_mcp.batch import register_batch
 from revit_model_mcp.errors import unavailable
@@ -38,7 +38,9 @@ from revit_model_mcp.revit_channel import (
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
 from revit_model_mcp.toolsets import ENVIRONMENT_VARIABLE, TOOLSETS, apply_toolsets, parse_toolsets
-from revit_model_mcp.updates import check_for_updates, update_status
+
+if CHANNEL != "store":
+    from revit_model_mcp.updates import check_for_updates, update_status
 
 
 def create_host(
@@ -63,6 +65,7 @@ channel = RevitChannel(host)
 ISSUE_CAPTURE_BUDGET_SECONDS = 210
 HEALTH_CAPTURE_BUDGET_SECONDS = 60
 
+FILE_TOOL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
 READ_ONLY_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True)
 TimeoutSeconds = Annotated[
     int,
@@ -331,6 +334,8 @@ mcp = RevitMCPServer(
     "Model MCP",
     version=package_version(),
     instructions=(
+        "confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; "
+        "Model MCP does not show its own dialog. A token does not prove human approval. "
         "Actions are enabled by default. Every change runs inside one named Revit undo entry, is "
         "listed in the add-in's MCP activity pane and returns a `summary` sentence and the changed "
         "element IDs. Only the last action can be undone with revit_undo_last, and only while it is "
@@ -534,7 +539,9 @@ async def _execute(
             timeout_seconds,
         )
         if job.command == "ping":
-            result.update(serverVersion=package_version(), **update_status(package_version()))
+            result["serverVersion"] = package_version()
+            if CHANNEL != "store":
+                result.update(update_status(package_version()))
         result.setdefault("skipped", [])
         result.setdefault("skippedCount", 0)
         return redact_model_paths(result)
@@ -546,9 +553,8 @@ async def _execute(
 
 def addressed_tool(function):
     function.__doc__ = (
-        (function.__doc__ or "")
-        + " A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
-    )
+        function.__doc__ or ""
+    ) + " skipped means incomplete; skippedCount is the total skipped."
     title = {
         "revit_ping": "Check Revit Connection",
         "revit_jobs": "List Revit Jobs",
@@ -614,7 +620,19 @@ def addressed_tool(function):
         return_annotation=hints.get("return", signature.return_annotation),
     )
     with_process.__annotations__ = {**hints, "process_id": ProcessId}
-    return mcp.tool(title=title, annotations=READ_ONLY_TOOL.model_copy(update={"title": title}))(
+    annotations = (
+        FILE_TOOL
+        if function.__name__
+        in {
+            "revit_capture_elements",
+            "revit_export_view",
+            "revit_model_health",
+            "revit_issue_register",
+            "revit_model_audit",
+        }
+        else READ_ONLY_TOOL
+    )
+    return mcp.tool(title=title, annotations=annotations.model_copy(update={"title": title}))(
         with_client_identity(with_process)
     )
 
@@ -1176,7 +1194,7 @@ async def revit_export_view(
     output_path: SaveTo = None,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Export a selected view to a PNG file on the MCP client. Does not change the active view or the model."""
+    """Save a picture of the selected view as a PNG file in a folder the user names on the AI app computer. output_path names the new file; without it, a temporary folder is used. Existing files are refused. The active view and model stay unchanged."""
     return await _execute(
         Job.export_view(view, pixel_size, output_path),
         DEFAULT_TIMEOUT_SECONDS,
@@ -1341,7 +1359,7 @@ async def revit_model_audit(
 
 @mcp.tool(
     title="Build Audit Report",
-    annotations=READ_ONLY_TOOL.model_copy(update={"title": "Build Audit Report"}),
+    annotations=FILE_TOOL.model_copy(update={"title": "Build Audit Report"}),
 )
 def revit_audit_report(
     audit: str,
@@ -1361,7 +1379,7 @@ def revit_audit_report(
 
 @mcp.tool(
     title="Build Snapshot Report",
-    annotations=READ_ONLY_TOOL.model_copy(update={"title": "Build Snapshot Report"}),
+    annotations=FILE_TOOL.model_copy(update={"title": "Build Snapshot Report"}),
 )
 def revit_build_report(
     snapshots_dir: Annotated[
@@ -1525,7 +1543,32 @@ def main() -> None:
             f"{', '.join(TOOLSETS)}. core is always included; overrides {ENVIRONMENT_VARIABLE}."
         ),
     )
+    parser.add_argument(
+        "--tool-manifest",
+        action="store_true",
+        help="Print the live tool registry as JSON without connecting to Revit.",
+    )
     args = parser.parse_args()
+    if args.tool_manifest:
+        print(
+            json.dumps(
+                {
+                    "channel": CHANNEL,
+                    "tools": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "inputSchema": tool.input_schema,
+                            "annotations": tool.annotations.model_dump(
+                                by_alias=True, exclude_none=True
+                            ),
+                        }
+                        for tool in asyncio.run(mcp.list_tools())
+                    ],
+                }
+            )
+        )
+        return
     try:
         parse_toolsets(args.toolsets)
     except ValueError as error:
@@ -1539,7 +1582,8 @@ def main() -> None:
     if args.redact_paths:
         os.environ["REVIT_MCP_REDACT_PATHS"] = "1"
     apply_toolsets(mcp, args.toolsets)
-    check_for_updates()
+    if CHANNEL != "store":
+        check_for_updates()
     try:
         mcp.run(transport="stdio")
     except KeyboardInterrupt:

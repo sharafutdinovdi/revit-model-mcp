@@ -1,5 +1,7 @@
 <Project>
   <PropertyGroup>
+    <Channel Condition="'$(Channel)' == ''">github</Channel>
+    <DefineConstants Condition="'$(Channel)' == 'store'">$(DefineConstants);STORE_CHANNEL</DefineConstants>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <NuGetLockFilePath Condition="'$(MSBuildProjectName)' == 'RevitModelMcp.Addin'">$(MSBuildProjectDirectory)/packages.$(Configuration).lock.json</NuGetLockFilePath>
   </PropertyGroup>
@@ -7,4 +9,7 @@
   <PropertyGroup Condition="$(MSBuildProjectDirectory.StartsWith('$(MSBuildThisFileDirectory)src'))">
     <Product>Model MCP</Product>
   </PropertyGroup>
+  <Target Name="ValidateChannel" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Channel)' != 'github' And '$(Channel)' != 'store'" Text="Channel must be github or store."/>
+  </Target>
 </Project>

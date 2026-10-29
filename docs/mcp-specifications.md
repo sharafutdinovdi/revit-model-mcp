@@ -11,9 +11,9 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 | Server name | `revit-model-mcp` |
 | Transport | `stdio` |
 | MCP specification version | `2025-11-25` |
-| Tools | 79 (34 read-only, 45 modifying) |
+| Tools | 89 (36 read-only, 53 modifying) |
 | Resources | 1 (`revit://guides/coordinator`) |
-| Prompts | 5 |
+| Prompts | 7 |
 
 ## Data handling
 
@@ -26,7 +26,7 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 
 ## External endpoints
 
-All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store` and the bundled server executable: updates come from the store, the add-in does not check GitHub or download an installer, and the server makes no PyPI request. **The store build makes no external request at all.** Its tool manifest declares no external endpoints.
+All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store` and the bundled server executable: updates come from the store, the add-in does not check GitHub or download an installer, and the server makes no PyPI request. The store build makes no automatic update or telemetry requests. User-opened help links, configured HTTP or SSH workstation connections, and administrator-enabled C# can use the network. Its tool manifest declares no external endpoints.
 
 | Domain | Component | Purpose | Present in the store build |
 | --- | --- | --- | --- |
@@ -35,12 +35,12 @@ All requests are HTTPS, carry no model data, and can be turned off. The Autodesk
 | `pypi.org` | Python server | Optional check for a newer server release | No (the bundled executable never checks) |
 | `pypi.org`, `files.pythonhosted.org` | uv launcher | Package download when the server starts for the first time | No (the store build does not use the uv launcher) |
 
-No other domain is contacted. The committed manifest lists the domains of the regular build; the managed manifest (`--managed`) has none, and the release workflow attaches the store export `revit-model-mcp-<version>-store.mcp-manifest.json`, made from the managed manifest with `--export-snake-case`, with `external_endpoints` and `ai_llm_providers` empty. See the [full table](admin/security-whitepaper.md#outbound-network).
-Each tool in the store export includes the server's advertised `inputSchema`.
+Enabled C# and user-configured connections can contact other domains. The committed manifest lists the domains of the regular build; the managed manifest (`--managed`) has none, and the release workflow attaches the store export `revit-model-mcp-<version>-store.mcp-manifest.json`, made from the managed manifest with `--export-snake-case`, with `external_endpoints` and `ai_llm_providers` empty. See the [full table](admin/security-whitepaper.md#outbound-network).
+Each tool in the store export includes the server's advertised `inputSchema` and annotations.
 
 ## Code execution in the store build
 
-`revit_execute_code`, and the code steps of `revit_process_models`, are **off by default in the store build**. A refusal names how to enable it. The user turns it on with `"executeCode": "confirm"` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`; every run still needs a confirmation token. An administrator can set the `ExecuteCode` machine policy to `confirm` (enabled for everyone) or `off` (disabled, and the user setting is ignored). `revit_ping` shows the effective state in its `policy` object (`executeCode`, `executeCodeSource`: `policy`, `settings` or `store-default`). A dry run (`dry_run=true`) of `revit_execute_code` is refused the same way, because the code would still run in Revit. All other tools are available.
+In the store channel, only an administrator can enable C# execution with the ExecuteCode machine policy set to confirm. The user executeCode value in settings.json is ignored. revit_ping reports executeCodeSource as policy or store-default. GitHub builds keep their existing behavior. A dry run of C# is refused by the same gate. Saved C# through `revit_run_tool`, including read mode, and process-model code steps use this gate too. confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
 
 ## Autodesk data access
 

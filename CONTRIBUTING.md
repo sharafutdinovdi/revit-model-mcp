@@ -212,6 +212,20 @@ Attach the table and TRX counters to release validation before publication.
 4. Check the Release please workflow, both MSI assets, six ZIPs, wheel, source distribution and `SHA256SUMS.txt`. If a job fails with `The job was not acquired by Runner`, that is a GitHub infrastructure failure: rerun it with `gh run rerun <run id> --failed`.
 5. Check PyPI, MCP Registry and Smithery job results for stable releases. Check the weekly WinGet run separately; download its manifests if submission is not configured.
 
+The same release checkout produces the GitHub assets and the Autodesk store bundle.
+GitHub builds use the default `Channel=github`; `ManagedInstall` controls deployment separately.
+After staging the GitHub assets, the workflow rebuilds the frozen server with `python build/server-exe/build.py --channel store` and all Revit years with `-p:Channel=store`.
+It packs `revit-model-mcp-<version>-store.bundle.zip` with `Bundle__Store=true`, exports the store MCP manifest, and checks both against the bundled executable with `build/store_check.py`.
+The release uploads the checked store ZIP and manifest as a separate artifact and includes them in its release assets and checksums.
+The Store workflow also produces the ZIP and manifest for relevant pull requests or a manual run without publishing a release.
+
+The maintainer downloads the final Windows store artifact and verifies installation, removal, batch start and fetch, policy enforcement, and window branding in Revit before submission.
+The submission uses the ZIP, its matching manifest, SHA256, current declaration, and screenshots from that exact build.
+The maintainer identifies the authoritative Autodesk submission record and submits the replacement through the Autodesk publisher portal.
+A successful local checker does not establish that Autodesk accepts the package or its export-tool scan.
+Release-please still owns all version and changelog changes.
+See [Store packaging](docs/tool-manifest.md#store-packaging) for the build and validation commands.
+
 When the `SIGNPATH_API_TOKEN` secret and the `SIGNPATH_ORGANIZATION_ID` variable are set, the release job submits the MSIs and ZIPs to SignPath and waits up to 90 minutes for the approval of the signing request. Without them the job skips signing and publishes unsigned assets. Optional variables `SIGNPATH_PROJECT_SLUG`, `SIGNPATH_SIGNING_POLICY_SLUG` and `SIGNPATH_ARTIFACT_CONFIGURATION_SLUG` override the defaults `revit-model-mcp`, `release-signing` and `release`. The artifact configuration lives in `.signpath/artifact-configuration.xml`; keep the copy in SignPath identical.
 
 The required `release-window` check keeps the release PR red outside Monday in Europe/Moscow time and passes at once for every other PR.

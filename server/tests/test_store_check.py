@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+import asyncio
+import runpy
+from pathlib import Path
+
+import pytest
+
+from revit_model_mcp.server import mcp
+
+ROOT = Path(__file__).resolve().parents[2]
+CHECK = runpy.run_path(str(ROOT / "build/store_check.py"))
+GENERATOR = runpy.run_path(str(ROOT / "build/tool_manifest.py"))
+
+
+def registry():
+    tools = asyncio.run(mcp.list_tools())
+    return tools, [
+        {
+            "name": tool.name,
+            "description": tool.description,
+            "inputSchema": tool.input_schema,
+            "annotations": tool.annotations.model_dump(by_alias=True, exclude_none=True),
+        }
+        for tool in tools
+    ]
+
+
+def test_store_manifest_and_annotations():
+    tools, live = registry()
+    built = GENERATOR["build_manifest"](tools, [], [], managed=True)
+    exported = GENERATOR["export_snake_case"](built, tools)
+    assert CHECK["check_manifest"](exported, live) == []
+    for tool in live:
+        if tool["name"] in CHECK["FILE_WRITERS"]:
+            assert tool["annotations"]["readOnlyHint"] is False
+            assert tool["annotations"]["idempotentHint"] is False
+
+
+@pytest.mark.parametrize("failure", ["missing", "read_only", "registry", "schema", "transports"])
+def test_manifest_failures(failure):
+    tools, live = registry()
+    exported = GENERATOR["export_snake_case"](
+        GENERATOR["build_manifest"](tools, [], [], managed=True), tools
+    )
+    tool = next(tool for tool in exported["tools"] if tool["name"] == "revit_export_view")
+    if failure == "missing":
+        del tool["annotations"]
+    elif failure == "read_only":
+        tool["annotations"]["readOnlyHint"] = True
+    elif failure == "registry":
+        exported["tools"].pop()
+    elif failure == "schema":
+        tool["inputSchema"] = {}
+    else:
+        del exported["server"]["transports"]
+    assert CHECK["check_manifest"](exported, live)
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le"])
+@pytest.mark.parametrize("value", CHECK["FORBIDDEN"])
+def test_forbidden_binary_strings(value, encoding):
+    assert CHECK["check_bytes"](value.decode().encode(encoding), "fixture.dll")
+    assert (
+        CHECK["check_bytes"](
+            b"https://sharafutdinovdi.github.io/revit-model-mcp/install/", "fixture.dll"
+        )
+        == []
+    )
+
+
+def test_compressed_python_code_strings():
+    code = compile('def nested():\n return "https://api.github.com"', "fixture", "exec")
+    assert CHECK["check_bytes"](CHECK["code_bytes"](code), "fixture")
+
+
+def test_source_checks(tmp_path):
+    addin = tmp_path / "src/RevitModelMcp.Addin"
+    (addin / "Control").mkdir(parents=True)
+    window = addin / "Fixture.cs"
+    settings = addin / "Control/HttpChannel.cs"
+    settings.write_text('#if !STORE_CHANNEL\n[DataMember(Name = "updateCheck")]\n#endif')
+    window.write_text("class Fixture : Window { Icon = AppIcon; }")
+    assert CHECK["check_sources"](tmp_path) == []
+    window.write_text('class Fixture : Window {}\nApplication.CreatePanel("MCP");')
+    assert len(CHECK["check_sources"](tmp_path)) == 2
+    settings.write_text('[DataMember(Name = "updateCheck")]')
+    assert len(CHECK["check_sources"](tmp_path)) == 3
+    settings.write_text("")
+    window.write_text(
+        'class Fixture : Window { Icon = AppIcon; void Show() { new Window { Title = "Code" }; } }'
+    )
+    assert CHECK["check_sources"](tmp_path) == ["Anonymous Window without app Icon: Fixture.cs"]
+    window.write_text(
+        "class Fixture : Window { Icon = AppIcon; void Show() { new Window { Icon = AppIcon }; } }"
+    )
+    generated = addin / "obj/Fixture.g.cs"
+    generated.parent.mkdir()
+    generated.write_text("class Fixture : Window {}")
+    assert CHECK["check_sources"](tmp_path) == []
+
+
+def test_settings_defaults_per_channel():
+    source = '#if !STORE_CHANNEL\n[DataMember(Name = "updateCheck")]\n#endif'
+    assert "updateCheck" not in CHECK["store_source"](source)
+    assert "updateCheck" in CHECK["store_source"](source, False)
+
+
+def test_publish_fixtures(tmp_path):
+    binary = tmp_path / "RevitModelMcp.dll"
+    binary.write_bytes(b"store fixture")
+    (tmp_path / "RevitModelMcp.BatchSupervisor.exe").write_bytes(b"supervisor fixture")
+    assert CHECK["check_folder"](tmp_path) == []
+    (tmp_path / "settings.json").write_text('{"updateCheck":false}')
+    assert CHECK["check_folder"](tmp_path)
+    (tmp_path / "settings.json").unlink()
+    binary.write_bytes("updateCheck".encode("utf-16-le"))
+    assert CHECK["check_folder"](tmp_path)
+    binary.unlink()
+    assert CHECK["check_folder"](tmp_path)
+
+
+def test_store_registry_import_without_update_module(tmp_path):
+    import os
+    import shutil
+    import subprocess
+    import sys
+
+    package = tmp_path / "revit_model_mcp"
+    shutil.copytree(
+        ROOT / "server/revit_model_mcp", package, ignore=shutil.ignore_patterns("__pycache__")
+    )
+    init = package / "__init__.py"
+    init.write_text(init.read_text().replace('CHANNEL = "github"', 'CHANNEL = "store"'))
+    (package / "updates.py").unlink()
+    result = subprocess.run(
+        [sys.executable, "-m", "revit_model_mcp.server", "--tool-manifest"],
+        cwd=tmp_path,
+        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    import json
+
+    actual = json.loads(result.stdout)
+    assert actual["channel"] == "store"
+    assert {tool["name"] for tool in actual["tools"]} == {tool.name for tool in registry()[0]}
+
+
+def test_every_tool_has_reviewed_access_annotations():
+    read_only = {
+        "revit_jobs",
+        "revit_compare_link_datums",
+        "revit_ping",
+        "revit_nwc_settings_check",
+        "revit_document_info",
+        "revit_documents",
+        "revit_ui_state",
+        "revit_api_lookup",
+        "revit_model_snapshot",
+        "revit_links_status",
+        "revit_shared_coordinates",
+        "revit_parameter_fill_check",
+        "revit_list_catalog",
+        "revit_aggregate_elements",
+        "revit_query_elements",
+        "revit_list_sheets",
+        "revit_list_views",
+        "revit_view_info",
+        "revit_view_summary",
+        "revit_schedule_data",
+        "revit_view_elements",
+        "revit_element_details",
+        "revit_view_warnings",
+        "revit_list_warnings",
+        "revit_list_relations",
+        "revit_list_instances",
+        "revit_family_audit",
+        "revit_activate_document",
+        "revit_activate_view",
+        "revit_close_views",
+        "revit_list_tools",
+        "revit_get_tool",
+        "revit_select",
+        "revit_show",
+        "revit_isolate",
+        "revit_batch_status",
+    }
+    tools, live = registry()
+    assert len(tools) == 89
+    assert {tool["name"] for tool in live if tool["annotations"]["readOnlyHint"]} == read_only
+    assert all(
+        isinstance(tool["annotations"][hint], bool)
+        for tool in live
+        for hint in ("readOnlyHint", "destructiveHint", "idempotentHint")
+    )
+
+
+def test_saved_tools_describe_client_handshakes():
+    _, live = registry()
+    for tool in live:
+        if tool["name"] in {"revit_save_tool", "revit_delete_tool", "revit_run_tool"}:
+            assert "two-step AI app token handshake" in tool["description"]

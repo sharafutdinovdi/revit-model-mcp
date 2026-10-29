@@ -18,7 +18,9 @@ using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Help;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
+#if !STORE_CHANNEL
 using RevitModelMcp.Updates;
+#endif
 
 namespace RevitModelMcp;
 
@@ -180,7 +182,9 @@ public sealed class Application : ExternalApplication
         if (!channelOwnsStatus) _instanceHeartbeat?.UpdateHttpStatus(httpStatus);
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
         _controlChannel.ConfigureTabActivity(httpSettings?.TabActivityHighlight ?? true);
+#if !STORE_CHANNEL
         UpdateService.Start();
+#endif
     }
 
     private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs args)
@@ -273,9 +277,11 @@ public sealed class Application : ExternalApplication
         ConfigureRibbonButton(brand, "Logo", RibbonText.ModelMcpToolTip, RibbonText.ModelMcpDescription, HelpLinks.AddinHelpUrl);
         ConfigureRibbonButton(brand.AddPushButton<About.AboutCommand>("About"), "About",
             RibbonText.AboutToolTip, RibbonText.AboutDescription, HelpLinks.AddinHelpUrl);
+#if !STORE_CHANNEL
         if (UpdateService.Channel() == Core.Updates.UpdateChannel.Release)
             ConfigureRibbonButton(brand.AddPushButton<CheckUpdatesCommand>("Check for updates"), "Update",
                 RibbonText.UpdateToolTip, RibbonText.UpdateDescription, HelpLinks.AddinHelpUrl);
+#endif
         ConfigureRibbonButton(brand.AddPushButton<OpenSettingsFolderCommand>("Settings"), "Settings",
             RibbonText.SettingsToolTip, RibbonText.SettingsDescription, HelpLinks.AddinHelpUrl);
         ConfigureRibbonButton(panel.AddPushButton<ConnectAiCommand>(ConnectText.RibbonButton), "Connect",
