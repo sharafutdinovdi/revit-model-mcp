@@ -12,6 +12,7 @@ public partial class AboutWindow : Window
     public AboutWindow(string revitYear)
     {
         InitializeComponent();
+        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
         var version = FileVersionInfo.GetVersionInfo(typeof(AboutWindow).Assembly.Location).ProductVersion ?? "0.0.0";
         VersionText.Text = $"Version: {Core.Help.VersionText.Format(version)}";
         RevitText.Text = $"Revit: {revitYear}";

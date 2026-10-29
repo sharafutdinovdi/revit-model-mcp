@@ -40,6 +40,7 @@ internal sealed class MyToolsWindow : Window
     {
         FollowTheme(this);
         Title = "My tools";
+        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
         Width = 1000;
         Height = 550;
         MinWidth = 620;
@@ -169,6 +170,7 @@ internal sealed class MyToolsWindow : Window
             var viewer = new Window
             {
                 Title = "Show code: " + row.Name,
+                Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png")),
                 Owner = this,
                 Width = 850,
                 Height = 650,
@@ -200,19 +202,53 @@ internal sealed class MyToolsWindow : Window
             if (ActionCommandExecutor.ReadOnlyMode) throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
             if (PolicyProvider.Refusal("delete-tool") is string refusal) throw new InvalidOperationException(refusal);
             var binding = MyTools.Store.DeletionBinding(row.Name);
-            var dialog = new TaskDialog("My tools")
-            {
-                MainInstruction = $"Delete {row.Name}?",
-                MainContent = "This deletes the saved tool and all its revisions. Deletion cannot be undone.",
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
-                DefaultButton = TaskDialogResult.No,
-                MainIcon = TaskDialogIcon.TaskDialogIconWarning
-            };
-            if (dialog.Show() != TaskDialogResult.Yes) return;
+            if (!AppDialog.Show("My tools",
+                    $"Delete {row.Name}?\n\nThis deletes the saved tool and all its revisions. Deletion cannot be undone.",
+                    confirm: true, owner: this)) return;
             MyTools.Store.Delete(row.Name, binding);
             RevitModelMcp.Activity.ActivityRecorder.RecordSystemNotice($"Deleted saved tool {row.Name}.");
             Refresh();
         }
         catch (Exception exception) { _status.Text = "Tool could not be deleted. " + exception.Message; }
+    }
+}
+
+internal static class AppDialog
+{
+    internal static bool Show(string title, string message, bool confirm = false, Window? owner = null)
+    {
+        var dialog = new Window
+        {
+            Title = title,
+            Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png")),
+            Width = 460,
+            SizeToContent = SizeToContent.Height,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        if (owner is not null) dialog.Owner = owner;
+        else new WindowInteropHelper(dialog).Owner = Autodesk.Windows.ComponentManager.ApplicationWindow;
+        var content = new StackPanel { Margin = new Thickness(16) };
+        content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 16, 0, 0)
+        };
+        if (confirm)
+        {
+            var yes = new Button { Content = "Yes", MinWidth = 80, Margin = new Thickness(0, 0, 8, 0) };
+            yes.Click += (_, _) => dialog.DialogResult = true;
+            buttons.Children.Add(yes);
+        }
+        var close = new Button { Content = confirm ? "No" : "OK", MinWidth = 80, IsDefault = true, IsCancel = true };
+        close.Click += (_, _) => dialog.DialogResult = false;
+        buttons.Children.Add(close);
+        content.Children.Add(buttons);
+        dialog.Content = content;
+        dialog.Loaded += (_, _) => close.Focus();
+        return dialog.ShowDialog() == true;
     }
 }

@@ -30,6 +30,7 @@ internal sealed class ConnectAiWindow : Window
     {
         _configurator = _spec is null ? null : new McpClientConfigurator(spec: _spec);
         Title = ConnectText.Title;
+        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
         Width = 600;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
