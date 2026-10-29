@@ -479,7 +479,20 @@ internal sealed class ActivityDialog : Window
     private ActivityDialog(string message, IntPtr owner)
     {
         Title = "Model MCP";
-        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
+        try
+        {
+            var icon = new System.Windows.Media.Imaging.BitmapImage();
+            icon.BeginInit();
+            icon.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            icon.UriSource = new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/App32.png");
+            icon.EndInit();
+            icon.Freeze();
+            Icon = icon;
+        }
+        catch (Exception)
+        {
+            // Branding is optional for an action result dialog.
+        }
         Width = 460;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
