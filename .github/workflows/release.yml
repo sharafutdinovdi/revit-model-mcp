@@ -178,17 +178,19 @@ jobs:
         env:
           Build__Version: ${{ env.RELEASE_VERSION }}
         run: |
-          # The Autodesk App Store build: UpdateChannel=store, so no RevitModelMcp.Updater.exe and no update check.
+          python build/server-exe/build.py --channel store
+          if ($LASTEXITCODE -ne 0) { throw 'Store server build failed' }
+          # The Autodesk App Store build: Channel=store, so no RevitModelMcp.Updater.exe and no update check.
           foreach ($year in '22', '23', '24', '25', '26', '27') {
             $bin = "src/RevitModelMcp.Addin/bin/Release.R$year"
             # Start from an empty output folder so the store build cannot inherit the updater of the standard build.
             Remove-Item $bin -Recurse -Force -ErrorAction SilentlyContinue
             dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION"
             if ($LASTEXITCODE -ne 0) { throw "R$year locked restore failed" }
-            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION" -p:UpdateChannel=store --no-restore
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false "-p:Version=$env:RELEASE_VERSION" -p:Channel=store --no-restore
             if ($LASTEXITCODE -ne 0) { throw "R$year store build failed" }
             $text = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes("$bin/RevitModelMcp.dll"))
-            if ($text -notmatch 'UpdateChannel.store') { throw "R$year store build does not carry UpdateChannel=store" }
+            if ($text -notmatch 'UpdateChannel.store') { throw "R$year store build does not carry Channel=store" }
             if (@(Get-ChildItem $bin -Recurse -Filter 'RevitModelMcp.Updater.exe' -File).Count) { throw "R$year store build contains the updater" }
           }
           $env:INSTALLER_VARIANT = 'store'
@@ -398,10 +400,12 @@ jobs:
         shell: pwsh
         working-directory: server
         run: |
-          # The store build makes no external request, so the managed manifest (no external endpoints) applies.
+          # Store updates are excluded; workstation transports are declared in the manifest.
           $manifest = "../artifacts/release/revit-model-mcp-$env:RELEASE_VERSION-store.mcp-manifest.json"
           uv run --frozen python ../build/tool_manifest.py --managed --export-snake-case $manifest
           if ($LASTEXITCODE -ne 0) { throw 'Tool manifest export failed' }
+          ../output/server-exe/venv/Scripts/python.exe ../build/store_check.py "../output/revit-model-mcp-$env:RELEASE_VERSION-store.bundle.zip" --manifest $manifest
+          if ($LASTEXITCODE -ne 0) { throw 'Store checks failed' }
           $json = Get-Content -Raw -LiteralPath $manifest | ConvertFrom-Json
           foreach ($field in 'mcp_manifest_version', 'app_model', 'mcp_spec_version', 'server', 'tools', 'resources', 'prompts', 'external_endpoints', 'autodesk_apis_used', 'ai_llm_providers') {
             if ($null -eq $json.PSObject.Properties[$field]) { throw "Tool manifest export misses $field" }

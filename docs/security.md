@@ -51,7 +51,9 @@ See [transport](transport.md) and [security reporting](../SECURITY.md).
 
 ## Document lifecycle safety
 
-Open, close, save and synchronize are refused in read-only mode, same as every other action. A central model opened through MCP defaults to detached mode. `local_copy` creates a new local file and leaves the central unchanged until an explicitly confirmed synchronization. Saving an open central model or saving under a known central path is refused.
+Open, close, save and synchronize are refused in read-only mode, same as every other action. A central model opened through MCP defaults to detached mode. `local_copy` creates a new local file and leaves the central unchanged until a synchronization with a client token handshake. Saving an open central model or saving under a known central path is refused.
+
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
 
 Save, sync and any close that can discard changes require a five-minute, single-use confirmation token. So do `revit_remove_links` without `dry_run`, `revit_export` and `revit_export_nwc` with `overwrite=true` when a target file exists, `revit_execute_code` without `dry_run`, and `revit_process_models` with `code`. These tokens guard against mistakes and against instructions injected into model data or tool output. They do not guard against an MCP client that confirms by itself, because the client receives the token. Use read-only mode for unattended runs. The first call only describes the operation. The client must show `confirmationText` and must not send the token back until the user explicitly agrees in chat. A failed verification or timeout can occur after Revit commits a change; inspect document state before a retry. Neither the token nor the action gate is a substitute for model backups and Revit permissions.
 

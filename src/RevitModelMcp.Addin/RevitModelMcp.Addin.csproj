@@ -6,7 +6,6 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <ManagedInstall Condition="'$(ManagedInstall)' == ''">false</ManagedInstall>
-    <UpdateChannel Condition="'$(UpdateChannel)' == ''">release</UpdateChannel>
     <DeployAddin>true</DeployAddin>
     <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
@@ -64,12 +63,12 @@
 
   <ItemGroup>
     <AssemblyMetadata Include="ManagedInstall" Value="$(ManagedInstall)"/>
-    <AssemblyMetadata Include="UpdateChannel" Value="$(UpdateChannel)"/>
+    <AssemblyMetadata Include="UpdateChannel" Value="$(Channel)"/>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RevitModelMcp.Core\RevitModelMcp.Core.csproj"/>
-    <ProjectReference Include="..\RevitModelMcp.Updater\RevitModelMcp.Updater.csproj"
+    <ProjectReference Condition="'$(Channel)' != 'store'" Include="..\RevitModelMcp.Updater\RevitModelMcp.Updater.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true"
                       SetTargetFramework="TargetFramework=net48"/>
@@ -80,16 +79,21 @@
   </ItemGroup>
 
   <Target Name="CopyUpdater" AfterTargets="Build"
-          Condition="'$(ManagedInstall)' != 'true' And '$(UpdateChannel)' != 'managed' And '$(UpdateChannel)' != 'store'">
+          Condition="'$(ManagedInstall)' != 'true' And '$(Channel)' != 'store'">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
           DestinationFolder="$(TargetDir)"/>
   </Target>
 
-  <Target Name="CopyBatchSupervisor" AfterTargets="Build">
+  <Target Name="RemoveStoreUpdater" BeforeTargets="PublishAddin" AfterTargets="Build" Condition="'$(Channel)' == 'store'">
+    <Delete Files="$(TargetDir)RevitModelMcp.Updater.exe;$(TargetDir)publish/RevitModelMcp/RevitModelMcp.Updater.exe"/>
+  </Target>
+
+  <Target Name="CopyBatchSupervisor" BeforeTargets="PublishAddin" AfterTargets="Build">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.BatchSupervisor.exe"
           DestinationFolder="$(TargetDir)"/>
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
-          DestinationFolder="$(TargetDir)"/>
+          DestinationFolder="$(TargetDir)"
+          Condition="'$(IsRepackable)' != 'true'"/>
   </Target>
 
   <Target Name="RemoveNetRuntimeDependencies"
@@ -99,8 +103,13 @@
     <Delete Files="$(TargetDir)System.Collections.Immutable.dll;$(TargetDir)System.Reflection.Metadata.dll;$(TargetDir)System.Memory.dll"/>
   </Target>
 
+  <ItemGroup Condition="'$(Channel)' == 'store'">
+    <Compile Remove="Updates/**/*.cs"/>
+  </ItemGroup>
+
   <ItemGroup>
     <Resource Include="Resources\Icons\*.png"/>
+    <Resource Include="..\..\docs\assets\icons\icon-32.png" Link="Resources\Icons\App32.png"/>
   </ItemGroup>
 
   <Target Name="PinMergedRevitApiReferences"
@@ -109,6 +118,11 @@
     <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
            Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
     <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$(TargetPath)&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <!-- The supervisor uses net48 Core after the add-in merges its own target framework's Core. -->
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
+          DestinationFolder="$(TargetDir)"/>
+    <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.BatchSupervisor/bin/$(Configuration)/net48/RevitModelMcp.Core.dll"
+          DestinationFolder="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)'))"/>
   </Target>
 
 </Project>

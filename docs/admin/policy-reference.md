@@ -21,7 +21,7 @@ The add-in rereads both stores about every ten seconds, so a change applies with
 | `ReadOnly` | DWORD 0 or 1 | boolean | `1` refuses every action tool. Read tools are not affected. |
 | `ToolDeny` | REG_MULTI_SZ | array of strings | Tool names that are refused. |
 | `ToolAllow` | REG_MULTI_SZ | array of strings | Tool names that are allowed. Empty or absent means all tools. |
-| `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` refuses `revit_execute_code` and code in `revit_process_models`. `confirm` keeps the confirmation token flow. In the Autodesk App Store build code execution is off unless the user sets `executeCode` to `confirm` in `settings.json`; `confirm` here enables it for everyone and `off` disables it whatever the user sets, see [the store channel](../updates.md#the-store-channel). |
+| `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` refuses C# execution. In the store channel only machine policy `confirm` enables C#, including dry runs and process-model code steps. User settings are ignored. Committed code uses a client token handshake. |
 | `UpdateMode` | REG_SZ `off`, `notify` or `auto` | string | `off` makes no update request. `notify` only shows a notice. `auto` installs a per-user update. An unknown value makes the whole policy [unreadable](#unreadable-policy-fails-closed). See [automatic updates](../updates.md#modes). |
 | `TrustedNetworkRoots` | REG_MULTI_SZ | array of strings | UNC roots (`\\server\share`) that export, save and open may use. A configured list replaces the per-user list, including an empty list. |
 | `LogDir` | REG_SZ | string | Folder for the add-in log and `activity.log`. |
@@ -180,3 +180,20 @@ These exist without a machine policy. They are per user or per process, so a use
 | `REVIT_MCP_SSH_MUX`, `REVIT_MCP_SSH_OPTIONS` | SSH connection sharing and extra options. |
 
 Boolean variables accept `1/0`, `true/false`, `yes/no` and `on/off`.
+
+## Enable code in the store channel
+
+An administrator sets the 64-bit registry value from an elevated console:
+
+```cmd
+reg add "HKLM\Software\Policies\RevitModelMcp" /v ExecuteCode /t REG_SZ /d confirm /f
+```
+
+Alternatively, the administrator writes `{"ExecuteCode":"confirm"}` to `%ProgramData%\RevitModelMcp\policy.json`.
+The file and its directory must pass the ownership and write-permission checks described above.
+Registry values take precedence over the policy file.
+Unreadable or untrusted policy fails closed.
+The user `settings.json` value cannot enable code in the store channel.
+`revit_ping` reports `executeCodeSource` as `policy` or `store-default`.
+
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.

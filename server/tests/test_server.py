@@ -472,10 +472,24 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(tool.title)
             self.assertLessEqual(len(tool.title), 40)
             self.assertEqual(tool.annotations.title, tool.title)
-            self.assertIs(tool.annotations.read_only_hint, True)
+            self.assertIs(
+                tool.annotations.read_only_hint,
+                tool.name
+                not in {
+                    "revit_capture_elements",
+                    "revit_export_view",
+                    "revit_model_health",
+                    "revit_issue_register",
+                    "revit_build_report",
+                    "revit_batch_start",
+                    "revit_batch_cancel",
+                    "revit_batch_fetch",
+                },
+            )
         self.assertTrue(
             all(
-                tool.annotations and tool.annotations.read_only_hint for tool in read_tools.values()
+                tool.annotations and isinstance(tool.annotations.read_only_hint, bool)
+                for tool in read_tools.values()
             )
         )
         action_tools = {name: tool for name, tool in tools.items() if name in ACTION_TOOL_NAMES}
@@ -506,7 +520,9 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             ],
             3000,
         )
-        self.assertIn("change the active view", tools["revit_export_view"].description)
+        self.assertIn(
+            "The active view and model stay unchanged", tools["revit_export_view"].description
+        )
         self.assertFalse(
             tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"]
         )
@@ -888,7 +904,19 @@ def test_in_process_read_tool_titles():
     for tool in reads.values():
         assert tool.title and len(tool.title) <= 40
         assert tool.annotations.title == tool.title
-        assert tool.annotations.read_only_hint is True
+        assert tool.annotations.read_only_hint is (
+            tool.name
+            not in {
+                "revit_capture_elements",
+                "revit_export_view",
+                "revit_model_health",
+                "revit_issue_register",
+                "revit_build_report",
+                "revit_batch_start",
+                "revit_batch_cancel",
+                "revit_batch_fetch",
+            }
+        )
 
 
 def test_discovery_unions_heartbeats_with_all_running_processes():

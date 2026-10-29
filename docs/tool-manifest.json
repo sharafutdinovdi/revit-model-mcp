@@ -164,11 +164,11 @@
       "name": "revit_model_health",
       "description": "Read model quality counts: project metadata, file size, counts, units and the ten most frequent warning groups. Unavailable metrics are null and listed in skipped. output_path also writes an .xlsx health report with up to five snapshots. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "read",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true
+        "idempotentHint": false
       },
       "irreversible": false,
       "confirmation": {
@@ -372,13 +372,13 @@
     },
     {
       "name": "revit_capture_elements",
-      "description": "Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
+      "description": "Save a PNG picture marking 1 to 500 elements in a folder the user names through output_path, or in a temporary folder when omitted. Existing files are refused. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "views-sheets",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true
+        "idempotentHint": false
       },
       "irreversible": false,
       "confirmation": {
@@ -392,13 +392,13 @@
     },
     {
       "name": "revit_export_view",
-      "description": "Export a selected view to a PNG file on the MCP client. Does not change the active view or the model. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
+      "description": "Save a picture of the selected view as a PNG file in a folder the user names on the AI app computer. output_path names the new file; without it, a temporary folder is used. Existing files are refused. The active view and model stay unchanged. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "views-sheets",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true
+        "idempotentHint": false
       },
       "irreversible": false,
       "confirmation": {
@@ -653,7 +653,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "conditional",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "Closing with save=true, or closing a modified document without saving."
       },
       "fileSystem": {
@@ -674,7 +674,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "always",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "Every call."
       },
       "fileSystem": {
@@ -696,7 +696,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "always",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "Every call; a non-empty comment is required."
       },
       "fileSystem": {
@@ -737,7 +737,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "always",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "Every call except dry_run; removal cannot be undone in Revit."
       },
       "fileSystem": {
@@ -758,12 +758,12 @@
       "irreversible": true,
       "confirmation": {
         "required": "always",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "Every call except dry_run."
       },
       "fileSystem": {
         "access": "read_write",
-        "scope": "Not restricted by the server; confirmed C# runs with the user's rights."
+        "scope": "Not restricted by the server; enabled C# runs with the user's rights."
       },
       "networkAccess": "unrestricted_by_confirmed_code"
     },
@@ -1314,7 +1314,7 @@
       "irreversible": false,
       "confirmation": {
         "required": "conditional",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "A real deletion of more than 500 elements, dependents included."
       },
       "fileSystem": {
@@ -1324,7 +1324,7 @@
     },
     {
       "name": "revit_export",
-      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
+      "description": "Save PDF, DWG, IFC or schedule CSV files to a folder the user names with output_dir on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
       "toolset": "export",
       "access": "modifying",
       "annotations": {
@@ -1335,7 +1335,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "conditional",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "overwrite=true and at least one target file already exists."
       },
       "fileSystem": {
@@ -1346,7 +1346,7 @@
     },
     {
       "name": "revit_export_nwc",
-      "description": "Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
+      "description": "Save an NWC file to a folder the user names through path on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
       "toolset": "export",
       "access": "modifying",
       "annotations": {
@@ -1357,7 +1357,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "conditional",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "overwrite=true and the target file already exists."
       },
       "fileSystem": {
@@ -1398,7 +1398,7 @@
       "irreversible": true,
       "confirmation": {
         "required": "conditional",
-        "mechanism": "confirm_token",
+        "mechanism": "confirm_token client handshake",
         "condition": "In-place saves, and code without dry_run."
       },
       "fileSystem": {
@@ -1430,9 +1430,9 @@
       "name": "revit_batch_start",
       "description": "Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory).",
       "toolset": "batch",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false
       },
@@ -1441,8 +1441,8 @@
         "required": "never"
       },
       "fileSystem": {
-        "access": "read",
-        "scope": "Model files on the Revit workstation."
+        "access": "read_write",
+        "scope": "Model files and durable batch state on the Revit workstation."
       },
       "networkAccess": "none"
     },
@@ -1454,7 +1454,7 @@
       "annotations": {
         "readOnlyHint": true,
         "destructiveHint": false,
-        "idempotentHint": false
+        "idempotentHint": true
       },
       "irreversible": false,
       "confirmation": {
@@ -1469,9 +1469,9 @@
       "name": "revit_batch_cancel",
       "description": "Persist cancellation and prevent unstarted models from running.",
       "toolset": "batch",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false
       },
@@ -1480,7 +1480,8 @@
         "required": "never"
       },
       "fileSystem": {
-        "access": "none"
+        "access": "write",
+        "scope": "Cancellation state on the Revit workstation."
       },
       "networkAccess": "none"
     },
@@ -1488,9 +1489,9 @@
       "name": "revit_batch_fetch",
       "description": "Download completed snapshots to new local files without overwriting.",
       "toolset": "batch",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false
       },
@@ -1508,11 +1509,11 @@
       "name": "revit_build_report",
       "description": "Build a local Excel report from snapshots without contacting Revit.",
       "toolset": "batch",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true
+        "idempotentHint": false
       },
       "irreversible": false,
       "confirmation": {
@@ -1528,11 +1529,11 @@
       "name": "revit_issue_register",
       "description": "Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "export",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
-        "idempotentHint": true
+        "idempotentHint": false
       },
       "irreversible": false,
       "confirmation": {
@@ -1642,6 +1643,7 @@
     "aiClients": "The server does not call any AI service. Tool results go to the MCP client the user chose; that client may send them to its own model provider under the user's own agreement.",
     "readOnlyMode": "Actions are refused when REVIT_MCP_READ_ONLY=1 or the workstation read-only file exists.",
     "localChannels": "Named pipe (current Windows user only), a file channel under %LOCALAPPDATA%\\RevitModelMcp, and an HTTP listener bound to 127.0.0.1 with a bearer token. A remote workstation is reached only through a user-configured SSH or HTTP(S) host.",
-    "telemetry": "None."
+    "telemetry": "None.",
+    "confirmation": "confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog."
   }
 }

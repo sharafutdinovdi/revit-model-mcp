@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Json;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
@@ -9,7 +7,9 @@ using Microsoft.Win32;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Policy;
 using RevitModelMcp.Core.Updates;
+#if !STORE_CHANNEL
 using RevitModelMcp.Updates;
+#endif
 
 namespace RevitModelMcp.Policy;
 
@@ -61,52 +61,22 @@ internal static class PolicyProvider
         var policy = Current;
         if (policy.Refusal(command) is { } refusal) return refusal;
         if (!MachinePolicy.IsCodeCommand(command)) return null;
-        return CodeExecutionGate.Refusal(command, Channel, policy, UserExecuteCode(policy));
+        return CodeExecutionGate.Refusal(command, Channel, policy, null);
     }
 
     /// <summary>The policy summary for ping and the handshake, with the effective code state in the store channel.</summary>
     public static Dictionary<string, string> Summary()
     {
         var policy = Current;
-        return CodeExecutionGate.Summarize(Channel, policy, UserExecuteCode(policy));
+        return CodeExecutionGate.Summarize(Channel, policy, null);
     }
 
-    private static readonly UpdateChannel Channel = UpdateService.Channel();
-    private static string? _userExecuteCode;
-    private static long _userExecuteCodeAt = -CacheMilliseconds - 1;
-
-    public static string UserSettingsPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "settings.json");
-
-    /// <summary>The user's executeCode value, read only in the store channel when no policy value decides, cached like the policy.</summary>
-    private static string? UserExecuteCode(MachinePolicy policy)
-    {
-        if (!CodeExecutionGate.NeedsUserSetting(Channel, policy)) return null;
-        lock (SyncRoot)
-        {
-            if (Now() - _userExecuteCodeAt <= CacheMilliseconds) return _userExecuteCode;
-            _userExecuteCodeAt = Now();
-            try
-            {
-                _userExecuteCode = null;
-                if (!File.Exists(UserSettingsPath)) return null;
-                using var stream = new FileStream(UserSettingsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-                _userExecuteCode = (new DataContractJsonSerializer(typeof(CodeSetting)).ReadObject(stream) as CodeSetting)?.ExecuteCode;
-            }
-            catch (Exception)
-            {
-                // An unreadable settings file keeps code off.
-                _userExecuteCode = null;
-            }
-            return _userExecuteCode;
-        }
-    }
-
-    [DataContract]
-    private sealed class CodeSetting
-    {
-        [DataMember(Name = "executeCode")] public string? ExecuteCode { get; set; }
-    }
+    internal static UpdateChannel Channel =>
+#if STORE_CHANNEL
+        UpdateChannel.Store;
+#else
+        UpdateService.Channel();
+#endif
 
     /// <summary>Policy values that apply in this process. RedactPaths is forwarded through the environment because the shared Core code reads it there.</summary>
     public static void ApplyProcessEnvironment()

@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using RevitModelMcp.Core.Connect;
 using RevitModelMcp.Core.Updates;
-using RevitModelMcp.Updates;
 using Color = System.Windows.Media.Color;
 using Grid = System.Windows.Controls.Grid;
 
@@ -18,7 +17,7 @@ internal sealed class ConnectAiWindow : Window
             Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
         System.IO.File.Exists,
-        UpdateService.Channel() == UpdateChannel.Store);
+        RevitModelMcp.Policy.PolicyProvider.Channel == UpdateChannel.Store);
     private readonly McpClientConfigurator? _configurator;
     private readonly IReadOnlyList<McpClientTarget> _targets = McpClientLocator.Discover(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -35,6 +34,7 @@ internal sealed class ConnectAiWindow : Window
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
+        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/App32.png"));
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
         FontSize = 12;

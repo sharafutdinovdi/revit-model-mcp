@@ -61,6 +61,7 @@ def bundle_files(prefix: str = "RevitModelMcp.bundle/", **manifest: object) -> d
     for year in YEARS:
         files[f"{prefix}Contents/{year}/RevitModelMcp.addin"] = addin_xml()
         files[f"{prefix}Contents/{year}/RevitModelMcp/RevitModelMcp.dll"] = "dll"
+        files[f"{prefix}Contents/{year}/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe"] = "exe"
     return files
 
 
@@ -258,3 +259,10 @@ def test_main_managed_success(tmp_path: Path, capsys: pytest.CaptureFixture[str]
             main()
     assert exit_info.value.code == 0
     assert capsys.readouterr().out.startswith("OK")
+
+
+def test_store_zip_needs_batch_supervisor(tmp_path: Path) -> None:
+    files = store_files()
+    path = "RevitModelMcp.bundle/Contents/2022/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe"
+    del files[path]
+    assert validate(write_zip(tmp_path, files), YEARS, store=True) == [f"Store bundle needs {path}"]

@@ -1,5 +1,7 @@
 # Read tool reference
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 ## Toolsets
 
 `tools/list` costs context in every MCP client that does not load tools on demand. Set `REVIT_MCP_TOOLSETS` (or start the server with `--toolsets`) to a comma-separated list to expose only some tools. `core` is always included, `all` exposes everything, and an unknown name stops the server with the list of valid names. A hidden tool cannot be called; the tools stay registered in [tool-manifest.json](tool-manifest.json), which lists each tool's `toolset`.

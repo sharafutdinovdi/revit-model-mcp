@@ -12,7 +12,7 @@
       <string id="ToolAllow">Allowed tools</string>
       <string id="ToolAllow_Help">When the list is not empty, only these tools run. Names are written like the denied tools. The names ping and jobs are always allowed.</string>
       <string id="ExecuteCode">Run C# code (revit_execute_code)</string>
-      <string id="ExecuteCode_Help">Off: revit_execute_code and code steps in revit_process_models are refused. Confirm: code runs after the usual confirmation.</string>
+      <string id="ExecuteCode_Help">Off: revit_execute_code and code steps in revit_process_models are refused. Confirm: code runs with the client token handshake. The AI app is expected to show the action; Model MCP shows no confirmation dialog. In store builds only this administrator policy enables code.</string>
       <string id="ExecuteCode_Off">Off</string>
       <string id="ExecuteCode_Confirm">Confirm</string>
       <string id="UpdateMode">Update mode</string>

@@ -21,4 +21,7 @@
     <Compile Include="..\..\build\install\Installer.Scripts.cs" Link="Installer.Scripts.cs" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(Channel)' == 'store'">
+    <Compile Include="../../src/RevitModelMcp.Core/Updates/UpdatePolicy.cs" Link="UpdatePolicy.cs"/>
+  </ItemGroup>
 </Project>

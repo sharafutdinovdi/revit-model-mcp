@@ -195,6 +195,8 @@ After the action, report changed element IDs and verification results.
 A timed-out or failed verification response can follow a committed change.
 Do not infer that the model was unchanged from such a response alone.
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 ## Confirmation tokens
 
 Save, sync, close-with-loss, link removal, large deletions, overwriting exports, in-place saves in process-models and C# execution use a two-step flow.

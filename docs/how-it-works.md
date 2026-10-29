@@ -1,5 +1,7 @@
 # How it works
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 The Python server runs beside the MCP client and communicates over stdio.
 The add-in runs inside Revit on Windows and reads the active document through an ExternalEvent.
 A remote client can use HTTP with a bearer token or the SSH file channel.

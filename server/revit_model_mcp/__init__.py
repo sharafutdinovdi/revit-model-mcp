@@ -3,6 +3,8 @@
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
+CHANNEL = "github"
+
 
 def package_version() -> str:
     try:

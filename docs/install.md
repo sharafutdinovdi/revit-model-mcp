@@ -105,7 +105,7 @@ The store build is the same add-in with the update channel `store`, packaged wit
 
 - No updater and no update check; updates arrive through the Autodesk App Manager. See [the store channel](updates.md#the-store-channel).
 - The server and the add-in make no external request.
-- `revit_execute_code` and the code steps of `revit_process_models` are off. To enable them for your account, add `"executeCode": "confirm"` to `%LOCALAPPDATA%\RevitModelMcp\settings.json` and restart your AI client. Every run still asks for confirmation. An administrator can enable or disable them for all users with the `ExecuteCode` [policy](admin/policy-reference.md); policy wins over the user setting. `revit_ping` shows the effective state.
+- In the store channel, only an administrator can enable C# execution with the ExecuteCode machine policy set to confirm. The user executeCode value in settings.json is ignored. revit_ping reports executeCodeSource as policy or store-default. GitHub builds keep their existing behavior. See the [policy reference](admin/policy-reference.md#enable-code-in-the-store-channel).
 - The releases are not code-signed yet; see [code signing](code-signing.md).
 
 ## Install from the MSI or WinGet

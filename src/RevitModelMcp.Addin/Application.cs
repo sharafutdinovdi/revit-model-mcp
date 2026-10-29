@@ -18,7 +18,9 @@ using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Help;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
+#if !STORE_CHANNEL
 using RevitModelMcp.Updates;
+#endif
 
 namespace RevitModelMcp;
 
@@ -175,7 +177,9 @@ public sealed class Application : ExternalApplication
         }
         if (!channelOwnsStatus) _instanceHeartbeat?.UpdateHttpStatus(httpStatus);
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
+#if !STORE_CHANNEL
         UpdateService.Start();
+#endif
     }
 
     public override void OnShutdown()
@@ -228,7 +232,7 @@ public sealed class Application : ExternalApplication
     private void RegisterActivityPane()
     {
         ActivityPaneProvider.Register(Application);
-        var panel = Application.CreatePanel("MCP");
+        var panel = Application.CreatePanel("Model MCP");
         var button = panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton)
             .SetImage("/RevitModelMcp;component/Resources/Icons/Activity16.png")
             .SetLargeImage("/RevitModelMcp;component/Resources/Icons/Activity32.png")

@@ -8,6 +8,7 @@ Needs only Python 3.11+ with venv and pip on the build machine. Every dependency
 from __future__ import annotations
 
 import argparse
+import ast
 import re
 import shutil
 import subprocess
@@ -88,8 +89,22 @@ def copy_python_license(destination: Path) -> None:
     raise SystemExit(f"Python license not found under {sys.base_prefix}")
 
 
+def strip_dependency_doc_links(path: Path) -> None:
+    """Remove PyPI links from dependency docstrings under the store binary URL rule."""
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(
+            node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            doc = ast.get_docstring(node, clean=False)
+            if doc and "pypi.org" in doc:
+                node.body[0].value.value = ""
+    path.write_text(ast.unparse(tree) + "\n", encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--channel", choices=("github", "store"), default="github")
     parser.add_argument("--output", type=Path, default=ROOT / "output" / "server-exe")
     args = parser.parse_args()
     output: Path = args.output.resolve()
@@ -133,6 +148,22 @@ def main() -> None:
         "--no-build-isolation",
         ROOT / "server",
     )
+    if args.channel == "store":
+        package = next(venv.glob("**/site-packages/revit_model_mcp/__init__.py"))
+        package.write_text(
+            package.read_text(encoding="utf-8").replace(
+                'CHANNEL = "github"', 'CHANNEL = "store"'
+            ),
+            encoding="utf-8",
+        )
+        (package.parent / "updates.py").unlink()
+        shutil.rmtree(package.parent / "__pycache__", ignore_errors=True)
+        for module in (
+            "jsonschema/validators.py",
+            "pydantic/networks.py",
+            "pydantic/v1/networks.py",
+        ):
+            strip_dependency_doc_links(package.parent.parent / module)
     run(
         python,
         "-m",
@@ -161,6 +192,16 @@ def main() -> None:
         "jsonschema_specifications",
         "--collect-data",
         "jsonschema",
+        *(
+            [
+                "--exclude-module",
+                "revit_model_mcp.updates",
+                "--exclude-module",
+                "setuptools",
+            ]
+            if args.channel == "store"
+            else []
+        ),
         HERE / "entry.py",
     )
 

@@ -14,6 +14,7 @@ from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
+from revit_model_mcp import CHANNEL
 from revit_model_mcp.errors import (
     POLICY_BLOCKED,
     READ_ONLY,
@@ -565,7 +566,13 @@ class RemoteHost(Protocol):
     async def delete_files(self, names: list[str]) -> None: ...
 
 
-RELEASES_URL = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest"
+if CHANNEL == "store":
+    RELEASES_URL = "https://sharafutdinovdi.github.io/revit-model-mcp/install/"
+    RELEASES_LABEL = "installation instructions"
+else:
+    from revit_model_mcp.updates import RELEASES_URL
+
+    RELEASES_LABEL = "releases page"
 ADDIN_VERSION = re.compile(
     r"(\d+(?:\.\d+)+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
     r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
@@ -584,13 +591,13 @@ def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
         raise RevitChannelError(
             f"This server needs a Model MCP add-in of major version {server_major}; "
             f"the Revit workstation has {installed}. "
-            f"Install the matching add-in from the releases page: {RELEASES_URL}."
+            f"Install the matching add-in from the {RELEASES_LABEL}: {RELEASES_URL}."
         )
     commands = instance.get("commands")
     if not isinstance(commands, list) or command not in commands:
         raise RevitChannelError(
             f"The Model MCP add-in {version} does not support {command}. "
-            f"Install the matching add-in from the releases page: {RELEASES_URL}."
+            f"Install the matching add-in from the {RELEASES_LABEL}: {RELEASES_URL}."
         )
 
 

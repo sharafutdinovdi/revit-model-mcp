@@ -528,3 +528,12 @@ jobs:
           uv build
           if ($LASTEXITCODE -ne 0) { throw 'Python build failed' }
           uvx twine==7.0.0 check dist/*
+      - name: Build store channel boundaries
+        shell: pwsh
+        run: |
+          foreach ($year in '22', '27') {
+            dotnet restore src/RevitModelMcp.Addin/RevitModelMcp.Addin.csproj --locked-mode "-p:Configuration=Release.R$year" -p:DeployAddin=false -p:Channel=store "-p:Version=$env:CI_VERSION"
+            if ($LASTEXITCODE -ne 0) { throw "R$year store restore failed" }
+            dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:Channel=store "-p:Version=$env:CI_VERSION" --no-restore -m:1 -nr:false
+            if ($LASTEXITCODE -ne 0) { throw "R$year store build failed" }
+          }

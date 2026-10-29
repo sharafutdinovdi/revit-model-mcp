@@ -40,7 +40,7 @@ Each tool in the store export includes the server's advertised `inputSchema`.
 
 ## Code execution in the store build
 
-`revit_execute_code`, and the code steps of `revit_process_models`, are **off by default in the store build**. A refusal names how to enable it. The user turns it on with `"executeCode": "confirm"` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`; every run still needs a confirmation token. An administrator can set the `ExecuteCode` machine policy to `confirm` (enabled for everyone) or `off` (disabled, and the user setting is ignored). `revit_ping` shows the effective state in its `policy` object (`executeCode`, `executeCodeSource`: `policy`, `settings` or `store-default`). A dry run (`dry_run=true`) of `revit_execute_code` is refused the same way, because the code would still run in Revit. All other tools are available.
+In the store channel, only an administrator can enable C# execution with the ExecuteCode machine policy set to confirm. The user executeCode value in settings.json is ignored. revit_ping reports executeCodeSource as policy or store-default. GitHub builds keep their existing behavior. A dry run of C# is refused by the same gate. confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
 
 ## Autodesk data access
 

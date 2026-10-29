@@ -127,11 +127,11 @@
     },
     {
       "name": "revit_capture_elements",
-      "description": "Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
+      "description": "Save a PNG picture marking 1 to 500 elements in a folder the user names through output_path, or in a temporary folder when omitted. Existing files are refused. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_export_view",
-      "description": "Export a selected view to a PNG file on the MCP client. Does not change the active view or the model. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
+      "description": "Save a picture of the selected view as a PNG file in a folder the user names on the AI app computer. output_path names the new file; without it, a temporary folder is used. Existing files are refused. The active view and model stay unchanged. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
       "name": "revit_view_elements",
@@ -323,11 +323,11 @@
     },
     {
       "name": "revit_export",
-      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Save PDF, DWG, IFC or schedule CSV files to a folder the user names with output_dir on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_export_nwc",
-      "description": "Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Save an NWC file to a folder the user names through path on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
     },
     {
       "name": "revit_run_actions",

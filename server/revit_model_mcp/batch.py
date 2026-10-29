@@ -26,7 +26,7 @@ from revit_model_mcp.revit_channel import (
 )
 from revit_model_mcp.ssh_host import RemoteCommandError, SshPowerShellHost
 
-BATCH_TOOL = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=False)
+BATCH_TOOL = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False)
 RUN_ID = re.compile(r"[0-9a-f]{32}\Z")
 
 
@@ -256,7 +256,11 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     @mcp.tool(
         title="Batch collection status",
         annotations=BATCH_TOOL.model_copy(
-            update={"title": "Batch collection status", "idempotentHint": True}
+            update={
+                "title": "Batch collection status",
+                "idempotent_hint": True,
+                "read_only_hint": True,
+            }
         ),
     )
     async def revit_batch_status(run_id: str) -> dict[str, Any]:

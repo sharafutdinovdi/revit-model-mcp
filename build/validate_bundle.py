@@ -259,6 +259,12 @@ def validate(
         errors.append(f"Unexpected Components for year {year}")
     name_set = set(names)
     for year in years:
+        if store:
+            supervisor = (
+                f"{base}Contents/{year}/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe"
+            )
+            if supervisor not in name_set:
+                errors.append(f"Store bundle needs {supervisor}")
         found = components.get(year, [])
         if not found:
             errors.append(f"Components for Revit {year} are missing")

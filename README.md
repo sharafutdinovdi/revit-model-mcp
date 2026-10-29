@@ -35,7 +35,7 @@ Actions are enabled in this recording.
 ## Why Model MCP
 
 - **Safe by design.** Each change is one named undo entry in Revit, and one setting makes the whole server read-only.
-- **Confirmation first.** Saving, syncing and other irreversible steps wait for your explicit approval.
+- **Confirmation first.** Saving, syncing and other irreversible steps use a two-step handshake with the AI app.
 - **Installs like normal software.** MSI installers, with deployment guides for SCCM, Intune and Group Policy.
 - **Works from a Mac.** MCP stdio runs through SSH to the Windows workstation, so no port opens.
 
@@ -163,7 +163,7 @@ Compare and align grids and levels with linked models, inspect links and shared 
 ### Change the model safely
 
 Edit elements, families, views and sheets.
-Each change is one named undo entry, and the riskiest calls wait for your confirmation.
+Each change is one named undo entry, and the riskiest calls use a client token handshake.
 See [safety](#safety).
 
 <details markdown="1">
@@ -231,13 +231,15 @@ Install it the same way: copy `skills/iso19650-issue-register` into `~/.claude/s
 
 - **Actions are on by default.** Set `REVIT_MCP_READ_ONLY=1` in the server environment, or create the workstation `read-only` file, to refuse every action. Action tools stay listed and return `read_only` instead of running.
 - **One undo per change.** A committed action is one named Revit undo entry, shown in Revit's Undo list and in the add-in's "MCP activity" pane. `revit_undo_last` undoes it while it is still Revit's last change.
-- **Confirmation tokens for irreversible actions.** Saving, synchronizing, removing links and running C# always need one. Closing with changes, deleting more than 500 elements, overwriting existing export files and in-place saves in batch runs need one too. The first call changes nothing and returns the text to show you; the retry needs your explicit agreement. A token is single use and expires after five minutes.
+- **Confirmation tokens for irreversible actions.** Saving, synchronizing, removing links and running C# always need one. Closing with changes, deleting more than 500 elements, overwriting existing export files and in-place saves in batch runs need one too. The first call changes nothing and returns the text to show you; the retry returns the token through the AI app. A token is single use and expires after five minutes.
 - **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export` and `revit_process_models` accept `dry_run` to preview the result without committing it.
 - **A readable summary.** Every action returns `verification` and a one-sentence `summary` of what changed.
 - **Path redaction.** `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields. Names, parameter values and errors stay visible.
 - **HTTP.** Direct HTTP callers need the bearer token and are refused while the workstation read-only file is present.
 
 For unattended runs, switch on read-only mode.
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 A confirmation token guards against mistakes and injected instructions, but a client that confirms by itself can send it back.
 See [actions](https://sharafutdinovdi.github.io/revit-model-mcp/actions/) for gates, exceptions and verification failures, [security details](https://sharafutdinovdi.github.io/revit-model-mcp/security/) for authentication and privacy boundaries, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
