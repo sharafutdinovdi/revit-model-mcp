@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective date: October 12, 2026.
+Effective date: 30 October 2026.
 Changes to this policy are recorded in the repository history.
 
 ## Summary
@@ -15,7 +15,8 @@ Changes to this policy are recorded in the repository history.
 Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
 Actions change Revit data by default. Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them.
-The maintainer collects no personal data, accounts or usage statistics.
+The product collects no accounts or usage statistics.
+The maintainer receives information that a person voluntarily includes in a support message.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
 
 ## Update checks
@@ -101,6 +102,19 @@ To remove project data, close Revit and the MCP server, uninstall the add-in and
 Also remove any overridden channel directory, the log directories above and downloaded PNG files on the client.
 Uninstalling alone leaves local settings intact.
 Client conversations, client logs and package caches require separate deletion through the client or package manager.
+
+## International processing
+
+Model MCP has no publisher backend that transfers model data between countries.
+The selected AI app, its provider, a remote workstation, and user-configured proxies or tunnels may process data in other countries under their own settings and agreements.
+Support correspondence passes through the email or issue-hosting provider chosen for that request and may be processed internationally.
+
+## Access and correction
+
+A person can request access to or correction of personal information they supplied in support correspondence at the contact address below.
+The request should identify the correspondence without including confidential model data.
+The product maintains no publisher account or usage database.
+Requests about an AI app or provider's records go to that provider.
 
 ## Contact
 
