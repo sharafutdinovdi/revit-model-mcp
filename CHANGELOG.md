@@ -6,6 +6,38 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v1.0.0...v1.1.0) (2026-10-30)
+
+
+### Features
+
+* recover from document switches, bound catalog results and fix small usage errors ([#298](https://github.com/sharafutdinovdi/revit-model-mcp/issues/298)) ([bdf5cdf](https://github.com/sharafutdinovdi/revit-model-mcp/commit/bdf5cdf1e5bf78f3725bdc025416d682c278d658)), closes [#203](https://github.com/sharafutdinovdi/revit-model-mcp/issues/203) [#193](https://github.com/sharafutdinovdi/revit-model-mcp/issues/193) [#208](https://github.com/sharafutdinovdi/revit-model-mcp/issues/208) [#190](https://github.com/sharafutdinovdi/revit-model-mcp/issues/190) [#194](https://github.com/sharafutdinovdi/revit-model-mcp/issues/194)
+* **server:** move the pickup timeout out of the tool schemas ([#305](https://github.com/sharafutdinovdi/revit-model-mcp/issues/305)) ([058bb28](https://github.com/sharafutdinovdi/revit-model-mcp/commit/058bb285425138dc51a85bed7099a4a0e4959907))
+
+
+### Bug Fixes
+
+* **addin:** say a missing target document is not open ([#300](https://github.com/sharafutdinovdi/revit-model-mcp/issues/300)) ([3b0969d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/3b0969d64facf376ec2dbd39767371662e1e75ce))
+* **server:** report transport loss as a retryable structured error ([#302](https://github.com/sharafutdinovdi/revit-model-mcp/issues/302)) ([32b6528](https://github.com/sharafutdinovdi/revit-model-mcp/commit/32b6528b853e1f986500df84af18cea39681af3c))
+
+
+### Performance
+
+* cache parameter resolution, serializers and warnings on the read path ([#297](https://github.com/sharafutdinovdi/revit-model-mcp/issues/297)) ([d765ecb](https://github.com/sharafutdinovdi/revit-model-mcp/commit/d765ecb1cd92de8927f14bdf1d1ed2fb47c5a598))
+* compact family audit by default and skip unlabelable dimensions quietly ([#301](https://github.com/sharafutdinovdi/revit-model-mcp/issues/301)) ([dc1bcd4](https://github.com/sharafutdinovdi/revit-model-mcp/commit/dc1bcd4e787ad831ce3e28af61187dfc28cee16d))
+
+
+### Documentation
+
+* **privacy:** state cross-border processing and access rights ([#324](https://github.com/sharafutdinovdi/revit-model-mcp/issues/324)) ([6d19760](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6d19760df12fafda089e0b040e2a8b25df8a96fd))
+* refresh the README quick start and the roadmap ([#306](https://github.com/sharafutdinovdi/revit-model-mcp/issues/306)) ([33d2639](https://github.com/sharafutdinovdi/revit-model-mcp/commit/33d2639afc7702ab60fef37ae4b91b4584b9d969))
+
+
+### Dependencies
+
+* **deps:** Bump uv from 0.12.22 to 0.13.4 in /.github/requirements ([#308](https://github.com/sharafutdinovdi/revit-model-mcp/issues/308)) ([760bb7c](https://github.com/sharafutdinovdi/revit-model-mcp/commit/760bb7c21337abb2a2aec21434e1d208e01e6cc0))
+* **deps:** update Revit SDK, Toolkit, Extensions and Polyfill ([#304](https://github.com/sharafutdinovdi/revit-model-mcp/issues/304)) ([ebc4d98](https://github.com/sharafutdinovdi/revit-model-mcp/commit/ebc4d982aafcb105fa861c357bdb0e0dbd114d57))
+
 ## [1.0.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v0.10.0...v1.0.0) (2026-10-16)
 
 
