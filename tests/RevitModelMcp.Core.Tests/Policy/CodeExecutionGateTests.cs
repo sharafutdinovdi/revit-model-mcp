@@ -6,6 +6,21 @@ namespace RevitModelMcp.Core.Tests.Policy;
 public sealed class CodeExecutionGateTests
 {
     [Test]
+    [Arguments("execute-code")]
+    [Arguments("run-tool")]
+    public async Task GroupMode_UsesCommandPolicy(string command)
+    {
+        var parsed = RevitModelMcp.Core.Control.ControlJobParser.Parse(
+            "{\"command\":\"" + command + "\",\"name\":\"test_tool\",\"code\":\"return 1;\",\"transaction\":\"group\"}");
+        await Assert.That(parsed.Action!.TransactionMode).IsEqualTo("group");
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, MachinePolicy.Empty, "confirm"))
+            .IsEqualTo(CodeExecutionGate.StoreRefusal);
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, new MachinePolicy { ExecuteCode = "confirm" }, null)).IsNull();
+        foreach (var channel in Enum.GetValues<UpdateChannel>())
+            await Assert.That(CodeExecutionGate.Refusal(command, channel, new MachinePolicy { ExecuteCode = "off" }, "confirm")).IsNotNull();
+    }
+
+    [Test]
     [Arguments("revit_save_tool")]
     [Arguments("revit_delete_tool")]
     [Arguments("revit_run_tool")]

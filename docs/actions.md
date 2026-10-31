@@ -132,9 +132,90 @@ Missing XML and type load failures appear in `skipped` and `skippedCount`.
 
 ### Execute C# code
 
-`revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. In `transaction="none"`, `Document` may be null when no document is open.
+`revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. Both supported transaction modes require a target document.
 
-The default `auto` mode owns one Revit transaction inside a group. Scripts in this mode must not open transactions. A successful call that changes the model creates one undo entry named `MCP (<client>): Execute code`. A script that changes nothing is rolled back: the result has `committed: false` and `rolledBack: true`, and no undo entry or `undoName`. `dry_run=true` runs the code and rolls back the group. Runtime errors also roll it back. The `none` mode, which lets a script own transactions and open or close documents without a guaranteed undo, is refused by default. A call with `transaction="none"` fails with a message that says so. I plan a separate workstation policy that can allow it; there is no setting for it today. Every call except `dry_run` first returns `needsConfirmation`, a `confirmationText` with the SHA-256 prefix, length, transaction mode and target document, and a `confirmToken`, and does not run the code. Retry with identical arguments plus `confirm_token` after the user agrees. The token is bound to the code hash, the transaction mode and the target document. The response includes `returnValue`, up to 2,000 `log` lines, elapsed time, summary and any undo name or warning. Return values have a depth limit of 6 and at most 5,000 collection items. Revit elements, IDs and XYZ points get compact JSON forms. Plain classes and anonymous types return public readable properties as JSON objects. Other Revit API objects use `ToString()`. Numbers use invariant culture. Compile and runtime failures have summaries starting with `Code failed to compile` and `Code failed`, respectively.
+The default `auto` mode owns one Revit transaction inside a group. Scripts in this mode must not open transactions.
+The `group` mode starts a `TransactionGroup` without an outer Transaction.
+Scripts can open and commit Transactions, SubTransactions, and edit scopes such as `StairsEditScope`.
+Every script-owned scope must finish before the script returns.
+The runner tracks transaction and edit-scope starts in submitted source, closes unfinished scopes in reverse order, and rolls back the group on an exception or an unfinished scope.
+Successful changes are assimilated into the same single named undo entry as `auto`; an empty run keeps no undo entry.
+`dry_run=true` preserves `group`, returns prospective script values and logs, and calls `RollBack` on the group.
+Confirmation tokens, machine ExecuteCode policy, the workstation read-only lock, activity entries, and summaries apply to both modes.
+`revit_run_tool(transaction="group")` uses the same runner; read-mode saved tools always roll back.
+
+A successful call that changes the model creates one undo entry named `MCP (<client>): Execute code`. A script that changes nothing is rolled back: the result has `committed: false` and `rolledBack: true`, and no undo entry or `undoName`. `dry_run=true` runs the code and rolls back the group. Runtime errors also roll it back. The `none` mode, which lets a script own transactions and open or close documents without a guaranteed undo, is refused by default. A call with `transaction="none"` fails with a message that says so. I plan a separate workstation policy that can allow it; there is no setting for it today. Every call except `dry_run` first returns `needsConfirmation`, a `confirmationText` with the SHA-256 prefix, length, transaction mode and target document, and a `confirmToken`, and does not run the code. Retry with identical arguments plus `confirm_token` after the user agrees. The token is bound to the code hash, the transaction mode and the target document. The response includes `returnValue`, up to 2,000 `log` lines, elapsed time, summary and any undo name or warning. Return values have a depth limit of 6 and at most 5,000 collection items. Revit elements, IDs and XYZ points get compact JSON forms. Plain classes and anonymous types return public readable properties as JSON objects. Other Revit API objects use `ToString()`. Numbers use invariant culture. Compile and runtime failures have summaries starting with `Code failed to compile` and `Code failed`, respectively.
+
+### Native stair sketch example
+
+This full compilation unit runs with `revit_execute_code(transaction="group", dry_run=true)` for a preview.
+The project must contain two levels with an appropriate stair height and a usable default stair type.
+The example uses the lowest two levels, a 1,000 mm width, and a 300 mm tread depth.
+A committed run requires the normal confirmation challenge and retry with identical arguments.
+The returned IDs belong to the preview until rollback; they are not persistent element IDs.
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Architecture;
+using RevitModelMcp.Control;
+
+public static class Script
+{
+    public static object Execute(ScriptContext ctx)
+    {
+        var document = ctx.Document;
+        var levels = new FilteredElementCollector(document).OfClass(typeof(Level))
+            .Cast<Level>().OrderBy(level => level.Elevation).Take(2).ToArray();
+        if (levels.Length != 2) throw new InvalidOperationException("Two levels are required.");
+        using var scope = new StairsEditScope(document, "Create native stair");
+        var stairId = scope.Start(levels[0].Id, levels[1].Id);
+        ElementId runId;
+        using (var transaction = new Transaction(document, "Sketch stair run"))
+        {
+            transaction.Start();
+            var stairs = (Stairs)document.GetElement(stairId);
+            var riserCount = stairs.DesiredRisersNumber;
+            var width = ctx.FromMm(1000);
+            var depth = ctx.FromMm(300);
+            var length = (riserCount - 1) * depth;
+            var boundaries = new List<Curve>
+            {
+                Line.CreateBound(new XYZ(0, 0, 0), new XYZ(0, length, 0)),
+                Line.CreateBound(new XYZ(width, 0, 0), new XYZ(width, length, 0))
+            };
+            var risers = Enumerable.Range(0, riserCount).Select(index =>
+                (Curve)Line.CreateBound(new XYZ(0, index * depth, 0), new XYZ(width, index * depth, 0))).ToList();
+            var path = new List<Curve>
+            {
+                Line.CreateBound(new XYZ(width / 2, 0, 0), new XYZ(width / 2, length, 0))
+            };
+            var run = StairsRun.CreateSketchedRun(document, stairId, 0,
+                boundaries, risers, path);
+            runId = run.Id;
+            if (transaction.Commit() != TransactionStatus.Committed)
+                throw new InvalidOperationException("Stair sketch transaction failed.");
+        }
+        scope.Commit(new RollBackStairErrors());
+        return new { stairId, runId };
+    }
+
+    private sealed class RollBackStairErrors : IFailuresPreprocessor
+    {
+        public FailureProcessingResult PreprocessFailures(FailuresAccessor failures)
+        {
+            foreach (var message in failures.GetFailureMessages())
+            {
+                if (message.GetSeverity() == FailureSeverity.Warning) failures.DeleteWarning(message);
+                else return FailureProcessingResult.ProceedWithRollBack;
+            }
+            return FailureProcessingResult.Continue;
+        }
+    }
+}
+```
 
 Compiler errors include diagnostic IDs, messages, and positions in the submitted code. Runtime errors include their type, message and script frames. The compiler caches up to 32 compiled scripts. On Revit 2022-2024 (.NET Framework), compiled scripts cannot be unloaded, so identical code (same source and transaction mode) reuses one loaded assembly, and each distinct script stays loaded until Revit restarts. Revit 2025 and later unload each script after the call. The add-in cannot stop a running script; `timeout_seconds` only limits the server wait. Inspect Revit state before retrying after a timeout.
 
@@ -152,11 +233,11 @@ IFC exports the whole model or one view selected through `views`. Its options ar
 
 `revit_process_models` accepts either 1-500 absolute `.rvt` paths or a local or UNC `folder` with `recursive` and a `.rvt` file pattern. RSN model paths are accepted in `paths`; cloud paths are refused. `trustedNetworkRoots` applies to UNC paths. Already open models are skipped. Each model opens in the background with the `revit_open_document` `mode`, `worksets`, and `audit` options. The active document is left in place. The action uses the interactive Revit session, not the read-only batch collector worker.
 
-`steps` uses the same 1-50 step allowlist as `revit_run_actions`, and `code` uses `{"code":"...","transaction":"auto"}`; `"none"` is refused unless `dry_run=true` forces `"auto"`, as for `revit_execute_code`. A call that has `code` and is not a `dry_run` needs a confirmation token, like `in_place` saves; the token is bound to the whole request, including the code, and to the size and modification time of the source files. The script runs after the steps with `ScriptContext.Document` set to the processed model. `exports` is a list of `revit_export` requests without `document`; an export `output_dir` can contain `{model}`. Without an export `output_dir`, files go to `<save.output_dir>\<model>` when an output directory is set, or `%LOCALAPPDATA%\RevitModelMcp\exports\<model>` otherwise. The result reports each model's open settings, step summary, script return value and log, export files, saved path, `dialogsDismissed`, elapsed time, status, and error. `dialogsDismissed` is `{ "messages": [{ "message": "...", "count": 1 }], "truncated": false }`; it combines dismissed dialogs and warnings, retains up to 50 distinct messages, and counts repeats. `truncated=true` means further distinct messages were omitted. Sources with the same model name (file name without extension) are refused when `save.mode="output_dir"` is used or exports use the default or a `{model}` output directory, because their outputs would overwrite each other. The error lists the colliding sources; process them in separate calls. Failures to close the model or unsubscribe handlers mark the model failed with the reason in `error`; failures of other cleanup steps (activity record, change capture, transaction group) keep the status and are listed in the model's `warnings`. A failed model does not stop later models unless `stop_on_error=true`. `revit_jobs(job_id=jobId)` reports `currentIndex` (one-based), `total`, redacted `currentPath`, and completed per-model results while the action runs.
+`steps` uses the same 1-50 step allowlist as `revit_run_actions`, and `code` uses `{"code":"...","transaction":"auto"}`; `"none"` is refused unless `dry_run=true` forces `"auto"`, while `auto` and `group` are preserved. A call that has `code` and is not a `dry_run` needs a confirmation token, like `in_place` saves; the token is bound to the whole request, including the code, and to the size and modification time of the source files. The script runs after the steps with `ScriptContext.Document` set to the processed model. `exports` is a list of `revit_export` requests without `document`; an export `output_dir` can contain `{model}`. Without an export `output_dir`, files go to `<save.output_dir>\<model>` when an output directory is set, or `%LOCALAPPDATA%\RevitModelMcp\exports\<model>` otherwise. The result reports each model's open settings, step summary, script return value and log, export files, saved path, `dialogsDismissed`, elapsed time, status, and error. `dialogsDismissed` is `{ "messages": [{ "message": "...", "count": 1 }], "truncated": false }`; it combines dismissed dialogs and warnings, retains up to 50 distinct messages, and counts repeats. `truncated=true` means further distinct messages were omitted. Sources with the same model name (file name without extension) are refused when `save.mode="output_dir"` is used or exports use the default or a `{model}` output directory, because their outputs would overwrite each other. The error lists the colliding sources; process them in separate calls. Failures to close the model or unsubscribe handlers mark the model failed with the reason in `error`; failures of other cleanup steps (activity record, change capture, transaction group) keep the status and are listed in the model's `warnings`. A failed model does not stop later models unless `stop_on_error=true`. `revit_jobs(job_id=jobId)` reports `currentIndex` (one-based), `total`, redacted `currentPath`, and completed per-model results while the action runs.
 
 The final response has `partial=true` when at least one model fails and includes the results for all processed models.
 
-`save.mode` is `none` by default. `output_dir` saves copies with the original file names and refuses a target equal to any source. Detached workshared models are saved as new centrals. `in_place` is allowed only for non-workshared local or UNC models opened directly, without `local_copy` or `read_only_local`. Its first call returns `needsConfirmation`, `confirmationText` listing writable source files, and `confirmToken`. Read-only source files appear in `models` with status `refused` and error `read-only file`; they are excluded from the token and processing. If every source is read-only, the call fails without a token. Retry with `confirm_token` only after reviewing the list. A failed confirmation, for any reason, uses up the token; repeat the call without `confirm_token` to get a new preview and token. `dry_run=true` opens each model, runs steps and code inside a rolled-back transaction group, resolves exports without writing, and never saves. `dry_run=true` forces `code.transaction="auto"` and adds "dry_run forced transaction=auto" to response `warnings`.
+`save.mode` is `none` by default. `output_dir` saves copies with the original file names and refuses a target equal to any source. Detached workshared models are saved as new centrals. `in_place` is allowed only for non-workshared local or UNC models opened directly, without `local_copy` or `read_only_local`. Its first call returns `needsConfirmation`, `confirmationText` listing writable source files, and `confirmToken`. Read-only source files appear in `models` with status `refused` and error `read-only file`; they are excluded from the token and processing. If every source is read-only, the call fails without a token. Retry with `confirm_token` only after reviewing the list. A failed confirmation, for any reason, uses up the token; repeat the call without `confirm_token` to get a new preview and token. `dry_run=true` opens each model, runs steps and code inside a rolled-back transaction group, resolves exports without writing, and never saves. `dry_run=true` replaces only `code.transaction="none"` with `"auto"` and adds "dry_run forced transaction=auto" to response `warnings`.
 
 ### NWC export options
 
@@ -459,7 +540,7 @@ Five more calls use the same two-step flow, with the same response fields (`need
 - `revit_execute_code` without `dry_run`. The token is bound to the SHA-256 of the code, the transaction mode and the target document.
 - `revit_process_models` with `code` and without `dry_run`. The token is bound to the whole request and the source files.
 
-`dry_run` does not need a token for these calls; `revit_run_tool` still requires its first-run token in each Revit session. `revit_execute_code` with `dry_run=true` forces `transaction="auto"`. Otherwise, `transaction="none"` is refused whatever the token. A separate workstation policy that may allow it is a later change and has no setting yet.
+`dry_run` does not need a token for these calls; `revit_run_tool` still requires its first-run token in each Revit session. `revit_execute_code` with `dry_run=true` preserves `auto` or `group`; only the refused `none` mode is replaced with `auto`. Otherwise, `transaction="none"` is refused whatever the token. A separate workstation policy that may allow it is a later change and has no setting yet.
 
 The token guards against mistakes and against instructions injected into model data or tool output. It does not stop an MCP client that confirms by itself: a client that gets the token can send it back. For unattended use, switch on read-only mode.
 

@@ -2296,6 +2296,7 @@
         "default": "auto",
         "enum": [
           "auto",
+          "group",
           "none"
         ],
         "type": "string"
@@ -4711,6 +4712,7 @@
             "default": "auto",
             "enum": [
               "auto",
+              "group",
               "none"
             ],
             "type": "string"
@@ -5496,6 +5498,14 @@
         "maximum": 3600,
         "minimum": 30,
         "type": "integer"
+      },
+      "transaction": {
+        "default": "auto",
+        "enum": [
+          "auto",
+          "group"
+        ],
+        "type": "string"
       }
     },
     "required": [

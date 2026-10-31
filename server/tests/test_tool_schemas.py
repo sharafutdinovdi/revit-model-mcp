@@ -77,3 +77,11 @@ def test_snapshot_covers_names_types_defaults_and_required():
     assert wait["default"] == 40
     assert wait["maximum"] == 50
     assert committed["revit_move"]["required"] == sorted(committed["revit_move"]["required"])
+
+
+def test_code_schema_exposes_group_mode():
+    schemas = json.loads(_render())
+    for tool in ("revit_execute_code", "revit_run_tool"):
+        transaction = schemas[tool]["properties"]["transaction"]
+        assert transaction["default"] == "auto"
+        assert "group" in transaction["enum"]

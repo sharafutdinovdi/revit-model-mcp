@@ -33,6 +33,7 @@ public sealed class ConfirmationBindingTests
         await Assert.That(arguments).IsEqualTo(DocumentConfirmationBinding.CodeArguments("return 1;", "auto"));
         await Assert.That(arguments).IsNotEqualTo(DocumentConfirmationBinding.CodeArguments("return 2;", "auto"));
         await Assert.That(arguments).IsNotEqualTo(DocumentConfirmationBinding.CodeArguments("return 1;", "none"));
+        await Assert.That(arguments).IsNotEqualTo(DocumentConfirmationBinding.CodeArguments("return 1;", "group"));
         await Assert.That(arguments).IsEqualTo($"code:{DocumentConfirmationBinding.CodeHash("return 1;")}:9:auto");
     }
 

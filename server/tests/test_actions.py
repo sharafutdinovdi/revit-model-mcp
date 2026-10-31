@@ -2513,3 +2513,33 @@ def test_my_tools_invalid_catalog_entries_and_delete_are_forwarded():
     asyncio.run(server.call_tool("revit_delete_tool", {"name": "broken_tool"}))
     assert execute.await_args.args[0].command == "delete-tool"
     assert execute.await_args.args[0].payload["name"] == "broken_tool"
+
+
+@pytest.mark.parametrize("tool", ["revit_execute_code", "revit_run_tool"])
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_group_mode_preserves_transaction_and_confirmation(tool, dry_run):
+    import asyncio
+
+    server, execute, _ = action_server()
+    arguments = (
+        {"code": "return 1;"} if tool == "revit_execute_code" else {"name": "test_tool", "args": {}}
+    )
+    arguments.update(transaction="group", dry_run=dry_run, confirm_token="reviewed")
+    asyncio.run(server.call_tool(tool, arguments))
+    payload = execute.await_args.args[0].payload
+    assert payload["transaction"] == "group"
+    assert payload["dryRun"] is dry_run
+    assert payload["confirmToken"] == "reviewed"
+
+
+@pytest.mark.parametrize("tool", ["revit_execute_code", "revit_run_tool"])
+def test_code_rejects_unknown_transaction_mode(tool):
+    import asyncio
+
+    server, execute, _ = action_server()
+    arguments = (
+        {"code": "return 1;"} if tool == "revit_execute_code" else {"name": "test_tool", "args": {}}
+    )
+    with pytest.raises(ToolError):
+        asyncio.run(server.call_tool(tool, {**arguments, "transaction": "invalid"}))
+    execute.assert_not_awaited()
