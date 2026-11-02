@@ -66,9 +66,17 @@ def load_rules(path=None, inline=None):
         value = {"schema": 1, "name": pack, "extends": [pack], "rules": []}
     else:
         try:
-            value = yaml.safe_load(Path(label).expanduser().read_text(encoding="utf-8"))
+            content = Path(label).expanduser().read_text(encoding="utf-8")
+            try:
+                value = json.loads(content)
+            except json.JSONDecodeError:
+                value = yaml.safe_load(content)
         except yaml.YAMLError as error:
             raise ValueError("Invalid YAML rule file.") from error
+    try:
+        json.dumps(value, sort_keys=True)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Rules must contain JSON-compatible data.") from error
     resolved = resolve(value)
     # Validate the effective rules too, since inherited patches may omit the check type.
     VALIDATOR.validate(
