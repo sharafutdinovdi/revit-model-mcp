@@ -52,6 +52,28 @@ Every release publishes `SHA256SUMS.txt` and a build provenance attestation for 
 See [Verify downloads](security.md#verify-downloads) for the commands.
 `install.ps1` and the add-in updater check `SHA256SUMS.txt` before they install anything.
 
+## Build provenance
+
+Build provenance is not code signing.
+A GitHub attestation binds a file digest to the release workflow and its source revision.
+Authenticode identifies a Windows publisher and applies to the files listed in [What is signed](#what-is-signed).
+
+The release workflow attests every staged release asset after signing and checksum generation.
+This includes installers, add-in and bundle archives, MCP manifests, Python distributions, SBOMs, and `SHA256SUMS.txt`.
+
+GitHub CLI verifies each downloaded file with:
+
+```sh
+gh attestation verify <file> --repo sharafutdinovdi/revit-model-mcp
+```
+
+Verification requires a matching attestation from this repository.
+A checksum comparison alone does not verify build provenance.
+
+Each release also carries `revit-model-mcp-<version>.intoto.jsonl` as a release asset.
+It holds the attestation bundles produced by the workflow, one bundle per line, so tools that only inspect release assets (such as OpenSSF Scorecard) can find the provenance.
+The file is not itself attested; verify the other assets with `gh attestation verify` as above.
+
 ## Revit's unsigned add-in prompt
 
 Revit asks whether to load an unsigned add-in the first time it loads the DLL, and again whenever the DLL content or its path changes.

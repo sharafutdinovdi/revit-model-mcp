@@ -390,9 +390,12 @@ jobs:
       - name: Validate and pack Claude Desktop bundle
         shell: pwsh
         run: |
-          npx --yes @anthropic-ai/mcpb@2.1.2 validate bundle/manifest.json
+          npm ci --ignore-scripts --prefix build/mcpb
+          if ($LASTEXITCODE -ne 0) { throw 'MCPB CLI install failed' }
+          $mcpb = Join-Path $PWD 'build/mcpb/node_modules/.bin/mcpb.cmd'
+          & $mcpb validate bundle/manifest.json
           if ($LASTEXITCODE -ne 0) { throw 'Bundle validation failed' }
-          npx --yes @anthropic-ai/mcpb@2.1.2 pack bundle "artifacts/release/revit-model-mcp-$env:RELEASE_VERSION.mcpb"
+          & $mcpb pack bundle "artifacts/release/revit-model-mcp-$env:RELEASE_VERSION.mcpb"
           if ($LASTEXITCODE -ne 0) { throw 'Bundle packing failed' }
       - name: Export the MCP tool manifest for the Autodesk App Store
         shell: pwsh
@@ -437,9 +440,21 @@ jobs:
           [IO.File]::WriteAllText($sums, (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
           if ([IO.File]::ReadAllText($sums).Contains("`r")) { throw 'SHA256SUMS.txt contains CR characters.' }
       - name: Attest release assets
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: artifacts/release/*
+      - name: Stage provenance bundle for release assets
+        shell: bash
+        env:
+          ATTEST_BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          # Scorecard Signed-Releases looks for *.intoto.jsonl among the release assets.
+          test -s "$ATTEST_BUNDLE_PATH"
+          # The bundle file is JSONL already: one attestation bundle per line.
+          jq -c . "$ATTEST_BUNDLE_PATH" > "artifacts/release/revit-model-mcp-$RELEASE_VERSION.intoto.jsonl"
+          test -s "artifacts/release/revit-model-mcp-$RELEASE_VERSION.intoto.jsonl"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-assets

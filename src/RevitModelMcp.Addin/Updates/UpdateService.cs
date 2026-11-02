@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
@@ -20,6 +21,8 @@ internal static class UpdateService
     {
         internal static readonly DataContractJsonSerializer Instance = new(typeof(T));
     }
+
+    private static readonly HttpClient Client = CreateClient();
 
     private const string ReleasePath = "/repos/sharafutdinovdi/revit-model-mcp/releases/latest";
     private static readonly string LocalDirectory = Path.Combine(
@@ -126,7 +129,7 @@ internal static class UpdateService
         WriteJson(statePath, state);
 
         var feed = FeedBase();
-        var release = RequestJson<Release>(new Uri(feed, ReleasePath));
+        var release = RequestJsonAsync<Release>(new Uri(feed, ReleasePath)).GetAwaiter().GetResult();
         if (release is null) throw new InvalidDataException("The release feed returned no release.");
         if (!UpdatePolicy.IsNewerStable(InstalledVersion(), release.TagName, release.Draft, release.Prerelease))
         {
@@ -166,7 +169,7 @@ internal static class UpdateService
         var version = release.TagName.TrimStart('v', 'V');
         var directory = Path.Combine(LocalDirectory, "updates", version);
         CreatePrivateDirectory(directory);
-        var checksumText = ReadText(new Uri(checksumAsset.Url), feed);
+        var checksumText = ReadTextAsync(new Uri(checksumAsset.Url), feed).GetAwaiter().GetResult();
         File.WriteAllText(Path.Combine(directory, "SHA256SUMS.txt"), checksumText);
         var expected = UpdatePolicy.ParseChecksum(checksumText, msiAsset.Name);
         if (expected is null)
@@ -177,7 +180,7 @@ internal static class UpdateService
         var msiPath = Path.Combine(directory, msiAsset.Name);
         try
         {
-            Download(new Uri(msiAsset.Url), msiPath, feed);
+            DownloadAsync(new Uri(msiAsset.Url), msiPath, feed).GetAwaiter().GetResult();
             using var file = File.OpenRead(msiPath);
             if (!UpdatePolicy.VerifyChecksum(file, expected))
             {
@@ -240,36 +243,56 @@ internal static class UpdateService
         _ => $"installer exit code {code}"
     };
 
-    private static T? RequestJson<T>(Uri uri) where T : class
+    private static async Task<T?> RequestJsonAsync<T>(Uri uri) where T : class
     {
-        using var response = Request(uri).GetResponse();
-        using var stream = response.GetResponseStream();
-        return stream is null ? null : JsonSerializer<T>.Instance.ReadObject(stream) as T;
+        using var response = await RequestAsync(uri).ConfigureAwait(false);
+        using var stream = new MemoryStream();
+        await CopyResponseAsync(response, stream).ConfigureAwait(false);
+        stream.Position = 0;
+        return JsonSerializer<T>.Instance.ReadObject(stream) as T;
     }
 
-    private static string ReadText(Uri uri, Uri feed)
+    private static async Task<string> ReadTextAsync(Uri uri, Uri feed)
     {
-        using var response = AllowedResponse(uri, feed);
-        using var stream = response.GetResponseStream()!;
+        using var response = await AllowedResponseAsync(uri, feed).ConfigureAwait(false);
+        using var stream = new MemoryStream();
+        await CopyResponseAsync(response, stream).ConfigureAwait(false);
+        stream.Position = 0;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
 
-    private static void Download(Uri uri, string path, Uri feed)
+    private static async Task DownloadAsync(Uri uri, string path, Uri feed)
     {
-        using var response = AllowedResponse(uri, feed);
-        using var source = response.GetResponseStream()!;
+        using var response = await AllowedResponseAsync(uri, feed).ConfigureAwait(false);
         using var destination = File.Create(path);
-        source.CopyTo(destination);
+        await CopyResponseAsync(response, destination).ConfigureAwait(false);
     }
 
-    // Redirects are followed by the framework, so the final host is checked before any body is read.
-    private static WebResponse AllowedResponse(Uri uri, Uri feed)
+    private static async Task CopyResponseAsync(HttpResponseMessage response, Stream destination)
     {
-        var response = Request(uri).GetResponse();
+        using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var cancellation = new CancellationTokenSource();
+        // Disposing the response also interrupts reads on .NET Framework streams.
+        using var registration = cancellation.Token.Register(response.Dispose);
+        var buffer = new byte[81920];
+        while (true)
+        {
+            cancellation.CancelAfter(10000);
+            var count = await source.ReadAsync(buffer, 0, buffer.Length, cancellation.Token).ConfigureAwait(false);
+            cancellation.CancelAfter(Timeout.Infinite);
+            if (count == 0) return;
+            await destination.WriteAsync(buffer, 0, count).ConfigureAwait(false);
+        }
+    }
+
+    // Redirects are followed by the framework. The final host is checked before any body is read.
+    private static async Task<HttpResponseMessage> AllowedResponseAsync(Uri uri, Uri feed)
+    {
+        var response = await RequestAsync(uri).ConfigureAwait(false);
         try
         {
-            UpdatePolicy.EnsureAllowedDownloadUrl(response.ResponseUri.AbsoluteUri, feed);
+            UpdatePolicy.EnsureAllowedDownloadUrl(response.RequestMessage!.RequestUri!.AbsoluteUri, feed);
             return response;
         }
         catch
@@ -279,16 +302,39 @@ internal static class UpdateService
         }
     }
 
-    private static HttpWebRequest Request(Uri uri)
+    private static async Task<HttpResponseMessage> RequestAsync(Uri uri)
     {
-        var request = (HttpWebRequest)WebRequest.Create(uri);
-        request.Timeout = 10000;
-        request.ReadWriteTimeout = 10000;
-        request.UserAgent = "RevitModelMcp updater";
-        request.Accept = "application/vnd.github+json, text/plain";
-        request.Proxy = WebRequest.DefaultWebProxy;
-        if (request.Proxy is not null) request.Proxy.Credentials = CredentialCache.DefaultCredentials;
-        return request;
+        var response = await Client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
+        try
+        {
+            response.EnsureSuccessStatusCode();
+            return response;
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+    }
+
+    private static HttpClient CreateClient()
+    {
+        var proxy = WebRequest.DefaultWebProxy;
+        if (proxy is not null) proxy.Credentials = CredentialCache.DefaultCredentials;
+        var client = new HttpClient(new HttpClientHandler
+        {
+            Proxy = proxy,
+            UseProxy = proxy is not null,
+            UseCookies = false,
+            AllowAutoRedirect = true,
+            MaxAutomaticRedirections = 50
+        })
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("RevitModelMcp updater");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json, text/plain");
+        return client;
     }
 
     private static T? ReadJson<T>(string path) where T : class

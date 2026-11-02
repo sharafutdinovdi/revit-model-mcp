@@ -1,0 +1,9 @@
+{
+  "name": "mcpb-cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned MCPB CLI used to validate and pack the Claude Desktop bundle.",
+  "dependencies": {
+    "@anthropic-ai/mcpb": "2.1.2"
+  }
+}

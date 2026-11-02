@@ -33,11 +33,11 @@ jobs:
         with:
           node-version: '22'
       - name: Install MCPB CLI
-        run: npm install --prefix "$RUNNER_TEMP/mcpb" --no-save @anthropic-ai/mcpb@2.1.2
+        run: npm ci --ignore-scripts --prefix build/mcpb
       - name: Validate and pack Claude Desktop bundle
         run: |
-          "$RUNNER_TEMP/mcpb/node_modules/.bin/mcpb" validate bundle/manifest.json
-          "$RUNNER_TEMP/mcpb/node_modules/.bin/mcpb" pack bundle "$RUNNER_TEMP/revit-model-mcp.mcpb"
+          build/mcpb/node_modules/.bin/mcpb validate bundle/manifest.json
+          build/mcpb/node_modules/.bin/mcpb pack bundle "$RUNNER_TEMP/revit-model-mcp.mcpb"
       - name: Verify bundle configuration
         run: |
           node --input-type=module <<'JAVASCRIPT'
@@ -45,7 +45,7 @@ jobs:
           import { readFileSync } from 'node:fs';
           import { pathToFileURL } from 'node:url';
 
-          const { getMcpConfigForManifest } = await import(pathToFileURL(`${process.env.RUNNER_TEMP}/mcpb/node_modules/@anthropic-ai/mcpb/dist/shared/config.js`));
+          const { getMcpConfigForManifest } = await import(pathToFileURL(`${process.cwd()}/build/mcpb/node_modules/@anthropic-ai/mcpb/dist/shared/config.js`));
           const manifest = JSON.parse(readFileSync('bundle/manifest.json', 'utf8'));
           const documentedTools = [...new Set(['docs/tools.md', 'docs/actions.md'].flatMap(path =>
             [...readFileSync(path, 'utf8').matchAll(/^\| `(revit_\w+)`/gm)].map(match => match[1])
@@ -83,6 +83,9 @@ jobs:
           if-no-files-found: error
 
   python:
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -96,7 +99,16 @@ jobs:
           enable-cache: true
           cache-dependency-glob: server/uv.lock
       - name: Test server
-        run: uv run --frozen --with pytest==9.1.1 pytest -q
+        run: uv run --frozen --with pytest==9.1.1 --with pytest-cov==7.1.0 pytest -q --cov=revit_model_mcp --cov-report=xml
+      - name: Upload Python coverage
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          use_oidc: true
+          files: server/coverage.xml
+          disable_search: true
+          flags: python
+          fail_ci_if_error: false
       - name: Check Python
         run: uvx ruff==0.16.10 check .
       - name: Verify Python formatting
@@ -113,6 +125,9 @@ jobs:
           uvx twine==7.0.0 check dist/*
 
   core-tests:
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -129,7 +144,16 @@ jobs:
       - name: Restore tests with lock
         run: dotnet restore tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --locked-mode
       - name: Test core
-        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --no-restore
+        run: dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj --no-restore --coverage --coverage-output-format cobertura --coverage-output "${{ github.workspace }}/core-coverage.cobertura.xml"
+      - name: Upload Core coverage
+        continue-on-error: true
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          use_oidc: true
+          files: core-coverage.cobertura.xml
+          disable_search: true
+          flags: core
+          fail_ci_if_error: false
 
   addin-build:
     runs-on: windows-latest

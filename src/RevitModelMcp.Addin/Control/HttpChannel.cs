@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Net;
+using System.Net.Http;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Security.AccessControl;
@@ -21,6 +22,10 @@ namespace RevitModelMcp.Control;
 internal sealed class HttpChannel : IDisposable
 {
     private const long MaxJobBytes = 1024 * 1024;
+    private static readonly HttpClient ProbeClient = new(new HttpClientHandler { UseProxy = false, UseCookies = false })
+    {
+        Timeout = TimeSpan.FromSeconds(3)
+    };
     private readonly HttpListener _listener = new();
     private readonly ConcurrentDictionary<string, HttpJob> _jobs = new();
     private readonly ControlChannel _channel;
@@ -99,17 +104,8 @@ internal sealed class HttpChannel : IDisposable
                 exceptionTypeName = null;
                 try
                 {
-                    var request = (HttpWebRequest)WebRequest.Create($"http://{host}:{_settings.HttpPort}/health");
-                    request.Method = "GET";
-                    request.Proxy = null;
-                    request.Timeout = 3000;
-                    using var cancellation = _shutdown.Token.Register(request.Abort);
-                    using var response = (HttpWebResponse)request.GetResponse();
-                    statusCode = (int)response.StatusCode;
-                }
-                catch (WebException exception) when (exception.Response is HttpWebResponse)
-                {
-                    using var response = (HttpWebResponse)exception.Response;
+                    using var response = await ProbeClient.GetAsync($"http://{host}:{_settings.HttpPort}/health",
+                        HttpCompletionOption.ResponseHeadersRead, _shutdown.Token).ConfigureAwait(false);
                     statusCode = (int)response.StatusCode;
                 }
                 catch (Exception exception)
