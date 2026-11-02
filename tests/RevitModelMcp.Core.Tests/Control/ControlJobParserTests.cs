@@ -625,6 +625,10 @@ public sealed class ControlJobParserTests
         var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "Plan", view => view.Id, view => view.Name));
 
         await Assert.That(error.Message).Contains("Pass the numeric id instead");
+        await Assert.That(error.Message).Contains("id=1, name=Plan");
+        await Assert.That(error.Message).Contains("id=2, name=Plan");
+        var selected = ViewReferenceMatcher.Find(views, "2", view => view.Id, view => view.Name);
+        await Assert.That(selected?.Id).IsEqualTo(2);
     }
 
     [Test]

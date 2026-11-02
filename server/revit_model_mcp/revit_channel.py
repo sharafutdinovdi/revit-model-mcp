@@ -653,7 +653,9 @@ def _describe_instance(instance: dict[str, Any]) -> str:
     documents = instance.get("documents")
     if isinstance(documents, list) and documents:
         names = ", ".join(
-            str(doc.get("title") or doc.get("path") or "?")
+            str(doc.get("title") or "?")
+            + (" [family]" if doc.get("isFamilyDocument") else "")
+            + (" [active]" if doc.get("isActive") else "")
             for doc in documents
             if isinstance(doc, dict)
         )
@@ -681,11 +683,14 @@ def resolve_instance(instances: list[dict[str, Any]], document: str | None) -> d
     matches = [item for item in instances if matches_document(item, document)]
     if not matches:
         raise RevitChannelError(
-            "No running Revit instance has a matching active document. Use revit_list_instances."
+            f"No running Revit process has document '{document}' open. "
+            "Use revit_list_instances. Open documents: "
+            + "; ".join(_describe_instance(item) for item in instances)
         )
     if len(matches) != 1:
         raise RevitChannelError(
-            "The document reference is ambiguous across Revit instances. Use a unique title or file name."
+            "The document reference is ambiguous across Revit instances. Use a unique title or file name. "
+            "Matching documents: " + "; ".join(_describe_instance(item) for item in matches)
         )
     return matches[0]
 
@@ -700,10 +705,21 @@ def select_instance(instances: list[dict[str, Any]], job: Job) -> dict[str, Any]
         if len(matches) != 1:
             raise RevitChannelError("The explicitly selected Revit process is absent or ambiguous.")
         selected = matches[0]
-        if document and not matches_document(selected, document):
-            raise RevitChannelError("The explicit process and document contradict each other.")
     else:
         selected = resolve_instance(instances, document)
+    if (
+        document
+        and (process_id is not None or isinstance(selected.get("documents"), list))
+        and not matches_document(selected, document)
+    ):
+        matches = [item for item in instances if matches_document(item, document)]
+        raise RevitChannelError(
+            f"Document '{document}' is not open in Revit process {selected.get('processId')}. "
+            f"Open documents in that process: {_describe_instance(selected)}. "
+            "Matching documents: "
+            + ("; ".join(_describe_instance(item) for item in matches) or "none")
+            + ". Use revit_list_instances to choose a document or process."
+        )
     return selected
 
 
@@ -1119,23 +1135,22 @@ def _complete_image_result(result: dict[str, Any], command: str) -> dict[str, An
 def _is_intermediate_response(response: dict[str, Any]) -> bool:
     if response.get("partial") is not True:
         return False
-    if response.get("command") == "process-models":
-        return response.get("message") == "Command accepted and running."
-    message = response.get("message")
-    if isinstance(message, str) and message.startswith("Processed "):
+    data = response.get("data")
+    data = data if isinstance(data, dict) else {}
+    state = response.get("state", data.get("state"))
+    if state is not None:
+        return state in {"queued", "waiting_revit", "running"}
+    if isinstance(response.get("progress", data.get("progress")), dict):
         return True
-    if response.get("correlationId"):
-        terminal_partial = isinstance(message, str) and (
-            "The 60-second limit was reached" in message
-            or message.startswith(
-                (
-                    "Processing limit reached:",
-                    "Element reading stopped:",
-                    "Element reading aborted:",
-                )
-            )
-        )
-        return not terminal_partial
+    if response.get("error") == "Pending":
+        return True
+    message = response.get("message")
+    if (
+        isinstance(message, str)
+        and message.startswith("Processed ")
+        and message.endswith("View elements were not read.")
+    ):
+        return True
     return message in (
         "Command accepted and running.",
         "Command accepted; preparing the view element list.",

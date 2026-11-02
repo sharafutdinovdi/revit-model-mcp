@@ -47,18 +47,34 @@ internal sealed class ViewElementsSession : IControlSession
         };
         WritePartial("Command accepted; preparing the view element list.");
 
-        var view = ReadCommandReader.FindView(_document, job.View!);
+        _pageIds = Array.Empty<ElementId>();
+        _reader = new ViewElementReader(_document, new HashSet<long>());
+        _unknownCategories = [];
+        View? view;
+        try
+        {
+            view = ReadCommandReader.FindView(_document, job.View!);
+        }
+        catch (InvalidOperationException exception)
+        {
+            Fail(exception.Message);
+            return;
+        }
         if (view is null)
         {
-            Fail($"View '{job.View}' was not found.");
-            _pageIds = Array.Empty<ElementId>();
-            _reader = new ViewElementReader(_document, new HashSet<long>());
-            _unknownCategories = new List<string>();
+            Fail($"View '{job.View}' was not found. Use list-views to see candidates and pass the numeric id.");
             return;
         }
 
         var categoryIds = ResolveCategoryIds(_document, job.Categories, out _unknownCategories);
-        var collector = new FilteredElementCollector(_document, view.Id)
+        if (!FilteredElementCollector.IsViewValidForElementIteration(_document, view.Id))
+        {
+            _diagnostics.Add($"view {RevitValueReader.GetId(view.Id)}",
+                new InvalidOperationException("The view does not support collecting drawn elements."));
+            return;
+        }
+
+        using var collector = new FilteredElementCollector(_document, view.Id)
             .WhereElementIsNotElementType();
         if (job.Categories.Count > 0)
         {

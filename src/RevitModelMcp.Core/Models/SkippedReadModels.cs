@@ -7,6 +7,8 @@ public sealed record SkippedRead
 {
     [DataMember(Name = "what")] public string What { get; init; } = string.Empty;
     [DataMember(Name = "reason")] public string Reason { get; init; } = string.Empty;
+    [DataMember(Name = "dialogId", EmitDefaultValue = false)] public string? DialogId { get; init; }
+    [DataMember(Name = "message", EmitDefaultValue = false)] public string? Message { get; init; }
 }
 
 public sealed class SkippedReadDiagnostics

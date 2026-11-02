@@ -8,6 +8,7 @@ import os
 import shlex
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import unittest
@@ -36,6 +37,7 @@ from revit_model_mcp.revit_channel import (
     matches_document,
     parse_response,
     resolve_instance,
+    select_instance,
 )
 from revit_model_mcp.ssh_host import (
     ACTIVATION_DELAY_SECONDS,
@@ -312,8 +314,109 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         script = host._run.await_args.args[0]
         self.assertIn("Get-Process Revit", script)
         self.assertIn("Get-ChildItem", script)
-        self.assertIn("WriteAllBytes", script)
+        self.assertIn("[Convert]::FromBase64String(($input -join ''))", script)
         self.assertIn("[IO.File]::Move", script)
+
+    def test_document_refusal_does_not_claim_explicit_process(self) -> None:
+        instance = instance_status(
+            documents=[
+                {"title": "Door", "isFamilyDocument": True, "isActive": True},
+                {"title": "Structural", "isActive": False},
+            ]
+        )
+        for job in (
+            Job.document_info().for_document("Missing"),
+            Job.document_info().for_document("Missing").for_process(42),
+        ):
+            with self.assertRaises(RevitChannelError) as caught:
+                select_instance([instance], job)
+            message = str(caught.exception)
+            self.assertIn("not open in Revit process 42", message)
+            self.assertIn("Door [family] [active]", message)
+            self.assertIn("Structural", message)
+            self.assertIn("Matching documents: none", message)
+            self.assertNotIn("explicit", message)
+            self.assertNotIn("contradict", message)
+
+    def test_document_refusal_lists_other_matching_process(self) -> None:
+        with self.assertRaises(RevitChannelError) as caught:
+            select_instance(
+                [instance_status(42, "Structural"), instance_status(84, "Architectural")],
+                Job.document_info().for_document("Structural").for_process(84),
+            )
+        self.assertIn("Matching documents: pid 42 (Structural)", str(caught.exception))
+
+    def test_family_and_active_document_refusals_preserve_actual_cause(self) -> None:
+        for reason in (
+            "The document is a family; a project document is required. Matching documents: Door.",
+            "The active document changed from Structural to Door. Matching documents: Structural, Door.",
+        ):
+            with self.assertRaises(PluginResponseError) as caught:
+                parse_response(
+                    json.dumps({"command": "document-info", "success": False, "message": reason}),
+                    "document-info",
+                )
+            self.assertEqual(str(caught.exception), reason)
+
+    async def test_clixml_extracts_recorded_error_lines(self) -> None:
+        # S33:85, ASCII Error records from the recorded PowerShell response.
+        sample = (
+            '#< CLIXML\r\n<Objs xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+            '<Obj S="progress"><S>Preparing modules</S></Obj>'
+            '<S S="Error">ConvertTo-Json : _x000D__x000A_</S>'
+            '<S S="Error">    + FullyQualifiedErrorId : ArgumentNullException_x000D__x000A_</S>'
+            "</Objs>"
+        )
+        host = SshPowerShellHost(local=True)
+        process = FakeSshProcess(1, stderr=sample.encode())
+        with patch(
+            "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+            AsyncMock(return_value=process),
+        ):
+            with self.assertRaises(RemoteCommandError) as caught:
+                await host._run("throw")
+        self.assertIn(
+            "ConvertTo-Json :\n    + FullyQualifiedErrorId : ArgumentNullException",
+            str(caught.exception),
+        )
+        self.assertNotIn("CLIXML", str(caught.exception))
+        self.assertNotIn("progress", str(caught.exception))
+
+    async def test_large_job_uses_stdin_with_bounded_command(self) -> None:
+        host = SshPowerShellHost()
+        host._instance = instance_status()
+        host._run = AsyncMock(return_value='{"revitRunning":true,"responses":[],"published":true}')
+        for size in (1, 900 * 1024):
+            content = json.dumps(
+                {"jobId": "a" * 32, "code": "x" * size + "漢я", "confirm_token": "token"}
+            )
+            await host.prepare_job("mcp_test.tmp", content, "execute-code")
+            script = host._run.await_args.args[0]
+            command = host._build_command(script, takes_input=True)
+            self.assertLess(len(" ".join(command)), 8192)
+            self.assertNotIn("-n", command)
+            self.assertEqual(
+                base64.b64decode(host._run.await_args.kwargs["input"]), content.encode()
+            )
+            if size == 1:
+                short_command = command
+            else:
+                self.assertEqual(command, short_command)
+
+    async def test_poll_size_is_independent_of_old_responses(self) -> None:
+        host = SshPowerShellHost()
+        own = "response_20260916_120000_000_ping_fresh.json"
+        host._poll_for_change = AsyncMock(return_value=(own, 1, 0))
+        scripts = []
+        for count in (0, 500):
+            known = {
+                f"response_20260916_120000_000_ping_old-{index}.json" for index in range(count)
+            }
+            self.assertEqual(await host.wait_for_new_response("ping", known, 5, "fresh"), own)
+            scripts.append(host._poll_for_change.await_args.args[0])
+        self.assertEqual(scripts[0], scripts[1])
+        self.assertLess(len(" ".join(host._build_command(scripts[1]))), 8192)
+        self.assertNotIn("$known", scripts[1])
 
     async def test_prepare_ignores_malformed_response_names(self) -> None:
         host = SshPowerShellHost()
@@ -545,6 +648,22 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
                     )
                     self.assertEqual(process.input, input)
                     self.assertEqual("-n" in start.call_args.args, not local and input is None)
+
+    async def test_subprocess_stdin_is_closed_after_writing(self) -> None:
+        host = SshPowerShellHost(local=True)
+        payload = b"x" * (900 * 1024)
+        with patch.object(
+            host,
+            "_build_command",
+            return_value=[
+                sys.executable,
+                "-c",
+                "import sys; data = sys.stdin.buffer.read(); print(len(data))",
+            ],
+        ):
+            self.assertEqual(
+                await host._run("unused", input=payload, timeout_seconds=5), str(len(payload))
+            )
 
     async def test_cancelled_running_command_is_killed(self) -> None:
         host = SshPowerShellHost()
@@ -792,6 +911,173 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(remote.finish_job.await_count, 2)
                         self.assertIn(remote.response_name, remote.deleted_names)
 
+    async def test_recorded_family_audit_partial_results_are_terminal(self) -> None:
+        # V10 audit-full-raw.json and audit-summary-raw.json from b64a15a.
+        # Model paths removed; family and skip lists reduced to their first entry.
+        fixtures = {
+            "full": {
+                "command": "family-audit",
+                "success": False,
+                "partial": True,
+                "data": {
+                    "families": [
+                        {
+                            "category": "Title Blocks",
+                            "isShared": False,
+                            "name": "A 8-5 x 11 Vertical",
+                            "parameters": [
+                                {
+                                    "builtIn": True,
+                                    "group": "autodesk.parameter.group:graphics-1.0.0",
+                                    "groupName": "Graphics",
+                                    "isInstance": True,
+                                    "isReporting": False,
+                                    "isShared": False,
+                                    "name": "Scale Override (Multiple Values)",
+                                    "used": False,
+                                    "usedBy": [],
+                                }
+                            ],
+                            "purgeCoverage": "full",
+                            "purgeable": {"Materials": 2},
+                            "purgeableTotal": 2,
+                            "sharedFlagEditable": True,
+                            "status": "audited",
+                        }
+                    ],
+                    "mode": "project",
+                    "skipped": [
+                        {
+                            "reason": "The audit is limited to the first 200 editable families.",
+                            "what": "North Arrow 2",
+                        }
+                    ],
+                    "skippedCount": 204,
+                },
+                "message": "Family audit stopped before completion, reached its read budget, "
+                "or was cancelled; results are partial.",
+                "elapsedMs": 60527,
+                "responder": {
+                    "documentName": "Snowdon Towers Sample Architectural",
+                    "processId": 30164,
+                    "revitVersion": "2027",
+                },
+                "correlationId": "2cbf57d236554ddcbdbce2a2130baed7",
+                "client": {
+                    "id": "5acb294328294e138f0ee9d39239b228",
+                    "name": "V10 raw pipe diagnostic",
+                },
+                "jobId": "f48ee3eec7bc4886b116a4de2cb461a6",
+                "queuedMs": 2,
+                "skipped": [],
+                "skippedCount": 0,
+            },
+            "summary": {
+                "command": "family-audit",
+                "success": False,
+                "partial": True,
+                "data": {
+                    "families": [
+                        {
+                            "category": "Title Blocks",
+                            "dataCarrierRiskCount": 0,
+                            "isShared": False,
+                            "name": "A 8-5 x 11 Vertical",
+                            "parameterCount": 1,
+                            "purgeCoverage": "full",
+                            "purgeable": {"Materials": 2},
+                            "purgeableTotal": 2,
+                            "sharedFlagEditable": True,
+                            "status": "audited",
+                            "unusedParameterCount": 1,
+                            "unusedParameters": ["Scale Override (Multiple Values)"],
+                        }
+                    ],
+                    "mode": "project",
+                    "skipped": [
+                        {
+                            "reason": "The audit is limited to the first 200 editable families.",
+                            "what": "North Arrow 2",
+                        }
+                    ],
+                    "skippedCount": 204,
+                },
+                "message": "Family audit stopped before completion, reached its read "
+                "budget, or was cancelled; results are partial.",
+                "elapsedMs": 60810,
+                "responder": {
+                    "documentName": "Snowdon Towers Sample Architectural",
+                    "processId": 30164,
+                    "revitVersion": "2027",
+                },
+                "correlationId": "08df4244a8e24cc188d3917954267481",
+                "client": {
+                    "id": "5acb294328294e138f0ee9d39239b228",
+                    "name": "V10 raw pipe diagnostic",
+                },
+                "jobId": "56bc5d7557fb4747845a0b4b5849fd43",
+                "queuedMs": 105,
+                "skipped": [],
+                "skippedCount": 0,
+            },
+        }
+        for detail, partial in fixtures.items():
+            with self.subTest(detail=detail):
+                remote = FakeRemoteHost()
+
+                async def read_response(name, cleanup_names, download_artifact, output_path):
+                    self.assertEqual(remote.finish_job.await_count, 1)
+                    partial["correlationId"] = json.loads(remote.written_content)["correlationId"]
+                    return json.dumps(partial), None
+
+                remote.finish_job = AsyncMock(side_effect=read_response)
+                result = await RevitChannel(remote).execute(
+                    Job(
+                        "family-audit",
+                        {"command": "family-audit", "families": ["*"], "detail": detail},
+                    ),
+                    timeout_seconds=600,
+                )
+                self.assertEqual(result, partial)
+                self.assertEqual(remote.finish_job.await_count, 1)
+                self.assertIn(remote.response_name, remote.deleted_names)
+
+    async def test_process_models_explicit_progress_waits_for_terminal_partial(self) -> None:
+        for marker in (
+            {"state": "queued"},
+            {"state": "waiting_revit"},
+            {"state": "running"},
+            {"data": {"state": "running"}},
+            {"progress": {"currentIndex": 1, "total": 2}},
+            {"data": {"progress": {"currentIndex": 1, "total": 2}}},
+            {"message": "Command accepted and running."},
+        ):
+            with self.subTest(marker=marker):
+                remote = FakeRemoteHost()
+                progress = {
+                    "command": "process-models",
+                    "success": False,
+                    "partial": True,
+                    **marker,
+                }
+                terminal = {
+                    "command": "process-models",
+                    "success": False,
+                    "partial": True,
+                    "state": "failed",
+                    "data": {"models": [{"status": "failed"}]},
+                    "progress": {"currentIndex": 1, "total": 2},
+                }
+                remote.finish_job = AsyncMock(
+                    side_effect=[(json.dumps(progress), None), (json.dumps(terminal), None)]
+                )
+                with patch("revit_model_mcp.revit_channel.asyncio.sleep", new=AsyncMock()):
+                    result = await RevitChannel(remote)._execute_serial(
+                        Job("process-models", {"command": "process-models"}), 10, 300
+                    )
+                self.assertEqual(result, terminal)
+                self.assertEqual(remote.finish_job.await_count, 2)
+
     async def test_process_models_partial_result_is_terminal(self) -> None:
         remote = FakeRemoteHost()
         partial = {
@@ -1023,6 +1309,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
             envelope = json.loads(SUCCESS_RESPONSE)
             envelope["correlationId"] = "other-job" if name == other_name else identity
             envelope["partial"] = reads == 2
+            envelope["state"] = "running" if reads == 2 else "done"
             envelope["message"] = "Reading model elements." if reads == 2 else "Done."
             return json.dumps(envelope), None
 
@@ -1601,6 +1888,8 @@ class ResponseSelectionTests(unittest.IsolatedAsyncioTestCase):
                 Path(directory, name).write_text(json.dumps(body))
                 return name
 
+            for index in range(500):
+                publish(f"response_20260916_120000_000_ping_old-{index}.json", f"old-{index}")
             own = publish("response_20260916_120000_000_ping_job-24.json", "job-24")
             uncorrelated = publish("response_20260916_120001_000_ping_01.json")
             publish("response_20260916_120002_000_ping_other-job.json", "other-job")
@@ -1856,7 +2145,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
             selected, job = await host.select_job(Job.document_info().for_process(84))
             self.assertEqual(selected._instance["processId"], 84)
             self.assertEqual(job.payload["targetProcessId"], 84)
-            with self.assertRaisesRegex(RevitChannelError, "contradict"):
+            with self.assertRaisesRegex(RevitChannelError, "not open in Revit process 84"):
                 await host.select_job(
                     Job.document_info().for_document("Structural").for_process(84)
                 )
@@ -2072,7 +2361,7 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
             host._root_directory = "'" + root.replace("'", "''") + "'"
             scripts = []
 
-            async def run(script, timeout_seconds=60):
+            async def run(script, timeout_seconds=60, *, input=None):
                 scripts.append(script)
                 prefix = "function Get-Process { @([pscustomobject]@{Id=42}, [pscustomobject]@{Id=84}) }; "
                 process = await asyncio.create_subprocess_exec(
@@ -2081,10 +2370,13 @@ class PowerShellIsolationTests(unittest.IsolatedAsyncioTestCase):
                     "-NonInteractive",
                     "-Command",
                     prefix + script,
+                    stdin=asyncio.subprocess.PIPE
+                    if input is not None
+                    else asyncio.subprocess.DEVNULL,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, stderr = await process.communicate()
+                stdout, stderr = await process.communicate(input=input)
                 self.assertEqual(process.returncode, 0, stderr.decode())
                 return stdout.decode().strip()
 
@@ -3062,3 +3354,83 @@ def test_execute_reports_final_without_changing_tool_result():
         ]
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize(
+    ("error_code", "failures", "change", "published", "attempts"),
+    [
+        (32, 1, None, True, 2),
+        (33, 1, None, True, 2),
+        (2, 1, None, True, 2),
+        (32, 9, None, False, 5),
+        (5, 1, None, False, 1),
+        (32, 1, "processId", False, 2),
+        (32, 1, "startedUtc", False, 2),
+        (32, 1, "updatedUtc", False, 2),
+        (32, 1, "fileChannelVersion", False, 2),
+        (32, 1, "json", False, 2),
+    ],
+)
+def test_heartbeat_retry_revalidates_before_publication(
+    tmp_path, error_code, failures, change, published, attempts
+):
+    import subprocess
+
+    executable = shutil.which("pwsh")
+    if not executable:
+        pytest.skip("PowerShell is required")
+    status = instance_status(42, updatedUtc=datetime.now(timezone.utc).isoformat())
+    host = SshPowerShellHost()._for_instance(status)
+    host._root_directory = "'" + str(tmp_path).replace("'", "''") + "'"
+    host._directory = f"(Join-Path ({host._root_directory}) 'instances/42')"
+    heartbeat = dict(status)
+    if change == "processId":
+        heartbeat[change] = 84
+    elif change in ("startedUtc", "updatedUtc"):
+        heartbeat[change] = "2000-01-01T00:00:00Z"
+    elif change == "fileChannelVersion":
+        heartbeat[change] = 99
+    Path(tmp_path, "instance_42.json").write_text(
+        "{broken" if change == "json" else json.dumps(heartbeat)
+    )
+    captured = []
+
+    async def run(script, **kwargs):
+        captured.append(script)
+        # Inject the same IOException HResult that Windows reports on sharing/replacement.
+        opener = (
+            """
+Add-Type 'using System; using System.IO;
+public static class HeartbeatProbe {
+ public static int Attempts;
+ public static FileStream Open(string path, FileMode mode, FileAccess access, FileShare share) {
+  Attempts++;
+  if (Attempts <= FAILURES) throw new IOException("transient", unchecked((int)0x80070000) | CODE);
+  return File.Open(path, mode, access, share);
+ }
+}';
+function Get-Process { [pscustomobject]@{ Id = 42 } };
+try { SCRIPT } finally { [Console]::Error.WriteLine("ATTEMPTS=" + [HeartbeatProbe]::Attempts) }
+""".replace("FAILURES", str(failures))
+            .replace("CODE", str(error_code))
+            .replace("SCRIPT", script.replace("[IO.File]::Open(", "[HeartbeatProbe]::Open("))
+        )
+        result = subprocess.run(
+            [executable, "-NoProfile", "-NonInteractive", "-Command", opener],
+            input=kwargs.get("input"),
+            capture_output=True,
+        )
+        assert f"ATTEMPTS={attempts}" in result.stderr.decode()
+        if result.returncode:
+            raise RevitChannelError("Heartbeat refused")
+        return result.stdout.decode().strip()
+
+    host._run = run
+    content = json.dumps({"command": "ping", "jobId": "a" * 32})
+    if published:
+        asyncio.run(host.prepare_job("test.tmp", content, "ping"))
+    else:
+        with pytest.raises(RevitChannelError):
+            asyncio.run(host.prepare_job("test.tmp", content, "ping"))
+    assert len(captured) == 1
+    assert len(list(tmp_path.rglob("job_*.json"))) == int(published)

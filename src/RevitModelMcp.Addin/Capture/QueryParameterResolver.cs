@@ -3,15 +3,6 @@ using RevitModelMcp.Core.Query;
 
 namespace RevitModelMcp.Capture;
 
-internal enum QueryParameterKind
-{
-    Unknown,
-    String,
-    Integer,
-    Double,
-    ElementId
-}
-
 internal sealed class QueryParameterDescriptor
 {
     public string Name { get; set; } = string.Empty;
@@ -187,14 +178,7 @@ internal static class QueryParameterResolver
             {
                 Name = name,
                 Id = parameter.Id,
-                Kind = parameter.StorageType switch
-                {
-                    StorageType.String => QueryParameterKind.String,
-                    StorageType.Integer => QueryParameterKind.Integer,
-                    StorageType.Double => QueryParameterKind.Double,
-                    StorageType.ElementId => QueryParameterKind.ElementId,
-                    _ => QueryParameterKind.Unknown
-                },
+                Kind = QueryParameterSemantics.ResolveKind(null, false, parameter.StorageType.ToString()),
                 DataType = parameter.Definition?.GetDataType()
             };
         }
@@ -202,15 +186,7 @@ internal static class QueryParameterResolver
 
     private static QueryParameterDescriptor Create(string name, ElementId id, ForgeTypeId dataType)
     {
-        var typeId = dataType.TypeId ?? string.Empty;
-        var kind = UnitUtils.IsMeasurableSpec(dataType)
-            ? QueryParameterKind.Double
-            : typeId.Contains("spec:string", StringComparison.OrdinalIgnoreCase)
-                ? QueryParameterKind.String
-                : typeId.Contains("yesno", StringComparison.OrdinalIgnoreCase) ||
-                  typeId.Contains("int", StringComparison.OrdinalIgnoreCase)
-                    ? QueryParameterKind.Integer
-                    : QueryParameterKind.ElementId;
+        var kind = QueryParameterSemantics.ResolveKind(dataType.TypeId, UnitUtils.IsMeasurableSpec(dataType));
         return new QueryParameterDescriptor { Name = name, Id = id, Kind = kind, DataType = dataType };
     }
 

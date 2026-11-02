@@ -59,10 +59,15 @@ internal static class ReadCommandExecutor
                     string.IsNullOrWhiteSpace(reference) ? null : reference!.Trim());
                 var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
                 ActionJobParser.ValidateFamilyMode(action, target.IsFamilyDocument);
-                var audit = FamilyAuditReader.Read(target, action.Families, action.Detail);
+                var audit = FamilyAuditReader.Read(application, target, action.Families, action.Detail,
+                    () => FastCommandBudget.ShouldStopBetweenFamilies(stopwatch.ElapsedMilliseconds,
+                        ResponseDelivery.CancellationRequested?.Invoke() == true), out var partial);
                 stopwatch.Stop();
-                output.Write(CommandResponse<FamilyAuditData>.Ok(job.Command, audit, stopwatch.ElapsedMilliseconds));
-                LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
+                const string partialMessage = "Family audit stopped before completion, reached its read budget, or was cancelled; results are partial.";
+                output.Write(partial
+                    ? CommandResponse<FamilyAuditData>.PartialResult(job.Command, audit, partialMessage, stopwatch.ElapsedMilliseconds)
+                    : CommandResponse<FamilyAuditData>.Ok(job.Command, audit, stopwatch.ElapsedMilliseconds));
+                LogFinished(job.Command, partial ? "partial" : "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
                 return;
             }
             if (job.Kind == ControlJobKind.Documents)

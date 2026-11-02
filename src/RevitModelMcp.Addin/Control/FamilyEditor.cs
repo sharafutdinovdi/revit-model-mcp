@@ -13,9 +13,10 @@ namespace RevitModelMcp.Control;
 internal static class FamilyEditor
 {
     internal static FamilyEditData Execute(Document document, ActionJobContract job,
-        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application,
+        ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.UI.UIApplication uiApplication,
         string clientName)
     {
+        var application = uiApplication.Application;
         if (document.IsFamilyDocument)
         {
             if (job.Families is not null) throw new ArgumentException("families must be absent in family mode.");
@@ -84,6 +85,7 @@ internal static class FamilyEditor
                 using var familyGroup = new TransactionGroup(document, "revit_edit_families");
                 if (familyGroup.Start() != TransactionStatus.Started)
                     throw new InvalidOperationException($"Could not start the edit group for '{family.Name}'.");
+                using var suppression = new FamilyAuditReader.FamilySuppression(uiApplication, family.Name, data.Skipped);
                 Document? familyDocument = null;
                 FamilyEditFamily familyResult;
                 try

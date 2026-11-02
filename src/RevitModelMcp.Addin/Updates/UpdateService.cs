@@ -35,6 +35,7 @@ internal static class UpdateService
 
     private static void Run(bool manual)
     {
+        string? checkResult = null;
         try
         {
             using var mutex = new Mutex(false, @"Local\RevitModelMcp.UpdateCheck");
@@ -43,22 +44,28 @@ internal static class UpdateService
                 if (manual) ActivityRecorder.RecordSystemNotice("An update check is already running.");
                 return;
             }
-            try { Check(manual); }
+            try { Check(manual, ref checkResult); }
             finally { mutex.ReleaseMutex(); }
         }
         catch (UpdateDownloadRefusedException exception)
         {
+            checkResult = "failed (download refused)";
             PluginLog.Warn(exception.Message);
             ActivityRecorder.RecordSystemNotice(exception.Message, failed: true);
         }
         catch (Exception exception)
         {
+            checkResult = $"failed ({exception.GetType().Name})";
             PluginLog.Warn($"Update check failed. Type='{exception.GetType().Name}'.");
             ActivityRecorder.RecordSystemNotice($"Update check failed: {exception.GetType().Name}.", failed: true);
         }
+        finally
+        {
+            if (checkResult is not null) PluginLog.Info($"Update check completed: {checkResult}.");
+        }
     }
 
-    private static void Check(bool manual)
+    private static void Check(bool manual, ref string? checkResult)
     {
         Directory.CreateDirectory(LocalDirectory);
         var statePath = Path.Combine(LocalDirectory, "update-state.json");
@@ -133,9 +140,11 @@ internal static class UpdateService
         if (release is null) throw new InvalidDataException("The release feed returned no release.");
         if (!UpdatePolicy.IsNewerStable(InstalledVersion(), release.TagName, release.Draft, release.Prerelease))
         {
+            checkResult = "up to date";
             if (manual) ActivityRecorder.RecordSystemNotice("No newer stable Model MCP release is available.");
             return;
         }
+        checkResult = $"update available {release.TagName.TrimStart('v', 'V')}";
         if (state.QueuedVersion == release.TagName) return;
         var blocked = state.BlockedVersions.ToDictionary(item => item.Version, item => item.Until);
         if (UpdatePolicy.IsBlocked(release.TagName, blocked, now))

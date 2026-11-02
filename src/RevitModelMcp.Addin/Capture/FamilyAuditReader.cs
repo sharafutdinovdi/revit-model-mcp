@@ -1,6 +1,10 @@
 using System.IO;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
+using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 using RevitModelMcp.Control;
+using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Families;
 using RevitModelMcp.Core.Models;
 
@@ -8,8 +12,10 @@ namespace RevitModelMcp.Capture;
 
 internal static class FamilyAuditReader
 {
-    internal static FamilyAuditData Read(Document document, IReadOnlyList<string>? names, string detail = "summary")
+    internal static FamilyAuditData Read(UIApplication application, Document document, IReadOnlyList<string>? names,
+        string detail, Func<bool> shouldStop, out bool partial)
     {
+        partial = false;
         if (document.IsFamilyDocument)
         {
             if (names is not null) throw new ArgumentException("families must be absent in family mode.");
@@ -20,6 +26,11 @@ internal static class FamilyAuditReader
         var result = new FamilyAuditData { Mode = "project" };
         foreach (var (name, family) in SelectFamilies(document, names, result.Skipped))
         {
+            if (shouldStop())
+            {
+                partial = true;
+                break;
+            }
             if (family is null)
             {
                 result.Families.Add(new FamilyAuditFamily { Name = name, Status = "skipped", Reason = "not found" });
@@ -31,6 +42,7 @@ internal static class FamilyAuditReader
                 result.Families.Add(new FamilyAuditFamily { Name = family.Name, Status = "skipped", Reason = reason });
                 continue;
             }
+            using var suppression = new FamilySuppression(application, family.Name, result.Skipped);
             Document? familyDocument = null;
             try
             {
@@ -44,14 +56,84 @@ internal static class FamilyAuditReader
             }
             finally
             {
-                familyDocument?.Close(false);
+                try
+                {
+                    if (familyDocument is not null && !familyDocument.Close(false))
+                        throw new InvalidOperationException("Revit did not close the audited family.");
+                }
+                catch (Exception exception)
+                {
+                    result.Skipped.Add(new SkippedRead { What = family.Name, Reason = exception.Message });
+                    partial = true;
+                }
             }
+            if (partial) break;
         }
+        partial |= result.Families.Count > 0 && shouldStop();
         if (detail == "summary")
             foreach (var family in result.Families.Where(family => family.Parameters is not null))
                 family.ApplySummary();
         result.SkippedCount = result.Skipped.Count;
         return result;
+    }
+
+    internal sealed class FamilySuppression : IDisposable
+    {
+        private readonly UIApplication _application;
+        private readonly string _familyName;
+        private readonly List<SkippedRead> _skipped;
+        private readonly ActionCommandExecutor.ActionFailures _failures = new();
+
+        internal FamilySuppression(UIApplication application, string familyName, List<SkippedRead> skipped)
+        {
+            _application = application;
+            _familyName = familyName;
+            _skipped = skipped;
+            application.DialogBoxShowing += OnDialog;
+            application.Application.FailuresProcessing += OnFailures;
+        }
+
+        private void Record(string dialogId, string message)
+        {
+            _skipped.Add(new SkippedRead
+            {
+                What = _familyName,
+                Reason = "Revit interruption suppressed during family access.",
+                DialogId = dialogId,
+                Message = message
+            });
+        }
+
+        private void OnDialog(object? sender, DialogBoxShowingEventArgs arguments)
+        {
+            var message = arguments switch
+            {
+                TaskDialogShowingEventArgs task => task.Message,
+                MessageBoxShowingEventArgs box => box.Message,
+                _ => "Revit dialog did not expose a message."
+            };
+            var dialogType = arguments is MessageBoxShowingEventArgs messageBox ? messageBox.DialogType : 0;
+            foreach (var result in BatchDialogPolicy.FamilyAuditDialogResults(arguments.GetType().Name, dialogType))
+            {
+                if (!arguments.OverrideResult(result)) continue;
+                Record(arguments.DialogId ?? string.Empty, message);
+                return;
+            }
+        }
+
+        private void OnFailures(object? sender, FailuresProcessingEventArgs arguments)
+        {
+            var accessor = arguments.GetFailuresAccessor();
+            foreach (var failure in accessor.GetFailureMessages())
+                Record(failure.GetFailureDefinitionId().Guid.ToString(), failure.GetDescriptionText());
+            arguments.SetProcessingResult(_failures.PreprocessFailures(accessor));
+        }
+
+        public void Dispose()
+        {
+            _application.DialogBoxShowing -= OnDialog;
+            _application.Application.FailuresProcessing -= OnFailures;
+        }
     }
 
     internal static List<(string Name, Family? Family)> SelectFamilies(Document project, IReadOnlyList<string> names, List<SkippedRead>? skipped = null)

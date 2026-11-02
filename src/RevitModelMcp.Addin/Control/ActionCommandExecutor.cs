@@ -616,7 +616,7 @@ internal static class ActionCommandExecutor
             var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                 ReadCommandReader.ReadResponder(application), job.CorrelationId);
             var failures = new ActionFailures();
-            result = FamilyEditor.Execute(document, action, failures, application.Application, job.ClientName);
+            result = FamilyEditor.Execute(document, action, failures, application, job.ClientName);
             var failed = !result.Committed && result.FailedFamily is not null;
             var error = failed ? result.Families.First(family => family.Status == "failed").Reason ?? "Family edit failed." : null;
             response = failed

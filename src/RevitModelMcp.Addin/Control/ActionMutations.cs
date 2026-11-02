@@ -1039,10 +1039,15 @@ internal static class ActionMutations
     internal static ActionResultData PlaceViewsOnSheet(Document document, ActionJobContract action)
     {
         using var sheets = document.CollectElements().OfClass<ViewSheet>();
-        var sheet = sheets.Cast<ViewSheet>().FirstOrDefault(candidate =>
+        var sheet = long.TryParse(action.Sheet, NumberStyles.None, CultureInfo.InvariantCulture, out var sheetId) && sheetId > 0
+            ? ActionCommandExecutor.CreateId(sheetId).ToElement<ViewSheet>(document)
+            : null;
+        var candidates = sheets.Cast<ViewSheet>().ToList();
+        sheet ??= candidates.FirstOrDefault(candidate =>
             string.Equals(candidate.SheetNumber, action.Sheet, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(candidate.Name, action.Sheet, StringComparison.OrdinalIgnoreCase))
-            ?? throw new ArgumentException($"Sheet '{action.Sheet}' was not found.");
+            string.Equals(candidate.Name, action.Sheet, StringComparison.OrdinalIgnoreCase));
+        if (sheet is null)
+            throw new ArgumentException($"Sheet '{action.Sheet}' was not found. Candidates: {string.Join(", ", candidates.Select(candidate => $"{candidate.SheetNumber}: {candidate.Name} ({RevitValueReader.GetId(candidate.Id)})"))}.");
         var outline = sheet.Outline
             ?? throw new InvalidOperationException($"Sheet '{sheet.Name}' has no outline.");
         var gap = Millimeters(20);
