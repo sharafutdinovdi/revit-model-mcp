@@ -588,11 +588,23 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_quota_wait_leaves_remaining_budget_for_command(self) -> None:
         host = SshPowerShellHost()
-        host._connection_starts.extend([asyncio.get_running_loop().time()] * RELAY_CONNECTION_LIMIT)
+        loop = SimpleNamespace(now=0.0, time=lambda: loop.now)
+        host._connection_starts.extend([loop.now] * RELAY_CONNECTION_LIMIT)
+
+        async def advance(seconds: float) -> None:
+            loop.now += seconds
+
+        async def await_result(awaitable, *, timeout):
+            return await awaitable
+
         process = FakeSshProcess(0, stdout=b"ok")
         with (
             patch("revit_model_mcp.ssh_host.RELAY_WINDOW_SECONDS", 0.2),
-            patch("revit_model_mcp.ssh_host.asyncio.wait_for", wraps=asyncio.wait_for) as wait_for,
+            patch("revit_model_mcp.ssh_host.asyncio.get_running_loop", return_value=loop),
+            patch("revit_model_mcp.ssh_host.asyncio.sleep", side_effect=advance),
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.wait_for", side_effect=await_result
+            ) as wait_for,
             patch(
                 "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=process),
