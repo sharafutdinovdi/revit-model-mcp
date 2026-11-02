@@ -175,6 +175,7 @@ public sealed class Application : ExternalApplication
         }
         if (!channelOwnsStatus) _instanceHeartbeat?.UpdateHttpStatus(httpStatus);
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
+        _controlChannel.ConfigureTabActivity(httpSettings?.TabActivityHighlight ?? true);
         UpdateService.Start();
     }
 

@@ -584,6 +584,7 @@ internal sealed record HttpSettings
     [DataMember(Name = "httpPort", Order = 3)] public int HttpPort { get; set; } = 53110;
     [DataMember(Name = "token", Order = 4)] public string Token { get; set; } = string.Empty;
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
+    [DataMember(Name = "tabActivityHighlight", Order = 13)] public bool TabActivityHighlight { get; set; } = true;
     [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
     [DataMember(Name = "updateCheck", Order = 7)] public bool UpdateCheck { get; set; } = true;
     [DataMember(Name = "updateMode", Order = 12, EmitDefaultValue = false)] public string? UpdateMode { get; set; }
@@ -602,6 +603,7 @@ internal sealed record HttpSettings
         HttpPort = 53110;
         Token = string.Empty;
         ShowActivityPaneOnAction = true;
+        TabActivityHighlight = true;
         TrustedNetworkRoots = [];
         UpdateCheck = true;
         MaxStoredResponses = HttpLimits.DefaultMaxStoredResponses;

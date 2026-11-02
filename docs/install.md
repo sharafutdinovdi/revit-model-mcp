@@ -71,6 +71,18 @@ Press F1 while the pointer is on a button to open its help page.
 - **Report issue** opens the GitHub issue chooser.
 - **Support developer** opens the project's contribution page.
 
+Document tabs show a 3 px blue border while Model MCP works in that document.
+Actions activate it immediately. Reads activate it after 1 second.
+The indicator stays visible for at least 1.5 seconds and ends 1 second after the last job,
+whichever is later. Its tooltip shows the client, action or `reading`, and available step counters.
+Other documents keep their tab appearance. Existing tab colors are restored when work ends;
+changes made by another add-in while the indicator is active are preserved.
+
+Set `"tabActivityHighlight": false` in `%LOCALAPPDATA%\RevitModelMcp\settings.json`
+to disable the indicator. The default is `true`. Restart Revit after changing it.
+The border uses `#1F4E79` in light theme and `#7FB2E5` in dark theme.
+It appears and disappears instantly; there are no animations, including with reduced motion enabled.
+
 ### Connect an AI app
 
 **Connect AI app** writes the same local registration as step 6 above, with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`, into the configuration of each app it finds on the Revit workstation. When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed. Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH. The dialog shows which one it will write. It does not install the apps.
