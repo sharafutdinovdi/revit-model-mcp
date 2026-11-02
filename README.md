@@ -245,8 +245,9 @@ The hand-written [ISO 19650 issue register skill](skills/iso19650-issue-register
 Install it the same way: copy `skills/iso19650-issue-register` into `~/.claude/skills/`, or zip the folder and upload it in Claude Desktop.
 
 The [daily QA skill](skills/revit-daily-qa/SKILL.md) checks model health, warnings, links, parameters, and families without changing the model.
+The [family authoring skill](skills/revit-family-authoring/SKILL.md) creates and checks families against company rules, with Revit flex, hosting, and connector evidence.
 The [sheet set skill](skills/revit-sheet-set/SKILL.md) resolves a sheet list, confirms the layout, and creates sheets with placed views.
-Install either folder with the same copy or ZIP procedure.
+Install these folders with the same copy or ZIP procedure.
 
 ## Safety
 

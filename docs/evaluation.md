@@ -76,3 +76,35 @@ Each model needs twelve scenario rows. Keep counts and tokens separate from judg
 
 | Model | Judge model | Scenario | Sequence match | Calls | Tool errors | Judge pass | Input tokens | Output tokens | Agent seconds | Evidence |
 | --- | --- | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | --- |
+
+## Family authoring evaluation
+
+The family profile compares authoring in clean family documents against fixed Russian tasks A..E.
+The tasks cover a constrained box, a table with a formula and visibility, a hosted window opening, connected air equipment, and company-rule repairs.
+The source prompts and acceptance descriptions are in [family-scenarios.yaml](../build/llm-eval/family-scenarios.yaml).
+The [family authoring skill](../skills/revit-family-authoring/SKILL.md) defines the authoring workflow.
+
+Each run uses a compatible workstation template, a copied test project, a unique run folder, and explicit document targets.
+The E fixture is generated in Revit with known defects and object identities before the agent starts.
+The same prompts run against Model MCP or another command selected by `--server-command`.
+A separate Model MCP connection selected by `--verifier-command` supplies the independent probes for another server.
+Agent calls finish before the organizer probes the live result and a reopened saved RFA.
+Cleanup closes disposable documents without saving and deletes run-owned temporary files.
+Cleanup failure stops the series.
+
+The score is checks passed over checks attempted, with `not_verified` counted as incomplete.
+The report also records agent time, calls, tool errors, approval challenges, explicit operator decisions, and approval wait time.
+Setup, probe, and cleanup times remain separate.
+The verifier reports pass or fail only from API evidence, without an LLM judge.
+The dry-run probe cannot establish commit-time failure handling and records that limit outside the scored checks.
+An artifact pass covers the implemented dry-run checks; it does not certify the complete design.
+The complete geometry, reload, isolation, and hosted variant checks still require workstation calibration and extensions listed in the [harness instructions](../build/llm-eval/README.md#family-profile).
+
+The optional ToolBaker flag schedules A and A-prime with training and transfer evidence kept separate.
+It requires successful training and an accepted tool index; it does not approve saved code or bake suggestions automatically.
+Comparative transfer measurement additionally requires isolated catalogs and paired runs without and with the same accepted tool.
+
+No live family evaluation has run for this change.
+No accuracy, speed, server ranking, or ToolBaker gain is reported.
+The planned matrix uses Codex CLI and Claude Code with exact model IDs against both servers on the same Revit build.
+Run instructions, fixture requirements, probe limits, and recovery rules are in the [family profile documentation](../build/llm-eval/README.md#family-profile).

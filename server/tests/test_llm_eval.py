@@ -1107,6 +1107,14 @@ asyncio.run(main())
         async with stdio_client(parameters) as (read, write), ClientSession(read, write) as session:
             await session.initialize()
             assert len((await session.list_tools()).tools) == len(TOOLS)
+            from mcp.shared.exceptions import MCPError
+
+            for resource in (
+                session.list_resources,
+                lambda: session.read_resource("revit://guides/qa"),
+            ):
+                with pytest.raises(MCPError, match="Resource access unsupported"):
+                    await resource()
             result = await session.call_tool("revit_query_elements", {"document": "wrong"})
             assert not result.is_error
             assert json.loads(result.content[0].text)["total"] == 5
@@ -1290,7 +1298,7 @@ def test_cli_native_resource_evidence_and_mismatch_note(monkeypatch, family):
         )
     )
     assert run["failure"] is None
-    assert run["notes"] == [{"kind": "TraceMismatch", "native_calls": 2, "proxy_calls": 1}]
+    assert run["notes"] == []
     judge = FakeProvider([turn(text='{"pass":true,"reason":"Resource error supported"}')])
     asyncio.run(eval_run.judge_answer(judge, SCENARIOS[0], [], run))
     evidence = json.loads(judge.histories[0][0]["content"].split("\n", 1)[1])
@@ -1353,6 +1361,806 @@ def test_daily_qa_accepts_all_milestone_orders_but_requires_every_check():
     assert not eval_run.score(calls[:-1], scenario)["sequence_match"]
     calls[-2]["args"] = {"categories": ["Walls"], "parameters": ["Mark"]}
     assert not eval_run.score(calls, scenario)["sequence_match"]
+
+
+FAMILY = eval_run.family_module()
+FAMILY_SCENARIOS = eval_run.load_scenarios(ROOT / "build/llm-eval/family-scenarios.yaml", "family")
+
+
+def test_family_scenarios_have_original_prompts_and_rules():
+    assert [scenario["id"] for scenario in FAMILY_SCENARIOS] == list("ABCDE")
+    assert "400×300×200" in FAMILY_SCENARIOS[0]["prompt"]
+    assert "LegOffset = Width / 10" in FAMILY_SCENARIOS[1]["prompt"]
+    assert "Отдельный проём в проекте создавать нельзя" in FAMILY_SCENARIOS[2]["prompt"]
+    assert "Близкое расположение без соединения не считается" in FAMILY_SCENARIOS[3]["prompt"]
+    assert all(f"`R{index}`" in FAMILY_SCENARIOS[4]["prompt"] for index in range(1, 6))
+    for scenario in FAMILY_SCENARIOS:
+        assert [row["check_id"] for row in scenario["checks"]] == [
+            scenario["id"] + str(index) for index in range(1, 6)
+        ]
+
+
+@pytest.mark.parametrize("change", ["duplicate", "missing", "extra", "invalid"])
+def test_family_scenario_schema_is_strict(tmp_path, change):
+    data = json.loads(json.dumps({"profile": "family", "scenarios": FAMILY_SCENARIOS}))
+    if change == "duplicate":
+        data["scenarios"][1]["id"] = "A"
+    elif change == "missing":
+        del data["scenarios"][0]["checks"]
+    elif change == "extra":
+        data["scenarios"].append(data["scenarios"][0])
+    else:
+        data["scenarios"][0]["id"] = "F"
+    path = tmp_path / "family.yaml"
+    path.write_text(json.dumps(data))
+    with pytest.raises((ValueError, jsonschema.ValidationError)):
+        eval_run.load_scenarios(path, "family")
+
+
+def check_row(check_id="parameters", status="pass"):
+    return {
+        "check_id": check_id,
+        "status": status,
+        "expected": "Length type parameters",
+        "actual": ["Width", "Depth", "Height"],
+        "document": "eval",
+        "ids": [],
+        "reason": "API",
+    }
+
+
+@pytest.mark.parametrize("wrapper", ["plain", "data", "returnValue", "json"])
+def test_family_verifier_result_parsing(wrapper):
+    payload = {"checks": [check_row()]}
+    if wrapper == "data":
+        payload = {"data": payload}
+    elif wrapper == "returnValue":
+        payload = {"data": {"returnValue": payload}}
+    elif wrapper == "json":
+        payload = {"data": {"returnValue": json.dumps(payload)}}
+    parsed = FAMILY.parse_checks({"payload": payload, "error": False}, ["parameters"])
+    assert parsed == [check_row()]
+
+
+@pytest.mark.parametrize(
+    "rows,error",
+    [
+        ([], False),
+        ([check_row(), check_row()], False),
+        ([check_row()], True),
+        ([{"check_id": "parameters", "status": "pass"}], False),
+        ([check_row(status="maybe")], False),
+        ("bad", False),
+    ],
+)
+def test_family_verifier_missing_or_ambiguous_evidence_never_passes(rows, error):
+    result = FAMILY.parse_checks({"payload": {"checks": rows}, "error": error}, ["parameters"])
+    assert result[0]["status"] == "fail"
+
+
+def test_family_scoring_keeps_artifact_and_agent_errors_independent():
+    report = FAMILY.score_family(
+        [check_row(), check_row("flex", "not_verified")],
+        {"seconds": 4.5, "trace": [{"error": True}, {"error": False}]},
+        [{"kind": "challenge"}, {"kind": "approved", "seconds": 1.2}, {"kind": "denied"}],
+    )
+    assert report["checks_passed"] == 1
+    assert report["checks_total"] == 2
+    assert not report["artifact_pass"]
+    assert report["calls"] == 2 and report["tool_errors"] == 1
+    assert report["human_approvals"] == 1 and report["denials"] == 1
+    assert report["approval_wait_seconds"] == 1.2
+    assert report["underlying_operations"] is None
+    assert FAMILY.score_family([check_row()], {}, [])["artifact_pass"]
+    assert not FAMILY.score_family([], {}, [])["artifact_pass"]
+
+
+def test_family_cleanup_plan_closes_without_save_and_deletes_only_owned_files():
+    plan = FAMILY.cleanup_plan(r"C:\Eval\run1", ["family", "project"], [r"C:\Eval\run1\box.rfa"])
+    assert plan["close"] == [
+        {"document": "project", "save": False},
+        {"document": "family", "save": False},
+    ]
+    assert plan["delete"] == [r"C:\Eval\run1\box.rfa"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:\Eval\other\box.rfa",
+        r"C:\Eval\run1\..\source.rfa",
+        r"C:\Eval\run1\evidence.json",
+        r"D:\Eval\run1\box.rfa",
+    ],
+)
+def test_family_cleanup_plan_rejects_unowned_files(path):
+    with pytest.raises(ValueError):
+        FAMILY.cleanup_plan(r"C:\Eval\run1", ["family"], [path])
+
+
+def test_family_server_selector_and_defaults(monkeypatch, tmp_path):
+    monkeypatch.setenv(eval_run.SERVER_COMMAND_ENV, "fallback")
+    args = eval_run.parse_args(
+        [
+            "--profile",
+            "family",
+            "--family-fixtures",
+            str(tmp_path / "fixtures.json"),
+            "--server-command",
+            "ssh host rvt-mcp",
+            "--verifier-command",
+            "ssh host model-mcp",
+            "--toolbaker",
+        ]
+    )
+    assert args.server_command == "ssh host rvt-mcp"
+    assert args.verifier_command == "ssh host model-mcp"
+    assert args.max_calls == 120 and args.scenario_timeout == 1800
+    assert args.toolbaker
+    assert eval_run.parse_args([]).max_calls == 40
+
+
+@pytest.mark.parametrize("failure", [None, "TimeoutError", "CliError"])
+def test_family_post_verifier_runs_despite_agent_failure(monkeypatch, failure):
+    calls = []
+
+    async def call(session, name, arguments):
+        calls.append((name, arguments))
+        assert arguments["dry_run"] is True
+        assert arguments["transaction"] == "auto"
+        return {"payload": {"checks": [check_row()]}, "error": False}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    rows = asyncio.run(
+        eval_run.verify_family(
+            None, FAMILY_SCENARIOS[0], "family", "project", {"failure": failure}, {}
+        )
+    )
+    assert [args["document"] for _, args in calls] == ["family", "project"]
+    assert any(row["check_id"] == "flex" and row["status"] == "fail" for row in rows)
+
+
+def test_family_document_routing_preserves_family_and_project(monkeypatch):
+    session = FakeSession()
+    tools = {
+        "revit_read": {
+            "read_only": True,
+            "schema": {"type": "object", "properties": {"document": {"type": "string"}}},
+        }
+    }
+    scope = eval_run.family_scope(
+        list({"name": name, **tool} for name, tool in tools.items()), ["family", "project"]
+    )
+    for document in ("family", "project"):
+        result = asyncio.run(
+            eval_run.execute_call(
+                session,
+                tools,
+                {"tool": "revit_read", "args": {"document": document}},
+                scope,
+                "project",
+            )
+        )
+        assert result["args"]["document"] == document
+    refused = asyncio.run(
+        eval_run.execute_call(
+            session,
+            tools,
+            {"tool": "revit_read", "args": {"document": "production"}},
+            scope,
+            "project",
+        )
+    )
+    assert refused["error"]
+
+
+def test_family_rule_report_matches_seeded_ids():
+    manifest = {"plane_ids": ["plane-x", "plane-y"], "origin_ids": ["plane-x", "body"]}
+    report = {
+        "before_violations": [
+            {"rule_id": "R1", "defect_id": "origin", "element_unique_ids": ["plane-x", "body"]},
+            {
+                "rule_id": "R2",
+                "defect_id": "plane_names",
+                "element_unique_ids": ["plane-x", "plane-y"],
+            },
+            {"rule_id": "R3", "defect_id": "parameter_name", "parameter_name": "w"},
+        ],
+        "after_violations": [],
+    }
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == "pass"
+    report["before_violations"][1]["element_unique_ids"] = ["invented"]
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == "fail"
+
+
+def test_family_explicit_approval_and_redaction(monkeypatch):
+    calls = []
+
+    async def call(session, name, arguments):
+        calls.append(arguments)
+        return (
+            {
+                "error": False,
+                "payload": {"data": {"confirmToken": "secret", "needsConfirmation": True}},
+            }
+            if len(calls) == 1
+            else {"error": False, "payload": {"data": {"saved": True}}}
+        )
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    monkeypatch.setattr("builtins.input", lambda _: "yes")
+    approvals = []
+    result = asyncio.run(
+        eval_run.family_call(None, "revit_save_document", {"document": "eval"}, approvals)
+    )
+    assert not result["error"]
+    assert calls[1]["confirm_token"] == "secret"
+    assert [event["kind"] for event in approvals] == ["challenge", "approved"]
+    assert "secret" not in json.dumps(approvals)
+
+
+def test_family_eof_never_approves(monkeypatch):
+    async def call(*args):
+        return {"error": False, "payload": {"confirmToken": "secret"}}
+
+    def eof(_):
+        raise EOFError
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    monkeypatch.setattr("builtins.input", eof)
+    approvals = []
+    result = asyncio.run(eval_run.family_call(None, "revit_save_document", {}, approvals))
+    assert result["error"]
+    assert approvals[-1]["kind"] == "denied"
+
+
+def test_family_cli_proxy_reuses_one_upstream(monkeypatch, tmp_path):
+    """The proxy cannot launch its deliberately invalid upstream command."""
+    import shlex
+    import sys
+
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    forwarded = []
+
+    async def call(session, name, arguments, approvals):
+        forwarded.append((session, name, arguments))
+        return {"error": False, "payload": {"success": True, "total": 5}}
+
+    monkeypatch.setattr(eval_run, "family_call", call)
+    upstream_session = object()
+
+    async def check():
+        async with eval_run.family_relay(upstream_session, []) as relay:
+            config = tmp_path / "proxy.json"
+            config.write_text(
+                json.dumps(
+                    {
+                        "server_command": shlex.join(["no-such-upstream-must-not-start"]),
+                        "relay": relay,
+                        "tools": TOOLS,
+                        "scenario": {"actions": [], "read_only": True},
+                        "document": "fixture",
+                        "max_calls": 2,
+                        "trace": str(tmp_path / "trace.jsonl"),
+                    }
+                )
+            )
+            parameters = StdioServerParameters(
+                command=sys.executable,
+                args=[str(ROOT / "build/llm-eval/run.py"), "--stdio-proxy", str(config)],
+            )
+            async with (
+                stdio_client(parameters) as (read, write),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                result = await session.call_tool("revit_query_elements", {})
+                assert not result.is_error
+                assert json.loads(result.content[0].text)["total"] == 5
+
+    asyncio.run(check())
+    assert len(forwarded) == 1
+    assert forwarded[0][0] is upstream_session
+
+
+@pytest.mark.parametrize("denied", ["revit_open_document", "revit_close_document"])
+def test_family_cleanup_denial_preserves_files(monkeypatch, denied):
+    calls = []
+
+    async def call(session, name, args, approvals):
+        calls.append(name)
+        return {
+            "error": name == denied,
+            "payload": {"error": "operator_denied"} if name == denied else {},
+        }
+
+    async def inventory(*args):
+        return {
+            "error": False,
+            "payload": {"data": [{"title": "Organizer", "path": r"C:\Fixtures\Organizer.rvt"}]},
+        }
+
+    monkeypatch.setattr(eval_run, "call_mcp", inventory)
+    monkeypatch.setattr(eval_run, "family_call", call)
+    plan = FAMILY.cleanup_plan(r"C:\Eval\run1", ["family"], [r"C:\Eval\run1\box.rfa"])
+    assert asyncio.run(eval_run.family_cleanup(None, plan, [], "Organizer"))["status"] == "failed"
+    expected = ["revit_open_document"]
+    if denied == "revit_close_document":
+        expected.append("revit_close_document")
+    assert calls == expected
+
+
+def test_family_verifier_errors_are_incomplete_checks(monkeypatch):
+    async def unavailable(*args):
+        raise TimeoutError
+
+    monkeypatch.setattr(eval_run, "call_mcp", unavailable)
+    rows = asyncio.run(
+        eval_run.verify_family(None, FAMILY_SCENARIOS[3], "family", "project", {}, {})
+    )
+    assert rows and all(row["status"] == "fail" for row in rows)
+
+
+@pytest.mark.parametrize("failure", [None, "CliError", "TimeoutError"])
+def test_family_runner_prepares_fresh_fixtures_and_probes_before_cleanup(
+    monkeypatch, tmp_path, failure
+):
+    import mcp
+    import mcp.client.stdio
+
+    events = []
+    documents = {"Organizer"}
+
+    class Session:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def initialize(self):
+            return SimpleNamespace(server_info=SimpleNamespace(model_dump=lambda: {"name": "fake"}))
+
+        async def list_tools(self, **kwargs):
+            return SimpleNamespace(tools=[], next_cursor=None)
+
+    @asynccontextmanager
+    async def stdio(_):
+        yield None, None
+
+    class Agent:
+        def __init__(self, family, model):
+            self.model = model
+
+        async def run(self, prompt, command, tools, scope, document, *args, **kwargs):
+            assert "named undo" not in prompt
+            assert "activity" not in prompt
+            assert "summary" not in prompt
+            events.append(("agent", document))
+            documents.add("EVAL_Box" if "EVAL_Box" in prompt else "EVAL_Table")
+            return {"failure": failure, "trace": [], "seconds": 1, "answer": "Done"}
+
+    async def call(session, name, arguments):
+        events.append((name, dict(arguments)))
+        if name == "revit_documents":
+            return {
+                "error": False,
+                "payload": {
+                    "data": [
+                        {"title": title, "path": rf"C:\Fixtures\{title}.rvt"} for title in documents
+                    ]
+                },
+            }
+        if name in {"revit_open_document", "revit_new_document"}:
+            from pathlib import PureWindowsPath
+
+            documents.add(PureWindowsPath(arguments.get("path", arguments.get("save_as"))).stem)
+        if name == "revit_close_document":
+            documents.remove(arguments["document"])
+        return {
+            "error": False,
+            "payload": {"data": {"returnValue": {"removed": True, "checks": []}}},
+        }
+
+    monkeypatch.setattr(mcp, "ClientSession", lambda *args: Session())
+    monkeypatch.setattr(mcp.client.stdio, "stdio_client", stdio)
+    monkeypatch.setattr(eval_run, "CliProvider", Agent)
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    fixtures = tmp_path / "fixtures.json"
+    fixtures.write_text(
+        json.dumps(
+            {
+                "output_root": r"C:\Eval",
+                "scenarios": {
+                    letter: {
+                        "project": r"C:\Fixtures\project.rvt",
+                        "template": r"C:\Templates\family.rft",
+                    }
+                    for letter in "AB"
+                },
+            }
+        )
+    )
+    args = eval_run.parse_args(
+        [
+            "--profile",
+            "family",
+            "--provider",
+            "codex-cli",
+            "--family-fixtures",
+            str(fixtures),
+            "--server-command",
+            "fake",
+            "--document",
+            "Organizer",
+            "--scenarios",
+            "A,B",
+        ]
+    )
+    result = asyncio.run(eval_run.family_main(args))
+    agent_indices = [index for index, event in enumerate(events) if event[0] == "agent"]
+    assert len(agent_indices) == (1 if failure == "TimeoutError" else 2)
+    for index in agent_indices:
+        assert events[index + 1][0] == "revit_execute_code"
+        assert events[index + 1][1]["dry_run"] is True
+    copies = [
+        event[1]["code"]
+        for event in events
+        if event[0] == "revit_execute_code" and "Directory.CreateDirectory" in event[1]["code"]
+    ]
+    assert len(set(copies)) == len(agent_indices)
+    if failure == "TimeoutError":
+        assert result["stopped"]
+        assert not any(event[0] == "revit_close_document" for event in events)
+        assert not any(
+            event[0] == "revit_open_document" for event in events[agent_indices[0] + 1 :]
+        )
+    else:
+        assert documents == {"Organizer"}
+        assert all(run["cleanup"]["status"] == "cleaned" for run in result["runs"])
+
+
+@pytest.mark.parametrize("name", sorted(eval_run.DOCUMENT_FREE_DISCOVERY))
+@pytest.mark.parametrize("arguments", [{}, {"document": None}])
+def test_family_discovery_does_not_require_document(monkeypatch, name, arguments):
+    forwarded = []
+
+    async def call(session, tool, args):
+        forwarded.append((tool, args))
+        return {"error": False, "payload": {"discovered": True}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    tools = {
+        name: {
+            "read_only": True,
+            "schema": {"type": "object", "properties": {"document": {"type": ["string", "null"]}}},
+        }
+    }
+    scope = eval_run.family_scope([{"name": name}], ["family", "project"])
+    result = asyncio.run(
+        eval_run.execute_call(None, tools, {"tool": name, "args": arguments}, scope, "family")
+    )
+    assert not result["error"]
+    assert forwarded == [(name, arguments)]
+
+
+@pytest.mark.parametrize("name", ["revit_ping", "revit_read"])
+def test_family_refusal_returns_safe_explanation(monkeypatch, name):
+    async def unexpected(*args):
+        pytest.fail("Refused request reached upstream")
+
+    monkeypatch.setattr(eval_run, "call_mcp", unexpected)
+    tools = {name: {"read_only": True, "schema": {"properties": {"document": {"type": "string"}}}}}
+    scope = eval_run.family_scope([{"name": name}], ["family"])
+    result = asyncio.run(
+        eval_run.execute_call(
+            None, tools, {"tool": name, "args": {"document": "foreign"}}, scope, "family"
+        )
+    )
+    assert result["error"]
+    assert result["result"]["message"] == "Family calls require an explicit run-owned document"
+    assert "foreign" not in json.dumps(result["result"])
+
+
+def test_family_verifier_retains_every_expected_check_with_reason():
+    rows = [
+        check_row("labels", "pass"),
+        check_row("planes", "fail"),
+        check_row("optional", "not_applicable"),
+    ]
+    expected = ["labels", "planes", "optional", "alignments"]
+    parsed = FAMILY.parse_checks({"payload": {"checks": rows}, "error": False}, expected)
+    assert [row["check_id"] for row in parsed] == expected
+    assert [row["status"] for row in parsed] == ["pass", "fail", "not_applicable", "fail"]
+    assert all(row["reason"] for row in parsed)
+
+
+def test_family_calibrate_parser_needs_no_provider_credentials(monkeypatch, tmp_path):
+    monkeypatch.setenv(eval_run.SERVER_COMMAND_ENV, "fake-server")
+    args = eval_run.parse_args(
+        ["--profile", "family", "--family-fixtures", str(tmp_path / "fixtures.json"), "--calibrate"]
+    )
+    assert args.calibrate
+    assert not args.toolbaker
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--calibrate"],
+        ["--profile", "family", "--family-fixtures", "fixtures.json", "--calibrate", "--toolbaker"],
+    ],
+)
+def test_family_calibrate_parser_rejects_incompatible_modes(monkeypatch, options):
+    monkeypatch.setenv(eval_run.SERVER_COMMAND_ENV, "fake-server")
+    with pytest.raises(SystemExit):
+        eval_run.parse_args(options)
+
+
+def test_family_dimension_exception_still_emits_every_check(monkeypatch):
+    async def call(session, name, arguments):
+        if arguments["document"] == "family":
+            return {
+                "error": True,
+                "payload": {
+                    "message": "InvalidOperationException: This dimension can not be labeled"
+                },
+            }
+        return {"error": False, "payload": {"checks": [check_row("placement")]}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    run = {}
+    rows = asyncio.run(
+        eval_run.verify_family(None, FAMILY_SCENARIOS[0], "family", "project", run, {})
+    )
+    assert [row["check_id"] for row in rows] == FAMILY.expected_checks("A") + ["placement"]
+    assert all(row["status"] == "fail" and row["reason"] for row in rows[:-1])
+    assert rows[-1]["status"] == "pass"
+    assert "can not be labeled" in run["probes"][0]["result"]["payload"]["message"]
+
+
+@pytest.mark.parametrize("reason", ["", " ", None, 42])
+def test_family_verifier_requires_a_reason(reason):
+    row = {**check_row(), "reason": reason}
+    parsed = FAMILY.parse_checks({"error": False, "payload": {"checks": [row]}}, ["parameters"])
+    assert parsed[0]["status"] == "fail"
+    assert parsed[0]["reason"]
+
+
+@pytest.mark.parametrize(
+    "resource", ["resources/list", "list_resources", "resources/read", "read_resource"]
+)
+def test_resource_errors_do_not_hide_tool_trace_mismatches(monkeypatch, resource):
+    events = cli_events("codex-cli")
+    events.insert(
+        2,
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "resource",
+                "type": "mcp_tool_call",
+                "server": "revit",
+                "tool": resource,
+                "arguments": {},
+                "status": "failed",
+                "error": {"message": "Method not found"},
+            },
+        },
+    )
+    fake_cli(monkeypatch, events)
+    run = asyncio.run(
+        eval_run.CliProvider("codex-cli").run(
+            "Count",
+            "fake",
+            TOOLS,
+            {"actions": [], "sequences": [[{"tool": "revit_query_elements", "args": {}}]]},
+            "fixture",
+            40,
+        )
+    )
+    assert run["failure"] == "TraceMismatch"
+    assert run["notes"][0]["native_calls"] == 1
+
+
+@pytest.mark.parametrize(
+    "change", ["split", "labels", "missing", "foreign", "wrong_rule", "remaining"]
+)
+def test_family_rule_report_uses_rule_semantics_and_complete_identities(change):
+    manifest = {"plane_ids": ["x", "y"], "origin_ids": ["body", "x"]}
+    before = [
+        {"rule_id": "R1", "element_unique_ids": ["body", "x"]},
+        {"rule_id": "R2", "element_unique_ids": ["x", "y"]},
+        {"rule_id": "R3", "parameter_name": "w"},
+    ]
+    report = {"before_violations": before, "after_violations": []}
+    if change == "split":
+        before[0]["element_unique_ids"] = ["body"]
+        before.append({"rule_id": "R1", "element_unique_ids": ["x"]})
+    elif change == "labels":
+        for index, row in enumerate(before):
+            row["defect_id"] = f"descriptive-{index}"
+    elif change == "missing":
+        before[0]["element_unique_ids"] = ["body"]
+    elif change == "foreign":
+        before[1]["element_unique_ids"] = ["template-x", "template-y"]
+    elif change == "wrong_rule":
+        before[0]["rule_id"] = "R5"
+    else:
+        report["after_violations"] = [before[0]]
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == (
+        "pass" if change in {"split", "labels"} else "fail"
+    )
+
+
+def test_static_equipment_contract_has_geometry_without_flex():
+    assert "geometry" in FAMILY.expected_checks("D")
+    assert "flex" not in FAMILY.expected_checks("D")
+    prompt = next(row["prompt"] for row in FAMILY_SCENARIOS if row["id"] == "D")
+    assert "ровно один явный тип семейства" in prompt
+    assert "flex не требуются" in prompt
+
+
+@pytest.mark.parametrize("control", [True, False])
+def test_toolbaker_catalog_isolates_saved_procedure(monkeypatch, control):
+    async def call(*args):
+        return {
+            "error": False,
+            "payload": {"data": {"tools": [{"name": "personal"}, {"name": "eval_owned"}]}},
+        }
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    scope = {"saved_tool_name": "eval_owned", "tool_control": control}
+    result = asyncio.run(eval_run.isolated_tool_call(None, "revit_list_tools", {}, scope))
+    assert eval_run.result_data(result)["tools"] == ([] if control else [{"name": "eval_owned"}])
+    for name in ("revit_run_tool", "revit_get_tool", "revit_save_tool"):
+        with pytest.raises(eval_run.CallRefused):
+            asyncio.run(eval_run.isolated_tool_call(None, name, {"name": "personal"}, scope))
+        if control:
+            with pytest.raises(eval_run.CallRefused):
+                asyncio.run(eval_run.isolated_tool_call(None, name, {"name": "eval_owned"}, scope))
+
+
+@pytest.mark.parametrize("scenario", ["C", "D"])
+def test_absent_instance_keeps_each_project_failure_and_reason(monkeypatch, scenario):
+    expected = FAMILY.expected_checks(scenario, project=True)
+
+    async def probe(session, name, arguments):
+        rows = [
+            {
+                **check_row(check_id=check),
+                "status": "fail",
+                "actual": 0,
+                "reason": "Project checks require exactly one result instance",
+            }
+            for check in expected
+        ]
+        return {"error": False, "payload": {"data": {"returnValue": {"checks": rows}}}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", probe)
+    specification = next(row for row in FAMILY_SCENARIOS if row["id"] == scenario)
+    rows = asyncio.run(eval_run.verify_family(None, specification, "family", "project", {}, {}))
+    project = [row for row in rows if row["check_id"] in expected]
+    assert {row["check_id"] for row in project} == set(expected)
+    assert all(row["status"] == "fail" and row["actual"] == 0 for row in project)
+    assert all(
+        row["reason"] == "Project checks require exactly one result instance" for row in project
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "new",
+        "preexisting",
+        "failed_save",
+        "other_name",
+        "empty",
+        "scale_only",
+        "optional_dimensions",
+    ],
+)
+def test_toolbaker_training_requires_new_run_owned_save(case):
+    schema = {
+        "type": "object",
+        "properties": {key: {"type": "number"} for key in eval_run.TRANSFER_DIMENSIONS},
+        "required": eval_run.TRANSFER_DIMENSIONS,
+    }
+    entries = [{"name": "eval_owned", "parameters": json.dumps(schema)}]
+    trace = [{"tool": "revit_save_tool", "args": {"name": "eval_owned"}, "error": False}]
+    if case == "preexisting":
+        trace = []
+    elif case == "failed_save":
+        trace[0]["error"] = True
+    elif case == "other_name":
+        trace[0]["args"]["name"] = "personal"
+    elif case == "empty":
+        entries = []
+    elif case == "scale_only":
+        entries[0]["parameters"] = {"properties": {"scale": {"type": "number"}}}
+    elif case == "optional_dimensions":
+        schema["required"] = []
+        entries[0]["parameters"] = schema
+    assert eval_run.training_tool_saved(trace, entries, "eval_owned") is (case == "new")
+
+
+def test_toolbaker_control_and_treatment_have_identical_task():
+    control, treatment = eval_run.transfer_variants(FAMILY_SCENARIOS[0])
+    assert control.pop("tool_control") is True
+    assert treatment.pop("tool_control") is False
+    assert control == treatment
+    assert "500×350×250" in control["prompt"]
+    assert "1000×700×650" in control["prompt"]
+    assert "1400×1000×1100" in control["prompt"]
+    assert "вызови его штатным инструментом запуска" in control["prompt"]
+    assert "Копирование исходника" in control["prompt"]
+
+
+def test_calibration_routes_reference_authoring_through_selected_executor():
+    lifecycle = []
+    authored = []
+
+    async def required(name, arguments):
+        lifecycle.append(name)
+        return {}
+
+    async def execute(document, code):
+        authored.append((document, bool(code)))
+        return {}
+
+    result = asyncio.run(
+        eval_run.run_reference(
+            required,
+            FAMILY_SCENARIOS[0],
+            "family",
+            "project",
+            r"C:\Eval\box.rfa",
+            {},
+            execute_code=execute,
+        )
+    )
+    assert authored == [("family", True), ("project", True)]
+    assert lifecycle == ["revit_save_document", "revit_load_family"]
+    assert result["answer"] == "Reference C# solution"
+
+
+def test_native_target_confirmation_requires_operator_decision(monkeypatch):
+    calls = []
+
+    async def call(*args):
+        calls.append(args)
+        return {"error": False, "payload": {}}
+
+    monkeypatch.setattr(eval_run, "call_mcp", call)
+    monkeypatch.setattr("builtins.input", lambda _: "no")
+    approvals = []
+    response = asyncio.run(
+        eval_run.family_call(
+            None, "revit_switch_target", {"version": "pid:123", "verify": True}, approvals
+        )
+    )
+    assert response["error"]
+    assert not calls
+    assert [row["kind"] for row in approvals] == ["challenge", "denied"]
+
+
+@pytest.mark.parametrize("include_y", [True, False])
+def test_rule_report_covers_every_seeded_origin_violation(include_y):
+    manifest = {"plane_ids": ["x", "y"], "origin_ids": ["body", "x", "y"]}
+    report = {
+        "before_violations": [
+            {"rule_id": "R1", "element_unique_ids": ["body", "x"]},
+            {"rule_id": "R2", "element_unique_ids": ["x", "y"]},
+            {"rule_id": "R3", "parameter_name": "w"},
+        ],
+        "after_violations": [],
+    }
+    if include_y:
+        report["before_violations"].append({"rule_id": "R1", "element_unique_ids": ["y"]})
+    assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == (
+        "pass" if include_y else "fail"
+    )
 
 
 test_cli_timeout_kills_grandchild_process_group = pytest.mark.skipif(
