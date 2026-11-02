@@ -565,3 +565,20 @@ def test_pipe_forwards_intermediate_progress_and_resolves_only_terminal():
         await connection.aclose()
 
     asyncio.run(check())
+
+
+def test_lock_refusal_preserves_metadata_and_policy_source():
+    from revit_model_mcp.revit_channel import refused_response
+
+    messages = [
+        (
+            "Read-only is on for this Windows user (set from chat at 2026-10-22T12:00:00Z). Turn it off with the Model MCP ribbon button or by asking the assistant.",
+            "read_only",
+        ),
+        ("Read-only is enforced by workstation policy; ask your administrator.", "policy_blocked"),
+    ]
+    for message, code in messages:
+        error = pipe_host._refusal_error({"error": "read_only", "message": message})
+        result = refused_response("delete", error)
+        assert result["error"] == message
+        assert result["errorCode"] == code

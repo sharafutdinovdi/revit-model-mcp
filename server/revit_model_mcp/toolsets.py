@@ -11,6 +11,7 @@ from typing import Any
 TOOLSETS: dict[str, tuple[str, ...]] = {
     "core": (
         "revit_ping",
+        "revit_set_read_only",
         "revit_list_instances",
         "revit_documents",
         "revit_document_info",

@@ -337,9 +337,10 @@ mcp = RevitMCPServer(
         "still the most recent change in Revit. Save, sync and close-with-loss tools return a "
         "confirmation token first and perform nothing until a second call with identical arguments "
         "carries it; dry_run needs no token. With several Revit instances running, document or "
-        "process_id selects one. REVIT_MCP_TOOLSETS limits which tools are listed. Setting "
-        "REVIT_MCP_READ_ONLY=1 in this server's environment, or adding the workstation read-only "
-        "file, disables actions without hiding them; they then return `read-only mode`. Every read "
+        "process_id selects one. REVIT_MCP_TOOLSETS limits which tools are listed. "
+        "The workstation read-only lock disables actions without hiding them. "
+        "revit_set_read_only and the Model MCP ribbon switch it. Unlocking from chat requires "
+        "explicit user confirmation. Every read "
         "result has skipped and skippedCount; a non-empty skipped list means the answer is "
         "incomplete. The guide revit://guides/coordinator describes the recommended tool order."
     ),
@@ -1473,7 +1474,16 @@ async def revit_issue_register(
         raise ToolError(str(error)) from error
 
 
+LEGACY_READ_ONLY_VARIABLE = "REVIT_MCP_READ_ONLY"
+
+
 def main() -> None:
+    if LEGACY_READ_ONLY_VARIABLE in os.environ:
+        print(
+            "REVIT_MCP_READ_ONLY is no longer used; use the workstation read-only lock "
+            "(revit_set_read_only or the Model MCP ribbon).",
+            file=sys.stderr,
+        )
     default_host = os.environ.get("REVIT_MCP_HOST", DEFAULT_HOST)
     channel_dir = os.environ.get("REVIT_MCP_CHANNEL_DIR") or rf"%LOCALAPPDATA%\{CHANNEL_DIRECTORY}"
     parser = argparse.ArgumentParser(

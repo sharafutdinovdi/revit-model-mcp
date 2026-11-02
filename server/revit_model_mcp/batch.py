@@ -44,14 +44,24 @@ def _file_host(host: object) -> SshPowerShellHost:
     return candidate
 
 
-async def _http_workstation_is_read_only(host: object) -> bool:
-    """Batch collection has no HTTP path, so only the health report can show the read-only gate."""
+async def _http_workstation_read_only_refusal(host: object) -> dict[str, Any] | None:
+    """Preserve the workstation lock description when HTTP cannot start a batch."""
     if not isinstance(host, HttpHost):
-        return False
+        return None
     try:
-        return (await host.health()).get("readOnly") is True
+        state = (await host.health()).get("readOnly")
+        if isinstance(state, dict) and state.get("enabled") is True:
+            message = (
+                "Read-only is enforced by workstation policy; ask your administrator."
+                if state.get("source") == "policy"
+                else f"Read-only is on for this Windows user (set from {state.get('setBy')} at {state.get('setAtUtc')}). Turn it off with the Model MCP ribbon button or by asking the assistant."
+            )
+            return with_error_code({"success": False, "command": "batch-start", "error": message})
+        if state is True:
+            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
     except RevitChannelError:
-        return False
+        pass
+    return None
 
 
 def _run_id(value: str) -> str:
@@ -178,8 +188,6 @@ def _deny_by_policy(tool: str) -> None:
 
 
 def register_batch(mcp, host_provider, channel_provider) -> None:
-    read_only = env_flag("REVIT_MCP_READ_ONLY", False)
-
     @mcp.tool(
         title="Start batch collection",
         annotations=BATCH_TOOL.model_copy(update={"title": "Start batch collection"}),
@@ -193,7 +201,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         open_timeout_minutes: int | None = None,
     ) -> dict[str, Any]:
         """Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."""
-        if (gate := policy_gate("revit_batch_start", read_only, label="batch-start")) is not None:
+        if (gate := policy_gate("revit_batch_start", label="batch-start")) is not None:
             return gate
         if (paths is None) == (folder is None):
             raise ToolError("Supply exactly one of paths or folder.")
@@ -208,8 +216,8 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         ):
             raise ToolError("open_timeout_minutes must be an integer from 5 through 180.")
         host = host_provider()
-        if await _http_workstation_is_read_only(host):
-            return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
+        if (gate := await _http_workstation_read_only_refusal(host)) is not None:
+            return gate
         file_host = _file_host(host)
         try:
             await file_host.batch_assert_writable()
@@ -258,8 +266,17 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         except TransportUnavailableError as error:
             return redact_model_paths(unavailable("batch-start", str(error)))
         except RevitChannelError as error:
-            if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):
-                return refusal("batch-start", READ_ONLY, READ_ONLY_MESSAGE)
+            if isinstance(error, RemoteCommandError) and (
+                READ_ONLY_MESSAGE in str(error)
+                or "Read-only is on for this Windows user" in str(error)
+            ):
+                return refusal(
+                    "batch-start",
+                    READ_ONLY,
+                    str(error)
+                    if "Read-only is on for this Windows user" in str(error)
+                    else READ_ONLY_MESSAGE,
+                )
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
     @mcp.tool(
@@ -284,7 +301,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
     )
     async def revit_batch_cancel(run_id: str) -> dict[str, Any]:
         """Persist cancellation and prevent unstarted models from running."""
-        if (gate := policy_gate("revit_batch_cancel", read_only, label="batch-cancel")) is not None:
+        if (gate := policy_gate("revit_batch_cancel", label="batch-cancel")) is not None:
             return gate
         try:
             run_id = _run_id(run_id)
@@ -295,8 +312,17 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             return refused_response("batch-cancel", error)
         except RevitChannelError as error:
             # File-channel cancellation reports the gate through PowerShell stderr.
-            if isinstance(error, RemoteCommandError) and READ_ONLY_MESSAGE in str(error):
-                return refusal("batch-cancel", READ_ONLY, READ_ONLY_MESSAGE)
+            if isinstance(error, RemoteCommandError) and (
+                READ_ONLY_MESSAGE in str(error)
+                or "Read-only is on for this Windows user" in str(error)
+            ):
+                return refusal(
+                    "batch-cancel",
+                    READ_ONLY,
+                    str(error)
+                    if "Read-only is on for this Windows user" in str(error)
+                    else READ_ONLY_MESSAGE,
+                )
             raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
 
     @mcp.tool(

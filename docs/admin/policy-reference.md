@@ -72,7 +72,7 @@ Rules:
 - When `ToolAllow` is not empty, every tool that is not listed is refused.
 - `revit_ping` and `revit_jobs` are never blocked, so a client can always read the effective policy.
 - `revit_tag_elements` and `revit_create_schedule` are modifying tools: `ReadOnly`, `ToolDeny` and `ToolAllow` apply to them like to every other action tool.
-- A refusal is a normal tool result with `success: false`. Its message starts with `Blocked by organization policy:`. The server adds `errorCode: "policy_blocked"`, also for a `ReadOnly` policy, and the text is the same on the pipe, HTTP and SSH paths. `errorCode: "read_only"` with the text `read-only mode` stays for the per-user read-only gate and `REVIT_MCP_READ_ONLY`. With `HttpEnabled=0` in the policy, `revit_ping` and `revit_list_instances` report the listener reason `HTTP is disabled by organization policy.` A blocked call is refused before the command runs, also inside `revit_batch` steps.
+- A refusal is a normal tool result with `success: false`. Its message starts with `Blocked by organization policy:`. The server adds `errorCode: "policy_blocked"`, also for a `ReadOnly` policy, and the text is the same on the pipe, HTTP and SSH paths. `errorCode: "read_only"` with the text `read-only mode` stays for the workstation read-only lock. With `HttpEnabled=0` in the policy, `revit_ping` and `revit_list_instances` report the listener reason `HTTP is disabled by organization policy.` A blocked call is refused before the command runs, also inside `revit_batch` steps.
 - Policy applies to the pipe, the file channel and the HTTP listener alike, because it is checked in the add-in.
 - Read tools that are not denied keep working in read-only mode.
 
@@ -129,7 +129,7 @@ For each setting, the first source that has a value wins.
 
 Two exceptions keep the safer value:
 
-- Read-only is on if the machine policy, the workstation file `%LOCALAPPDATA%\RevitModelMcp\read-only` or the server variable `REVIT_MCP_READ_ONLY=1` says so. No lower layer can turn policy read-only off.
+- Read-only is on if the machine policy or the workstation read-only lock (ribbon button or `revit_set_read_only`) says so. No lower layer can turn policy read-only off.
 - An update check is off if any layer turns it off (`UpdateMode=off`, `updateCheck: false`, `REVIT_MCP_NO_UPDATE_CHECK=1`). Per-machine installs and `dev` builds are capped at `notify`, and the `store` and `managed` channels never check. See [automatic updates](../updates.md#modes).
 
 ## User settings and environment
@@ -170,7 +170,6 @@ These exist without a machine policy. They are per user or per process, so a use
 | Variable | Meaning |
 | --- | --- |
 | `REVIT_MCP_HOST` | `local`, an `http(s)://` workstation or an SSH alias. |
-| `REVIT_MCP_READ_ONLY` | `1` refuses actions in this server process only. |
 | `REVIT_MCP_REDACT_PATHS` | Redact paths in outgoing responses. |
 | `REVIT_MCP_TOKEN` | Bearer token for an HTTP workstation. |
 | `REVIT_MCP_CHANNEL_DIR` | Channel folder on the workstation. |

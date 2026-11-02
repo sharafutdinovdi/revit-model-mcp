@@ -222,6 +222,7 @@ def tooltip_svg(name: str, scheme: str) -> str:
         "settings": "Local settings",
         "connect": "Connect AI app",
         "activity": "MCP activity",
+        "readonly": "Read-only",
         "help": "Documentation",
         "issue": "Report an issue",
         "support": "Support development",
@@ -229,7 +230,7 @@ def tooltip_svg(name: str, scheme: str) -> str:
     parts = [
         '<svg xmlns="http://www.w3.org/2000/svg" width="340" height="200" viewBox="0 0 340 200">',
         f'<rect width="340" height="200" fill="{background}"/>',
-        glyph(name, 16, 14),
+        glyph("locked" if name == "readonly" else name, 16, 14),
         label(60, 36, titles[name], 18),
     ]
     if name == "connect":
@@ -258,6 +259,16 @@ def tooltip_svg(name: str, scheme: str) -> str:
                     label(249, y + 22, state, 12, accent),
                 )
             )
+    elif name == "readonly":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("locked", 30, 91, 58),
+                label(104, 93, "One workstation lock", 16),
+                label(104, 122, "All running Revit versions"),
+                label(104, 151, "Chat unlock: confirm first", 14, accent),
+            )
+        )
     elif name == "logo":
         for index, (icon_name, title) in enumerate(
             (
@@ -346,6 +357,7 @@ def render_tooltips(browser: Browser, contact_sheet: Path | None = None) -> None
         "settings",
         "connect",
         "activity",
+        "readonly",
         "help",
         "issue",
         "support",
@@ -360,7 +372,8 @@ def render_tooltips(browser: Browser, contact_sheet: Path | None = None) -> None
             raster = Image.open(io.BytesIO(shoot(browser, html, (340, 200), 2)))
             raster = raster.resize((340, 200), Image.Resampling.LANCZOS)
             suffix = "-dark" if scheme == "dark" else ""
-            target = ADDIN_ICONS / f"{name.capitalize()}Tooltip{suffix}.png"
+            stem = "ReadOnly" if name == "readonly" else name.capitalize()
+            target = ADDIN_ICONS / f"{stem}Tooltip{suffix}.png"
             raster.save(target, optimize=True)
             print(f"{target.relative_to(ROOT)}: 340 x 200")
             x, y = column * 360 + 10, row * 232 + 36

@@ -1,7 +1,7 @@
 # Model MCP server
 
 The Python package of Model MCP for Autodesk® Revit® exposes Revit tools over MCP stdio; actions run by default.
-Set `REVIT_MCP_READ_ONLY=1` or create the workstation `read-only` file to disable them without hiding the action tools.
+One workstation read-only lock disables them without hiding the action tools. Use the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs explicit confirmation, and the machine policy wins.
 It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
 
 ## Install and run
@@ -64,7 +64,6 @@ Boolean server variables accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`,
 | Variable | Read by | Default | Behavior |
 |---|---|---|---|
 | `REVIT_MCP_HOST` | Server | `local` | Local PowerShell or pipe, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_READ_ONLY` | Server | Off | `1` refuses action calls, including `revit_run_actions`, `revit_export_nwc`, `revit_edit_families`, `revit_align_link_datums` and `revit_undo_last`, with `success:false`, `error:"read-only mode"` and `errorCode:"read_only"` instead of running them; the tools stay listed. The workstation `read-only` file is checked independently. |
 | `REVIT_MCP_TOOLSETS` | Server | `all` | Comma-separated toolsets whose tools `tools/list` exposes: `all`, `core`, `read`, `actions`, `documents`, `views-sheets`, `family`, `links`, `cad-mep`, `export`, `batch`, `code`. `core` is always included. `--toolsets` overrides it; an unknown name stops the server. It limits visibility, not permission: read-only mode and confirmation tokens still apply. See [Toolsets](../docs/tools.md#toolsets). |
 | `REVIT_MCP_REDACT_PATHS` | Server and add-in | Off | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior in the server. In the add-in it also redacts paths in the activity pane, stored code and logs. |
 | `REVIT_MCP_TOKEN` | Server and add-in | Unset | HTTP bearer token. The server sends it; `--token` overrides it. In Revit it overrides the `token` in `settings.json`. |

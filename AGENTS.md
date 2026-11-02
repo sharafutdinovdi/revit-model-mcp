@@ -75,8 +75,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 
 ## Hard rules
 
-- Actions are enabled by default; every change is one named undo entry, listed in the activity pane and reported in `summary`; read-only mode must stay available.
-- Direct HTTP actions still require authentication and are refused while the workstation read-only gate is present.
+- Actions are enabled by default; every change is one named undo entry, listed in the activity pane and reported in `summary`; read-only mode must stay available through the shared workstation lock, controlled by the Model MCP ribbon or `revit_set_read_only`. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by ribbon or chat.
+- Direct HTTP actions still require authentication and are refused while the workstation read-only lock is on. The authenticated `set-read-only` command remains available while locked.
 - Never log model paths when redaction is on, or expose secrets and confidential model data in commits or logs.
 - Never include Revit API assemblies in artifacts.
 - Keep transports loopback-first; remote exposure requires explicit configuration.

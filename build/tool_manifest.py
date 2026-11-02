@@ -24,6 +24,10 @@ _bundle_spec.loader.exec_module(_bundle_manifest)
 tool_manifest_entry = _bundle_manifest.tool_manifest_entry
 
 CONFIRMATION = {
+    "revit_set_read_only": (
+        "conditional",
+        "Turning off the workstation read-only lock.",
+    ),
     "revit_save_document": ("always", "Every call."),
     "revit_sync_document": ("always", "Every call; a non-empty comment is required."),
     "revit_execute_code": ("always", "Every call except dry_run."),
@@ -65,6 +69,10 @@ IRREVERSIBLE = {
 }
 
 FILE_SYSTEM = {
+    "revit_set_read_only": (
+        "write",
+        "Per-user read-only lock file on the Revit workstation.",
+    ),
     "revit_open_document": ("read", "Model file on the Revit workstation."),
     "revit_load_family": ("read", "Family files (.rfa) on the Revit workstation."),
     "revit_link_cad": ("read", "DWG file on the Revit workstation."),
@@ -198,7 +206,7 @@ DATA_HANDLING = {
         "user's own agreement."
     ),
     "readOnlyMode": (
-        "Actions are refused when REVIT_MCP_READ_ONLY=1 or the workstation read-only file exists."
+        "Actions are refused while the shared workstation read-only lock is on. The ribbon or revit_set_read_only controls it. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by either control."
     ),
     "localChannels": (
         "Named pipe (current Windows user only), a file channel under "

@@ -90,7 +90,12 @@ def endpoint():
                         "documentName": "Model",
                         "processId": state.get("processId", 42),
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
-                        "readOnly": True,
+                        "readOnly": {
+                            "enabled": True,
+                            "source": "user",
+                            "setBy": "ribbon",
+                            "setAtUtc": "2026-10-22T12:00:00Z",
+                        },
                         "addinVersion": package_version(),
                         "protocolVersion": 1,
                         "commands": ["ping", "select", "export", "export-view"],
@@ -158,7 +163,12 @@ def endpoint():
 def test_health_and_instance_discovery(endpoint):
     host, state = endpoint
     health = asyncio.run(host.health())
-    assert health["readOnly"] is True
+    assert health["readOnly"] == {
+        "enabled": True,
+        "source": "user",
+        "setBy": "ribbon",
+        "setAtUtc": "2026-10-22T12:00:00Z",
+    }
     assert health["addinVersion"] == package_version()
     assert health["protocolVersion"] == 1
     assert "ping" in health["commands"]
@@ -797,3 +807,20 @@ def test_http_policy_denied_action_returns_policy_blocked(endpoint):
         "error": "Blocked by organization policy: the tool 'select' is denied.",
         "errorCode": "policy_blocked",
     }
+
+
+@pytest.mark.parametrize(
+    "message,code",
+    [
+        (
+            "Read-only is on for this Windows user (set from ribbon at 2026-10-22T12:00:00Z). Turn it off with the Model MCP ribbon button or by asking the assistant.",
+            "read_only",
+        ),
+        ("Read-only is enforced by workstation policy; ask your administrator.", "policy_blocked"),
+    ],
+)
+def test_http_action_preserves_workstation_lock_description(endpoint, message, code):
+    host, state = endpoint
+    state.update(status=403, error_text=message)
+    result = asyncio.run(RevitChannel(host).execute(Job("select", {"command": "select"})))
+    assert result == {"success": False, "command": "select", "error": message, "errorCode": code}

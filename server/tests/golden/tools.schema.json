@@ -5593,6 +5593,34 @@
     ],
     "type": "object"
   },
+  "revit_set_read_only": {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": null,
+      "readOnlyHint": false
+    },
+    "properties": {
+      "confirm_token": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "enabled": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "enabled"
+    ],
+    "type": "object"
+  },
   "revit_set_view_visibility": {
     "annotations": {
       "destructiveHint": true,

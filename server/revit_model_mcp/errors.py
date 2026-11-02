@@ -12,6 +12,8 @@ POLICY_READ_ONLY_MESSAGE = f"{POLICY_BLOCKED_PREFIX} the workstation is read-onl
 ACTION_FAILED = "action_failed"
 """The add-in tried an action and returned an error."""
 READ_ONLY_MESSAGE = "read-only mode"
+USER_LOCK_PREFIX = "Read-only is on for this Windows user"
+POLICY_LOCK_MESSAGE = "Read-only is enforced by workstation policy; ask your administrator."
 
 
 def refusal(command: str, code: str, message: str) -> dict:
@@ -32,9 +34,9 @@ def with_error_code(response: dict) -> dict:
         and not _is_intermediate_response(response)
     ):
         error = response["error"]
-        if error == READ_ONLY_MESSAGE:
+        if error == READ_ONLY_MESSAGE or error.startswith(USER_LOCK_PREFIX):
             response["errorCode"] = READ_ONLY
-        elif error.startswith(POLICY_BLOCKED_PREFIX):
+        elif error.startswith(POLICY_BLOCKED_PREFIX) or error == POLICY_LOCK_MESSAGE:
             response["errorCode"] = POLICY_BLOCKED
         else:
             response["errorCode"] = ACTION_FAILED

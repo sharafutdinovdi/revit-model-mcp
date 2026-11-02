@@ -582,6 +582,28 @@
       "networkAccess": "none"
     },
     {
+      "name": "revit_set_read_only",
+      "description": "Set the workstation read-only lock for all Revit versions of this Windows user. Locking needs no token. Unlocking requires a user request and explicit confirmation. The first call returns confirmationText and a token; the second call with confirm_token unlocks. Workstation policy cannot be changed.",
+      "toolset": "core",
+      "access": "modifying",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "conditional",
+        "mechanism": "confirm_token",
+        "condition": "Turning off the workstation read-only lock."
+      },
+      "fileSystem": {
+        "access": "write",
+        "scope": "Per-user read-only lock file on the Revit workstation."
+      },
+      "networkAccess": "none"
+    },
+    {
       "name": "revit_open_document",
       "description": "Open a local, UNC or RSN model. Central models open detached by default. Cloud paths are unsupported. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
       "toolset": "documents",
@@ -1724,7 +1746,7 @@
   "aiServices": [],
   "dataHandling": {
     "aiClients": "The server does not call any AI service. Tool results go to the MCP client the user chose; that client may send them to its own model provider under the user's own agreement.",
-    "readOnlyMode": "Actions are refused when REVIT_MCP_READ_ONLY=1 or the workstation read-only file exists.",
+    "readOnlyMode": "Actions are refused while the shared workstation read-only lock is on. The ribbon or revit_set_read_only controls it. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by either control.",
     "localChannels": "Named pipe (current Windows user only), a file channel under %LOCALAPPDATA%\\RevitModelMcp, and an HTTP listener bound to 127.0.0.1 with a bearer token. A remote workstation is reached only through a user-configured SSH or HTTP(S) host.",
     "telemetry": "None."
   }

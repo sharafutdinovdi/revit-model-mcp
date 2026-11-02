@@ -64,7 +64,7 @@ Not provided: single sign-on, per-client identities, token rotation, rate limiti
 
 ### Read-only mode
 
-Read-only mode refuses every action tool and keeps read tools. It can come from the server variable `REVIT_MCP_READ_ONLY`, from the workstation file `%LOCALAPPDATA%\RevitModelMcp\read-only`, and, with the machine policy, from the `ReadOnly` value that a user cannot change. The user file and the server variable can be removed by the user who owns them, so they are a safety switch and not an enforcement control. Use the machine policy for enforcement.
+Read-only mode refuses every action tool and keeps read tools. It comes from one workstation lock, set with the Read-only ribbon button or `revit_set_read_only`, or from the machine policy `ReadOnly` value that a user cannot change; the policy wins. Chat can turn the lock off only after explicit user confirmation. The user who owns the lock can remove it, so it is a safety switch and not an enforcement control. Use the machine policy for enforcement.
 
 ### Machine policy
 

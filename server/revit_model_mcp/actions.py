@@ -701,6 +701,8 @@ async def _send_action(
 ) -> dict[str, Any]:
     try:
         instances = await host_provider().list_revit_instances()
+        if command == "set-read-only" and process_id is None and instances:
+            process_id = min(int(instance["processId"]) for instance in instances)
         selected = (
             select_instance(
                 instances,
@@ -727,8 +729,6 @@ async def _send_action(
 
 
 def register_actions(mcp, execute, host_provider) -> None:
-    read_only = env_flag("REVIT_MCP_READ_ONLY", False)
-
     async def send(
         command: str,
         *,
@@ -737,7 +737,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         **payload,
     ) -> dict[str, Any]:
-        if (gate := policy_gate(command, read_only)) is not None:
+        if (gate := policy_gate(command, mutating=command != "set-read-only")) is not None:
             return gate
         return await _send_action(
             execute,
@@ -763,6 +763,7 @@ def register_actions(mcp, execute, host_provider) -> None:
                 + " A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
             )
         title = {
+            "revit_set_read_only": "Set Workstation Read-only",
             "revit_cancel_job": "Cancel Action Job",
             "revit_select": "Select Elements",
             "revit_show": "Show Elements",
@@ -827,6 +828,13 @@ def register_actions(mcp, execute, host_provider) -> None:
                 in {"revit_select", "revit_show", "revit_isolate", "revit_set_parameter"},
             ),
         )(with_client_identity(function))
+
+    @action
+    async def revit_set_read_only(
+        enabled: bool, confirm_token: str | None = None
+    ) -> dict[str, Any]:
+        """Set the workstation read-only lock for all Revit versions of this Windows user. Locking needs no token. Unlocking requires a user request and explicit confirmation. The first call returns confirmationText and a token; the second call with confirm_token unlocks. Workstation policy cannot be changed."""
+        return await send("set-read-only", enabled=enabled, confirmToken=confirm_token)
 
     @action
     async def revit_open_document(
@@ -1120,7 +1128,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
         """Request cancellation of an action jobId. Process-models stops before the next model and marks unstarted models cancelled; a single running Revit operation finishes, and completed changes stay committed."""
-        if (gate := policy_gate("revit_cancel_job", read_only, label="jobs")) is not None:
+        if (gate := policy_gate("revit_cancel_job", label="jobs")) is not None:
             return gate
         job = (
             Job(

@@ -14,7 +14,7 @@ HTTP binds to loopback by default and authenticates every route except `/health`
 Health reveals document name, Revit version, process ID and workstation read-only state.
 Protect `%LOCALAPPDATA%\RevitModelMcp\settings.json` and use an encrypted tunnel for remote access.
 The listener has no built-in TLS.
-Actions are enabled by default. Set `REVIT_MCP_READ_ONLY=1` in the Python server or create the workstation `read-only` file to disable them.
+Actions are enabled by default. One workstation read-only lock disables them: turn it on with the Model MCP ribbon button Read-only or the `revit_set_read_only` tool. Turning it off in chat needs explicit user confirmation, and the machine policy overrides the lock.
 See [transport](docs/transport.md) for bind settings and [actions](README.md#actions-opt-in) for read-only controls.
 
 0.x releases are previews; report against the latest release or main.

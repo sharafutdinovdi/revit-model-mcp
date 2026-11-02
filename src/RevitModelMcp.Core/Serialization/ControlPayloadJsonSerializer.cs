@@ -10,8 +10,10 @@ public static class ControlPayloadJsonSerializer
         new DataContractJsonSerializerSettings
         {
             UseSimpleDictionaryFormat = true,
+            EmitTypeInformation = System.Runtime.Serialization.EmitTypeInformation.Never,
             KnownTypes = new[]
             {
+                typeof(Control.ReadOnlyLockState),
                 typeof(string[]),
                 typeof(int[]),
                 typeof(long[]),

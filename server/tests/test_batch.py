@@ -183,8 +183,13 @@ async def test_scheduled_task_fallback_then_persisted_status_and_cancel(boundary
 
 @pytest.mark.anyio
 async def test_read_only_start_is_refused_without_side_effects(monkeypatch):
-    monkeypatch.setenv("REVIT_MCP_READ_ONLY", "1")
+    async def locked():
+        from revit_model_mcp.ssh_host import RemoteCommandError
+
+        raise RemoteCommandError("test", "read-only mode")
+
     registry, host, channel = Registry(), Host(), Channel()
+    host.batch_assert_writable = locked
     register_batch(registry, lambda: host, lambda: channel)
     result = await registry.tools["revit_batch_start"](folder=r"C:\models")
     assert result == {
@@ -205,7 +210,15 @@ async def test_read_only_http_workstation_refuses_start(monkeypatch):
             pass
 
         async def health(self):
-            return {"ok": True, "readOnly": True}
+            return {
+                "ok": True,
+                "readOnly": {
+                    "enabled": True,
+                    "source": "user",
+                    "setBy": "ribbon",
+                    "setAtUtc": "2026-10-22T12:00:00Z",
+                },
+            }
 
     registry, channel = Registry(), Channel()
     http = ReadOnlyHttp()
@@ -213,7 +226,7 @@ async def test_read_only_http_workstation_refuses_start(monkeypatch):
     assert await registry.tools["revit_batch_start"](folder=r"C:\models") == {
         "success": False,
         "command": "batch-start",
-        "error": "read-only mode",
+        "error": "Read-only is on for this Windows user (set from ribbon at 2026-10-22T12:00:00Z). Turn it off with the Model MCP ribbon button or by asking the assistant.",
         "errorCode": "read_only",
     }
     assert not channel.jobs
@@ -224,7 +237,13 @@ async def test_read_only_cancel_is_refused_and_status_still_works(monkeypatch, t
     registry, host, channel = Registry(), Host(), Channel()
     register_batch(registry, lambda: host, lambda: channel)
     run_id = (await registry.tools["revit_batch_start"](paths=[r"C:\models\A.rvt"]))["runId"]
-    monkeypatch.setenv("REVIT_MCP_READ_ONLY", "1")
+
+    async def locked(*_args):
+        from revit_model_mcp.ssh_host import RemoteCommandError
+
+        raise RemoteCommandError("test", "read-only mode")
+
+    host.batch_cancel = locked
     read_only_registry = Registry()
     register_batch(read_only_registry, lambda: host, lambda: channel)
     result = await read_only_registry.tools["revit_batch_cancel"](run_id)
@@ -702,7 +721,8 @@ async def test_gate_script_checks_the_per_user_file():
     host._run = AsyncMock(return_value="")
     await host.batch_assert_writable()
     script = host._run.await_args.args[0]
-    assert "'read-only'" in script and "throw 'read-only mode'" in script
+    assert "'read-only'" in script and "Read-only is on for this Windows user" in script
+    assert "Get-Content" in script and "LastWriteTimeUtc" in script
 
 
 @pytest.mark.anyio
