@@ -1710,6 +1710,10 @@ class MatchesDocumentAndResolveInstanceTests(unittest.TestCase):
                 None,
             )
 
+    def test_resolve_instance_without_instances_says_none_found(self):
+        with self.assertRaisesRegex(RevitChannelError, "No running Revit instance with the add-in"):
+            resolve_instance([], None)
+
 
 class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
     async def test_discovery_rejects_invalid_started_utc(self):
@@ -1866,7 +1870,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         for document, message in [
             ("Missing", "No running"),
             ("Model", "ambiguous"),
-            (None, "exactly one"),
+            (None, "Several Revit instances"),
         ]:
             with self.subTest(document=document):
                 host = SshPowerShellHost()
@@ -1896,7 +1900,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host._discover_instances = AsyncMock(
             return_value=[instance_status(), {"processId": 84, "pluginResponding": False}]
         )
-        with self.assertRaisesRegex(RevitChannelError, "exactly one"):
+        with self.assertRaisesRegex(RevitChannelError, "Several Revit instances"):
             await host.select_job(Job("delete", {"command": "delete"}))
 
     async def test_missing_protocol_is_rejected_without_handshake(self):

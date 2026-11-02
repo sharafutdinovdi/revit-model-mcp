@@ -40,6 +40,8 @@ public static class TransformSkipPolicy
     public static int Total(SkippedByReason skipped) =>
         skipped.InGroup.Count + (skipped.Pinned?.Count ?? 0) + (skipped.Hosted?.Count ?? 0) + (skipped.Constrained?.Count ?? 0);
 
+    public static int ChangedCount(int requested, SkippedByReason skipped) => requested - Total(skipped);
+
     public static string Warning(SkippedByReason skipped)
     {
         var parts = new List<string>();
@@ -50,6 +52,7 @@ public static class TransformSkipPolicy
             parts.Add($"{Plural(skipped.Hosted.Count)} skipped because Revit kept {(skipped.Hosted.Count == 1 ? "it" : "them")} on the host and {(skipped.Hosted.Count == 1 ? "it" : "they")} did not change.");
         if (skipped.Constrained is { Count: > 0 })
             parts.Add($"{Plural(skipped.Constrained.Count)} skipped because a constraint, such as a curtain wall grid, kept {(skipped.Constrained.Count == 1 ? "it" : "them")} in place.");
+        if (parts.Count > 0) parts.Add(DescribeIds(skipped));
         return string.Join(" ", parts);
     }
 
@@ -61,7 +64,17 @@ public static class TransformSkipPolicy
         if (skipped.InGroup.Count > 0) reasons.Add($"{skipped.InGroup.Count} in groups");
         if (skipped.Hosted is { Count: > 0 }) reasons.Add($"{skipped.Hosted.Count} hosted and unchanged");
         if (skipped.Constrained is { Count: > 0 }) reasons.Add($"{skipped.Constrained.Count} constrained and unchanged");
-        return $"None of the {requested} requested elements could be {verb} ({string.Join(", ", reasons)}). Nothing was changed.";
+        return $"None of the {requested} requested elements could be {verb} ({string.Join(", ", reasons)}). Nothing was changed. {DescribeIds(skipped)}";
+    }
+
+    private static string DescribeIds(SkippedByReason skipped)
+    {
+        var reasons = new List<string>();
+        if (skipped.Pinned is { Count: > 0 }) reasons.Add($"pinned: {string.Join(", ", skipped.Pinned)}");
+        if (skipped.InGroup.Count > 0) reasons.Add($"in groups: {string.Join(", ", skipped.InGroup)}");
+        if (skipped.Hosted is { Count: > 0 }) reasons.Add($"hosted and unchanged: {string.Join(", ", skipped.Hosted)}");
+        if (skipped.Constrained is { Count: > 0 }) reasons.Add($"constrained or rolled back: {string.Join(", ", skipped.Constrained)}");
+        return $"Skipped element ids ({string.Join("; ", reasons)}).";
     }
 
     private static string Plural(int count) => count == 1 ? "1 element was" : $"{count} elements were";

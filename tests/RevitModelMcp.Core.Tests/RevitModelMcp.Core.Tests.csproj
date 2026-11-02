@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\RevitModelMcp.Core\RevitModelMcp.Core.csproj" />
+    <Compile Include="..\..\src\RevitModelMcp.Addin\Connect\ConnectText.cs" Link="ConnectText.cs" />
     <Compile Include="..\..\src\RevitModelMcp.BatchSupervisor\BatchRunStore.cs" Link="BatchRunStore.cs" />
     <Compile Include="..\..\src\RevitModelMcp.BatchSupervisor\FileChannelWorkerClient.cs" Link="FileChannelWorkerClient.cs" />
     <Compile Include="..\..\build\install\Installer.Scripts.cs" Link="Installer.Scripts.cs" />

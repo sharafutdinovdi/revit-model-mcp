@@ -530,10 +530,15 @@ def resolve_instance(instances: list[dict[str, Any]], document: str | None) -> d
     if len(instances) == 1:
         return instances[0]
     if not document:
-        details = "; ".join(_describe_instance(item) for item in instances) or "none running"
+        if not instances:
+            raise RevitChannelError(
+                "No running Revit instance with the add-in was found. "
+                "Start Revit with the add-in installed and see revit_list_instances."
+            )
+        details = "; ".join(_describe_instance(item) for item in instances)
         raise RevitChannelError(
-            "Actions and undirected reads require exactly one running Revit instance. "
-            f"Use revit_list_instances and a unique document for directed reads. Running instances: {details}."
+            "Several Revit instances are running. Pass document (unique title or file name) "
+            f"or process_id to choose one; see revit_list_instances. Running instances: {details}."
         )
     matches = [item for item in instances if matches_document(item, document)]
     if not matches:

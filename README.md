@@ -36,7 +36,7 @@ Actions are enabled in this recording.
 
 You need two parts: the add-in inside Revit on Windows, and the server next to your MCP client.
 Details and requirements are in [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/).
-Tested with Claude Desktop and Claude Code; other clients are listed on the [tested clients page](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/).
+Tested with Claude Desktop over SSH; other clients are listed on the [tested clients page](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/).
 
 **1. Install the add-in.**
 On the Windows machine with Revit, download `RevitModelMcp-<version>-SingleUser.msi` (current user) or `RevitModelMcp-<version>-MultiUser.msi` (all users) from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).

@@ -32,7 +32,13 @@ def _normalize(schema):
 
 def _render() -> str:
     tools = asyncio.run(revit_server.mcp.list_tools())
-    schemas = {tool.name: _normalize(tool.input_schema) for tool in tools}
+    schemas = {
+        tool.name: {
+            **_normalize(tool.input_schema),
+            "annotations": _normalize(tool.annotations.model_dump(by_alias=True)),
+        }
+        for tool in tools
+    }
     return json.dumps(schemas, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 

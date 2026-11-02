@@ -181,7 +181,7 @@ For an urgent fix, the maintainer adds the `hotfix-release` label to the release
 The size of the change, not the calendar, decides the version bump: `feat` bumps the minor version and `fix` the patch version, as described below.
 
 release-please owns [CHANGELOG.md](CHANGELOG.md), the version in `server/pyproject.toml` and both versions in `server/server.json`.
-The manifest starts at `0.3.0`; `server/pyproject.toml` remains the package version checked by the build.
+Version bumps follow Conventional Commits. To force a major version, add a `Release-As: X.Y.Z` footer to a commit; see `release-please-config.json`. `server/pyproject.toml` remains the package version checked by the build.
 The simple strategy skips its absent default `version.txt`; no separate version file is maintained.
 Before 1.0, `feat` and breaking changes bump the minor version, while `fix` bumps the patch version.
 Visible documentation and dependency changes can also produce a patch release.

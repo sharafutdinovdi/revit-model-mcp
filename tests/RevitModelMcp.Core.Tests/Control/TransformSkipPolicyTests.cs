@@ -1,3 +1,4 @@
+using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
 
 namespace RevitModelMcp.Core.Tests.Control;
@@ -72,7 +73,7 @@ public sealed class TransformSkipPolicyTests
             GroupSkipPolicy.SkipWarning(1) +
             " 2 elements were skipped because they are pinned; unpin in Revit to change them." +
             " 1 element was skipped because Revit kept it on the host and it did not change." +
-            " 1 element was skipped because a constraint, such as a curtain wall grid, kept it in place.");
+            " 1 element was skipped because a constraint, such as a curtain wall grid, kept it in place. Skipped element ids (pinned: 1, 5; in groups: 2; hosted and unchanged: 3; constrained or rolled back: 4).");
     }
 
     [Test]
@@ -86,9 +87,28 @@ public sealed class TransformSkipPolicyTests
     {
         var skipped = new SkippedByReason { InGroup = [2], Pinned = [1], Hosted = [3] };
         await Assert.That(TransformSkipPolicy.NoneChangedMessage("move", 3, skipped)).IsEqualTo(
-            "None of the 3 requested elements could be moved (1 pinned, 1 in groups, 1 hosted and unchanged). Nothing was changed.");
+            "None of the 3 requested elements could be moved (1 pinned, 1 in groups, 1 hosted and unchanged). Nothing was changed. Skipped element ids (pinned: 1; in groups: 2; hosted and unchanged: 3).");
         await Assert.That(TransformSkipPolicy.NoneChangedMessage("rotate", 1, new SkippedByReason { Constrained = [4] })).IsEqualTo(
-            "None of the 1 requested elements could be rotated (1 constrained and unchanged). Nothing was changed.");
+            "None of the 1 requested elements could be rotated (1 constrained and unchanged). Nothing was changed. Skipped element ids (constrained or rolled back: 4).");
+    }
+
+    [Test]
+    [Arguments(false, "Moved 3 elements in Model.")]
+    [Arguments(true, "Would move 3 elements in Model.")]
+    public async Task MoveCountAndSummaryExcludeEverySkippedId(bool dryRun, string summary)
+    {
+        var skipped = new SkippedByReason { Pinned = [1], Hosted = [2] };
+        var count = TransformSkipPolicy.ChangedCount(5, skipped);
+        await Assert.That(count).IsEqualTo(3);
+        await Assert.That(ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+        {
+            Command = "move",
+            Count = count,
+            DocumentTitle = "Model",
+            DryRun = dryRun
+        })).IsEqualTo(summary);
+        skipped.Constrained = [3, 4, 5];
+        await Assert.That(TransformSkipPolicy.ChangedCount(5, skipped)).IsEqualTo(0);
     }
 
     [Test]
