@@ -5,6 +5,7 @@ using Autodesk.Revit.UI;
 using JetBrains.Annotations;
 using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
+using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Output;
 
@@ -25,16 +26,11 @@ public sealed class RepairChannelPermissionsCommand : ExternalCommand
             var removed = targets.SelectMany(target => target.Plan.RemovedSids).Distinct(StringComparer.OrdinalIgnoreCase);
             manualCommands = ChannelAclRepairPolicy.ManualCommands(ChannelDirectory.RootDirectory, removed);
             var details = root.Plan.Confirmation(root.Path, PrincipalName(root.Plan.OwnerSid), removed.Select(PrincipalName));
-            var confirmation = new TaskDialog("Repair channel permissions")
-            {
-                MainInstruction = "Replace channel folder permissions?",
-                MainContent = details,
-                ExpandedContent = string.Join("\n", targets.Skip(1).Select(target =>
-                    $"{target.Path}: owner {PrincipalName(target.Plan.OwnerSid)}")),
-                CommonButtons = TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.Cancel,
-                DefaultButton = TaskDialogResult.Cancel
-            };
-            if (confirmation.Show() != TaskDialogResult.Yes) return;
+            var relatedTargets = string.Join("\n", targets.Skip(1).Select(target =>
+                $"{target.Path}: owner {PrincipalName(target.Plan.OwnerSid)}"));
+            if (!AppDialog.Show("Repair channel permissions",
+                    "Replace channel folder permissions?\n\n" + details + "\n\n" + relatedTargets,
+                    confirm: true)) return;
             PluginLog.Info("Channel permission repair confirmed from the ribbon.");
             ActivityRecorder.RecordSystemNotice("Channel permission repair confirmed from the ribbon.");
             var ownerChangeDenied = ChannelDirectory.Repair(targets);
@@ -45,7 +41,7 @@ public sealed class RepairChannelPermissionsCommand : ExternalCommand
                 message += " Windows refused an owner change (WRITE_OWNER). The existing owner remains subject to the channel ACL check. " + ChannelAclRepairPolicy.ManualInstructions;
             PluginLog.Info(message);
             ActivityRecorder.RecordSystemNotice(message, failed: !enabled);
-            TaskDialog.Show("Repair channel permissions", message + (enabled && !ownerChangeDenied ? string.Empty
+            AppDialog.Show("Repair channel permissions", message + (enabled && !ownerChangeDenied ? string.Empty
                 : "\n\n" + manualCommands));
         }
         catch (Exception exception)
@@ -53,7 +49,7 @@ public sealed class RepairChannelPermissionsCommand : ExternalCommand
             PluginLog.Error("Channel permission repair failed or was incomplete.", exception);
             var message = ChannelAclRepairPolicy.ManualInstructions;
             ActivityRecorder.RecordSystemNotice(message, failed: true);
-            TaskDialog.Show("Repair channel permissions", message + "\n\n" +
+            AppDialog.Show("Repair channel permissions", message + "\n\n" +
                 manualCommands);
         }
     }
