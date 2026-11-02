@@ -167,17 +167,50 @@ def _ps_channel_log_tail_reader() -> str:
         "if ($offset -gt 0) { $lineBreak = $channelLog.IndexOf([char]10); "
         "$channelLog = if ($lineBreak -ge 0) { $channelLog.Substring($lineBreak + 1) } else { '' } } "
         "} finally { $stream.Dispose() } } "
-        "return $channelLog }; "
+        "return [ordered]@{ text = $channelLog; name = $newestLog.Name } }; "
     )
 
 
-def _channel_refusal_line(tail: object) -> str | None:
+def _channel_refusal_line(tail: object, process: dict[str, object] | None = None) -> str | None:
+    name = ""
+    if isinstance(tail, dict):
+        name = str(tail.get("name", ""))
+        tail = tail.get("text")
     if not isinstance(tail, str):
         return None
     for line in reversed(tail[-CHANNEL_LOG_TAIL_BYTES:].splitlines()):
         marker = line.find("File channel disabled: ")
-        if marker >= 0:
-            return redact_model_paths({"message": line[marker:]})["message"]
+        if marker < 0:
+            continue
+        if process is not None:
+            pid = re.search(
+                r"(?i)\b(?:pid|processId|process)[= :_-]+(\d+)\b", line[:marker] + " " + name
+            )
+            if pid and int(pid[1]) != process.get("processId"):
+                continue
+            timestamp = re.match(
+                r"\ufeff?(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)? ?(?:Z|[+-]\d{2}:\d{2}))",
+                line,
+            )
+            try:
+                started = datetime.fromisoformat(str(process.get("processStartedUtc", "")))
+                written = (
+                    datetime.fromisoformat(
+                        timestamp[1].replace(" Z", "Z").replace(" +", "+").replace(" -", "-")
+                    )
+                    if timestamp
+                    else None
+                )
+                if (
+                    started.tzinfo is None
+                    or written is None
+                    or written.tzinfo is None
+                    or written < started
+                ):
+                    continue
+            except ValueError:
+                continue
+        return redact_model_paths({"message": line[marker:]})["message"]
     return None
 
 
@@ -342,7 +375,8 @@ class SshPowerShellHost:
         script = (
             _ps_heartbeat_reader() + f"$directory = {self._root_directory}; "
             "$processes = @(Get-Process Revit -ErrorAction SilentlyContinue | ForEach-Object { "
-            "[ordered]@{ processId = $_.Id; revitVersion = $_.FileVersionInfo.ProductVersion } }); "
+            "[ordered]@{ processId = $_.Id; revitVersion = $_.FileVersionInfo.ProductVersion; "
+            "processStartedUtc = $(try { $_.StartTime.ToUniversalTime().ToString('o') } catch { $null }) } }); "
             "$files = @(Get-ChildItem -LiteralPath $directory -Filter 'instance_*.json' -File -ErrorAction SilentlyContinue | "
             "ForEach-Object { [ordered]@{ name = $_.Name; content = Read-HeartbeatText $_.FullName } }); "
             + _ps_channel_log_reader()
@@ -363,8 +397,12 @@ class SshPowerShellHost:
 
     def _for_instance(self, instance: dict[str, object]) -> SshPowerShellHost:
         if not instance.get("updatedUtc") or "fileChannelVersion" not in instance:
-            reason = _channel_refusal_line(instance.get("channelLog"))
-            detail = f' Add-in log: "{reason}".' if reason else ""
+            reason = instance.get("channelLog")
+            detail = (
+                f' Add-in log: "{reason}".'
+                if reason
+                else " The add-in log has no refusal for this process yet; startup may still be in progress, retry in a few seconds."
+            )
             raise RevitChannelError(
                 f"Revit process {instance['processId']} is running, but the Model MCP channel is not confirmed."
                 f"{detail} {CHANNEL_REPAIR_HINT}"
@@ -1040,7 +1078,7 @@ def _parse_instance_package(
                 "documentPath": "",
                 "windowTitle": "",
                 "pluginResponding": False,
-                "channelLog": _channel_refusal_line(package.get("channelLog")),
+                "channelLog": _channel_refusal_line(package.get("channelLog"), process),
             }
         )
     return sorted(

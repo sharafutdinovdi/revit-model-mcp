@@ -3445,7 +3445,11 @@ def test_process_without_heartbeat_explains_unconfirmed_channel(local, tmp_path)
     reason = "File channel disabled: Write access is granted to another principal (S-1-5-83-0)."
     host._run = AsyncMock(
         return_value=encode_discovery_payload(
-            {"processes": [{"processId": 42}], "files": [], "channelLog": reason}
+            {
+                "processes": [{"processId": 42, "processStartedUtc": "2026-11-02T08:00:00Z"}],
+                "files": [],
+                "channelLog": "2026-11-02 13:00:01.000 +05:00 [WRN] " + reason,
+            }
         )
     )
     selected_host = LocalPipeHost(fallback=host, directory=tmp_path) if local else host
@@ -3474,6 +3478,10 @@ def test_missing_refusal_log_does_not_hide_process_diagnostic(tail):
     with pytest.raises(RevitChannelError, match="Model MCP channel is not confirmed") as caught:
         SshPowerShellHost()._for_instance(instance)
     assert "Add-in log:" not in str(caught.value)
+    assert (
+        "The add-in log has no refusal for this process yet; startup may still be in progress, retry in a few seconds"
+        in str(caught.value)
+    )
 
 
 def test_channel_log_extracts_latest_exact_refusal_and_redacts_paths(monkeypatch):
@@ -3541,7 +3549,10 @@ def test_channel_log_tail_reader_selects_newest_and_skips_partial_line(tmp_path,
     )
     os.utime(older, (1, 1))
     os.utime(newest, (2, 2))
-    script = _ps_channel_log_tail_reader() + f"Read-ChannelLogTail '{_ps_quote(str(tmp_path))}'"
+    script = (
+        _ps_channel_log_tail_reader()
+        + f"Read-ChannelLogTail '{_ps_quote(str(tmp_path))}' | ConvertTo-Json -Compress"
+    )
     result = subprocess.run(
         [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-Command", script],
         capture_output=True,
@@ -3553,4 +3564,49 @@ def test_channel_log_tail_reader_selects_newest_and_skips_partial_line(tmp_path,
     assert "outside tail" not in result.stdout
     assert "wrong file" not in result.stdout
     assert "xxx" not in result.stdout
-    assert _channel_refusal_line(result.stdout) == "File channel disabled: newest reason."
+    assert (
+        _channel_refusal_line(json.loads(result.stdout)) == "File channel disabled: newest reason."
+    )
+
+
+@pytest.mark.parametrize("local", [False, True])
+@pytest.mark.parametrize(
+    ("timestamp", "identity", "quoted"),
+    [
+        ("2026-11-02 12:47:35.561 +05:00", "", False),
+        ("2026-11-02 13:00:01.000 +05:00", "", True),
+        ("2026-11-02 13:00:01.000 +05:00", " pid=84", False),
+        ("2026-11-02 13:00:01.000 +05:00", " pid=42", True),
+    ],
+)
+def test_channel_refusal_belongs_to_current_process(local, timestamp, identity, quoted):
+    host = SshPowerShellHost("local" if local else "revit-host", local=local)
+    host._run = AsyncMock(
+        return_value=encode_discovery_payload(
+            {
+                "processes": [{"processId": 42, "processStartedUtc": "2026-11-02T08:00:00Z"}],
+                "files": [],
+                "channelLog": f"{timestamp} [WRN]{identity} File channel disabled: foreign writer.",
+            }
+        )
+    )
+    with pytest.raises(RevitChannelError) as caught:
+        asyncio.run(host.select_job(Job.ping()))
+    assert ('Add-in log: "File channel disabled: foreign writer."' in str(caught.value)) == quoted
+    assert ("startup may still be in progress" in str(caught.value)) != quoted
+
+
+@pytest.mark.parametrize(
+    "name, quoted", [("RevitModelMcp-pid-42.log", True), ("RevitModelMcp-pid-84.log", False)]
+)
+def test_channel_refusal_checks_log_file_process(name, quoted):
+    from revit_model_mcp.ssh_host import _channel_refusal_line
+
+    result = _channel_refusal_line(
+        {
+            "name": name,
+            "text": "2026-11-02 13:00:01.000 +05:00 [WRN] File channel disabled: foreign writer.",
+        },
+        {"processId": 42, "processStartedUtc": "2026-11-02T08:00:00Z"},
+    )
+    assert bool(result) == quoted
