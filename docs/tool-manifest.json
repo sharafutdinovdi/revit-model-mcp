@@ -1570,6 +1570,14 @@
       "description": "Report how completely the requested parameters are filled for the requested categories."
     },
     {
+      "name": "daily_qa",
+      "description": "Run the daily read-only model QA routine and report counts and trends."
+    },
+    {
+      "name": "sheet_set",
+      "description": "Plan and create sheets from CSV or markdown rows after explicit approval."
+    },
+    {
       "name": "batch_audit",
       "description": "Collect snapshots from many models in the background and build a comparison report."
     }

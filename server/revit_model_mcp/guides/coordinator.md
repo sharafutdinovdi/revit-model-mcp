@@ -69,6 +69,12 @@ For an open family document, omit the family selector.
 Read the audit's skipped results and coverage before drawing conclusions.
 An unused shared parameter may still carry data used by schedules or tags.
 
+## Daily QA
+
+Use the `revit-daily-qa` skill for the fixed morning or pre-hand-over routine.
+It records model identity, runs read-only checks, and reports counts and completeness.
+Compare with a previous snapshot only when one is supplied.
+
 ## Analyze elements
 
 For universal model analysis, use this sequence:
@@ -195,15 +201,6 @@ After the action, report changed element IDs and verification results.
 A timed-out or failed verification response can follow a committed change.
 Do not infer that the model was unchanged from such a response alone.
 
-## Confirmation tokens
-
-Save, sync, close-with-loss, link removal, large deletions, overwriting exports, in-place saves in process-models and C# execution use a two-step flow.
-The first call without `confirm_token` changes nothing and returns `needsConfirmation`, `confirmationText` and `confirmToken`.
-Show the exact `confirmationText` to the user.
-Retry with identical arguments plus `confirm_token` only after the user explicitly agrees in chat.
-Never perform a save, sync or close-with-loss without that confirmation.
-A failed confirmation uses up the token; repeat the call without `confirm_token` for a new preview.
-
 ## Placement and addressing
 
 Use `roomCenterMm` from `revit_query_elements` or `revit_element_details` to place something inside a room.
@@ -234,10 +231,12 @@ Completed model changes remain committed.
 ## Confirmation tokens, dry runs and addressing
 
 Tool descriptions state what a tool does and keep this procedure out of the tool list.
-Save, synchronize, close-with-loss, link removal, C# execution, large deletions and file replacement are confirmed in two calls.
-The first call changes nothing and returns `needsConfirmation`, `confirmationText` and `confirmToken`.
-Show the `confirmationText` to the user and wait for explicit approval.
-Repeat the call with identical arguments plus `confirm_token` to perform the action.
+Save, sync, close-with-loss, link removal, large deletions, overwriting exports, in-place saves in process-models, C# execution, and other file replacement use a two-step flow.
+The first call without `confirm_token` changes nothing and returns `needsConfirmation`, `confirmationText` and `confirmToken`.
+Show the exact `confirmationText` to the user.
+Retry with identical arguments plus `confirm_token` only after the user explicitly agrees in chat.
+Never perform a save, sync or close-with-loss without that confirmation.
+A failed confirmation uses up the token; repeat the call without `confirm_token` for a new preview.
 A `dry_run` call executes, rolls back and returns the verification block; it never needs a token.
 When several Revit instances run, pass `document` (a title or file name substring) or `process_id`; a zero or ambiguous match is rejected before anything is published.
 When several documents are open in one process, `document` on an action selects the target open document.
