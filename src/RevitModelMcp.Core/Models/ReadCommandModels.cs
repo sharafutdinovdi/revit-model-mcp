@@ -681,3 +681,56 @@ public sealed class ViewElementDump
     [DataMember(Name = "hasWarnings", Order = 14)]
     public bool HasWarnings { get; set; }
 }
+
+[DataContract]
+public sealed record ApiLookupResult
+{
+    [DataMember(Name = "types")] public List<ApiTypeInfo> Types { get; init; } = [];
+    [DataMember(Name = "members")] public List<ApiMemberInfo> Members { get; init; } = [];
+    [DataMember(Name = "candidates")] public List<string> Candidates { get; init; } = [];
+    [DataMember(Name = "truncated")] public bool Truncated { get; set; }
+    [DataMember(Name = "assemblyVersions")] public List<ApiAssemblyVersion> AssemblyVersions { get; init; } = [];
+    [DataMember(Name = "skipped")] public List<SkippedRead> Skipped { get; init; } = [];
+    [DataMember(Name = "skippedCount")] public int SkippedCount { get; set; }
+}
+
+[DataContract]
+public sealed record ApiTypeInfo
+{
+    [DataMember(Name = "fullName")] public string FullName { get; init; } = string.Empty;
+    [DataMember(Name = "kind")] public string Kind { get; init; } = string.Empty;
+    [DataMember(Name = "baseType")] public string? BaseType { get; init; }
+    [DataMember(Name = "isObsolete")] public bool IsObsolete { get; init; }
+    [DataMember(Name = "obsoleteMessage")] public string? ObsoleteMessage { get; init; }
+    [DataMember(Name = "summary")] public string? Summary { get; init; }
+}
+
+[DataContract]
+public sealed record ApiMemberInfo
+{
+    [DataMember(Name = "declaringType")] public string DeclaringType { get; init; } = string.Empty;
+    [DataMember(Name = "name")] public string Name { get; init; } = string.Empty;
+    [DataMember(Name = "memberKind")] public string MemberKind { get; init; } = string.Empty;
+    [DataMember(Name = "signature")] public string Signature { get; init; } = string.Empty;
+    [DataMember(Name = "parameters")] public List<ApiParameterInfo> Parameters { get; init; } = [];
+    [DataMember(Name = "returnType")] public string? ReturnType { get; init; }
+    [DataMember(Name = "isStatic")] public bool IsStatic { get; init; }
+    [DataMember(Name = "isObsolete")] public bool IsObsolete { get; init; }
+    [DataMember(Name = "obsoleteMessage")] public string? ObsoleteMessage { get; init; }
+    [DataMember(Name = "summary")] public string? Summary { get; init; }
+}
+
+[DataContract]
+public sealed record ApiParameterInfo
+{
+    [DataMember(Name = "name")] public string Name { get; init; } = string.Empty;
+    [DataMember(Name = "type")] public string Type { get; init; } = string.Empty;
+    [DataMember(Name = "isOptional")] public bool IsOptional { get; init; }
+}
+
+[DataContract]
+public sealed record ApiAssemblyVersion
+{
+    [DataMember(Name = "name")] public string Name { get; init; } = string.Empty;
+    [DataMember(Name = "version")] public string Version { get; init; } = string.Empty;
+}

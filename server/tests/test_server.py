@@ -28,6 +28,7 @@ from revit_model_mcp.ssh_host import SshPowerShellHost
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = MCP_DIRECTORY.parent
 EXPECTED_TOOLS = {
+    "revit_api_lookup",
     "revit_issue_register",
     "revit_capture_elements",
     "revit_build_report",
@@ -218,6 +219,15 @@ def test_smithery_bundle_keeps_desktop_contents_and_adds_schemas(tmp_path):
 
 
 EXPECTED_PARAMETERS = {
+    "revit_api_lookup": [
+        "query",
+        "kind",
+        "limit",
+        "include_inherited",
+        "include_obsolete",
+        "timeout_seconds",
+        "document",
+    ],
     "revit_model_health": ["timeout_seconds", "document", "output_path"],
     "revit_activate_view": ["view", "document", "activate_document", "view_type", "zoom"],
     "revit_model_snapshot": [
@@ -370,6 +380,77 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["serverVersion"], package_version())
         self.assertEqual(result["latestKnownVersion"], "0.7.0")
         self.assertEqual(result["updateCheck"], "disabled")
+
+    async def test_api_lookup_maps_defaults_and_addressing(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool("revit_api_lookup", {"query": "Element"})
+            await revit_server.mcp.call_tool(
+                "revit_api_lookup",
+                {
+                    "query": "Element.Id",
+                    "kind": "member",
+                    "limit": 100,
+                    "include_inherited": True,
+                    "include_obsolete": False,
+                    "document": "Background",
+                    "process_id": 42,
+                    "timeout_seconds": 60,
+                },
+            )
+        job, timeout, _ = channel.calls[0]
+        self.assertEqual(job.command, "api-lookup")
+        self.assertEqual(
+            job.payload,
+            {
+                "command": "api-lookup",
+                "query": "Element",
+                "kind": "search",
+                "limit": 25,
+                "includeInherited": False,
+                "includeObsolete": True,
+            },
+        )
+        self.assertEqual(timeout, 120)
+        job, timeout, _ = channel.calls[1]
+        self.assertEqual(
+            job.payload,
+            {
+                "command": "api-lookup",
+                "query": "Element.Id",
+                "kind": "member",
+                "limit": 100,
+                "includeInherited": True,
+                "includeObsolete": False,
+                "targetDocument": "Background",
+                "targetProcessId": 42,
+            },
+        )
+        self.assertEqual(timeout, 60)
+        tools = {tool.name: tool for tool in await revit_server.mcp.list_tools()}
+        lookup = tools["revit_api_lookup"]
+        self.assertTrue(lookup.annotations.read_only_hint)
+        self.assertEqual(lookup.title, "Look up Revit API types and members")
+        self.assertIn("before writing C# for an unfamiliar type", lookup.description)
+        self.assertIn("running Revit's API version only", lookup.description)
+        self.assertIn("revit_api_lookup", tools["revit_execute_code"].description)
+
+    async def test_api_lookup_rejects_invalid_arguments_before_transport(self) -> None:
+        channel = RecordingChannel()
+        invalid = [
+            {},
+            {"query": ""},
+            {"query": " "},
+            {"query": "x" * 201},
+            {"query": "Element", "kind": "unknown"},
+            *({"query": "Element", "limit": limit} for limit in (0, 101, True, 1.5)),
+            {"query": "Element", "process_id": 0},
+        ]
+        with patch.object(revit_server, "channel", channel):
+            for arguments in invalid:
+                with self.subTest(arguments=arguments), self.assertRaises(ToolError):
+                    await revit_server.mcp.call_tool("revit_api_lookup", arguments)
+        self.assertEqual(channel.calls, [])
 
     async def test_jobs_tool_lists_without_cancellation(self) -> None:
         channel = RecordingChannel()

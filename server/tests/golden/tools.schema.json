@@ -407,6 +407,74 @@
     ],
     "type": "object"
   },
+  "revit_api_lookup": {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
+    "properties": {
+      "document": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "include_inherited": {
+        "default": false,
+        "type": "boolean"
+      },
+      "include_obsolete": {
+        "default": true,
+        "type": "boolean"
+      },
+      "kind": {
+        "default": "search",
+        "enum": [
+          "type",
+          "member",
+          "search"
+        ],
+        "type": "string"
+      },
+      "limit": {
+        "default": 25,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "query": {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+      },
+      "timeout_seconds": {
+        "default": 120,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "query"
+    ],
+    "type": "object"
+  },
   "revit_apply_view_template": {
     "annotations": {
       "destructiveHint": true,

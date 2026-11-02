@@ -106,6 +106,28 @@ Link removal refuses central-connected workshared documents. A local copy is all
 
 Alignment uses one host-document transaction, with `dry_run` rolling it back after prospective results are read. Pinned and other-user-owned datums are skipped. Existing datums are never renamed or deleted, and grid extents and scope boxes are never changed. Moving levels also moves elements hosted on them; moved-level results include `dependentCount`. Created datums report their ID and workset. Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
 
+### Look up the API first
+
+`revit_api_lookup` returns public API metadata from the RevitAPI and RevitAPIUI assemblies loaded in the running Revit process.
+The agent calls it before writing C# for an unfamiliar type.
+Results describe the running version only; `assemblyVersions` identifies the loaded assemblies.
+The tool is read-only and belongs to the `code` toolset.
+It works without an open document.
+
+```json
+{"query": "Autodesk.Revit.DB.Element.GetDependentElements", "kind": "member", "limit": 25}
+```
+
+Type queries resolve an exact full name, then a case-insensitive simple name in an Autodesk.Revit namespace, then a substring of type names.
+Member queries accept `Type.Member` or a type name for its public members.
+Search queries match type and member names.
+Ambiguous simple names return up to 20 `candidates` for a full-name retry.
+`limit` accepts 1 to 100 results across `types` and `members`; `truncated` reports omitted results.
+`include_inherited` defaults to false, and `include_obsolete` defaults to true.
+Signatures, parameters, and obsolete messages come from reflection without invoking API members.
+XML summaries are optional, contain the first sentence, and stop at 300 characters.
+Missing XML and type load failures appear in `skipped` and `skippedCount`.
+
 ### Execute C# code
 
 `revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. In `transaction="none"`, `Document` may be null when no document is open.

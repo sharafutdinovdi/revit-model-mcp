@@ -6,6 +6,36 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ControlJobParserTests
 {
     [Test]
+    public async Task Parse_ApiLookup_DefaultsAndAddressing()
+    {
+        var parsed = ControlJobParser.Parse("""{"command":"api-lookup","query":" Document ","targetDocument":" Model ","targetProcessId":42}""");
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.ApiLookup);
+        await Assert.That(parsed.ApiLookup).IsEqualTo(new ApiLookupRequest("Document"));
+        await Assert.That(parsed.TargetDocument).IsEqualTo("Model");
+        await Assert.That(parsed.TargetProcessId).IsEqualTo(42);
+        var explicitRequest = ControlJobParser.Parse("""{"command":"api-lookup","query":"Element.Id","kind":"member","limit":100,"includeInherited":true,"includeObsolete":false}""");
+        await Assert.That(explicitRequest.ApiLookup).IsEqualTo(new ApiLookupRequest("Element.Id", "member", 100, true, false));
+    }
+
+    [Test]
+    public async Task Parse_ApiLookup_RejectsInvalidFields()
+    {
+        foreach (var fields in new[]
+        {
+            "", "\"query\":\"\"", "\"query\":\" \"", "\"query\":\"" + new string('x', 201) + "\"",
+            "\"query\":\"Element\",\"kind\":\"unknown\"", "\"query\":\"Element\",\"limit\":0",
+            "\"query\":\"Element\",\"limit\":101", "\"query\":\"Element\",\"includeInherited\":\"invalid\""
+        })
+        {
+            var parsed = ControlJobParser.Parse("{\"command\":\"api-lookup\"" + (fields.Length > 0 ? "," + fields : "") + "}");
+            await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Invalid);
+            await Assert.That(parsed.Error).IsNotNull();
+        }
+        var boundary = ControlJobParser.Parse("{\"command\":\"api-lookup\",\"query\":\"" + new string('x', 200) + "\",\"limit\":1}");
+        await Assert.That(boundary.Kind).IsEqualTo(ControlJobKind.ApiLookup);
+    }
+
+    [Test]
     public async Task Parse_CaptureElements_DefaultsAndTarget()
     {
         var parsed = ControlJobParser.Parse("""

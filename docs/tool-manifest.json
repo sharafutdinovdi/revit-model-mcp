@@ -142,6 +142,25 @@
       "networkAccess": "none"
     },
     {
+      "name": "revit_api_lookup",
+      "description": "Look up public Revit API types and members. The agent calls this before writing C# for an unfamiliar type. Results describe the running Revit's API version only. XML summaries are optional. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
+      "toolset": "code",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
       "name": "revit_model_snapshot",
       "description": "Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "read",
@@ -747,7 +766,7 @@
     },
     {
       "name": "revit_execute_code",
-      "description": "Compile and run C# against the live Revit API on the Revit thread. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction=\"none\" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction=\"auto\". A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
+      "description": "Compile and run C# against the live Revit API on the Revit thread. revit_api_lookup supplies reference metadata before writing C# for an unfamiliar type. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction=\"none\" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction=\"auto\". A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
       "toolset": "code",
       "access": "modifying",
       "annotations": {

@@ -37,6 +37,7 @@ def test_default_and_all_keep_every_tool():
 def test_selection_always_includes_core():
     assert parse_toolsets("read, batch") == ["core", "read", "batch"]
     assert select_tools("code") == {*TOOLSETS["core"], *TOOLSETS["code"]}
+    assert TOOLSETS["code"] == ("revit_execute_code", "revit_api_lookup")
 
 
 def test_unknown_toolset_is_rejected_with_the_valid_names():
