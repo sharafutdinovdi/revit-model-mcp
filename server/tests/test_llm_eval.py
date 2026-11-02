@@ -1368,6 +1368,7 @@ def test_terminate_process_tree(monkeypatch, platform):
         eval_run.subprocess, "run", lambda *args, **kwargs: calls.append((args, kwargs))
     )
     monkeypatch.setattr(eval_run.os, "killpg", lambda *args: calls.append(args), raising=False)
+    monkeypatch.setattr(eval_run.signal, "SIGKILL", 9, raising=False)
     eval_run.terminate_process_tree(12345)
     if platform == "win32":
         assert calls == [
