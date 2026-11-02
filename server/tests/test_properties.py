@@ -165,9 +165,20 @@ def test_arbitrary_path_fields_keep_only_the_basename(path):
 @pytest.mark.parametrize("name", ["revit_document_info", "revit_model_health"])
 @BOUNDED
 @given(st.none() | TEXT)
+@example("[]")
+@example("{}")
 def test_document_strings_reach_read_tools(name, document):
     execute = AsyncMock(return_value={"success": True, "data": {}})
     with patch.object(server, "_execute", execute):
+        try:
+            parsed = json.loads(document) if isinstance(document, str) else document
+        except ValueError:
+            parsed = document
+        if isinstance(parsed, list | dict):
+            with pytest.raises(ToolError, match="Input should be a valid string"):
+                asyncio.run(server.mcp.call_tool(name, {"document": document}))
+            execute.assert_not_awaited()
+            return
         asyncio.run(server.mcp.call_tool(name, {"document": document}))
     execute.assert_awaited_once()
     # MCP pre-parses the JSON literal null for optional arguments.
