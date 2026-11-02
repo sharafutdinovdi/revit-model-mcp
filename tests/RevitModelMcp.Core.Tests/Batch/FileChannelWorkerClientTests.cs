@@ -13,11 +13,11 @@ namespace RevitModelMcp.Core.Tests.Batch
             var startedUtc = DateTimeOffset.UtcNow;
             File.WriteAllText(path, HeartbeatJson(1234, startedUtc));
             using var lockedFile = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-            var release = Task.Run(async () =>
+            var release = Task.Factory.StartNew(() =>
             {
-                await Task.Delay(100);
+                Thread.Sleep(100);
                 lockedFile.Dispose();
-            });
+            }, TaskCreationOptions.LongRunning);
             try
             {
                 await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true,
@@ -37,11 +37,11 @@ namespace RevitModelMcp.Core.Tests.Batch
             var temporary = NewHeartbeatPath();
             var startedUtc = DateTimeOffset.UtcNow;
             File.WriteAllText(temporary, HeartbeatJson(1234, startedUtc));
-            var publish = Task.Run(async () =>
+            var publish = Task.Factory.StartNew(() =>
             {
-                await Task.Delay(100);
+                Thread.Sleep(100);
                 File.Move(temporary, path);
-            });
+            }, TaskCreationOptions.LongRunning);
             try
             {
                 await Assert.That(FileChannelWorkerClient.MatchesHeartbeat(path, 1234, startedUtc.ToString("O"), true,
