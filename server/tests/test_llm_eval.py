@@ -1154,7 +1154,6 @@ def test_cli_timeout_preserves_proxy_evidence(monkeypatch, family):
     assert len(result["trace"]) == 1
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process group contract")
 def test_cli_timeout_kills_grandchild_process_group(monkeypatch, tmp_path):
     marker = tmp_path / "grandchild.pid"
     script = tmp_path / "bin" / "codex"
@@ -2162,6 +2161,11 @@ def test_rule_report_covers_every_seeded_origin_violation(include_y):
     assert FAMILY.rule_report(json.dumps(report), manifest, "family")["status"] == (
         "pass" if include_y else "fail"
     )
+
+
+test_cli_timeout_kills_grandchild_process_group = pytest.mark.skipif(
+    sys.platform == "win32", reason="POSIX process group contract"
+)(test_cli_timeout_kills_grandchild_process_group)
 
 
 @pytest.mark.parametrize("platform", ["win32", "linux"])
