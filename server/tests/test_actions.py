@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -139,11 +140,22 @@ def test_stdio_legacy_variable_does_not_block_execution():
     async def check():
         env = os.environ.copy()
         env[revit_server.LEGACY_READ_ONLY_VARIABLE] = "1"
-        parameters = StdioServerParameters(command="revit-model-mcp", args=[], env=env)
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-c",
+                "from unittest.mock import AsyncMock; "
+                "from revit_model_mcp import server; "
+                "server.RevitChannel.execute = AsyncMock(return_value={'success': True}); "
+                "server.main()",
+            ],
+            env=env,
+        )
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             listed = await client.list_tools()
             assert "revit_select" in {tool.name for tool in listed.tools}
             result = await client.call_tool("revit_select", {"element_ids": []})
+        assert result.structured_content["success"] is True
         assert "read-only mode" not in str(result)
 
     asyncio.run(check())
