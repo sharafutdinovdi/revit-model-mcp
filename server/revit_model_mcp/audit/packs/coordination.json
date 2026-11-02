@@ -1,0 +1,27 @@
+{
+  "schema": 1,
+  "name": "coordination",
+  "rules": [
+    {
+      "id": "COORD-present",
+      "title": "Shared coordinates are present",
+      "severity": "major",
+      "check": {
+        "type": "coordinates",
+        "metric": "present"
+      }
+    },
+    {
+      "id": "COORD-offset",
+      "title": "Link offsets stay within tolerance",
+      "severity": "major",
+      "check": {
+        "type": "coordinates",
+        "metric": "link_offset_mm"
+      },
+      "threshold": {
+        "max_count": 10
+      }
+    }
+  ]
+}

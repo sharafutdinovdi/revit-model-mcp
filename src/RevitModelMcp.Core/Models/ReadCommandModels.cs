@@ -734,3 +734,34 @@ public sealed record ApiAssemblyVersion
     [DataMember(Name = "name")] public string Name { get; init; } = string.Empty;
     [DataMember(Name = "version")] public string Version { get; init; } = string.Empty;
 }
+
+[DataContract]
+public sealed record SheetListData
+{
+    [DataMember(Name = "sheets")] public List<SheetListItem> Sheets { get; init; } = [];
+    [DataMember(Name = "unplacedViews")] public List<UnplacedViewItem> UnplacedViews { get; init; } = [];
+    [DataMember(Name = "total")] public int Total { get; init; }
+    [DataMember(Name = "offset")] public int Offset { get; init; }
+    [DataMember(Name = "limit")] public int Limit { get; init; }
+    [DataMember(Name = "hasMore")] public bool HasMore { get; init; }
+}
+
+[DataContract]
+public sealed record SheetListItem
+{
+    [DataMember(Name = "id")] public long Id { get; init; }
+    [DataMember(Name = "number")] public string Number { get; init; } = string.Empty;
+    [DataMember(Name = "name")] public string Name { get; init; } = string.Empty;
+    [DataMember(Name = "titleBlock")] public string? TitleBlock { get; init; }
+    [DataMember(Name = "revisionCount")] public int RevisionCount { get; init; }
+    [DataMember(Name = "viewportCount")] public int ViewportCount { get; init; }
+    [DataMember(Name = "viewIds")] public List<long> ViewIds { get; init; } = [];
+}
+
+[DataContract]
+public sealed record UnplacedViewItem
+{
+    [DataMember(Name = "id")] public long Id { get; init; }
+    [DataMember(Name = "name")] public string Name { get; init; } = string.Empty;
+    [DataMember(Name = "viewType")] public string ViewType { get; init; } = string.Empty;
+}

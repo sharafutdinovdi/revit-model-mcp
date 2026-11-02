@@ -114,6 +114,10 @@
       "description": "Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
     {
+      "name": "revit_list_sheets",
+      "description": "List sheets with title blocks, revisions and placed view IDs, plus unplaced views. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
+    },
+    {
       "name": "revit_list_views",
       "description": "List non-template views with id, name, type, level, scale and template. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
     },
@@ -360,6 +364,14 @@
     {
       "name": "revit_batch_fetch",
       "description": "Download completed snapshots to new local files without overwriting."
+    },
+    {
+      "name": "revit_model_audit",
+      "description": "Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
+    },
+    {
+      "name": "revit_audit_report",
+      "description": "Write new XLSX and self-contained HTML reports from a local audit JSON file. Paths resolve on the server machine. Existing files are refused."
     },
     {
       "name": "revit_build_report",

@@ -108,6 +108,9 @@ internal static class ReadCommandExecutor
                 case ControlJobKind.DocumentInfo:
                     WriteSuccess(output, job.Command, ReadCommandReader.ReadDocumentInfo(document), stopwatch);
                     break;
+                case ControlJobKind.ListSheets:
+                    WriteSuccess(output, job.Command, SheetListReader.Read(document, job), stopwatch);
+                    break;
                 case ControlJobKind.ListViews:
                     var views = ReadCommandReader.ReadViews(
                         document,

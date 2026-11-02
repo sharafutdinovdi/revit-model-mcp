@@ -558,6 +558,7 @@ def addressed_tool(function):
         "revit_aggregate_elements": "Aggregate Elements",
         "revit_query_elements": "Query Elements",
         "revit_list_views": "List Views",
+        "revit_list_sheets": "List Sheets",
         "revit_view_summary": "View Summary",
         "revit_view_info": "View Info",
         "revit_capture_elements": "Capture Elements",
@@ -571,6 +572,7 @@ def addressed_tool(function):
         "revit_list_relations": "List Relations",
         "revit_list_instances": "List Instances",
         "revit_model_health": "Model Health Check",
+        "revit_model_audit": "Audit the model against rules",
         "revit_model_snapshot": "Model Snapshot",
         "revit_api_lookup": "Look up Revit API types and members",
         "revit_links_status": "Links Status",
@@ -1048,6 +1050,29 @@ async def revit_query_elements(
 
 
 @addressed_tool
+async def revit_list_sheets(
+    include_unplaced_views: bool = True,
+    offset: Annotated[int, Field(ge=0)] = 0,
+    limit: Annotated[int, Field(ge=1, le=5000)] = 200,
+    document: Document = None,
+) -> dict[str, Any]:
+    """List sheets with title blocks, revisions and placed view IDs, plus unplaced views."""
+    return await _execute(
+        Job(
+            "list-sheets",
+            {
+                "command": "list-sheets",
+                "includeUnplacedViews": include_unplaced_views,
+                "offset": offset,
+                "limit": limit,
+            },
+        ),
+        DEFAULT_TIMEOUT_SECONDS,
+        document,
+    )
+
+
+@addressed_tool
 async def revit_list_views(
     view_type: ViewType = None,
     name_contains: NameContains = None,
@@ -1269,6 +1294,68 @@ async def revit_family_audit(
 
 register_actions(mcp, _execute, lambda: host)
 register_batch(mcp, lambda: host, lambda: channel)
+
+
+@addressed_tool
+async def revit_model_audit(
+    rules: str | None = None,
+    rules_inline: dict | None = None,
+    compare_with: str = "previous",
+    save: bool = True,
+    timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
+    document: Document = None,
+) -> dict[str, Any]:
+    """Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes."""
+    from jsonschema import ValidationError
+
+    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource
+    from revit_model_mcp.audit.result import build_result, model_identity
+    from revit_model_mcp.audit.rules import load_rules
+
+    try:
+        loaded = load_rules(rules, rules_inline)
+        for command in ("revit_model_audit", "model-snapshot"):
+            if (blocked := policy_refusal(command)) is not None:
+                raise ToolError(blocked)
+        source = LiveReadSource(document, timeout_seconds)
+        evaluator = Evaluator(source)
+        # Snapshot passport is the existing reader with full model and version identity.
+        # Keep raw paths only long enough to hash the history key; result paths are redacted.
+        identity = await asyncio.wait_for(
+            channel.execute(
+                Job("model-snapshot", {"command": "model-snapshot", "parameterRules": []})
+                .for_document(document)
+                .for_process(_addressed_process_id.get()),
+                timeout_seconds,
+            ),
+            timeout=600,
+        )
+        if not isinstance(identity.get("data"), dict):
+            raise ValueError("Model identity is unavailable; audit history cannot be addressed.")
+        findings = await evaluator.evaluate(loaded["rules"])
+        return build_result(model_identity(identity["data"]), loaded, findings, compare_with, save)
+    except (OSError, ValueError, TypeError, ValidationError, TimeoutError) as error:
+        raise ToolError(str(error)) from error
+
+
+@mcp.tool(
+    title="Build Audit Report",
+    annotations=READ_ONLY_TOOL.model_copy(update={"title": "Build Audit Report"}),
+)
+def revit_audit_report(
+    audit: str,
+    output: str,
+    format: Literal["xlsx", "html", "both"] = "both",
+) -> dict[str, Any]:
+    """Write new XLSX and self-contained HTML reports from a local audit JSON file. Paths resolve on the server machine. Existing files are refused."""
+    from revit_model_mcp.audit.report import build_report
+
+    if (blocked := policy_refusal("revit_audit_report")) is not None:
+        raise ToolError(blocked)
+    try:
+        return build_report(audit, output, format)
+    except (OSError, ValueError, TypeError) as error:
+        raise ToolError(str(error)) from error
 
 
 @mcp.tool(

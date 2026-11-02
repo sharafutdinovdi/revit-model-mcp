@@ -20,6 +20,7 @@ public enum ControlJobKind
     SharedCoordinates,
     ParameterFillCheck,
     ListViews,
+    ListSheets,
     ViewSummary,
     ViewInfo,
     ViewElements,
@@ -91,6 +92,7 @@ public sealed class ControlJobParseResult
     public IReadOnlyList<ModelSnapshotParameterRule> ParameterRules { get; internal set; } = [];
     public int? TargetProcessId { get; internal set; }
     public bool IncludeLinked { get; internal set; }
+    public bool IncludeUnplacedViews { get; internal set; } = true;
     public ActionJobContract? Action { get; internal set; }
     public string? Error { get; }
     public Exception? Cause { get; }
@@ -192,6 +194,7 @@ public sealed class ControlJobParseResult
             "documents" => Documents(job.IncludeLinked ?? false),
             "ui-state" => Create(ControlJobKind.UiState, command),
             "list-views" => ListViews(job.ViewType, job.NameContains),
+            "list-sheets" => ParseListSheets(job),
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
             "view-info" => RequireView(ControlJobKind.ViewInfo, command, view),
             "view-elements" => ParseViewElements(command, view, categories, job.Offset, job.Limit),
@@ -400,6 +403,18 @@ public sealed class ControlJobParseResult
         return result;
     }
 
+    private static ControlJobParseResult ParseListSheets(ControlJobContract job)
+    {
+        const string command = "list-sheets";
+        if (job.Offset is < 0 || job.Limit is < 1 or > 5000)
+            return Invalid(command, "offset must be non-negative and limit must be 1 to 5000.");
+        var result = Create(ControlJobKind.ListSheets, command);
+        result.Offset = job.Offset ?? 0;
+        result.Limit = job.Limit ?? 200;
+        result.IncludeUnplacedViews = job.IncludeUnplacedViews ?? true;
+        return result;
+    }
+
     private static ControlJobParseResult ParseScheduleData(ControlJobContract job, string schedule)
     {
         if (job.Offset is < 0 || job.Limit is < 1 or > 5000)
@@ -488,6 +503,7 @@ public static class ControlJobParser
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "includeUnplacedViews")] public bool? IncludeUnplacedViews { get; set; }
     [DataMember(Name = "query")] public string? Query { get; set; }
     [DataMember(Name = "includeInherited")] public bool? IncludeInherited { get; set; }
     [DataMember(Name = "includeObsolete")] public bool? IncludeObsolete { get; set; }

@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "name": "model-health",
+  "rules": [
+    {
+      "id": "HEALTH-warnings",
+      "title": "Warnings stay under the agreed limit",
+      "severity": "major",
+      "check": {
+        "type": "model_health",
+        "metric": "warnings_total"
+      },
+      "threshold": {
+        "max_count": 200
+      }
+    },
+    {
+      "id": "HEALTH-in-place",
+      "title": "Review in-place families",
+      "severity": "major",
+      "check": {
+        "type": "model_health",
+        "metric": "in_place_families"
+      }
+    },
+    {
+      "id": "HEALTH-cad",
+      "title": "Review imported CAD",
+      "severity": "major",
+      "check": {
+        "type": "model_health",
+        "metric": "imported_cad"
+      }
+    },
+    {
+      "id": "HEALTH-worksets",
+      "title": "Review closed worksets",
+      "severity": "major",
+      "check": {
+        "type": "worksets",
+        "metric": "closed"
+      }
+    },
+    {
+      "id": "HEALTH-links",
+      "title": "Links are loaded",
+      "severity": "major",
+      "check": {
+        "type": "model_health",
+        "metric": "unloaded_links"
+      }
+    }
+  ]
+}
