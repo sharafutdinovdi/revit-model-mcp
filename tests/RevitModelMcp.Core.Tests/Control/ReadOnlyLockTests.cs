@@ -58,6 +58,7 @@ public sealed class ReadOnlyLockTests : IDisposable
     }
 
     [Test]
+    [NotInParallel]
     public async Task ExternalFileChangeNotifiesWithinOneSecond()
     {
         using var service = new ReadOnlyLock(LockPath, () => false);
