@@ -547,3 +547,13 @@ The add-in refuses `batch-supervisor-start` and the server host refuses cancella
 ## Supervised batch mode
 
 The [batch collector](batch.md) uses a separate worker with an add-in read-only allowlist. Every action command is refused in that worker. Document lifecycle tools accept `process_id` (alias `processId`) to select one running instance; an explicit PID and supplied document must agree.
+
+## Saved tools
+
+[My tools](my-tools.md) reuses the C# execution pipeline with validated `ctx.Args` parameters.
+`revit_save_tool` compiles without execution and requires confirmation before storing the approved revision.
+`revit_run_tool` validates its revision and arguments before execution.
+Action-mode runs require confirmation except for dry runs; read-mode runs always roll back model transactions.
+Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.
+The workstation read-only lock blocks all runs, saves, and deletions.
+ExecuteCode and execution tool restrictions apply to the entire saved tool catalog.

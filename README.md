@@ -230,6 +230,13 @@ Snapshots also let you audit models later without Revit running.
 
 ### Prompts and skills
 
+### My tools
+
+Successful C# procedures can be saved as named tools with validated parameters after explicit source review and confirmation.
+The **My tools** ribbon window lists approved revisions and supports **Show code** and confirmed deletion.
+Agents run saved tools through the same execution, read-only lock, and Undo pipeline as `revit_execute_code`.
+See [My tools](docs/my-tools.md) for saving, running, reviewing, deleting, and the security model.
+
 The [prompts and coordinator guide](docs/prompts.md) describe read-only model review workflows.
 For Claude Code, copy `skills/revit-model-coordinator` into `~/.claude/skills/`.
 For Claude Desktop, zip that skill folder and upload it as a skill.

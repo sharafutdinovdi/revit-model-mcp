@@ -51,6 +51,11 @@ internal static class ActionCommandExecutor
     public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
     {
         ActivityPaneAutoShow.EnsureShown();
+        if (job.Command is "save-tool" or "delete-tool" or "list-tools" or "get-tool")
+        {
+            MyTools.ExecuteCatalog(application, job, startedAt);
+            return;
+        }
         if (job.Command == "set-read-only")
         {
             ExecuteReadOnly(application, job, startedAt);
@@ -110,7 +115,8 @@ internal static class ActionCommandExecutor
                     ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
                 return;
             }
-            document = job.Command == "execute-code" && job.TargetDocument is null
+            if (job.Command == "run-tool") MyTools.PrepareRun(job.Action!);
+            document = job.Command is "execute-code" or "run-tool" && job.TargetDocument is null
                 ? application.ActiveUIDocument?.Document
                 : ResolveDocument(application, job.TargetDocument);
             if (document is not null && !(job.Command == "execute-code" && job.Action?.TransactionMode == "none"))
@@ -122,15 +128,20 @@ internal static class ActionCommandExecutor
                 ? activeUiDocument : null;
             var action = job.Action ?? throw new ArgumentException("Missing action arguments.");
             if (job.Command is "export" or "export-nwc") action.ConfirmOverwrites = true;
-            if (job.Command == "execute-code")
+            if (job.Command is "execute-code" or "run-tool")
             {
-                if (!action.DryRun)
-                    data = ConfirmationStore.Gate("execute-code",
+                if (job.Command == "run-tool"
+                    ? MyTools.Session.RequiresConfirmation(action.ToolName!, action.ToolRevision!, action.ToolMode, action.DryRun)
+                    : !action.DryRun)
+                    data = ConfirmationStore.Gate(job.Command,
                         document is null ? "none" : DocumentConfirmationBinding.Identity(document.PathName, document.Title),
-                        DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode), "", action.ConfirmToken,
-                        $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(action.Code!)[..12]}, {action.Code!.Length} characters, transaction {action.TransactionMode}) on '{document?.Title ?? "no document"}'. The code has full Revit API access and the user's file and network rights. Review it before confirming.",
-                        "Needs confirmation to run C# code.",
+                        DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
+                        (job.Command == "run-tool" ? $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}" : ""), "", action.ConfirmToken,
+                        action.ToolConfirmationText ?? $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(action.Code!)[..12]}, {action.Code!.Length} characters, transaction {action.TransactionMode}) on '{document?.Title ?? "no document"}'. The code has full Revit API access and the user's file and network rights. Review it before confirming.",
+                        action.ToolName is null ? "Needs confirmation to run C# code." : $"Needs confirmation to run {action.ToolName} ({action.ToolRevision}).",
                         "The confirmation state changed. Repeat the call without confirm_token to get a new one.");
+                if (job.Command == "run-tool" && data is null)
+                    MyTools.Session.Confirm(action.ToolName!, action.ToolRevision!);
                 data ??= CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
             }
             else if (job.Command == "batch")
@@ -168,7 +179,7 @@ internal static class ActionCommandExecutor
                 response.Data = new ActionResultData { MatchedCount = limit.Count, Count = limit.Count };
             if (job.Command is "export-nwc" or "load-family" or "place-families" or "export" or "link-cad" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
-            else if (job.Command == "execute-code")
+            else if (job.Command is "execute-code" or "run-tool")
                 PluginLog.Warn("Code execution failed. Source and exception details omitted from log.");
             else PluginLog.Error($"Action failed. Command='{job.Command}'.", exception);
         }

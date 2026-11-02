@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import sys
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -30,6 +31,11 @@ ACTION_TOOLS = {
     "revit_cancel_job",
     "revit_process_models",
     "revit_execute_code",
+    "revit_save_tool",
+    "revit_list_tools",
+    "revit_get_tool",
+    "revit_run_tool",
+    "revit_delete_tool",
     "revit_select",
     "revit_show",
     "revit_isolate",
@@ -76,6 +82,8 @@ ACTION_TOOLS = {
 
 
 SESSION_TOOLS = {
+    "revit_list_tools",
+    "revit_get_tool",
     "revit_activate_view",
     "revit_activate_document",
     "revit_select",
@@ -108,6 +116,7 @@ def test_stdio_action_tools_listed_regardless_of_read_only(read_only):
                     "revit_edit_families",
                     "revit_align_link_datums",
                     "revit_execute_code",
+                    "revit_run_tool",
                     "revit_export",
                     "revit_process_models",
                     "revit_load_family",
@@ -131,11 +140,24 @@ def test_stdio_legacy_variable_does_not_block_execution():
     async def check():
         env = os.environ.copy()
         env[revit_server.LEGACY_READ_ONLY_VARIABLE] = "1"
-        parameters = StdioServerParameters(command="revit-model-mcp", args=[], env=env)
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=[
+                "-c",
+                "from unittest.mock import AsyncMock; "
+                "from revit_model_mcp import server; "
+                "server.create_host = lambda *_: AsyncMock("
+                "list_revit_instances=AsyncMock(return_value=[{'processId': 42}])); "
+                "server.RevitChannel.execute = AsyncMock(return_value={'success': True}); "
+                "server.main()",
+            ],
+            env=env,
+        )
         async with Client(stdio_client(parameters), read_timeout_seconds=10) as client:
             listed = await client.list_tools()
             assert "revit_select" in {tool.name for tool in listed.tools}
             result = await client.call_tool("revit_select", {"element_ids": []})
+        assert result.structured_content["success"] is True
         assert "read-only mode" not in str(result)
 
     asyncio.run(check())
@@ -2284,3 +2306,224 @@ def test_set_read_only_uses_one_instance_for_the_shared_workstation_lock():
     host.list_revit_instances.return_value = [{"processId": 100}, {"processId": 42}]
     asyncio.run(server.call_tool("revit_set_read_only", {"enabled": True}))
     assert execute.await_args.args[0].payload["targetProcessId"] == 42
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "command"),
+    [
+        (
+            "revit_save_tool",
+            {
+                "name": "my_tool",
+                "description": "Count",
+                "parameters": {"type": "object"},
+                "code": "return 1;",
+            },
+            "save-tool",
+        ),
+        ("revit_run_tool", {"name": "my_tool", "args": {"count": 2}}, "run-tool"),
+        ("revit_delete_tool", {"name": "my_tool"}, "delete-tool"),
+    ],
+)
+def test_my_tools_confirmation_round_trip(tool, arguments, command):
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.side_effect = [
+        {
+            "success": True,
+            "data": {
+                "needsConfirmation": True,
+                "confirmToken": "review-token",
+                "summary": "Review",
+                "tool": {"revision": "a" * 64, "code": "return 1;"},
+            },
+        },
+        {"success": True, "data": {"summary": "Done"}},
+    ]
+    first = asyncio.run(server.call_tool(tool, arguments))
+    assert "review-token" in str(first)
+    assert execute.await_args.args[0].command == command
+    preview = execute.await_args.args[0].payload.copy()
+    assert preview["confirmToken"] is None
+    asyncio.run(server.call_tool(tool, {**arguments, "confirm_token": "review-token"}))
+    confirmed = execute.await_args.args[0].payload.copy()
+    assert confirmed.pop("confirmToken") == "review-token"
+    preview.pop("confirmToken")
+    assert confirmed == preview
+    assert execute.await_count == 2
+
+
+@pytest.mark.parametrize(
+    "tool",
+    [
+        "revit_save_tool",
+        "revit_list_tools",
+        "revit_get_tool",
+        "revit_run_tool",
+        "revit_delete_tool",
+    ],
+)
+def test_my_tools_follow_execute_code_policy(tool):
+    import asyncio
+
+    arguments = {
+        "revit_save_tool": {
+            "name": "my_tool",
+            "description": "Count",
+            "parameters": {"type": "object"},
+            "code": "return 1;",
+        },
+        "revit_list_tools": {},
+        "revit_get_tool": {"name": "my_tool"},
+        "revit_run_tool": {"name": "my_tool", "args": {}},
+        "revit_delete_tool": {"name": "my_tool"},
+    }[tool]
+    server, execute, host = action_server()
+    for policy in [{"ExecuteCode": "off"}, {"ToolDeny": ["revit_execute_code"]}]:
+        with patch("revit_model_mcp.policy.load_policy", return_value=policy):
+            result = asyncio.run(server.call_tool(tool, arguments))
+        assert "Blocked by organization policy" in str(result)
+    execute.assert_not_awaited()
+    host.list_revit_instances.assert_not_awaited()
+
+
+def test_my_tools_read_only_and_discovery_annotations():
+    import asyncio
+
+    server, execute, _ = action_server()
+    with patch("revit_model_mcp.policy.load_policy", return_value={"ReadOnly": True}):
+        for tool, arguments in [
+            ("revit_run_tool", {"name": "my_tool", "args": {}, "dry_run": True}),
+            (
+                "revit_save_tool",
+                {
+                    "name": "my_tool",
+                    "description": "Count",
+                    "parameters": {"type": "object"},
+                    "code": "return 1;",
+                },
+            ),
+            ("revit_delete_tool", {"name": "my_tool"}),
+        ]:
+            result = asyncio.run(server.call_tool(tool, arguments))
+            assert "policy_blocked" in str(result)
+        execute.assert_not_awaited()
+        asyncio.run(server.call_tool("revit_list_tools", {}))
+        asyncio.run(server.call_tool("revit_get_tool", {"name": "my_tool"}))
+    assert execute.await_count == 2
+    tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    for name in ["revit_list_tools", "revit_get_tool"]:
+        assert tools[name].annotations.read_only_hint is True
+        assert tools[name].annotations.destructive_hint is False
+    for name in ["revit_save_tool", "revit_run_tool", "revit_delete_tool"]:
+        assert tools[name].annotations.read_only_hint is False
+        assert "confirm_token" in tools[name].input_schema["properties"]
+    assert (
+        tools["revit_save_tool"].input_schema["properties"]["name"]["pattern"]
+        == "^[a-z][a-z0-9_]{2,47}$"
+    )
+
+
+def test_my_tools_maps_typed_args_and_enforces_utf8_source_limit():
+    import asyncio
+
+    server, execute, _ = action_server()
+    asyncio.run(
+        server.call_tool(
+            "revit_run_tool",
+            {
+                "name": "my_tool",
+                "args": {"label": "ok", "count": 2, "size": 1.5, "enabled": True},
+                "dry_run": True,
+            },
+        )
+    )
+    payload = execute.await_args.args[0].payload
+    assert json.loads(payload["toolArgs"]) == {
+        "label": "ok",
+        "count": 2,
+        "size": 1.5,
+        "enabled": True,
+    }
+    assert payload["dryRun"] is True
+    execute.reset_mock()
+    with pytest.raises(ToolError, match="256 KB"):
+        asyncio.run(
+            server.call_tool(
+                "revit_save_tool",
+                {
+                    "name": "my_tool",
+                    "description": "Count",
+                    "parameters": {"type": "object"},
+                    "code": "é" * 131073,
+                },
+            )
+        )
+    execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize("command", ["get-tool", "save-tool", "list-tools"])
+def test_my_tools_redaction_preserves_definition_previews(command):
+    definition = {
+        "code": r'return @"\\server\share\file.txt";',
+        "description": r"Review C:\Private\file.txt",
+        "parameters": json.dumps({"description": r"C:\Private\file.txt"}),
+    }
+    data = {"tools": [definition]} if command == "list-tools" else {"tool": definition}
+    response = {
+        "command": command,
+        "data": {**data, "summary": r"Model C:\Private\Model.rvt"},
+        "progress": {"currentPath": r"C:\Private\Model.rvt"},
+        "returnValue": {"tool": {"path": r"C:\Private\Model.rvt"}},
+    }
+    with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
+        redacted = redact_model_paths(response)
+    assert redacted["data"] == {**data, "summary": "Model Model.rvt"}
+    assert redacted["progress"]["currentPath"] == "Model.rvt"
+    assert redacted["returnValue"]["tool"]["path"] == "Model.rvt"
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_my_tools_first_session_challenge_is_forwarded_for_read_and_dry_run(dry_run):
+    import asyncio
+
+    server, execute, _ = action_server()
+    challenge = {
+        "success": True,
+        "data": {
+            "needsConfirmation": True,
+            "confirmToken": "session-review",
+            "confirmationText": "Run count_tool, mode read, revision abc, saved today. Validated args: {}",
+        },
+    }
+    execute.side_effect = [challenge, {"success": True, "data": {"returnValue": 2}}]
+    arguments = {"name": "count_tool", "args": {}, "dry_run": dry_run}
+    first = asyncio.run(server.call_tool("revit_run_tool", arguments))
+    assert "session-review" in str(first)
+    asyncio.run(
+        server.call_tool("revit_run_tool", {**arguments, "confirm_token": "session-review"})
+    )
+    assert execute.await_args.args[0].payload["confirmToken"] == "session-review"
+    assert execute.await_args.args[0].payload["dryRun"] is dry_run
+
+
+def test_my_tools_invalid_catalog_entries_and_delete_are_forwarded():
+    import asyncio
+
+    server, execute, _ = action_server()
+    execute.return_value = {
+        "success": True,
+        "data": {
+            "tools": [{"name": "valid_tool"}],
+            "invalid": [{"name": "broken_tool", "reason": "revision not approved"}],
+        },
+    }
+    result = asyncio.run(server.call_tool("revit_list_tools", {}))
+    assert "valid_tool" in str(result)
+    assert "broken_tool" in str(result)
+    assert "revision not approved" in str(result)
+    execute.return_value = {"success": True, "data": {"needsConfirmation": True}}
+    asyncio.run(server.call_tool("revit_delete_tool", {"name": "broken_tool"}))
+    assert execute.await_args.args[0].command == "delete-tool"
+    assert execute.await_args.args[0].payload["name"] == "broken_tool"

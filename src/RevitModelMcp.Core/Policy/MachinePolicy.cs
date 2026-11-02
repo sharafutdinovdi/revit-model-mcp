@@ -31,7 +31,7 @@ public sealed class MachinePolicy
         ["batch-start"] = "batch-supervisor-start"
     };
 
-    private static readonly string[] CodeCommands = ["execute-code"];
+    private static readonly string[] CodeCommands = ["execute-code", "save-tool", "run-tool", "delete-tool", "list-tools", "get-tool"];
     private static readonly string[] ExemptCommands = ["ping", "jobs", "jobs/persisted"];
 
     public bool? ReadOnly { get; init; }

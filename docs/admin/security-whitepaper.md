@@ -157,3 +157,21 @@ Report vulnerabilities through the private advisory form or the email address in
 | Unsigned binaries | Signing not yet in place | Verify checksums and attestation; sign with an organization certificate |
 | Local files are plain text | No encryption by the project | Disk encryption, policy for log location |
 | Server dependencies float at first install | `uvx` resolves from PyPI | Pin the version; install from a wheelhouse |
+
+## My tools
+
+Saved tools use the same policy gates as `execute_code`, including machine policy, workstation read-only lock, and transport authentication.
+The first run of every tool name and revision hash requires a `confirm_token` in each Revit session, including read mode and dry runs.
+The confirmation shows name, mode, short revision hash, saved timestamp, replaced hash when present, and validated arguments truncated to 300 characters.
+The confirmed set exists only in Revit process memory, keyed by name and revision hash.
+After confirmation, read mode and dry runs execute without another token for that revision in that session.
+Action runs that commit changes still require per-call confirmation.
+
+Approval protects against silent tool replacement between sessions.
+The store HMAC key is readable in-process, and code with the Windows user's rights can write signed revisions.
+A signed revision alone does not grant session confirmation.
+Approval does not protect against a client that can already execute code in the current session.
+`execute_code` dry runs retain their existing semantics: Revit model rollback does not sandbox file or network operations.
+Internal Core `ToolStore` and `ToolDefinition` types block direct script calls as defense in depth, not as a security guarantee.
+Tool run audits contain name, revision, and argument names without argument values.
+Response redaction preserves saved tool source, parameter schema, and description in previews while redacting model paths elsewhere.

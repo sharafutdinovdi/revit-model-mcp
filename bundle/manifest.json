@@ -174,7 +174,7 @@
     },
     {
       "name": "revit_open_document",
-      "description": "Open a local, UNC or RSN model. Central models open detached by default. Cloud paths are unsupported. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Open a local, UNC or RSN model. Central models open detached by default. Cloud paths are unsupported. May commit; revit_jobs polls; retry repeats."
     },
     {
       "name": "revit_activate_document",
@@ -213,8 +213,28 @@
       "description": "Delete selected link types and their instances; dry_run previews. Cannot be undone in Revit. Needs confirm_token from a first call, which changes nothing."
     },
     {
+      "name": "revit_save_tool",
+      "description": "Compile C# and schema without execution. Returns full source, hash and confirm_token."
+    },
+    {
+      "name": "revit_list_tools",
+      "description": "List saved tools and schemas without source."
+    },
+    {
+      "name": "revit_get_tool",
+      "description": "Return approved source and schema without execution."
+    },
+    {
+      "name": "revit_run_tool",
+      "description": "Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates. Timeouts may follow commit."
+    },
+    {
+      "name": "revit_delete_tool",
+      "description": "Delete all revisions with confirm_token after a first confirmation challenge. No Undo."
+    },
+    {
       "name": "revit_execute_code",
-      "description": "Compile and run C# against the live Revit API on the Revit thread. revit_api_lookup supplies reference metadata before writing C# for an unfamiliar type. Accepts a method body or a public static Script class with Execute(ScriptContext ctx). Auto mode owns one transaction and undo entry; transaction=\"none\" is refused by default. Needs confirm_token from a first call, which runs nothing; dry_run needs none and forces transaction=\"auto\". A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns one Undo; transaction=\"none\" is refused. Needs confirm_token except dry_run, which rolls back. May commit; revit_jobs polls; retry repeats."
     },
     {
       "name": "revit_undo_last",
@@ -334,11 +354,11 @@
     },
     {
       "name": "revit_export",
-      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Export PDF, DWG, IFC or schedule CSV files on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) needs a confirm_token from a first call. May commit; revit_jobs polls; retry repeats."
     },
     {
       "name": "revit_export_nwc",
-      "description": "Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Export NWC on the Revit workstation; needs the Navisworks exporter. settings_xml applies exporter XML values, explicit arguments take precedence. Replacing an existing file (overwrite=true) needs a confirm_token from a first call. May commit; revit_jobs polls; retry repeats."
     },
     {
       "name": "revit_run_actions",
@@ -346,11 +366,11 @@
     },
     {
       "name": "revit_process_models",
-      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run forces code.transaction=\"auto\" and reports the override in warnings. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run forces code.transaction=\"auto\" and reports the override in warnings. May commit; revit_jobs polls; retry repeats."
     },
     {
       "name": "revit_edit_families",
-      "description": "Edit an open family in place, or named project families (exact names or [\"*\"]), one load cycle each. A dry run rolls back all changes. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action."
+      "description": "Edit an open family in place, or named project families (exact names or [\"*\"]), one load cycle each. A dry run rolls back all changes. May commit; revit_jobs polls; retry repeats."
     },
     {
       "name": "revit_batch_start",
