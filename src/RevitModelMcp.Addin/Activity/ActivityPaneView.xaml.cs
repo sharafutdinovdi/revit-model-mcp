@@ -445,7 +445,7 @@ public partial class ActivityPaneView : UserControl
     {
         if (ActionCommandExecutor.ReadOnlyMode)
         {
-            TaskDialog.Show(PaneText.Caption, PaneText.ReadOnlyUndo);
+            AppDialog.Show(PaneText.Caption, PaneText.ReadOnlyUndo);
             return;
         }
         ActivityHost.Dispatch(application =>
@@ -453,7 +453,7 @@ public partial class ActivityPaneView : UserControl
             var uiDocument = application.ActiveUIDocument;
             if (uiDocument is null)
             {
-                TaskDialog.Show(PaneText.Caption, PaneText.NoActiveDocument);
+                AppDialog.Show(PaneText.Caption, PaneText.NoActiveDocument);
                 return;
             }
             try
@@ -462,7 +462,7 @@ public partial class ActivityPaneView : UserControl
             }
             catch (Exception exception)
             {
-                TaskDialog.Show(PaneText.Caption, exception.Message);
+                AppDialog.Show(PaneText.Caption, exception.Message);
             }
         });
     }

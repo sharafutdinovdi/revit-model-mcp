@@ -1,5 +1,7 @@
 # Security whitepaper
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 This paper describes how Model MCP is built, what data it touches, which controls exist, and which risks remain. It is written for security reviewers. Statements describe the code of the release you install; the [questionnaire answers](security-questionnaire.md) give short answers to common review questions.
 
 Model MCP is an open-source project (MIT). It is not a hosted service. The maintainer operates no server that receives customer data.
@@ -64,7 +66,7 @@ Not provided: single sign-on, per-client identities, token rotation, rate limiti
 
 ### Read-only mode
 
-Read-only mode refuses every action tool and keeps read tools. It comes from one workstation lock, set with the Read-only ribbon button or `revit_set_read_only`, or from the machine policy `ReadOnly` value that a user cannot change; the policy wins. Chat can turn the lock off only after explicit user confirmation. The user who owns the lock can remove it, so it is a safety switch and not an enforcement control. Use the machine policy for enforcement.
+Read-only mode refuses every action tool and keeps read tools. It comes from one workstation lock, set with the Read-only ribbon button or `revit_set_read_only`, or from the machine policy `ReadOnly` value that a user cannot change; the policy wins. Chat can turn the lock off only through a two-step AI app token handshake. The AI app is expected to show the action; Model MCP does not show its own dialog. The token does not prove human approval. The user who owns the lock can remove it, so it is a safety switch and not an enforcement control. Use the machine policy for enforcement.
 
 ### Machine policy
 

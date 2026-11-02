@@ -6,7 +6,6 @@
     <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
     <ManagedInstall Condition="'$(ManagedInstall)' == ''">false</ManagedInstall>
-    <UpdateChannel Condition="'$(UpdateChannel)' == ''">release</UpdateChannel>
     <DeployAddin>true</DeployAddin>
     <PublishAddin>true</PublishAddin>
     <LaunchRevit>true</LaunchRevit>
@@ -73,12 +72,12 @@
 
   <ItemGroup>
     <AssemblyMetadata Include="ManagedInstall" Value="$(ManagedInstall)"/>
-    <AssemblyMetadata Include="UpdateChannel" Value="$(UpdateChannel)"/>
+    <AssemblyMetadata Include="UpdateChannel" Value="$(Channel)"/>
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\RevitModelMcp.Core\RevitModelMcp.Core.csproj"/>
-    <ProjectReference Include="..\RevitModelMcp.Updater\RevitModelMcp.Updater.csproj"
+    <ProjectReference Condition="'$(Channel)' != 'store'" Include="..\RevitModelMcp.Updater\RevitModelMcp.Updater.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true"
                       SetTargetFramework="TargetFramework=net48"/>
@@ -89,9 +88,13 @@
   </ItemGroup>
 
   <Target Name="CopyUpdater" AfterTargets="Build"
-          Condition="'$(ManagedInstall)' != 'true' And '$(UpdateChannel)' != 'managed' And '$(UpdateChannel)' != 'store'">
+          Condition="'$(ManagedInstall)' != 'true' And '$(Channel)' != 'store'">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
           DestinationFolder="$(TargetDir)"/>
+  </Target>
+
+  <Target Name="RemoveStoreUpdater" BeforeTargets="PublishAddin" AfterTargets="Build" Condition="'$(Channel)' == 'store'">
+    <Delete Files="$(TargetDir)RevitModelMcp.Updater.exe;$(TargetDir)publish/RevitModelMcp/RevitModelMcp.Updater.exe"/>
   </Target>
 
   <Target Name="CopyBatchSupervisor" BeforeTargets="PublishAddin" AfterTargets="Build">
@@ -108,6 +111,10 @@
           Condition="'$(TargetFramework)' == 'net8.0-windows' Or '$(TargetFramework)' == 'net10.0-windows'">
     <Delete Files="$(TargetDir)System.Collections.Immutable.dll;$(TargetDir)System.Reflection.Metadata.dll;$(TargetDir)System.Memory.dll"/>
   </Target>
+
+  <ItemGroup Condition="'$(Channel)' == 'store'">
+    <Compile Remove="Updates/**/*.cs"/>
+  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Resources\Icons\*.png"/>

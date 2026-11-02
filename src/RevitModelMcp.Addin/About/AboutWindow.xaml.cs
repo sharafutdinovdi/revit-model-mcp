@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Navigation;
 using RevitModelMcp.Core.Help;
-using RevitModelMcp.Updates;
+using RevitModelMcp.Policy;
 
 namespace RevitModelMcp.About;
 
@@ -12,10 +12,11 @@ public partial class AboutWindow : Window
     public AboutWindow(string revitYear)
     {
         InitializeComponent();
+        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
         var version = FileVersionInfo.GetVersionInfo(typeof(AboutWindow).Assembly.Location).ProductVersion ?? "0.0.0";
         VersionText.Text = $"Version: {Core.Help.VersionText.Format(version)}";
         RevitText.Text = $"Revit: {revitYear}";
-        ChannelText.Text = $"Update channel: {UpdateService.Channel().ToString().ToLowerInvariant()}";
+        ChannelText.Text = $"Update channel: {PolicyProvider.Channel.ToString().ToLowerInvariant()}";
         DocumentationLink.NavigateUri = new Uri(HelpLinks.Documentation);
         SourceLink.NavigateUri = new Uri(HelpLinks.Source);
         PrivacyLink.NavigateUri = new Uri(HelpLinks.Privacy);

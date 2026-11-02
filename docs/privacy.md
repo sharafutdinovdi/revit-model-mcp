@@ -8,15 +8,14 @@ Changes to this policy are recorded in the repository history.
 - Your model data stays on your machines. The project has no server that receives it.
 - There is no analytics, telemetry, crash reporting or advertising code in the add-in or the Python server.
 - Revit model data leaves the workstation only as responses to the MCP client you chose. That client may send it to an AI model service under its own policy.
-- The Autodesk App Store build and its bundled server make no automatic requests. Other builds make only update checks to `api.github.com` (add-in) and `pypi.org` (server). They carry no model data and you can switch them off.
+- The Autodesk App Store build and its bundled server contain no update implementation or telemetry. User-requested workstation traffic still uses the configured transport. Other builds make only update checks to `api.github.com` (add-in) and `pypi.org` (server). They carry no model data and you can switch them off.
 
 ## Data collection
 
 Model MCP reads the model open in Revit on the configured workstation and returns the information requested by the MCP client.
 Requested data can include model names, paths, element parameters, geometry, warnings and exported view images.
 Actions change Revit data by default. The workstation read-only lock disables them: use the Read-only ribbon button or `revit_set_read_only`. The machine policy wins over the lock.
-The product collects no accounts or usage statistics.
-The maintainer receives information that a person voluntarily includes in a support message.
+The product collects no accounts or usage statistics. The maintainer receives information that a person voluntarily includes in a support message.
 Runtime network connections serve the configured Revit workstation through HTTP or SSH and any user-configured proxy or tunnel.
 
 ## Update checks

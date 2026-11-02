@@ -1,5 +1,7 @@
 # Transport
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 `REVIT_MCP_HOST` selects `local`, `ssh:<alias>`, `http://host:port` or `https://host:port`.
 `--host` overrides it.
 `local`, the default, talks to the add-in over a per-process named pipe and falls back to the file channel.
@@ -159,7 +161,7 @@ Restart Revit after a change.
 The workstation `read-only` lock is a file next to `settings.json`.
 It applies to all Revit versions and instances of the same Windows user.
 The Model MCP ribbon or `revit_set_read_only` controls it.
-Chat unlock requires explicit user confirmation through a five-minute, single-use token.
+Chat unlock requires a five-minute, single-use token handshake with the AI app. The AI app is expected to show the action; Model MCP does not show its own dialog. The token does not prove human approval.
 Machine policy overrides the user lock.
 See [read-only mode](actions.md#read-only-mode).
 

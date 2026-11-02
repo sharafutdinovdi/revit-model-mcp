@@ -230,6 +230,10 @@ Completed model changes remain committed.
 
 ## Confirmation tokens, dry runs and addressing
 
+`confirm_token` is a two-step handshake with the AI app.
+The AI app is expected to show the action to the user; Model MCP does not show its own dialog.
+The token does not prove human approval.
+
 Tool descriptions state what a tool does and keep this procedure out of the tool list.
 Save, sync, close-with-loss, link removal, large deletions, overwriting exports, in-place saves in process-models, C# execution, and other file replacement use a two-step flow.
 The first call without `confirm_token` changes nothing and returns `needsConfirmation`, `confirmationText` and `confirmToken`.
@@ -237,7 +241,7 @@ Show the exact `confirmationText` to the user.
 Retry with identical arguments plus `confirm_token` only after the user explicitly agrees in chat.
 Never perform a save, sync or close-with-loss without that confirmation.
 A failed confirmation uses up the token; repeat the call without `confirm_token` for a new preview.
-A `dry_run` call executes, rolls back and returns the verification block; it never needs a token.
+A `dry_run` call executes, rolls back, and returns the verification block. Saved C# still requires the first-run token in each Revit session, including read mode and dry runs. Rollback does not undo file, network, or process effects of C#.
 When several Revit instances run, pass `document` (a title or file name substring) or `process_id`; a zero or ambiguous match is rejected before anything is published.
 When several documents are open in one process, `document` on an action selects the target open document.
 `REVIT_MCP_TOOLSETS` can hide tool groups; a tool this guide names may be unavailable until its toolset is enabled.

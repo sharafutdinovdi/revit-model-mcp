@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Automation;
 using RevitModelMcp.Core.Batch;
 
 namespace RevitModelMcp.BatchSupervisor;
@@ -12,7 +13,7 @@ internal sealed class RevitWorkerProcess : IDisposable
     private string? _heartbeatStartedUtc;
     private readonly EnumWindowsCallback _windowCallback;
     private readonly EnumWindowsCallback _childCallback;
-    private readonly StringBuilder _windowText = new(512);
+    private readonly StringBuilder _windowText = new(8192);
     private readonly StringBuilder _dialogText = new(2048);
     private bool _trustPromptVisible;
 
@@ -29,10 +30,13 @@ internal sealed class RevitWorkerProcess : IDisposable
     public bool HasExited => _process.HasExited;
     public string? HeartbeatStartedUtc => _heartbeatStartedUtc;
 
+    public string TrustPromptText { get; private set; } = string.Empty;
+
     public bool TrustPromptVisible()
     {
         if (_process.HasExited) return false;
         _trustPromptVisible = false;
+        TrustPromptText = string.Empty;
         EnumWindows(_windowCallback, IntPtr.Zero);
         return _trustPromptVisible;
     }
@@ -90,15 +94,23 @@ internal sealed class RevitWorkerProcess : IDisposable
         _windowText.Clear();
         GetWindowText(window, _windowText, _windowText.Capacity);
         var title = _windowText.ToString();
-        if (BatchStartupTrustPolicy.MatchesPrompt(title, title))
-        {
-            _trustPromptVisible = true;
-            return false;
-        }
         _dialogText.Clear();
-        _dialogText.Append(title);
+        _dialogText.AppendLine(title);
         EnumChildWindows(window, _childCallback, IntPtr.Zero);
         _trustPromptVisible = BatchStartupTrustPolicy.MatchesPrompt(title, _dialogText.ToString());
+        if (_trustPromptVisible)
+        {
+            try
+            {
+                var content = AutomationElement.FromHandle(window).FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "ContentText"));
+                if (content is not null) _dialogText.AppendLine(content.Current.Name);
+            }
+            catch (ElementNotAvailableException) { }
+            catch (InvalidOperationException) { }
+            catch (COMException) { }
+            TrustPromptText = _dialogText.ToString();
+        }
         return !_trustPromptVisible;
     }
 
@@ -110,7 +122,7 @@ internal sealed class RevitWorkerProcess : IDisposable
         SendMessageTimeout(window, 0x000D, (IntPtr)_windowText.Capacity, _windowText,
             0x0002, 25, out _);
         if (_windowText.Length == 0) return true;
-        _dialogText.Append(' ').Append(_windowText);
+        _dialogText.AppendLine(_windowText.ToString());
         return true;
     }
 

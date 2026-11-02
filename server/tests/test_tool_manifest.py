@@ -128,6 +128,7 @@ def test_snake_case_export(generator, built, registry, tmp_path, managed):
             "name": tool["name"],
             "description": tool["description"],
             "inputSchema": input_schemas[tool["name"]],
+            "annotations": tool["annotations"],
         }
         for tool in built["tools"]
     ]

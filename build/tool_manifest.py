@@ -25,7 +25,10 @@ tool_manifest_entry = _bundle_manifest.tool_manifest_entry
 
 CONFIRMATION = {
     "revit_save_tool": ("always", "Every save after code and schema review."),
-    "revit_run_tool": ("conditional", "Action mode except dry_run."),
+    "revit_run_tool": (
+        "conditional",
+        "First run in each Revit session, including read mode and dry_run; every committed action run.",
+    ),
     "revit_delete_tool": ("always", "Every deletion of a saved tool."),
     "revit_set_read_only": (
         "conditional",
@@ -98,7 +101,11 @@ FILE_SYSTEM = {
     "revit_open_document": ("read", "Model file on the Revit workstation."),
     "revit_load_family": ("read", "Family files (.rfa) on the Revit workstation."),
     "revit_link_cad": ("read", "DWG file on the Revit workstation."),
-    "revit_batch_start": ("read", "Model files on the Revit workstation."),
+    "revit_batch_start": (
+        "read_write",
+        "Model files and durable batch state on the Revit workstation.",
+    ),
+    "revit_batch_cancel": ("write", "Cancellation state on the Revit workstation."),
     "revit_nwc_settings_check": (
         "read",
         "Navisworks exporter XML on the Revit workstation.",
@@ -135,7 +142,7 @@ FILE_SYSTEM = {
     ),
     "revit_execute_code": (
         "read_write",
-        "Not restricted by the server; confirmed C# runs with the user's rights.",
+        "Not restricted by the server; enabled C# runs with the user's rights.",
     ),
 }
 
@@ -228,7 +235,7 @@ DATA_HANDLING = {
         "user's own agreement."
     ),
     "readOnlyMode": (
-        "Actions are refused while the shared workstation read-only lock is on. The ribbon or revit_set_read_only controls it. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by either control."
+        "Actions are refused while the shared workstation read-only lock is on. The ribbon or revit_set_read_only controls it. Chat unlock requires a two-step AI app token handshake. The AI app is expected to show the action; Model MCP does not show its own dialog. The token does not prove human approval. Machine policy cannot be lifted by either control."
     ),
     "localChannels": (
         "Named pipe (current Windows user only), a file channel under "
@@ -237,6 +244,7 @@ DATA_HANDLING = {
         "SSH or HTTP(S) host."
     ),
     "telemetry": "None.",
+    "confirmation": "confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog.",
 }
 
 
@@ -249,7 +257,7 @@ def _tool_entry(tool) -> dict:
     required, condition = CONFIRMATION.get(tool.name, ("never", None))
     confirmation = {"required": required}
     if required != "never":
-        confirmation["mechanism"] = "confirm_token"
+        confirmation["mechanism"] = "confirm_token client handshake"
         confirmation["condition"] = condition
     access, scope = FILE_SYSTEM.get(tool.name, ("none", None))
     file_system = {"access": access}
@@ -324,12 +332,21 @@ def export_snake_case(manifest: dict, tools) -> dict:
         "server": {
             "name": manifest["server"]["name"],
             "transport": manifest["server"]["transport"],
+            "transports": {
+                "default": ["stdio", "named pipe"],
+                "optional": [
+                    "user-configured loopback HTTP with bearer authentication",
+                    "user-configured SSH",
+                    "user-configured remote HTTP(S)",
+                ],
+            },
         },
         "tools": [
             {
                 "name": tool["name"],
                 "description": tool["description"],
                 "inputSchema": input_schemas[tool["name"]],
+                "annotations": dict(tool["annotations"]),
             }
             for tool in manifest["tools"]
         ],

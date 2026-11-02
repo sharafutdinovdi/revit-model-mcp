@@ -12,7 +12,7 @@ var versioning = Versioning.CreateFromVersionString(args[0]);
 var wixEntities = Generator.GenerateWixEntities(args[1..]);
 
 // INSTALLER_VARIANT=store builds only the SingleUser package of the Autodesk App Store build: the add-in carries
-// UpdateChannel=store, so there is no updater and no update setting to write.
+// Channel=store, so there is no updater and no update setting to write.
 var store = string.Equals(Environment.GetEnvironmentVariable("INSTALLER_VARIANT"), "store", StringComparison.OrdinalIgnoreCase);
 
 BuildSingleUserMsi();

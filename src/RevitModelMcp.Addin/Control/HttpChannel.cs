@@ -582,8 +582,10 @@ internal sealed record HttpSettings
     [DataMember(Name = "showActivityPaneOnAction", Order = 5)] public bool ShowActivityPaneOnAction { get; set; } = true;
     [DataMember(Name = "tabActivityHighlight", Order = 13)] public bool TabActivityHighlight { get; set; } = true;
     [DataMember(Name = "trustedNetworkRoots", Order = 6)] public string[] TrustedNetworkRoots { get; set; } = [];
+#if !STORE_CHANNEL
     [DataMember(Name = "updateCheck", Order = 7)] public bool UpdateCheck { get; set; } = true;
     [DataMember(Name = "updateMode", Order = 12, EmitDefaultValue = false)] public string? UpdateMode { get; set; }
+#endif
     [DataMember(Name = "maxStoredResponses", Order = 8)] public int MaxStoredResponses { get; set; } = HttpLimits.DefaultMaxStoredResponses;
     [DataMember(Name = "maxStoredBytes", Order = 9)] public long MaxStoredBytes { get; set; } = HttpLimits.DefaultMaxStoredBytes;
     [DataMember(Name = "requestReadTimeoutSeconds", Order = 10)] public int RequestReadTimeoutSeconds { get; set; } = HttpLimits.DefaultRequestReadTimeoutSeconds;
@@ -601,7 +603,9 @@ internal sealed record HttpSettings
         ShowActivityPaneOnAction = true;
         TabActivityHighlight = true;
         TrustedNetworkRoots = [];
+#if !STORE_CHANNEL
         UpdateCheck = true;
+#endif
         MaxStoredResponses = HttpLimits.DefaultMaxStoredResponses;
         MaxStoredBytes = HttpLimits.DefaultMaxStoredBytes;
         RequestReadTimeoutSeconds = HttpLimits.DefaultRequestReadTimeoutSeconds;

@@ -1,5 +1,7 @@
 # Model MCP server
 
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
 The Python package of Model MCP for Autodesk® Revit® exposes Revit tools over MCP stdio; actions run by default.
 One workstation read-only lock disables them without hiding the action tools. Use the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs explicit confirmation, and the machine policy wins.
 It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.

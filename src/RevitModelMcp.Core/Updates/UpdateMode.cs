@@ -49,7 +49,7 @@ public static class UpdateDecision
             ? UpdateChannel.Release
             : channelMetadata!.Trim().ToLowerInvariant() switch
             {
-                "release" => UpdateChannel.Release,
+                "release" or "github" => UpdateChannel.Release,
                 "dev" => UpdateChannel.Dev,
                 "store" => UpdateChannel.Store,
                 _ => UpdateChannel.Managed

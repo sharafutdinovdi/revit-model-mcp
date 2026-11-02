@@ -6,6 +6,20 @@ namespace RevitModelMcp.Core.Tests.Policy;
 public sealed class CodeExecutionGateTests
 {
     [Test]
+    [Arguments("revit_save_tool")]
+    [Arguments("revit_delete_tool")]
+    [Arguments("revit_run_tool")]
+    [Arguments("revit_list_tools")]
+    [Arguments("revit_get_tool")]
+    public async Task Store_MyToolsRequireMachinePolicy(string command)
+    {
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, MachinePolicy.Empty, "confirm")).IsEqualTo(CodeExecutionGate.StoreRefusal);
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, new MachinePolicy { ExecuteCode = "confirm" }, null)).IsNull();
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Store, MachinePolicy.FailClosed("unreadable"), "confirm")).IsEqualTo(MachinePolicy.UnreadableRefusal);
+        await Assert.That(CodeExecutionGate.Refusal(command, UpdateChannel.Release, MachinePolicy.Empty, null)).IsNull();
+    }
+
+    [Test]
     public async Task Store_IsOffByDefault()
     {
         var state = CodeExecutionGate.Evaluate(UpdateChannel.Store, MachinePolicy.Empty, null);
@@ -17,11 +31,12 @@ public sealed class CodeExecutionGateTests
     [Test]
     [Arguments("confirm")]
     [Arguments(" CONFIRM ")]
-    public async Task Store_UserSettingEnables(string setting)
+    public async Task Store_UserSettingIsIgnored(string setting)
     {
         var state = CodeExecutionGate.Evaluate(UpdateChannel.Store, MachinePolicy.Empty, setting);
-        await Assert.That(state.Enabled).IsTrue();
-        await Assert.That(state.Source).IsEqualTo(CodeExecutionSource.UserSetting);
+        await Assert.That(state.Enabled).IsFalse();
+        await Assert.That(state.Source).IsEqualTo(CodeExecutionSource.ChannelDefault);
+        await Assert.That(CodeExecutionGate.NeedsUserSetting(UpdateChannel.Store, MachinePolicy.Empty)).IsFalse();
     }
 
     [Test]
@@ -77,13 +92,12 @@ public sealed class CodeExecutionGateTests
     {
         var refusal = CodeExecutionGate.Refusal("revit_execute_code", UpdateChannel.Store, MachinePolicy.Empty, null);
         await Assert.That(refusal).IsEqualTo(CodeExecutionGate.StoreRefusal);
-        await Assert.That(refusal!).Contains("\"executeCode\": \"confirm\"");
-        await Assert.That(refusal).Contains("settings.json");
+        await Assert.That(refusal!).Contains("administrator");
         await Assert.That(refusal).Contains("ExecuteCode policy");
         await Assert.That(CodeExecutionGate.Refusal("execute-code", UpdateChannel.Store, MachinePolicy.Empty, null)).IsEqualTo(refusal);
         await Assert.That(CodeExecutionGate.Refusal("revit_move", UpdateChannel.Store, MachinePolicy.Empty, null)).IsNull();
         await Assert.That(CodeExecutionGate.Refusal("ping", UpdateChannel.Store, MachinePolicy.Empty, null)).IsNull();
-        await Assert.That(CodeExecutionGate.Refusal("revit_execute_code", UpdateChannel.Store, MachinePolicy.Empty, "confirm")).IsNull();
+        await Assert.That(CodeExecutionGate.Refusal("revit_execute_code", UpdateChannel.Store, MachinePolicy.Empty, "confirm")).IsEqualTo(CodeExecutionGate.StoreRefusal);
     }
 
     [Test]
@@ -94,8 +108,8 @@ public sealed class CodeExecutionGateTests
         await Assert.That(off["executeCodeSource"]).IsEqualTo("store-default");
         await Assert.That(off["updateChannel"]).IsEqualTo("store");
         var user = CodeExecutionGate.Summarize(UpdateChannel.Store, MachinePolicy.Empty, "confirm");
-        await Assert.That(user["executeCode"]).IsEqualTo("confirm");
-        await Assert.That(user["executeCodeSource"]).IsEqualTo("settings");
+        await Assert.That(user["executeCode"]).IsEqualTo("off");
+        await Assert.That(user["executeCodeSource"]).IsEqualTo("store-default");
         var policy = CodeExecutionGate.Summarize(UpdateChannel.Store, new MachinePolicy { ExecuteCode = "off" }, "confirm");
         await Assert.That(policy["executeCode"]).IsEqualTo("off");
         await Assert.That(policy["executeCodeSource"]).IsEqualTo("policy");

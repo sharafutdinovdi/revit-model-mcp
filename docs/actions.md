@@ -445,7 +445,9 @@ The view may already be active if zoom fails.
 
 `revit_sync_document` always needs confirmation and a non-empty `comment`. It rejects detached and family documents. `relinquish` is `"all"`, `"none"` or a map of `borrowed`, `user_worksets`, `family_worksets`, `view_worksets` and `standard_worksets` booleans. `compact=false`; `save_local_before` and `save_local_after` default to true. The central lock callback does not wait for a lock.
 
-For confirmation, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document, arguments and document state; a change after the preview requires a new token. A failed confirmation, for any reason, uses up the token; repeat the call without `confirm_token` to get a new preview and token. A token guards against accidents, not against an agent replaying it; use read-only mode for unattended runs. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
+confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+
+For the handshake, call the tool once without `confirm_token`. The first response has `data.needsConfirmation=true`, `data.confirmationText` and `data.confirmToken` and makes no change. Show the exact confirmation text to the user. Retry with the same arguments plus `confirm_token` only after explicit agreement in chat. Tokens expire after five minutes, are single use and are bound to the command, document, arguments and document state; a change after the preview requires a new token. A failed confirmation, for any reason, uses up the token; repeat the call without `confirm_token` to get a new preview and token. A token guards against accidents, not against an agent replaying it; use read-only mode for unattended runs. A timeout after the second call may follow a committed save or sync; inspect the model before retrying.
 
 ### Confirmation tokens for irreversible actions
 
@@ -457,7 +459,7 @@ Five more calls use the same two-step flow, with the same response fields (`need
 - `revit_execute_code` without `dry_run`. The token is bound to the SHA-256 of the code, the transaction mode and the target document.
 - `revit_process_models` with `code` and without `dry_run`. The token is bound to the whole request and the source files.
 
-`dry_run` never needs a token. `revit_execute_code` with `dry_run=true` forces `transaction="auto"`. Otherwise, `transaction="none"` is refused whatever the token. A separate workstation policy that may allow it is a later change and has no setting yet.
+`dry_run` does not need a token for these calls; `revit_run_tool` still requires its first-run token in each Revit session. `revit_execute_code` with `dry_run=true` forces `transaction="auto"`. Otherwise, `transaction="none"` is refused whatever the token. A separate workstation policy that may allow it is a later change and has no setting yet.
 
 The token guards against mistakes and against instructions injected into model data or tool output. It does not stop an MCP client that confirms by itself: a client that gets the token can send it back. For unattended use, switch on read-only mode.
 
@@ -553,7 +555,10 @@ The [batch collector](batch.md) uses a separate worker with an add-in read-only 
 [My tools](my-tools.md) reuses the C# execution pipeline with validated `ctx.Args` parameters.
 `revit_save_tool` compiles without execution and requires confirmation before storing the approved revision.
 `revit_run_tool` validates its revision and arguments before execution.
-Action-mode runs require confirmation except for dry runs; read-mode runs always roll back model transactions.
+The first run in each Revit session requires the token handshake, including read mode and dry runs.
+Every committed action-mode run also requires the handshake; read-mode runs always roll back model transactions.
+The token does not prove human approval, and rollback does not undo C# file, network, or process effects.
+In the store channel only machine policy `ExecuteCode=confirm` enables saved C#, including read mode and dry runs.
 Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.
 The workstation read-only lock blocks all runs, saves, and deletions.
 ExecuteCode and execution tool restrictions apply to the entire saved tool catalog.
