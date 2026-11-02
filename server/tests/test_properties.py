@@ -4,9 +4,8 @@ import asyncio
 import copy
 import json
 import os
-import tempfile
 import time
-from pathlib import Path, PureWindowsPath
+from pathlib import PureWindowsPath
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -37,19 +36,23 @@ RULE_DICTS = st.dictionaries(
 )
 
 
+@pytest.fixture(scope="module")
+def rule_directory(tmp_path_factory):
+    return tmp_path_factory.mktemp("rule-properties")
+
+
 @BOUNDED
 @given(st.one_of(TEXT, RULE_DICTS.map(yaml.safe_dump)))
 @example("schema: 1\nname: Test\nrules: []\n")
 @example("[unterminated")
 @example("&loop [*loop]")
-def test_yaml_like_rule_files_only_raise_validation_errors(content):
-    with tempfile.TemporaryDirectory() as directory:
-        path = Path(directory) / "rules.yaml"
-        path.write_text(content, encoding="utf-8")
-        try:
-            load_rules(str(path))
-        except (ValueError, ValidationError):
-            pass
+def test_yaml_like_rule_files_only_raise_validation_errors(rule_directory, content):
+    path = rule_directory / "rules.yaml"
+    path.write_text(content, encoding="utf-8")
+    try:
+        load_rules(str(path))
+    except (ValueError, ValidationError):
+        pass
 
 
 @st.composite
@@ -91,17 +94,16 @@ def test_arbitrary_rule_dicts_only_raise_validation_errors(value):
 
 @BOUNDED
 @given(rule_files())
-def test_valid_rule_files_round_trip(value):
+def test_valid_rule_files_round_trip(rule_directory, value):
     expected = load_rules(inline=value)
     assert expected["rules"] == [{**rule, "pack": None} for rule in value["rules"]]
-    with tempfile.TemporaryDirectory() as directory:
-        for suffix, content in [("json", json.dumps(value)), ("yaml", yaml.safe_dump(value))]:
-            path = Path(directory) / f"rules.{suffix}"
-            path.write_text(content, encoding="utf-8")
-            actual = load_rules(str(path))
-            assert {k: v for k, v in actual.items() if k != "file"} == {
-                k: v for k, v in expected.items() if k != "file"
-            }
+    for suffix, content in [("json", json.dumps(value)), ("yaml", yaml.safe_dump(value))]:
+        path = rule_directory / f"rules.{suffix}"
+        path.write_text(content, encoding="utf-8")
+        actual = load_rules(str(path))
+        assert {k: v for k, v in actual.items() if k != "file"} == {
+            k: v for k, v in expected.items() if k != "file"
+        }
 
 
 @BOUNDED
