@@ -146,6 +146,8 @@ def test_stdio_legacy_variable_does_not_block_execution():
                 "-c",
                 "from unittest.mock import AsyncMock; "
                 "from revit_model_mcp import server; "
+                "server.create_host = lambda *_: AsyncMock("
+                "list_revit_instances=AsyncMock(return_value=[{'processId': 42}])); "
                 "server.RevitChannel.execute = AsyncMock(return_value={'success': True}); "
                 "server.main()",
             ],
