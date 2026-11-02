@@ -27,7 +27,7 @@ Signing starts with the first release after the project's application is approve
 1. Get the add-in package from your BIM manager or IT team, or build it from the repository. It is an Autodesk `.bundle` folder with a `PackageContents.xml` file.
 2. Close Revit and copy the folder to `%APPDATA%\Autodesk\ApplicationPlugins` (current user) or `%ProgramData%\Autodesk\ApplicationPlugins` (all users).
 3. Start Revit and open a model. The first time, Revit asks whether to load the add-in. Choose **Always Load** after you check the publisher and path. Release builds are not code-signed yet; see [code signing](code-signing.md).
-4. Find the **MCP** panel on the **Add-Ins** tab. Its **Activity** button opens the activity pane, which lists every request and action, and its **Connect AI app** button registers the server in your AI apps (see [Connect an AI app](#connect-an-ai-app)).
+4. Find the **Model MCP** panel on the **Model MCP** tab. Its **Activity** button opens the activity pane, which lists every request and action, and its **Connect AI app** button registers the server in your AI apps (see [Connect an AI app](#connect-an-ai-app)).
 5. Unless you installed an MSI (which bundles the server, see [Connect an AI app](#connect-an-ai-app)), install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 6. Register the server in your MCP client.
 
@@ -56,12 +56,20 @@ Signing starts with the first release after the project's application is approve
 
 7. Restart the client. With a model open in Revit, ask it to call `revit_ping`. A reply with `success: true` means both parts are connected.
 
-### The MCP ribbon panel
+### The Model MCP ribbon tab
 
-The **MCP** panel on the **Add-Ins** tab has two buttons. Press F1 while the pointer is on either button to open this page.
+The **Model MCP** tab contains the **Model MCP** panel.
+Press F1 while the pointer is on a button to open its help page.
 
+- **Model MCP** opens the product menu.
+- **About** shows the product version, Revit year, update channel, and project links.
+- **Check for updates** runs the configured update check and reports results in Activity; it appears only on the GitHub release channel and respects update policy.
+- **Settings** opens `%LOCALAPPDATA%\RevitModelMcp` in Explorer for local settings and policy files.
+- **Connect AI app** registers the server in the AI apps on this computer; see [Connect an AI app](#connect-an-ai-app).
 - **Activity** shows or hides the activity pane.
-- **Connect AI app** opens a small dialog that registers the server in the AI apps on this computer; see [Connect an AI app](#connect-an-ai-app).
+- **Help** opens the installation documentation.
+- **Report issue** opens the GitHub issue chooser.
+- **Support developer** opens the project's contribution page.
 
 ### Connect an AI app
 

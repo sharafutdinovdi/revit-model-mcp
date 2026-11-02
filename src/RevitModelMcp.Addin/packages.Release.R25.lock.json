@@ -26,6 +26,12 @@
           "System.Reflection.Metadata": "8.0.0"
         }
       },
+      "Nice3point.Revit.Api.AdWindows": {
+        "type": "Direct",
+        "requested": "[2025.*, )",
+        "resolved": "2025.4.60",
+        "contentHash": "6OhUL9TKWZiwHUm5ATIQRQG6+elcoBge/yrxZx08wd8Pi/CEHsJ8YDYzYVZNsGyU/Xk+fx+1av94YXy9lithKg=="
+      },
       "Nice3point.Revit.Api.RevitAPI": {
         "type": "Direct",
         "requested": "[2025.0.2, 2025.0.2]",

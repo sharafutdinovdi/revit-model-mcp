@@ -51,7 +51,7 @@ Keep Revit closed during installation, then start Revit and open a model.
 Revit asks whether to load the add-in, because release builds are not code-signed yet.
 
 **2. Add the server to your MCP client.**
-In Revit, Add-ins > MCP > Connect AI app registers the bundled server in Claude Desktop, Cursor, VS Code or Codex; Claude Code gets a copy-paste command.
+In Revit, Model MCP > Model MCP > Connect AI app registers the bundled server in Claude Desktop, Cursor, VS Code or Codex; Claude Code gets a copy-paste command.
 The MSI includes the server executable, so this path needs no separate Python or uv installation.
 
 If you prefer the PyPI server:

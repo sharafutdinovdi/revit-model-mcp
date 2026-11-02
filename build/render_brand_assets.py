@@ -7,6 +7,13 @@
 Run from the repository root:
 
     uv run build/render_brand_assets.py [--readme-media]
+    uv run build/render_brand_assets.py --ribbon-icons
+    uv run build/render_brand_assets.py --tooltips [--contact-sheet PATH]
+
+``--ribbon-icons`` renders only the ribbon PNGs from the 32-unit SVG masters.
+The 512-unit logo-master.svg is reserved for store artwork.
+Playwright (Chromium) and Pillow are build-only dependencies, not add-in or server
+runtime dependencies. Ribbon icons render at 4x resolution before Lanczos downsampling.
 
 The first run needs a Chromium build: ``uvx playwright install chromium``.
 ``--readme-media`` renders only the README hero and gallery animations. They need ffmpeg
@@ -167,6 +174,202 @@ def write_ico(path: Path, frames: dict[int, bytes]) -> None:
         )
         body += data
     path.write_bytes(header + entries + body)
+
+
+def render_ribbon_icons(browser: Browser) -> None:
+    """Render themed ribbon resources from the 32-unit SVG masters."""
+    for source in sorted((ASSETS / "icons").glob("*.svg")):
+        if source.name == "logo-master.svg":
+            continue
+        name, scheme = source.stem.rsplit("-", 1)
+        if scheme not in ("light", "dark"):
+            raise ValueError(f"Unknown ribbon icon theme: {source.name}")
+        suffix = "-dark" if scheme == "dark" else ""
+        svg = source.read_text(encoding="utf-8")
+        for size in (16, 32):
+            raster = Image.open(io.BytesIO(icon(browser, svg, size * 4)))
+            target = ADDIN_ICONS / f"{name.capitalize()}{size}{suffix}.png"
+            raster.resize((size, size), Image.Resampling.LANCZOS).save(target)
+            print(f"{target.relative_to(ROOT)}: {size} x {size}")
+
+
+def tooltip_svg(name: str, scheme: str) -> str:
+    """Build a static feature card using the ribbon masters and their palette."""
+    dark = scheme == "dark"
+    background, surface, border = (
+        ("#202020", "#2B2B2B", "#505050") if dark else ("#F5F5F5", "#FFFFFF", "#D8D8D8")
+    )
+    neutral, accent = ("#E6E6E6", "#7FB2E5") if dark else ("#2B2B2B", "#1F4E79")
+
+    def label(x: int, y: int, text: str, size: int = 14, colour: str = neutral) -> str:
+        return f'<text x="{x}" y="{y}" fill="{colour}" font-family="Arial, sans-serif" font-size="{size}">{text}</text>'
+
+    def card(x: int, y: int, width: int, height: int) -> str:
+        return f'<rect x="{x}" y="{y}" width="{width}" height="{height}" rx="8" fill="{surface}" stroke="{border}"/>'
+
+    def glyph(icon_name: str, x: int, y: int, size: int = 32) -> str:
+        master = (ASSETS / "icons" / f"{icon_name}-{scheme}.svg").read_text(
+            encoding="utf-8"
+        )
+        return master.replace(
+            "<svg ", f'<svg x="{x}" y="{y}" width="{size}" height="{size}" ', 1
+        )
+
+    titles = {
+        "logo": "Model MCP",
+        "about": "About",
+        "update": "Check for updates",
+        "settings": "Local settings",
+        "connect": "Connect AI app",
+        "activity": "MCP activity",
+        "help": "Documentation",
+        "issue": "Report an issue",
+        "support": "Support development",
+    }
+    parts = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="340" height="200" viewBox="0 0 340 200">',
+        f'<rect width="340" height="200" fill="{background}"/>',
+        glyph(name, 16, 14),
+        label(60, 36, titles[name], 18),
+    ]
+    if name == "connect":
+        parts.append(
+            f'<path d="M126 84H170V158H126M170 121H210" fill="none" stroke="{accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
+        for index, client in enumerate(("Claude", "Cursor", "VS Code")):
+            y = 68 + index * 37
+            parts.extend((card(18, y, 108, 32), label(34, y + 21, client)))
+        parts.extend(
+            (card(210, 85, 112, 74), glyph("logo", 249, 91), label(247, 145, "Revit"))
+        )
+    elif name == "activity":
+        for index, (title, state) in enumerate(
+            (
+                ("Read model", "Done"),
+                ("Update parameters", "Running"),
+                ("Export view", "Queued"),
+            )
+        ):
+            y = 63 + index * 40
+            parts.extend(
+                (
+                    card(16, y, 308, 34),
+                    label(28, y + 22, title),
+                    label(249, y + 22, state, 12, accent),
+                )
+            )
+    elif name == "logo":
+        for index, (icon_name, title) in enumerate(
+            (
+                ("about", "About"),
+                ("update", "Check for updates"),
+                ("settings", "Settings"),
+            )
+        ):
+            y = 61 + index * 41
+            parts.extend(
+                (
+                    card(16, y, 308, 35),
+                    glyph(icon_name, 25, y + 5, 24),
+                    label(62, y + 23, title),
+                )
+            )
+    elif name == "about":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("logo", 34, 89, 64),
+                label(119, 93, "Model MCP", 18),
+                label(119, 122, "Version / Revit year"),
+                label(119, 150, "Update channel", 14, accent),
+            )
+        )
+    elif name == "update":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("update", 34, 90, 60),
+                label(115, 99, "Check release"),
+                label(115, 128, "Follow update policy"),
+                label(115, 157, "Result in Activity", 14, accent),
+            )
+        )
+    elif name == "settings":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("settings", 32, 91, 58),
+                label(109, 96, "Settings folder"),
+                label(109, 126, "settings.json", 14, accent),
+                label(109, 154, "Local policy files"),
+            )
+        )
+    elif name == "help":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("help", 32, 91, 58),
+                label(109, 96, "Setup guide"),
+                label(109, 126, "Tools and workflows", 14, accent),
+                label(109, 154, "Revit model help"),
+            )
+        )
+    elif name == "issue":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                label(32, 92, "GitHub issues", 16, accent),
+                label(32, 123, "What happened?"),
+                label(32, 151, "Version + steps to reproduce"),
+            )
+        )
+    elif name == "support":
+        parts.extend(
+            (
+                card(16, 64, 308, 116),
+                glyph("support", 32, 88, 64),
+                label(119, 106, "Ko-fi", 25, accent),
+                label(119, 136, "Keep Model MCP"),
+                label(119, 158, "free and open source"),
+            )
+        )
+    parts.append("</svg>")
+    return "".join(parts)
+
+
+def render_tooltips(browser: Browser, contact_sheet: Path | None = None) -> None:
+    """Render both themes at 340 px wide and optionally assemble a review sheet."""
+    names = (
+        "logo",
+        "about",
+        "update",
+        "settings",
+        "connect",
+        "activity",
+        "help",
+        "issue",
+        "support",
+    )
+    sheet = Image.new("RGB", (720, len(names) * 232 + 36), "#D8D8D8")
+    draw = ImageDraw.Draw(sheet)
+    draw.text((10, 10), "Light / Revit 2022-2023", fill="#2B2B2B")
+    draw.text((370, 10), "Dark / Revit 2024+", fill="#2B2B2B")
+    for row, name in enumerate(names):
+        for column, scheme in enumerate(("light", "dark")):
+            html = f'<html><body style="margin:0">{tooltip_svg(name, scheme)}</body></html>'
+            raster = Image.open(io.BytesIO(shoot(browser, html, (340, 200), 2)))
+            raster = raster.resize((340, 200), Image.Resampling.LANCZOS)
+            suffix = "-dark" if scheme == "dark" else ""
+            target = ADDIN_ICONS / f"{name.capitalize()}Tooltip{suffix}.png"
+            raster.save(target, optimize=True)
+            print(f"{target.relative_to(ROOT)}: 340 x 200")
+            x, y = column * 360 + 10, row * 232 + 36
+            draw.text((x, y), f"{name.capitalize()} / {scheme}", fill="#2B2B2B")
+            sheet.paste(raster.convert("RGB"), (x, y + 20))
+    if contact_sheet is not None:
+        contact_sheet.parent.mkdir(parents=True, exist_ok=True)
+        sheet.save(contact_sheet)
+        print(f"Contact sheet: {contact_sheet}")
 
 
 def quantized_png(data: bytes) -> bytes:
@@ -404,9 +607,24 @@ def installer_dialog() -> str:
     )
 
 
-def main(media_only: bool = False) -> None:
+def main(
+    media_only: bool = False,
+    ribbon_only: bool = False,
+    tooltips_only: bool = False,
+    contact_sheet: Path | None = None,
+) -> None:
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
+
+        if tooltips_only:
+            render_tooltips(browser, contact_sheet)
+            browser.close()
+            return
+
+        if ribbon_only:
+            render_ribbon_icons(browser)
+            browser.close()
+            return
 
         if media_only:
             render_readme_media(browser)
@@ -423,10 +641,8 @@ def main(media_only: bool = False) -> None:
         (ROOT / "bundle" / "icon.png").write_bytes(
             icon(browser, NEUTRAL_MARK, 512, tile=True)
         )
-        for size in (16, 32):
-            (ADDIN_ICONS / f"Activity{size}.png").write_bytes(
-                icon(browser, NEUTRAL_MARK, size)
-            )
+        render_ribbon_icons(browser)
+        render_tooltips(browser, contact_sheet)
         write_ico(
             INSTALL_ICONS / "ShellIcon.ico",
             {
@@ -455,4 +671,11 @@ def main(media_only: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    main(media_only="--readme-media" in sys.argv[1:])
+    main(
+        media_only="--readme-media" in sys.argv[1:],
+        ribbon_only="--ribbon-icons" in sys.argv[1:],
+        tooltips_only="--tooltips" in sys.argv[1:],
+        contact_sheet=Path(sys.argv[sys.argv.index("--contact-sheet") + 1])
+        if "--contact-sheet" in sys.argv[1:]
+        else None,
+    )

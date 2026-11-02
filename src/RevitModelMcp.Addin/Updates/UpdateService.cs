@@ -26,15 +26,21 @@ internal static class UpdateService
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp");
     private static readonly string ReleasePage = "https://github.com/sharafutdinovdi/revit-model-mcp/releases";
 
-    public static void Start() => _ = Task.Run(Run);
+    public static void Start() => _ = Task.Run(() => Run(false));
 
-    private static void Run()
+    public static void CheckNow() => _ = Task.Run(() => Run(true));
+
+    private static void Run(bool manual)
     {
         try
         {
             using var mutex = new Mutex(false, @"Local\RevitModelMcp.UpdateCheck");
-            if (!mutex.WaitOne(0)) return;
-            try { Check(); }
+            if (!mutex.WaitOne(0))
+            {
+                if (manual) ActivityRecorder.RecordSystemNotice("An update check is already running.");
+                return;
+            }
+            try { Check(manual); }
             finally { mutex.ReleaseMutex(); }
         }
         catch (UpdateDownloadRefusedException exception)
@@ -49,7 +55,7 @@ internal static class UpdateService
         }
     }
 
-    private static void Check()
+    private static void Check(bool manual)
     {
         Directory.CreateDirectory(LocalDirectory);
         var statePath = Path.Combine(LocalDirectory, "update-state.json");
@@ -95,33 +101,50 @@ internal static class UpdateService
         var mode = UpdateDecision.Decide(new UpdateInputs(Channel(), perUser, PolicyProvider.Current.UpdateMode,
             machine?.UpdateMode, user?.UpdateMode, machine?.UpdateCheck, user?.UpdateCheck,
             Environment.GetEnvironmentVariable("REVIT_MCP_NO_UPDATE_CHECK")));
-        if (mode == UpdateMode.Off) return;
+        if (mode == UpdateMode.Off)
+        {
+            if (manual) ActivityRecorder.RecordSystemNotice("Update checks are disabled by the configured update policy.");
+            return;
+        }
         if (state.QueuedVersion is not null)
         {
             if (Mutex.TryOpenExisting(@"Local\RevitModelMcp.Updater", out var runningUpdater))
             {
-                using (runningUpdater) return;
+                using (runningUpdater)
+                {
+                    if (manual) ActivityRecorder.RecordSystemNotice("An update is already queued. Close Revit to finish installing it.");
+                    return;
+                }
             }
             state.QueuedVersion = null;
             state.LastCheck = null;
             WriteJson(statePath, state);
         }
         var now = DateTimeOffset.UtcNow;
-        if (!UpdatePolicy.ShouldCheck(now, state.LastCheck)) return;
+        if (!manual && !UpdatePolicy.ShouldCheck(now, state.LastCheck)) return;
         state.LastCheck = now;
         WriteJson(statePath, state);
 
         var feed = FeedBase();
         var release = RequestJson<Release>(new Uri(feed, ReleasePath));
-        if (release is null || !UpdatePolicy.IsNewerStable(InstalledVersion(), release.TagName, release.Draft, release.Prerelease)) return;
+        if (release is null) throw new InvalidDataException("The release feed returned no release.");
+        if (!UpdatePolicy.IsNewerStable(InstalledVersion(), release.TagName, release.Draft, release.Prerelease))
+        {
+            if (manual) ActivityRecorder.RecordSystemNotice("No newer stable Model MCP release is available.");
+            return;
+        }
         if (state.QueuedVersion == release.TagName) return;
         var blocked = state.BlockedVersions.ToDictionary(item => item.Version, item => item.Until);
-        if (UpdatePolicy.IsBlocked(release.TagName, blocked, now)) return;
+        if (UpdatePolicy.IsBlocked(release.TagName, blocked, now))
+        {
+            if (manual) ActivityRecorder.RecordSystemNotice("This update is temporarily blocked after a failed installation or checksum check.", failed: true);
+            return;
+        }
         var releaseUrl = UpdatePolicy.IsAllowedDownloadUrl(release.HtmlUrl, feed) ? release.HtmlUrl :
             UpdatePolicy.BuildReleaseUrl(ReleasePage, release.TagName, release.TagName);
         if (mode == UpdateMode.Notify)
         {
-            if (state.NotifiedVersion == release.TagName) return;
+            if (!manual && state.NotifiedVersion == release.TagName) return;
             var hint = perUser ? " To install updates automatically, set \"updateMode\": \"auto\" in %LOCALAPPDATA%\\RevitModelMcp\\settings.json." : string.Empty;
             ActivityRecorder.RecordSystemNotice($"Update available: {release.TagName.TrimStart('v', 'V')}.{hint}", releaseUrl);
             state.NotifiedVersion = release.TagName;
