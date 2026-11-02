@@ -21,6 +21,8 @@ internal static class ChannelDirectory
     private static string _outputDirectory = Path.Combine(
         _rootDirectory, "instances", Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
 
+    internal static bool AclRepairAvailable { get; private set; }
+
     internal static string RootDirectory => _rootDirectory;
     internal static string OutputDirectory => _outputDirectory;
 
@@ -28,6 +30,7 @@ internal static class ChannelDirectory
 
     internal static (bool Enabled, string? Warning) InitializeChannel()
     {
+        AclRepairAvailable = false;
         SecurityIdentifier currentUser;
         try
         {
@@ -66,14 +69,19 @@ internal static class ChannelDirectory
                 }
                 catch (Exception fallbackException)
                 {
+                    AclRepairAvailable = IsAclFailure(exception) || IsAclFailure(fallbackException);
                     return (false, $"File channel disabled: {reason} Private default directory failed ({fallbackException.GetType().Name}).");
                 }
                 PruneStaleInstanceDirectories(Path.Combine(RootDirectory, "instances"));
                 return (true, $"File channel override refused: {reason} Using the private default directory.");
             }
+            AclRepairAvailable = IsAclFailure(exception);
             return (false, $"File channel disabled: {reason} Check the channel directory ownership and write permissions.");
         }
     }
+
+    private static bool IsAclFailure(Exception exception) =>
+        exception is ChannelAclRefusedException or UnauthorizedAccessException or System.Security.SecurityException;
 
     private static void EnsureDirectory(string path, SecurityIdentifier currentUser, bool migrateOwnedDirectory)
     {
@@ -210,19 +218,85 @@ internal static class ChannelDirectory
         }
     }
 
+    internal sealed record RepairTarget(string Path, string SecurityDescriptor, ChannelAclRepairPlan Plan);
+
+    internal static IReadOnlyList<RepairTarget> InspectRepair()
+    {
+        using var identity = WindowsIdentity.GetCurrent();
+        var currentUser = identity.User ?? throw new InvalidOperationException("The current user SID is unavailable.");
+        var targets = new List<RepairTarget>();
+        Inspect(new DirectoryInfo(RootDirectory));
+        return targets;
+
+        void Inspect(FileSystemInfo item)
+        {
+            item.Refresh();
+            if ((item.Attributes & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("Channel repair refuses reparse points. Inspect the channel directory manually.");
+            var security = item is DirectoryInfo directory
+                ? (FileSystemSecurity)directory.GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access)
+                : ((FileInfo)item).GetAccessControl(AccessControlSections.Owner | AccessControlSections.Access);
+            var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+            var entries = security.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>()
+                .Select(rule => new ChannelAclEntry(rule.IdentityReference.Value, (int)rule.FileSystemRights,
+                    rule.AccessControlType == AccessControlType.Allow, rule.IsInherited));
+            targets.Add(new RepairTarget(item.FullName,
+                security.GetSecurityDescriptorSddlForm(AccessControlSections.Owner | AccessControlSections.Access),
+                ChannelAclRepairPolicy.Plan(owner?.Value, currentUser.Value, security.AreAccessRulesProtected, entries)));
+            if (item is DirectoryInfo parent)
+                foreach (var child in parent.EnumerateFileSystemInfos()) Inspect(child);
+        }
+    }
+
+    internal static bool Repair(IReadOnlyList<RepairTarget> confirmed)
+    {
+        var current = InspectRepair();
+        if (current.Count != confirmed.Count || current.Any(target => !confirmed.Any(previous =>
+                previous.Path == target.Path && previous.SecurityDescriptor == target.SecurityDescriptor)))
+            throw new InvalidOperationException("Channel permissions changed since confirmation. Review and confirm again.");
+        using var identity = WindowsIdentity.GetCurrent();
+        var currentUser = identity.User ?? throw new InvalidOperationException("The current user SID is unavailable.");
+        var ownerChangeDenied = false;
+        // Children are protected first; parent inheritance changes must not alter the reviewed child ACLs.
+        foreach (var target in confirmed.Reverse())
+        {
+            if (!target.Plan.Required) continue;
+            if ((File.GetAttributes(target.Path) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidOperationException("Channel repair refuses reparse points.");
+            var directory = Directory.Exists(target.Path);
+            FileSystemSecurity security = directory ? new DirectorySecurity() : new FileSecurity();
+            security.SetAccessRuleProtection(true, false);
+            foreach (var entry in target.Plan.TargetEntries)
+                security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(entry.Sid),
+                    (FileSystemRights)entry.RightsMask,
+                    directory ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None,
+                    PropagationFlags.None, AccessControlType.Allow));
+            if (directory) new DirectoryInfo(target.Path).SetAccessControl((DirectorySecurity)security);
+            else new FileInfo(target.Path).SetAccessControl((FileSecurity)security);
+            try
+            {
+                FileSystemSecurity ownerSecurity = directory ? new DirectorySecurity() : new FileSecurity();
+                ownerSecurity.SetOwner(currentUser);
+                if (directory) new DirectoryInfo(target.Path).SetAccessControl((DirectorySecurity)ownerSecurity);
+                else new FileInfo(target.Path).SetAccessControl((FileSecurity)ownerSecurity);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                ownerChangeDenied = true;
+                PluginLog.Warn("Channel DACL repaired; Windows refused the owner change. The owner is checked during initialization.");
+            }
+        }
+        return ownerChangeDenied;
+    }
+
     private static DirectorySecurity PrivateDirectorySecurity(SecurityIdentifier currentUser)
     {
         var security = new DirectorySecurity();
         security.SetAccessRuleProtection(true, false);
         security.SetOwner(currentUser);
-        foreach (var principal in new[]
-                 {
-                     currentUser,
-                     new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
-                     new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null)
-                 })
+        foreach (var entry in ChannelAclRepairPolicy.Plan(currentUser.Value, currentUser.Value, true, []).TargetEntries)
         {
-            security.AddAccessRule(new FileSystemAccessRule(principal, FileSystemRights.FullControl,
+            security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(entry.Sid), (FileSystemRights)entry.RightsMask,
                 InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
                 PropagationFlags.None, AccessControlType.Allow));
         }

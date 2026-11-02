@@ -20,6 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from revit_model_mcp.actions import redact_model_paths
 from revit_model_mcp.artifact_download import preflight_artifact_target, save_artifact
 from revit_model_mcp.revit_channel import (
     ACTIVATION_TASK,
@@ -45,6 +46,11 @@ POLL_COMMAND_TIMEOUT_SECONDS = 5.0
 PICKUP_COMMAND_TIMEOUT_SECONDS = 10.0
 ACTIVATION_DELAY_SECONDS = 60.0
 INSTANCE_STALE_SECONDS = 60.0
+CHANNEL_LOG_TAIL_BYTES = 65536
+CHANNEL_REPAIR_HINT = (
+    "Use Repair channel permissions on the Model MCP ribbon, "
+    "or see docs/transport.md#channel-permissions."
+)
 HANDSHAKE_TIMEOUT_SECONDS = 60.0
 LOGGER = logging.getLogger(__name__)
 RESPONSE_NAME = re.compile(
@@ -121,6 +127,58 @@ def _ps_heartbeat_reader() -> str:
         "} finally { if ($null -ne $reader) { $reader.Dispose() } "
         "elseif ($null -ne $stream) { $stream.Dispose() } } } }; "
     )
+
+
+def _ps_channel_log_reader() -> str:
+    return (
+        _ps_channel_log_tail_reader() + "$channelLog = ''; try { "
+        "$logDir = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'RevitModelMcp\\Logs'; "
+        "$policyPath = Join-Path ([Environment]::GetFolderPath('CommonApplicationData')) 'RevitModelMcp\\policy.json'; "
+        "$fileLogDir = $null; $registryLogDir = $null; "
+        "if (Test-Path -LiteralPath $policyPath) { "
+        "try { $fileLogDir = (Get-Content -LiteralPath $policyPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop).LogDir } catch {} }; "
+        "$baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64'); "
+        "try { $key = $baseKey.OpenSubKey('Software\\Policies\\RevitModelMcp'); "
+        "if ($null -ne $key) { try { $registryLogDir = $key.GetValue('LogDir') } finally { $key.Dispose() } } "
+        "} finally { $baseKey.Dispose() }; "
+        "if ($fileLogDir -is [string] -and $fileLogDir.Trim()) { $logDir = $fileLogDir.Trim() }; "
+        "if ($registryLogDir -is [string] -and $registryLogDir.Trim()) { $logDir = $registryLogDir.Trim() }; "
+        "if (!(Test-Path -LiteralPath $logDir -PathType Container)) { "
+        "$logDir = Join-Path ([IO.Path]::GetTempPath()) 'RevitModelMcp\\Logs' }; "
+        "$channelLog = Read-ChannelLogTail $logDir "
+        "} catch { try { $channelLog = Read-ChannelLogTail (Join-Path ([IO.Path]::GetTempPath()) 'RevitModelMcp\\Logs') } "
+        "catch { $channelLog = '' } }; "
+    )
+
+
+def _ps_channel_log_tail_reader() -> str:
+    return (
+        "function Read-ChannelLogTail([string]$logDir) { $channelLog = ''; "
+        "$newestLog = Get-ChildItem -LiteralPath $logDir -Filter 'RevitModelMcp-*.log' -File -ErrorAction Stop | "
+        "Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1; "
+        "if ($null -ne $newestLog) { "
+        "$stream = [IO.File]::Open($newestLog.FullName, 'Open', 'Read', "
+        "([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete)); "
+        "try { "
+        f"$offset = [Math]::Max(0, $stream.Length - {CHANNEL_LOG_TAIL_BYTES}); "
+        "$null = $stream.Seek($offset, [IO.SeekOrigin]::Begin); "
+        "$reader = [IO.BinaryReader]::new($stream); "
+        f"$channelLog = [Text.Encoding]::UTF8.GetString($reader.ReadBytes({CHANNEL_LOG_TAIL_BYTES})); "
+        "if ($offset -gt 0) { $lineBreak = $channelLog.IndexOf([char]10); "
+        "$channelLog = if ($lineBreak -ge 0) { $channelLog.Substring($lineBreak + 1) } else { '' } } "
+        "} finally { $stream.Dispose() } } "
+        "return $channelLog }; "
+    )
+
+
+def _channel_refusal_line(tail: object) -> str | None:
+    if not isinstance(tail, str):
+        return None
+    for line in reversed(tail[-CHANNEL_LOG_TAIL_BYTES:].splitlines()):
+        marker = line.find("File channel disabled: ")
+        if marker >= 0:
+            return redact_model_paths({"message": line[marker:]})["message"]
+    return None
 
 
 class SshPowerShellHost:
@@ -287,7 +345,8 @@ class SshPowerShellHost:
             "[ordered]@{ processId = $_.Id; revitVersion = $_.FileVersionInfo.ProductVersion } }); "
             "$files = @(Get-ChildItem -LiteralPath $directory -Filter 'instance_*.json' -File -ErrorAction SilentlyContinue | "
             "ForEach-Object { [ordered]@{ name = $_.Name; content = Read-HeartbeatText $_.FullName } }); "
-            "$package = [ordered]@{ processes = $processes; files = $files } | ConvertTo-Json -Depth 4 -Compress; "
+            + _ps_channel_log_reader()
+            + "$package = [ordered]@{ processes = $processes; files = $files; channelLog = $channelLog } | ConvertTo-Json -Depth 4 -Compress; "
             "$bytes = [Text.Encoding]::UTF8.GetBytes($package); "
             "[Convert]::ToBase64String($bytes)"
         )
@@ -303,14 +362,17 @@ class SshPowerShellHost:
         return _parse_instance_package(package, "", datetime.now(timezone.utc))
 
     def _for_instance(self, instance: dict[str, object]) -> SshPowerShellHost:
+        if not instance.get("updatedUtc") or "fileChannelVersion" not in instance:
+            reason = _channel_refusal_line(instance.get("channelLog"))
+            detail = f' Add-in log: "{reason}".' if reason else ""
+            raise RevitChannelError(
+                f"Revit process {instance['processId']} is running, but the Model MCP channel is not confirmed."
+                f"{detail} {CHANNEL_REPAIR_HINT}"
+            )
         version = instance.get("fileChannelVersion")
         if type(version) is not int or version != 2:
             raise RevitChannelError(
                 f"Unsupported file channel version: {version!r}. Update the add-in to the same major version as the server."
-            )
-        if not instance.get("updatedUtc"):
-            raise RevitChannelError(
-                "The selected Revit instance has no fresh heartbeat; its file channel is unconfirmed."
             )
         if not instance.get("startedUtc"):
             raise RevitChannelError(
@@ -978,6 +1040,7 @@ def _parse_instance_package(
                 "documentPath": "",
                 "windowTitle": "",
                 "pluginResponding": False,
+                "channelLog": _channel_refusal_line(package.get("channelLog")),
             }
         )
     return sorted(

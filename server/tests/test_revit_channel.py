@@ -8,6 +8,7 @@ import os
 import shlex
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import time
@@ -2198,16 +2199,16 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
         host = SshPowerShellHost()
         host._discover_instances = AsyncMock(return_value=[instance])
         with patch.object(SshPowerShellHost, "_handshake", AsyncMock()) as handshake:
-            with self.assertRaisesRegex(
-                RevitChannelError, "Unsupported file channel version: None"
-            ):
+            with self.assertRaisesRegex(RevitChannelError, "Model MCP channel is not confirmed"):
                 await host.select_job(Job.ping())
             handshake.assert_not_awaited()
 
     def test_for_instance_requires_version_two(self):
         missing = instance_status()
         del missing["fileChannelVersion"]
-        for instance in [missing] + [
+        with self.assertRaisesRegex(RevitChannelError, "Model MCP channel is not confirmed"):
+            SshPowerShellHost()._for_instance(missing)
+        for instance in [
             instance_status(fileChannelVersion=value) for value in (None, 1, 3, "2", True)
         ]:
             with self.subTest(instance=instance):
@@ -2220,7 +2221,7 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unconfirmed_and_unknown_protocol_rejected_before_publish(self):
         cases = [
-            ({"processId": 42}, "Unsupported"),
+            ({"processId": 42}, "Model MCP channel is not confirmed"),
             (instance_status(startedUtc=""), "startup identity"),
         ]
         cases += [
@@ -3434,3 +3435,122 @@ try { SCRIPT } finally { [Console]::Error.WriteLine("ATTEMPTS=" + [HeartbeatProb
             asyncio.run(host.prepare_job("test.tmp", content, "ping"))
     assert len(captured) == 1
     assert len(list(tmp_path.rglob("job_*.json"))) == int(published)
+
+
+@pytest.mark.parametrize("local", [False, True])
+def test_process_without_heartbeat_explains_unconfirmed_channel(local, tmp_path):
+    from revit_model_mcp.pipe_host import LocalPipeHost
+
+    host = SshPowerShellHost("local" if local else "revit-host", local=local)
+    reason = "File channel disabled: Write access is granted to another principal (S-1-5-83-0)."
+    host._run = AsyncMock(
+        return_value=encode_discovery_payload(
+            {"processes": [{"processId": 42}], "files": [], "channelLog": reason}
+        )
+    )
+    selected_host = LocalPipeHost(fallback=host, directory=tmp_path) if local else host
+    with pytest.raises(RevitChannelError) as caught:
+        asyncio.run(selected_host.select_job(Job.ping()))
+    message = str(caught.value)
+    assert message.startswith(
+        "Revit process 42 is running, but the Model MCP channel is not confirmed."
+    )
+    assert reason in message
+    assert "Unsupported file channel version" not in message
+    assert message.endswith(
+        "Use Repair channel permissions on the Model MCP ribbon, or see docs/transport.md#channel-permissions."
+    )
+
+
+@pytest.mark.parametrize("tail", [None, "", "No refusal here"])
+def test_missing_refusal_log_does_not_hide_process_diagnostic(tail):
+    from revit_model_mcp.ssh_host import _parse_instance_package
+
+    instance = _parse_instance_package(
+        {"processes": [{"processId": 42}], "files": [], "channelLog": tail},
+        "",
+        datetime.now(timezone.utc),
+    )[0]
+    with pytest.raises(RevitChannelError, match="Model MCP channel is not confirmed") as caught:
+        SshPowerShellHost()._for_instance(instance)
+    assert "Add-in log:" not in str(caught.value)
+
+
+def test_channel_log_extracts_latest_exact_refusal_and_redacts_paths(monkeypatch):
+    from revit_model_mcp.ssh_host import _channel_refusal_line
+
+    tail = (
+        "[WRN] File channel disabled: old reason.\n[INF] Other message.\n"
+        r"[WRN] File channel disabled: Check C:\Channel\private\channel.log."
+        "\n[INF] Still running.\n"
+    )
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "0")
+    assert (
+        _channel_refusal_line(tail)
+        == r"File channel disabled: Check C:\Channel\private\channel.log."
+    )
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    assert _channel_refusal_line(tail) == "File channel disabled: Check channel.log."
+
+
+def test_channel_log_extraction_is_bounded():
+    from revit_model_mcp.ssh_host import CHANNEL_LOG_TAIL_BYTES, _channel_refusal_line
+
+    assert (
+        _channel_refusal_line("File channel disabled: too old.\n" + "x" * CHANNEL_LOG_TAIL_BYTES)
+        is None
+    )
+
+
+def test_discovery_reads_only_bounded_tail_of_newest_log_with_policy_path():
+    from revit_model_mcp.ssh_host import CHANNEL_LOG_TAIL_BYTES
+
+    host = SshPowerShellHost()
+    host._run = AsyncMock(return_value=encode_discovery_payload({"files": [], "processes": []}))
+    asyncio.run(host._discover_instances())
+    script = host._run.call_args.args[0]
+    assert "GetFolderPath('MyDocuments')" in script
+    assert "GetFolderPath('CommonApplicationData')" in script
+    assert "Registry64" in script
+    assert "GetValue('LogDir')" in script
+    assert "Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1" in script
+    assert f"$stream.Length - {CHANNEL_LOG_TAIL_BYTES}" in script
+    assert f"ReadBytes({CHANNEL_LOG_TAIL_BYTES})" in script
+    assert "$stream.Seek($offset" in script
+    assert "$stream.Dispose()" in script
+    assert "Get-Content -LiteralPath $newestLog" not in script
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="PowerShell is not installed")
+def test_channel_log_tail_reader_selects_newest_and_skips_partial_line(tmp_path, monkeypatch):
+    from revit_model_mcp.ssh_host import (
+        CHANNEL_LOG_TAIL_BYTES,
+        _channel_refusal_line,
+        _ps_channel_log_tail_reader,
+        _ps_quote,
+    )
+
+    older = tmp_path / "RevitModelMcp-20000101.log"
+    older.write_text("File channel disabled: wrong file.\n")
+    newest = tmp_path / "RevitModelMcp-20000102.log"
+    newest.write_text(
+        "File channel disabled: outside tail.\n"
+        + "x" * CHANNEL_LOG_TAIL_BYTES
+        + "\n[WRN] File channel disabled: newest reason.\n",
+        encoding="utf-8",
+    )
+    os.utime(older, (1, 1))
+    os.utime(newest, (2, 2))
+    script = _ps_channel_log_tail_reader() + f"Read-ChannelLogTail '{_ps_quote(str(tmp_path))}'"
+    result = subprocess.run(
+        [shutil.which("pwsh"), "-NoProfile", "-NonInteractive", "-Command", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    assert len(result.stdout.encode("utf-8")) <= CHANNEL_LOG_TAIL_BYTES
+    assert "outside tail" not in result.stdout
+    assert "wrong file" not in result.stdout
+    assert "xxx" not in result.stdout
+    assert _channel_refusal_line(result.stdout) == "File channel disabled: newest reason."

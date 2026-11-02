@@ -26,6 +26,71 @@ An invalid `REVIT_MCP_HOST` produces a startup configuration message on stderr a
 An unexpected stdio run exception produces a diagnostic line on stderr and propagates to the caller.
 A keyboard interrupt exits successfully.
 
+## Channel permissions
+
+The file channel trusts Windows folder permissions to identify its participants.
+A foreign writer can create requests or forge heartbeats and responses.
+The add-in refuses a channel whose owner or write grants fall outside the existing ACL policy.
+Current user, SYSTEM, and Administrators are trusted owners and writers; the policy also permits the Windows creator-owner and owner-rights writer entries.
+A new channel has a protected private DACL with Full Control for the current user, SYSTEM, and Administrators only.
+
+An observed refused folder had Administrators as owner, inheritance enabled, and inherited write grants for the Hyper-V `vmWorkerProcess` capability and `S-1-5-83-0` (Virtual Machines).
+The capability SID is `S-1-15-3-1024-2268835264-3721307629-241982045-173645152-1490879176-104643441-2915960892-1612460704`.
+Administrators ownership is allowed; the foreign write grants cause the refusal.
+These entries alone do not establish who changed the parent ACL or whether any access occurred.
+
+Without a fresh heartbeat, local and SSH discovery report:
+
+> Revit process <pid> is running, but the Model MCP channel is not confirmed.
+
+When available, the message quotes the newest `File channel disabled: ...` line from the tail of the newest add-in log.
+The reader uses the Windows Documents folder, including redirected Documents, under `RevitModelMcp\Logs`; a machine `LogDir` policy takes precedence, with registry policy winning over `policy.json`.
+The temporary log folder is the fallback when the configured folder is unavailable.
+The read is limited to the last 64 KiB of one file, and `REVIT_MCP_REDACT_PATHS` applies to the quoted reason.
+A missing log does not suppress the diagnostic.
+The message ends with: "Use Repair channel permissions on the Model MCP ribbon, or see docs/transport.md#channel-permissions."
+A heartbeat carrying an unsupported `fileChannelVersion` still reports a version mismatch.
+A missing heartbeat does not establish a version mismatch or prove a permissions failure.
+
+At startup, refusal adds one Activity notice and changes the connection button to **AI connection off**, with a permission-repair tooltip.
+The named pipe and configured HTTP listener can still run; heartbeat discovery remains unavailable until the file channel starts.
+**Model MCP → Repair channel permissions** is enabled only after an ACL refusal.
+The confirmation lists the channel folder, current owners, and every foreign SID removed from the folder and existing children, with account names where Windows can resolve them.
+After confirmation, the command turns inheritance off and replaces the DACL with Full Control for the current user, SYSTEM, and Administrators.
+It attempts to set the owner to the current user; an allowed existing owner can remain if Windows refuses the owner change.
+The command refuses reparse points and changes to the reviewed ACL before applying the repair.
+Successful repair reinitializes the channel, starts its watcher and heartbeat, and restores the connection button without restarting Revit.
+Repair changes workstation files, records notices in Activity and the add-in log, and creates no model undo entry.
+A repair failure can leave some children already repaired.
+
+### Manual repair
+
+Windows requires `WRITE_DAC` to replace permissions and may require `WRITE_OWNER` to change ownership.
+A denied repair reports these requirements and displays manual `icacls` commands.
+Manual repair requires closing Revit and MCP clients, reviewing the affected folder and children, and consent to remove the reported access.
+An administrator can run the following in elevated PowerShell under the same Windows account.
+`$channel` must name the refused folder; the example uses the default channel.
+The commands must not target the profile root or virtualization storage.
+Stop after any nonzero exit code.
+
+```powershell
+$channel = Join-Path $env:LOCALAPPDATA 'RevitModelMcp'
+$sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+icacls $channel
+icacls $channel /setowner "*$sid" /T
+icacls $channel /inheritance:r /grant:r "*${sid}:(OI)(CI)F" "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /T
+# Repeat /remove for every remaining foreign SID shown by the review.
+icacls $channel /remove '*S-1-5-83-0' /T
+icacls $channel /remove '*S-1-15-3-1024-2268835264-3721307629-241982045-173645152-1490879176-104643441-2915960892-1612460704' /T
+icacls $channel
+```
+
+The removal examples apply only when those SIDs appear in the review.
+Explicit grants for other foreign SIDs also require removal; `/grant:r` replaces grants only for the named principals.
+[Microsoft documents the `icacls` options](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/icacls).
+After manual repair, restart Revit and confirm that discovery and `revit_ping` succeed.
+`REVIT_MCP_CHANNEL_DIR` only moves the channel; it must not hide a refusal or replace permission repair.
+
 ## Named pipe
 
 Each add-in listens on `\\.\pipe\RevitModelMcp.<pid>` from startup.
