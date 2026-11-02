@@ -14,12 +14,14 @@ import os
 import re
 import shlex
 import signal
+import subprocess
 import sys
 import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 SERVER_COMMAND_ENV = "RMM_EVAL_SERVER_COMMAND"
 DEFAULT_MODELS = {
@@ -419,6 +421,19 @@ def parse_cli_events(family: str, events: list[dict]) -> dict:
     }
 
 
+def terminate_process_tree(pid: int) -> None:
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        else:
+            os.killpg(pid, signal.SIGKILL)
+
+
 class CliProvider:
     """Run an installed CLI with its existing subscription login."""
 
@@ -515,8 +530,7 @@ class CliProvider:
             failure = type(exc).__name__
         finally:
             # The CLI may leave grandchildren holding stdout, so end the whole session group.
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(process.pid, signal.SIGKILL)
+            terminate_process_tree(process.pid)
             if process.returncode is None:
                 await process.wait()
         reply = parse_cli_events(self.family, events)
@@ -979,7 +993,7 @@ def markdown(result: dict) -> str:
 
 def write_outputs(result: dict, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
-    stem = "eval-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    stem = "eval-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex
     for suffix, content in [
         (".json", json.dumps(result, indent=2)),
         (".md", markdown(result)),

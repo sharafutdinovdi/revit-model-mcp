@@ -4,6 +4,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import sys
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -243,7 +244,9 @@ def test_judge_uses_evidence_and_validates_verdict():
         asyncio.run(eval_run.judge_answer(invalid, scenario, truth, {"answer": "5", "trace": []}))
 
 
-def test_output_pair_and_default_command(tmp_path):
+def test_output_pair_and_default_command(tmp_path, monkeypatch):
+    fixed_now = eval_run.datetime.now(eval_run.UTC)
+    monkeypatch.setattr(eval_run, "datetime", SimpleNamespace(now=lambda _: fixed_now))
     run = {
         "scenario": "doors",
         "model": "fake",
@@ -868,7 +871,7 @@ def fake_cli(
 
     spawn.prompts = []
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    monkeypatch.setattr(eval_run.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(eval_run, "terminate_process_tree", lambda pid: None)
     return commands
 
 
@@ -1143,6 +1146,7 @@ def test_cli_timeout_preserves_proxy_evidence(monkeypatch, family):
     assert len(result["trace"]) == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process group contract")
 def test_cli_timeout_kills_grandchild_process_group(monkeypatch, tmp_path):
     marker = tmp_path / "grandchild.pid"
     script = tmp_path / "bin" / "codex"
@@ -1335,7 +1339,7 @@ def test_cli_large_prompt_uses_stdin(monkeypatch, tmp_path, family):
     async def spawn(*command, **kwargs):
         captured["command"] = command
         captured["prompt"] = kwargs["stdin"].read().decode("utf-8")
-        return await original("/usr/bin/true", **kwargs)
+        return await original(sys.executable, "-c", "pass", **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     asyncio.run(eval_run.CliProvider(family).invoke(prompt, tmp_path, None))
@@ -1350,3 +1354,27 @@ def test_daily_qa_accepts_all_milestone_orders_but_requires_every_check():
     assert not eval_run.score(calls[:-1], scenario)["sequence_match"]
     calls[-2]["args"] = {"categories": ["Walls"], "parameters": ["Mark"]}
     assert not eval_run.score(calls, scenario)["sequence_match"]
+
+
+@pytest.mark.parametrize("platform", ["win32", "linux"])
+def test_terminate_process_tree(monkeypatch, platform):
+    calls = []
+    monkeypatch.setattr(eval_run.sys, "platform", platform)
+    monkeypatch.setattr(
+        eval_run.subprocess, "run", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    monkeypatch.setattr(eval_run.os, "killpg", lambda *args: calls.append(args), raising=False)
+    eval_run.terminate_process_tree(12345)
+    if platform == "win32":
+        assert calls == [
+            (
+                (["taskkill", "/PID", "12345", "/T", "/F"],),
+                {
+                    "stdout": eval_run.subprocess.DEVNULL,
+                    "stderr": eval_run.subprocess.DEVNULL,
+                    "check": False,
+                },
+            )
+        ]
+    else:
+        assert calls == [(12345, eval_run.signal.SIGKILL)]
