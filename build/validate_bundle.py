@@ -11,6 +11,7 @@ from zipfile import BadZipFile, ZipFile
 
 MANIFEST_NAME = "PackageContents.xml"
 UPDATER_NAME = "RevitModelMcp.Updater.exe"
+SUPERVISOR_NAME = "RevitModelMcp.BatchSupervisor.exe"
 SERVER_MEMBER = "Contents/server/revit-model-mcp.exe"
 VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+(\.\d+)?$")
 GUID_PATTERN = re.compile(r"^\{[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}\}$")
@@ -259,6 +260,9 @@ def validate(
         errors.append(f"Unexpected Components for year {year}")
     name_set = set(names)
     for year in years:
+        supervisor = f"Contents/{year}/RevitModelMcp/{SUPERVISOR_NAME}"
+        if base + supervisor not in name_set:
+            errors.append(f"Revit {year}: missing {supervisor}")
         found = components.get(year, [])
         if not found:
             errors.append(f"Components for Revit {year} are missing")

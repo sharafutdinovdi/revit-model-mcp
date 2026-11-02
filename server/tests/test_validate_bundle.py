@@ -61,6 +61,7 @@ def bundle_files(prefix: str = "RevitModelMcp.bundle/", **manifest: object) -> d
     for year in YEARS:
         files[f"{prefix}Contents/{year}/RevitModelMcp.addin"] = addin_xml()
         files[f"{prefix}Contents/{year}/RevitModelMcp/RevitModelMcp.dll"] = "dll"
+        files[f"{prefix}Contents/{year}/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe"] = "exe"
     return files
 
 
@@ -104,6 +105,24 @@ def store_files() -> dict[str, str]:
 
 def test_valid_store_zip(tmp_path: Path) -> None:
     assert validate(write_zip(tmp_path, store_files()), YEARS, store=True) == []
+
+
+@pytest.mark.parametrize("mode", ["standard", "managed", "store"])
+@pytest.mark.parametrize("year", YEARS)
+def test_bundle_needs_supervisor_for_each_year(tmp_path: Path, mode: str, year: int) -> None:
+    files = store_files() if mode == "store" else bundle_files()
+    managed_version = "0.9.1" if mode == "managed" else None
+    if managed_version is not None:
+        files["RevitModelMcp.bundle/README.txt"] = "uvx revit-model-mcp==0.9.1\n"
+    del files[
+        f"RevitModelMcp.bundle/Contents/{year}/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe"
+    ]
+    errors = validate(
+        write_zip(tmp_path, files), YEARS, managed_version=managed_version, store=mode == "store"
+    )
+    assert errors == [
+        f"Revit {year}: missing Contents/{year}/RevitModelMcp/RevitModelMcp.BatchSupervisor.exe"
+    ]
 
 
 def test_store_zip_needs_bundled_server(tmp_path: Path) -> None:
