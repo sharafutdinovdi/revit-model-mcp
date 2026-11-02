@@ -152,8 +152,32 @@ public sealed class ChannelAclPolicyTests
 
         await Assert.That(plan.Required).IsTrue();
         await Assert.That(plan.RemovedSids.Count).IsEqualTo(1);
-        await Assert.That(plan.Confirmation("channel", "Administrators", plan.RemovedSids)).Contains(OtherUser);
-        await Assert.That(plan.Confirmation("channel", "Administrators", plan.RemovedSids)).Contains("Current owner: Administrators");
+        await Assert.That(plan.Confirmation("channel", "Administrators", plan.RemovedSids, [])).Contains(OtherUser);
+        await Assert.That(plan.Confirmation("channel", "Administrators", plan.RemovedSids, [])).Contains("Current owner: Administrators");
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    [Arguments(5)]
+    [Arguments(500)]
+    public async Task RepairConfirmationBoundsExamplesAndDeduplicatesPrincipals(int count)
+    {
+        var plan = ChannelAclRepairPolicy.Plan(CurrentUser, CurrentUser, true, []);
+        var paths = Enumerable.Range(0, count).Select(index => $"instances/object-{index}.json").ToArray();
+        var principal = $"Other account ({OtherUser})";
+
+        var text = plan.Confirmation("channel", $"Owner ({CurrentUser})", [principal, principal.ToLowerInvariant()], paths);
+
+        await Assert.That(text).Contains("Folder: channel");
+        await Assert.That(text).Contains($"Current owner: Owner ({CurrentUser})");
+        await Assert.That(text).Contains($"Objects whose permissions will change: {count}\n");
+        await Assert.That(text.Split('\n').Count(line => line.Equals(principal, StringComparison.OrdinalIgnoreCase))).IsEqualTo(1);
+        await Assert.That(text.Split('\n').Count(line => line.StartsWith("instances/object-", StringComparison.Ordinal))).IsEqualTo(Math.Min(5, count));
+        foreach (var path in paths.Take(5)) await Assert.That(text).Contains(path);
+        await Assert.That(text.Contains("and 495 more", StringComparison.Ordinal)).IsEqualTo(count == 500);
+        await Assert.That(text.Contains("and 0 more", StringComparison.Ordinal)).IsFalse();
+        await Assert.That(text).Contains("Continue?");
     }
 
     [Test]

@@ -25,11 +25,12 @@ public sealed class RepairChannelPermissionsCommand : ExternalCommand
             var root = targets[0];
             var removed = targets.SelectMany(target => target.Plan.RemovedSids).Distinct(StringComparer.OrdinalIgnoreCase);
             manualCommands = ChannelAclRepairPolicy.ManualCommands(ChannelDirectory.RootDirectory, removed);
-            var details = root.Plan.Confirmation(root.Path, PrincipalName(root.Plan.OwnerSid), removed.Select(PrincipalName));
-            var relatedTargets = string.Join("\n", targets.Skip(1).Select(target =>
-                $"{target.Path}: owner {PrincipalName(target.Plan.OwnerSid)}"));
+            var changedPaths = targets.Where(target => target.Plan.Required).Select(target =>
+                target.Path == root.Path ? "." : target.Path[(root.Path.Length + 1)..]);
+            var details = root.Plan.Confirmation(root.Path, PrincipalName(root.Plan.OwnerSid),
+                removed.Select(PrincipalName), changedPaths);
             if (!AppDialog.Show("Repair channel permissions",
-                    "Replace channel folder permissions?\n\n" + details + "\n\n" + relatedTargets,
+                    "Replace channel folder permissions?\n\n" + details,
                     confirm: true)) return;
             PluginLog.Info("Channel permission repair confirmed from the ribbon.");
             ActivityRecorder.RecordSystemNotice("Channel permission repair confirmed from the ribbon.");

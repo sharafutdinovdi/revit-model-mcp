@@ -50,12 +50,25 @@ public static class ChannelAclPolicy
 public sealed record ChannelAclRepairPlan(
     string OwnerSid, bool Required, IReadOnlyList<string> RemovedSids, IReadOnlyList<ChannelAclEntry> TargetEntries)
 {
-    public string Confirmation(string folder, string owner, IEnumerable<string> removedPrincipals) =>
-        $"Folder: {folder}\nCurrent owner: {owner}\nPrincipals that will lose access:\n" +
-        string.Join("\n", removedPrincipals) +
-        "\nReplace permissions on this folder and existing children with Full Control for the current user, " +
-        "SYSTEM and Administrators only. Turn inheritance off and set the owner to the current user where allowed. " +
-        "This changes workstation files, not the model. Continue?";
+    public string Confirmation(string folder, string owner, IEnumerable<string> removedPrincipals,
+        IEnumerable<string> changedRelativePaths)
+    {
+        if (folder is null) throw new ArgumentNullException(nameof(folder));
+        if (owner is null) throw new ArgumentNullException(nameof(owner));
+        if (removedPrincipals is null) throw new ArgumentNullException(nameof(removedPrincipals));
+        if (changedRelativePaths is null) throw new ArgumentNullException(nameof(changedRelativePaths));
+        var paths = changedRelativePaths.ToArray();
+        var principals = removedPrincipals.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var examples = string.Join("\n", paths.Take(5));
+        if (paths.Length > 5) examples += $"\nand {paths.Length - 5} more";
+        return $"Folder: {folder}\nCurrent owner: {owner}\nPrincipals that will lose access:\n" +
+               (principals.Length == 0 ? "None" : string.Join("\n", principals)) +
+               $"\nObjects whose permissions will change: {paths.Length}" +
+               (paths.Length == 0 ? string.Empty : "\nExample relative paths (. is the channel folder):\n" + examples) +
+               "\n\nReplace permissions on this folder and existing children with Full Control for the current user, " +
+               "SYSTEM and Administrators only. Turn inheritance off and set the owner to the current user where allowed. " +
+               "This changes workstation files, not the model. Continue?";
+    }
 }
 
 public static class ChannelAclRepairPolicy
