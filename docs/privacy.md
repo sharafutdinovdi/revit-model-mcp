@@ -1,6 +1,6 @@
 # Privacy policy
 
-Effective date: October 12, 2026.
+Effective date: 30 October 2026.
 Changes to this policy are recorded in the repository history.
 
 ## Summary
