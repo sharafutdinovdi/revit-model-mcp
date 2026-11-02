@@ -7,6 +7,27 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class PreflightPolicyTests
 {
     [Test]
+    [Arguments("set-parameter", false, true, true, false, true)]
+    [Arguments("set-parameter", true, true, true, false, false)]
+    [Arguments("set-parameter", false, false, true, false, false)]
+    [Arguments("set-parameter", false, true, false, false, false)]
+    [Arguments("set-parameter", false, true, true, true, false)]
+    [Arguments("update-parameters", false, true, true, false, false)]
+    [Arguments("move", false, true, true, false, false)]
+    [Arguments("rotate", false, true, true, false, false)]
+    [Arguments("copy", false, true, true, false, false)]
+    [Arguments("mirror", false, true, true, false, false)]
+    [Arguments("change-type", false, true, true, false, false)]
+    [Arguments("delete", false, true, true, false, false)]
+    [Arguments("walls-from-cad", false, true, true, false, false)]
+    public async Task BatchParameterPolicy_SharesOnlyRealFreeInstanceTextWrites(string command, bool dryRun,
+        bool instanceParameter, bool stringParameter, bool groupMember, bool expected)
+    {
+        await Assert.That(BatchParameterPolicy.CanShareTransaction(command, dryRun, instanceParameter, stringParameter, groupMember))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task BlockedIds_IntersectsDistinctIdsInAscendingOrder()
     {
         var blocked = GroupFailurePolicy.BlockedIds([5, 3, 3, 1, 9], [new long[] { 3, 5, 30 }, new long[] { 1, 3 }]);

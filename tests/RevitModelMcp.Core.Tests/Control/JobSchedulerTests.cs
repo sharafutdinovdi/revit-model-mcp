@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -6,6 +7,123 @@ namespace RevitModelMcp.Core.Tests.Control;
 
 public sealed class JobSchedulerTests
 {
+    [Test]
+    public async Task ProgressChangesStoredResultWithoutChangingRunningState()
+    {
+        var scheduler = new JobScheduler();
+        scheduler.Submit("progress", "client", "Client", "batch", "{}");
+        scheduler.TakeNext();
+        const string first = """{"data":{"steps":[],"progress":{"steps":{"completed":1,"total":3}}}}""";
+        const string second = """{"data":{"steps":[],"progress":{"steps":{"completed":2,"total":3}}}}""";
+        scheduler.PublishProgress("progress", first);
+        var initial = scheduler.Status("progress");
+        scheduler.PublishProgress("progress", second);
+        var updated = scheduler.Status("progress");
+
+        await Assert.That(initial!.Result).IsEqualTo(first);
+        await Assert.That(updated!.Result).IsEqualTo(second);
+        await Assert.That(PipeProtocol.ReadProgress(updated.Result)).IsNotEqualTo(PipeProtocol.ReadProgress(initial.Result));
+        await Assert.That(updated.State).IsEqualTo(initial.State);
+        await Assert.That(updated.State).IsEqualTo(JobState.Running);
+    }
+
+    [Test]
+    public async Task ProgressStaysInMemoryUntilCompletion()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var persisted = new List<string>();
+        var scheduler = new JobScheduler(clock: () => now, resultDirectory: "unused",
+            writeResult: (_, content) => persisted.Add(content));
+        var actionId = NewId();
+        scheduler.Submit(actionId, "client", "Client", "batch", "{}");
+        scheduler.TakeNext();
+        persisted.Clear();
+        for (var completed = 1; completed <= 50; completed++)
+        {
+            now += TimeSpan.FromMilliseconds(2);
+            var progress = $$$$$"""{"data":{"progress":{"steps":{"completed":{{{{{completed}}}}},"total":50}}}}""";
+            scheduler.PublishProgress(actionId, progress);
+            await Assert.That(scheduler.Status(actionId)!.Result).IsEqualTo(progress);
+            await Assert.That(scheduler.Status(actionId)!.State).IsEqualTo(JobState.Running);
+        }
+        await Assert.That(persisted.Count).IsLessThanOrEqualTo(1);
+        // Long-running progress also stays in memory; completion persists the final response.
+        now += TimeSpan.FromSeconds(1);
+        scheduler.PublishProgress(actionId, "last progress");
+        await Assert.That(persisted.Count).IsEqualTo(0);
+        const string final = """{"success":true,"data":{"committed":true,"steps":[{"success":true}]}}""";
+        scheduler.Complete(actionId, final, true);
+        await Assert.That(persisted).IsEquivalentTo([final]);
+        await Assert.That(scheduler.Status(actionId)!.Result).IsEqualTo(final);
+        await Assert.That(scheduler.Status(actionId)!.State).IsEqualTo(JobState.Done);
+        scheduler.PublishProgress(actionId, "late progress");
+        await Assert.That(scheduler.Status(actionId)!.Result).IsEqualTo(final);
+        await Assert.That(persisted.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task FiftyBatchProgressPublishesMeasureSerializationAndPersistence()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var writes = 0;
+            long persistenceTicks = 0;
+            var bytes = 0;
+            var scheduler = new JobScheduler(clock: () => now, resultDirectory: directory,
+                writeResult: (path, content) =>
+                {
+                    var started = Stopwatch.GetTimestamp();
+                    CommandResponseJsonFile.WriteContent(path, content);
+                    persistenceTicks += Stopwatch.GetTimestamp() - started;
+                    writes++;
+                });
+            var actionId = NewId();
+            scheduler.Submit(actionId, "client", "Client", "batch", "{}");
+            scheduler.TakeNext();
+            var result = new ActionResultData { Steps = [], Committed = false };
+            result.PublishBatchProgress(50, "set-parameter", _ => { });
+            writes = 0;
+            persistenceTicks = 0;
+            long deliveryTicks = 0;
+            var elapsed = Stopwatch.StartNew();
+            for (var completed = 1; completed <= 50; completed++)
+            {
+                result.Steps.Add(new BatchStepResult
+                {
+                    Index = completed - 1,
+                    Command = "set-parameter",
+                    Success = true,
+                    Data = new ActionResultData
+                    {
+                        Values = [new ParameterChange { Id = 42, OldValue = "", NewValue = "benchmark" }]
+                    }
+                });
+                now += TimeSpan.FromMilliseconds(2);
+                result.PublishBatchProgress(50, "set-parameter", content =>
+                {
+                    bytes += content.Length;
+                    var started = Stopwatch.GetTimestamp();
+                    scheduler.PublishProgress(actionId, content);
+                    deliveryTicks += Stopwatch.GetTimestamp() - started;
+                });
+            }
+            elapsed.Stop();
+            Console.WriteLine($"Batch progress: 50 publishes in {elapsed.Elapsed.TotalMilliseconds:F3} ms; " +
+                $"serialization/allocation={elapsed.Elapsed.TotalMilliseconds - deliveryTicks * 1000.0 / Stopwatch.Frequency:F3} ms; " +
+                $"persistence={persistenceTicks * 1000.0 / Stopwatch.Frequency:F3} ms; writes={writes}; characters={bytes}.");
+            // The clock advances 100 ms independently of the machine's disk speed.
+            await Assert.That(writes).IsLessThanOrEqualTo(1);
+            await Assert.That(PipeProtocol.ReadProgress(scheduler.Status(actionId)!.Result))
+                .Contains("50");
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static JobSubmission Submit(JobScheduler scheduler, string client, int number) =>
         scheduler.Submit($"{client}-{number}", client, client, "ping", "{}");
 

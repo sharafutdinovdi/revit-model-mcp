@@ -533,3 +533,35 @@ def test_pipe_policy_read_only_and_denial_keep_the_organization_text():
         assert "Revit rejected the pipe request" not in str(error.value)
 
     asyncio.run(check())
+
+
+def test_pipe_forwards_intermediate_progress_and_resolves_only_terminal():
+    from revit_model_mcp.revit_channel import ProgressReporter, _progress_reporter
+
+    async def check():
+        reader = asyncio.StreamReader()
+        writer = MagicMock()
+        connection = pipe_host.PipeConnection(reader, writer)
+        reporter = ProgressReporter()
+        reporter.observe = AsyncMock()
+        token = _progress_reporter.set(reporter)
+        try:
+            future = connection.watch("job")
+        finally:
+            _progress_reporter.reset(token)
+        intermediate = {
+            "type": "job",
+            "jobId": "job",
+            "state": "running",
+            "progress": {"steps": {"completed": 1, "total": 2}},
+        }
+        reader.feed_data((json.dumps(intermediate) + "\n").encode())
+        await asyncio.sleep(0)
+        assert not future.done()
+        reporter.observe.assert_awaited_once_with(intermediate)
+        terminal = {"type": "job", "jobId": "job", "state": "done", "result": {"success": True}}
+        reader.feed_data((json.dumps(terminal) + "\n").encode())
+        assert await asyncio.wait_for(future, 1) == terminal
+        await connection.aclose()
+
+    asyncio.run(check())

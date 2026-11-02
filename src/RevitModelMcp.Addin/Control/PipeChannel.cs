@@ -369,7 +369,10 @@ internal sealed class PipeChannel : IDisposable
     {
         try
         {
-            string? sent = null;
+            var progressTracker = new PipeProgressTracker();
+            string? progressResponse = null;
+            string? progress = null;
+            var elapsed = Stopwatch.StartNew();
             while (!connection.Closed.IsCancellationRequested)
             {
                 if (completion.IsCompleted)
@@ -389,15 +392,20 @@ internal sealed class PipeChannel : IDisposable
                 if (_channel.Scheduler.Status(jobId) is { } status && !IsFinished(status.State))
                 {
                     var state = ControlChannel.StateName(status.State);
-                    if (state != sent)
+                    if (!ReferenceEquals(progressResponse, status.Result))
                     {
-                        sent = state;
+                        progressResponse = status.Result;
+                        progress = PipeProtocol.ReadProgress(progressResponse);
+                    }
+                    if (progressTracker.ShouldPush(state, progress, elapsed.Elapsed))
+                    {
                         await connection.SendAsync(new PipeMessage
                         {
                             Type = "job",
                             JobId = jobId,
                             State = state,
-                            Position = status.Position
+                            Position = status.Position,
+                            Progress = progress
                         }).ConfigureAwait(false);
                     }
                 }

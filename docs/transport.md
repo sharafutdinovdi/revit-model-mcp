@@ -654,3 +654,27 @@ It adds an "Activity" button (opens the MCP activity pane) and a "Connect AI app
 ## Batch transport
 
 [Batch collection](batch.md) writes durable run state under the workstation channel root. Its supervisor uses only the existing v2 per-PID file channel and validates the worker heartbeat identity before publication and termination. The Python tools use the existing local or SSH workstation host for state and artifact transfer. Direct HTTP batch tools are unavailable.
+
+## Progress notifications
+
+The server sends MCP progress notifications during channel waits and `revit_jobs` waits.
+Notifications report queue state, Revit API availability, and model progress.
+The add-in publishes batch counters at `data.progress.steps`: `completed` counts attempted steps, `total` counts requested steps, and `current` names the last attempted action kind.
+A failed step increments `completed` before the batch rolls back.
+The existing `data.steps` array retains per-step results, and the final `committed` and `rolledBack` fields report the transaction outcome.
+Pipe watchers send a nullable `progress` object when the stored progress changes, at most once every 500 ms.
+State changes and terminal responses bypass that interval.
+A batch push has the form `{"type":"job","jobId":"j1","state":"running","position":0,"progress":{"steps":{"completed":17,"total":50,"current":"move"}}}`.
+The file channel exposes the same counters through status polling.
+Running jobs emit a liveness message every two seconds.
+Intermediate notifications are limited to one every 500 ms.
+The final notification reports `Done` or `Still running, poll revit_jobs`.
+A completed wait does not guarantee that an action succeeded; the tool response remains authoritative.
+
+Messages include `Queued in Revit (position 2)`, `Waiting for the Revit API context`, `Running in Revit, 12 s`, `Model 3 of 12: Building.rvt`, and `Step 17 of 50`.
+Path redaction also applies to progress messages.
+
+Clients receive notifications when their MCP request includes a progress token.
+Client support determines whether notifications appear in the interface.
+The absence of notifications is not a failure.
+The final tool response and job polling remain available.

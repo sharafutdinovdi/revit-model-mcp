@@ -1,5 +1,11 @@
 namespace RevitModelMcp.Core.Control;
 
+public static class BatchParameterPolicy
+{
+    public static bool CanShareTransaction(string command, bool dryRun, bool instanceParameter, bool stringParameter, bool groupMember) =>
+        command == "set-parameter" && !dryRun && instanceParameter && stringParameter && !groupMember;
+}
+
 public static class GroupFailurePolicy
 {
     public static readonly Guid FailureId = new("5e68266d-05c6-4f54-aa65-5f0bac99b04e");

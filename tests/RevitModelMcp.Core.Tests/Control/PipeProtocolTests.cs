@@ -37,6 +37,47 @@ public sealed class PipeProtocolTests
         await Assert.That(actual.RootElement.GetProperty("toolDeny").GetString()).IsEqualTo("delete");
     }
 
+    [Test]
+    [Arguments(null)]
+    [Arguments("{\"steps\":{\"completed\":1,\"total\":3,\"current\":\"move\"}}")]
+    public async Task JobProgressRoundTrips(string? progress)
+    {
+        var message = new PipeMessage { Type = "job", JobId = "batch", State = "running", Progress = progress };
+        var line = PipeProtocol.Serialize(message);
+        var parsed = PipeProtocol.Parse(line);
+        await Assert.That(parsed.Progress).IsEqualTo(progress);
+        using var json = JsonDocument.Parse(line);
+        await Assert.That(json.RootElement.TryGetProperty("progress", out _)).IsEqualTo(progress is not null);
+    }
+
+    [Test]
+    public async Task StoredProgressChangesAreThrottledAndRetried()
+    {
+        var tracker = new PipeProgressTracker();
+        const string first = """{"steps":{"completed":1,"total":3}}""";
+        const string second = """{"steps":{"completed":2,"total":3}}""";
+        await Assert.That(tracker.ShouldPush("running", first, TimeSpan.Zero)).IsTrue();
+        await Assert.That(tracker.ShouldPush("running", first, TimeSpan.FromSeconds(1))).IsFalse();
+        await Assert.That(tracker.ShouldPush("running", second, TimeSpan.FromMilliseconds(499))).IsFalse();
+        await Assert.That(tracker.ShouldPush("running", second, TimeSpan.FromMilliseconds(500))).IsTrue();
+        await Assert.That(tracker.ShouldPush("running", second, TimeSpan.FromSeconds(2))).IsFalse();
+    }
+
+    [Test]
+    public async Task StateChangesAreImmediateAndProgressExtractionIgnoresOtherResultChanges()
+    {
+        var tracker = new PipeProgressTracker();
+        await Assert.That(tracker.ShouldPush("queued", null, TimeSpan.Zero)).IsTrue();
+        await Assert.That(tracker.ShouldPush("running", null, TimeSpan.FromMilliseconds(1))).IsTrue();
+        const string response = """{"data":{"steps":[],"progress":{"steps":{"completed":1,"total":2,"current":"move"}}}}""";
+        await Assert.That(PipeProtocol.ReadProgress(response))
+            .IsEqualTo("""{"steps":{"completed":1,"total":2,"current":"move"}}""");
+        await Assert.That(PipeProtocol.ReadProgress("""{"data":{"steps":[]}}""")).IsNull();
+        await Assert.That(PipeProtocol.ReadProgress(null)).IsNull();
+        await Assert.That(PipeProtocol.ReadProgress("""{"data":{"currentIndex":1,"total":2,"currentPath":"A.rvt","models":[]}}"""))
+            .IsEqualTo("""{"currentIndex":1,"total":2,"currentPath":"A.rvt"}""");
+    }
+
     private static bool SameJson(JsonElement left, JsonElement right) =>
         left.ValueKind == right.ValueKind && left.ValueKind switch
         {
@@ -110,6 +151,7 @@ public sealed class PipeProtocolTests
     [Arguments("{\"id\":\"r1\"}")]
     [Arguments("{\"type\":\"submit\",\"job\":\"{}\"}")]
     [Arguments("{\"type\":7}")]
+    [Arguments("""{"type":"job","progress":[]}""")]
     [Arguments("{\"type\":")]
     public async Task InvalidMessagesAreRejected(string line)
     {

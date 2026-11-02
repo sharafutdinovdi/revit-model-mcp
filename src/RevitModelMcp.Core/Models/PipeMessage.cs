@@ -33,4 +33,6 @@ public sealed class PipeMessage
 
     /// <summary>Raw JSON object of a finished job's command response.</summary>
     public string? Result { get; set; }
+
+    public string? Progress { get; set; }
 }

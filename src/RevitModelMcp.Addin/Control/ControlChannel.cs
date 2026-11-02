@@ -36,6 +36,7 @@ internal sealed class ControlChannel
     private DateTimeOffset _currentStartedAt;
     private long _currentQueuedMs;
     private string? _httpResponse;
+    private readonly Stopwatch _fileProgressWrite = new();
     private DateTimeOffset? _responseDeliveredAt;
     private volatile bool _stopped;
 
@@ -162,6 +163,7 @@ internal sealed class ControlChannel
                 if (_current is null) return;
                 _currentJob = ControlJobParser.Parse(_current.Payload);
                 _currentStartedAt = DateTimeOffset.Now;
+                _fileProgressWrite.Reset();
                 _currentQueuedMs = Math.Max(0,
                     (long)(DateTimeOffset.UtcNow - _current.SubmittedUtc).TotalMilliseconds);
             }
@@ -179,9 +181,12 @@ internal sealed class ControlChannel
                 if (ActionJobParser.IsAction(_current.Command)) _scheduler.PublishProgress(_current.JobId, content);
                 if (!isHttp)
                 {
+                    if (_current.Command == "batch" && _fileProgressWrite.IsRunning &&
+                        _fileProgressWrite.Elapsed < TimeSpan.FromMilliseconds(500)) return;
                     var path = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
                         _currentStartedAt.LocalDateTime, _currentJob.Command, _currentJob.CorrelationId);
                     CommandResponseJsonFile.WriteContent(path, content);
+                    _fileProgressWrite.Restart();
                 }
             };
             ResponseDelivery.CancellationRequested = () =>
@@ -224,6 +229,19 @@ internal sealed class ControlChannel
                 fallback.QueuedMs = _currentQueuedMs;
                 fallback.Responder.ProcessId = Process.GetCurrentProcess().Id;
                 var response = _httpResponse ?? ReadFileResult() ?? CommandResponseJsonSerializer.Serialize(fallback);
+                if (_current.Command == "batch" && !HasHttpCompletion(_current.JobId))
+                {
+                    try
+                    {
+                        var path = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
+                            _currentStartedAt.LocalDateTime, _currentJob!.Command, _currentJob.CorrelationId);
+                        CommandResponseJsonFile.WriteContent(path, response);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        PluginLog.Error("Final batch file response could not be written.", exception);
+                    }
+                }
                 _scheduler.Complete(_current.JobId, response, IsSuccessfulOrPartial(response));
                 _tabActivity.End(_current.JobId, HasHttpCompletion(_current.JobId)
                     ? DateTimeOffset.UtcNow : _responseDeliveredAt ?? DateTimeOffset.UtcNow);

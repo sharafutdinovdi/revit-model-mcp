@@ -2828,3 +2828,237 @@ async def test_explicit_internal_pickup_timeout_overrides_environment(monkeypatc
     remote = FakeRemoteHost()
     await RevitChannel(remote).execute(Job.document_info(), pickup_timeout_seconds=7)
     assert remote.pickup_timeout == 7
+
+
+class RecordingProgressContext:
+    def __init__(self, token=True, reject=False):
+        self.session = SimpleNamespace(client_params=None)
+        self.token = token
+        self.reject = reject
+        self.calls = []
+
+    async def report_progress(self, progress, total=None, message=None):
+        if self.reject:
+            raise ConnectionError("session unavailable")
+        if self.token:
+            self.calls.append((progress, total, message))
+
+
+def test_progress_reporter_rate_limit_and_final_flush():
+    from revit_model_mcp.revit_channel import ProgressReporter
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        await reporter.update(0, 3, "Running in Revit")
+        started = asyncio.get_running_loop().time()
+        await reporter.update(1, 3, "Step 1 of 3")
+        assert asyncio.get_running_loop().time() - started >= 0.49
+        started = asyncio.get_running_loop().time()
+        await reporter.update(3, 3, "Done")
+        assert asyncio.get_running_loop().time() - started < 0.1
+        assert ctx.calls[-1] == (3, 3, "Done")
+        await ProgressReporter(ctx).update(3, 3, "Still running, poll revit_jobs")
+        assert ctx.calls[-1][2] == "Still running, poll revit_jobs"
+
+    asyncio.run(check())
+
+
+def test_progress_reporter_states_models_steps_and_liveness(monkeypatch):
+    from revit_model_mcp.revit_channel import ProgressReporter
+
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        for state in ("queued", "waiting_revit", "running"):
+            reporter.last_sent = float("-inf")
+            await reporter.observe({"state": state, "position": 2})
+        reporter.last_sent = float("-inf")
+        await reporter.observe(
+            {"data": {"currentIndex": 3, "total": 12, "currentPath": r"C:\Private\Building.rvt"}}
+        )
+        reporter.last_sent = float("-inf")
+        await reporter.observe(
+            {"data": {"steps": [], "progress": {"steps": {"completed": 17, "total": 50}}}}
+        )
+        reporter.last_sent = float("-inf")
+        reporter.started = asyncio.get_running_loop().time() - 12
+        reporter.last_tick = reporter.started
+        await reporter.tick()
+        assert [call[2] for call in ctx.calls] == [
+            "Queued in Revit (position 2)",
+            "Waiting for the Revit API context",
+            "Running in Revit",
+            "Model 3 of 12: Building.rvt",
+            "Step 17 of 50",
+            "Running in Revit, 12 s",
+        ]
+        assert ctx.calls[3][:2] == (3, 12)
+        assert ctx.calls[4][:2] == (17, 50)
+
+    asyncio.run(check())
+
+
+def test_progress_reporter_interleaved_ticks_and_steps():
+    from revit_model_mcp.revit_channel import ProgressReporter
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        for completed in (14, 15, 29):
+            reporter.last_sent = float("-inf")
+            await reporter.observe({"progress": {"steps": {"completed": completed, "total": 30}}})
+            reporter.last_sent = float("-inf")
+            reporter.started = reporter.last_tick = asyncio.get_running_loop().time() - 3
+            await reporter.tick()
+            assert ctx.calls[-1][:2] == (completed, 30)
+            assert ctx.calls[-1][2].startswith("Running in Revit,")
+        await reporter.update(30, 30, "Done")
+        reporter.last_tick -= 3
+        await reporter.tick()
+        assert [call[0] for call in ctx.calls] == [14, 14, 15, 15, 29, 29, 30]
+        assert ctx.calls[-1] == (30, 30, "Done")
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("initial_total", [None, 30])
+def test_progress_reporter_tick_waiting_for_step_uses_latest_progress(initial_total):
+    from revit_model_mcp.revit_channel import ProgressReporter
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        await reporter.update(14, initial_total, "Running in Revit")
+        reporter.started = reporter.last_tick = asyncio.get_running_loop().time() - 3
+        reporter.last_sent = float("-inf")
+        async with reporter._lock:
+            step = asyncio.create_task(reporter.update(15, 30, "Step 15 of 30"))
+            await asyncio.sleep(0)
+            tick = asyncio.create_task(reporter.tick())
+            await asyncio.sleep(0)
+            assert not step.done()
+            assert not tick.done()
+        await asyncio.gather(step, tick)
+        await reporter.update(30, 30, "Done")
+        assert [call[0] for call in ctx.calls] == [14, 15, 15, 30]
+        assert ctx.calls[-2][:2] == (15, 30)
+        assert ctx.calls[-1] == (30, 30, "Done")
+
+    asyncio.run(check())
+
+
+def test_progress_reporter_ticks_without_total_strictly_increase():
+    from revit_model_mcp.revit_channel import ProgressReporter
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        await reporter.observe({"state": "running"})
+        for _ in range(3):
+            reporter.last_sent = float("-inf")
+            reporter.last_tick -= 3
+            await reporter.tick()
+        assert [call[0] for call in ctx.calls] == [0, 1, 2, 3]
+        assert all(call[1] is None for call in ctx.calls)
+
+    asyncio.run(check())
+
+
+def test_progress_reporter_optional_context_token_and_broken_session(caplog):
+    from revit_model_mcp.revit_channel import ProgressReporter
+
+    async def check():
+        await ProgressReporter().update(1, 1, "Done")
+        ctx = RecordingProgressContext(token=False)
+        await ProgressReporter(ctx).update(1, 1, "Done")
+        assert ctx.calls == []
+        await ProgressReporter(RecordingProgressContext(reject=True)).update(1, 1, "Done")
+
+    asyncio.run(check())
+    assert "Could not send MCP progress" in caplog.text
+
+
+def test_jobs_wait_reports_partial_and_terminal_progress():
+    from revit_model_mcp.revit_channel import with_client_identity
+
+    async def check():
+        host = FakeRemoteHost()
+        partial = {
+            "command": "batch",
+            "success": True,
+            "partial": True,
+            "message": "Command accepted and running.",
+            "data": {"progress": {"steps": {"completed": 1, "total": 2}}},
+        }
+        final = {"command": "batch", "success": True, "data": {"steps": []}}
+        host.fetch_job = AsyncMock(side_effect=[partial, final])
+        ctx = RecordingProgressContext()
+
+        @with_client_identity
+        async def wait():
+            return await RevitChannel(host).execute(
+                Job("jobs", {"command": "jobs", "fetchJobId": "a" * 32, "waitSeconds": 2})
+            )
+
+        assert await wait(ctx=ctx) == final
+        assert ctx.calls == [(1, 2, "Step 1 of 2"), (2, 2, "Done")]
+
+    asyncio.run(check())
+
+
+def test_jobs_wait_budget_reports_still_running():
+    from revit_model_mcp.revit_channel import with_client_identity
+
+    async def check():
+        host = FakeRemoteHost()
+        host.fetch_job = AsyncMock(
+            return_value={
+                "command": "process-models",
+                "success": True,
+                "partial": True,
+                "message": "Command accepted and running.",
+                "data": {"currentIndex": 3, "total": 12, "currentPath": "Building.rvt"},
+            }
+        )
+        ctx = RecordingProgressContext()
+
+        @with_client_identity
+        async def wait():
+            return await RevitChannel(host).execute(
+                Job("jobs", {"command": "jobs", "fetchJobId": "b" * 32, "waitSeconds": 0})
+            )
+
+        result = await wait(ctx=ctx)
+        assert result["status"] == "running"
+        assert ctx.calls == [
+            (3, 12, "Model 3 of 12: Building.rvt"),
+            (12, 12, "Still running, poll revit_jobs"),
+        ]
+
+    asyncio.run(check())
+
+
+def test_execute_reports_final_without_changing_tool_result():
+    from revit_model_mcp.revit_channel import with_client_identity
+
+    async def check():
+        host = FakeRemoteHost()
+        ctx = RecordingProgressContext()
+
+        @with_client_identity
+        async def execute():
+            return await RevitChannel(host).execute(Job.document_info())
+
+        result = await execute(ctx=ctx)
+        assert result == json.loads(SUCCESS_RESPONSE)
+        assert [call[2] for call in ctx.calls] == [
+            "Queued in Revit (position 1)",
+            "Waiting for the Revit API context",
+            "Running in Revit",
+            "Done",
+        ]
+
+    asyncio.run(check())

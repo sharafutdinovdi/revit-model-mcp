@@ -9,6 +9,85 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ActionJobParserTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task BatchProgressPublishesStepCountersThroughFakeDelivery(bool failed)
+    {
+        var deliveries = new List<string>();
+        var result = new ActionResultData { Steps = [], Committed = false };
+        foreach (var command in new[] { "move", "delete" })
+        {
+            result.Steps.Add(new BatchStepResult
+            {
+                Index = result.Steps.Count,
+                Command = command,
+                Success = !failed || command != "delete",
+                Error = failed && command == "delete" ? "Step failed." : null
+            });
+            result.PublishBatchProgress(2, command, deliveries.Add);
+        }
+        await Assert.That(deliveries.Count).IsEqualTo(2);
+        for (var index = 0; index < deliveries.Count; index++)
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(deliveries[index]);
+            var data = json.RootElement.GetProperty("data");
+            var steps = data.GetProperty("progress").GetProperty("steps");
+            await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsTrue();
+            await Assert.That(steps.GetProperty("completed").GetInt32()).IsEqualTo(index + 1);
+            await Assert.That(steps.GetProperty("total").GetInt32()).IsEqualTo(2);
+            await Assert.That(steps.GetProperty("current").GetString()).IsEqualTo(index == 0 ? "move" : "delete");
+            await Assert.That(data.EnumerateObject().Select(property => property.Name))
+                .IsEquivalentTo(["progress"]);
+        }
+        using var final = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ActionResultData>.Ok("batch", result, 0)));
+        await Assert.That(final.RootElement.GetProperty("data").GetProperty("progress")
+            .GetProperty("steps").GetProperty("completed").GetInt32()).IsEqualTo(2);
+        await Assert.That(final.RootElement.GetProperty("data").GetProperty("steps")[1]
+            .GetProperty("success").GetBoolean()).IsEqualTo(!failed);
+        result.PublishBatchProgress(2, "delete", null);
+        await Assert.That(result.Progress!.Steps.Completed).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task FiftyBatchStepsKeepProgressCompactAndFinalResultsIntact()
+    {
+        var result = new ActionResultData { Steps = [], Committed = false };
+        var stepData = new ActionResultData { OldValue = new string('x', 10000), NewValue = "updated" };
+        var completed = 0;
+        for (var index = 0; index < 50; index++)
+        {
+            result.Steps.Add(new BatchStepResult
+            {
+                Index = index,
+                Command = "set-parameter",
+                Success = true,
+                Data = stepData
+            });
+            string? delivery = null;
+            result.PublishBatchProgress(50, "set-parameter", content => delivery = content);
+            using var json = System.Text.Json.JsonDocument.Parse(delivery!);
+            var progress = json.RootElement.GetProperty("data").GetProperty("progress");
+            await Assert.That(progress.GetProperty("steps").GetProperty("completed").GetInt32())
+                .IsEqualTo(++completed);
+            await Assert.That(delivery!.Length).IsLessThan(500);
+            await Assert.That(PipeProtocol.ReadProgress(delivery)).IsEqualTo(progress.GetRawText());
+        }
+        result.Committed = true;
+        result.Summary = "Updated 50 parameters.";
+        using var final = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ActionResultData>.Ok("batch", result, 246)));
+        var data = final.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("committed").GetBoolean()).IsTrue();
+        await Assert.That(data.GetProperty("summary").GetString()).IsEqualTo(result.Summary);
+        await Assert.That(data.GetProperty("steps").GetArrayLength()).IsEqualTo(50);
+        await Assert.That(data.GetProperty("steps")[49].GetProperty("data").GetProperty("oldValue").GetString())
+            .IsEqualTo(stepData.OldValue);
+        await Assert.That(data.GetProperty("progress").GetProperty("steps").GetProperty("completed").GetInt32())
+            .IsEqualTo(50);
+    }
+
+    [Test]
     public async Task ActivateView_ParsesZoomModesAndDeduplicatesIds()
     {
         var defaults = ControlJobParser.Parse("""{"command":"activate-view","view":"L1"}""");

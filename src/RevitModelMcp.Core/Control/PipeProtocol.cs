@@ -56,7 +56,8 @@ public static class PipeProtocol
             RetryAfterMs = Number(root, "retryAfterMs"),
             Policy = RawObject(root, "policy"),
             Job = RawObject(root, "job"),
-            Result = RawObject(root, "result")
+            Result = RawObject(root, "result"),
+            Progress = RawObject(root, "progress")
         };
     }
 
@@ -112,8 +113,25 @@ public static class PipeProtocol
         Literal(builder, "policy", SingleLine(message.Policy));
         Literal(builder, "job", SingleLine(message.Job));
         Literal(builder, "result", SingleLine(message.Result));
+        Literal(builder, "progress", SingleLine(message.Progress));
         builder.Append('}');
         return builder.ToString();
+    }
+
+    public static string? ReadProgress(string? response)
+    {
+        if (response is null) return null;
+        using var reader = JsonReaderWriterFactory.CreateJsonReader(
+            Encoding.UTF8.GetBytes(response), XmlDictionaryReaderQuotas.Max);
+        var root = XElement.Load(reader);
+        var data = Member(root, "data");
+        if (data is null) return null;
+        var progress = RawObject(data, "progress");
+        if (progress is not null) return progress;
+        if (Member(data, "currentIndex") is null) return null;
+        var wrapper = new XElement("root", new XElement("progress", new XAttribute("type", "object"),
+            data.Elements().Where(element => element.Name.LocalName is "currentIndex" or "total" or "currentPath")));
+        return RawObject(wrapper, "progress");
     }
 
     private static string? JsonType(XElement element) => (string?)element.Attribute("type");
@@ -287,5 +305,22 @@ public sealed class PipeLineReader(Stream stream, int maxBytes = PipeProtocol.Ma
     {
         if (_line.Length + count > maxBytes) throw new PipeProtocolException("The message exceeds 1 MiB.");
         _line.Write(_buffer, offset, count);
+    }
+}
+
+public sealed class PipeProgressTracker
+{
+    private string? _state;
+    private string? _fingerprint;
+    private TimeSpan _lastSent;
+
+    public bool ShouldPush(string state, string? progress, TimeSpan elapsed)
+    {
+        if (_state == state && (_fingerprint == progress || elapsed - _lastSent < TimeSpan.FromMilliseconds(500)))
+            return false;
+        _state = state;
+        _fingerprint = progress;
+        _lastSent = elapsed;
+        return true;
     }
 }

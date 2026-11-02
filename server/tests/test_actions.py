@@ -1944,6 +1944,9 @@ def test_process_progress_current_path_is_redacted():
         assert redact_model_paths({"progress": {"currentPath": r"C:\Private\Model.rvt"}}) == {
             "progress": {"currentPath": "Model.rvt"}
         }
+        assert redact_model_paths({"message": r"Model 3 of 12: C:\Private\Model.rvt"}) == {
+            "message": "Model 3 of 12: Model.rvt"
+        }
 
 
 @pytest.mark.parametrize(

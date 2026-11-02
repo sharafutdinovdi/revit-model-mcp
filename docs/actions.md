@@ -287,8 +287,24 @@ A dry run rolls back all changes. The `load` list uses the same workstation path
 }
 ```
 
+Batches containing only real `set_parameter` writes to string parameters on ungrouped instances use one shared transaction.
+The batch checks eligibility before any step writes.
+Each step still resolves its parameter, validates the value, checks read-only status, checks the result of `Parameter.Set`, and captures its before and immediate after verification facts.
+The batch regenerates once after the last write and commits once with the normal failure preprocessor.
+Warnings remain in `warningsDismissed`; an unresolved commit error rolls back the entire batch.
+Post-commit verification runs for each step and reports the final committed state, including the final value when several steps write the same parameter.
+A post-commit verification error remains in the verification block and does not claim that the committed change was undone.
+These writes omit the separate mutation preflight; the real commit checks failures inside the batch transaction group.
+
+A batch containing a dry run, a type parameter, a non-string parameter, a grouped element, or another action keeps the per-step transaction and preflight path.
+Group failure probes, group-member skipping, CAD join probes, and deletion safeguards retain their existing behavior.
+Dry runs keep their unchanged-model preview semantics.
+Revit runs the batch on its API thread; no messages are pumped while a transaction is open.
+Native regeneration and auto-join can still make the Revit window unresponsive, including parameter-only batches.
+
 A successful batch assimilates its transactions into one undo entry named `MCP (<clientName>): <short summary>`; a dry run assimilates nothing and `undoName` is absent.
 The first failed step rolls back the entire batch; every attempted step, including the failing one, carries `rolledBack:true`.
+The error names the zero-based step index and command; a final commit failure identifies the last attempted step as a batch completion failure.
 An `Assimilate` failure is reported on the last step with `failedStep` pointing at it.
 All steps are validated before execution; an invalid later step rejects the whole batch without executing anything and without `failedStep`.
 Results include zero-based `index`, `command`, `success` and `data` or `error` per attempted step, plus `undoName`, `committed` and `failedStep` (null on success).
