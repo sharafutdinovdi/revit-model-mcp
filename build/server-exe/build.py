@@ -97,7 +97,8 @@ def strip_dependency_doc_links(path: Path) -> None:
             node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
         ):
             doc = ast.get_docstring(node, clean=False)
-            if doc and "pypi.org" in doc:
+            # The store rule forbids this text anywhere in dependency documentation.
+            if doc and re.search(r"pypi[.]org", doc):
                 node.body[0].value.value = ""
     path.write_text(ast.unparse(tree) + "\n", encoding="utf-8")
 

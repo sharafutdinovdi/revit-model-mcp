@@ -3,6 +3,8 @@ from __future__ import annotations
 import runpy
 from pathlib import Path
 
+import pytest
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 build = runpy.run_path(str(REPOSITORY_ROOT / "build" / "server-exe" / "build.py"))
 
@@ -45,13 +47,17 @@ def test_collect_licenses_names_folders_by_package_and_skips_build_tools(tmp_pat
     assert not (destination / "pyinstaller").exists()
 
 
-def test_store_removes_only_dependency_documentation_links(tmp_path):
+@pytest.mark.parametrize(
+    "doc", ["See https://pypi.org/project/example/", "Package index: pypi.org", "pypiXorg"]
+)
+def test_store_removes_only_dependency_documentation_links(tmp_path, doc):
     module = tmp_path / "dependency.py"
-    module.write_text(
-        '"""See https://pypi.org/project/example/"""\ndef behavior():\n    return "pypi.org"\n'
-    )
+    module.write_text(f'"""{doc}"""\ndef behavior():\n    return "pypi.org"\n')
     build["strip_dependency_doc_links"](module)
     namespace = {}
     exec(compile(module.read_text(), str(module), "exec"), namespace)
-    assert "pypi.org" not in (namespace["__doc__"] or "")
+    if doc == "pypiXorg":
+        assert namespace["__doc__"] == doc
+    else:
+        assert "pypi.org" not in (namespace["__doc__"] or "")
     assert namespace["behavior"]() == "pypi.org"
