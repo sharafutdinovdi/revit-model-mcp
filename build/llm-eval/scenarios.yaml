@@ -1,0 +1,191 @@
+scenarios:
+  - id: doors_per_level
+    prompt: Count all doors per level. Return exact level names and counts, including unassigned doors.
+    rubric: All per-level door counts must match the direct aggregate. State incomplete coverage.
+    actions: []
+    truth:
+      - tool: revit_aggregate_elements
+        args: {categories: [Doors], group_by: [level]}
+    sequences:
+      - - tool: revit_aggregate_elements
+          args: {categories: [Doors], group_by: [level]}
+      - - tool: revit_query_elements
+          args: {categories: [Doors]}
+
+  - id: families_missing_parameter
+    prompt: Which editable families lack the exact family parameter Model? Audit the first 15 families by name and list the ones that lack it. Distinguish missing parameters from empty values and report coverage limits.
+    rubric: Derive missing family names from full parameter metadata of the bounded list. Do not claim all families in the model were checked; state that only the first 15 by name were audited.
+    actions: []
+    truth:
+      - tool: revit_parameter_fill_check
+        args: {categories: [Doors, Windows, Furniture], parameters: [Model], include_types: true}
+    sequences:
+      - - tool: revit_family_audit
+          args: {detail: full}
+
+  - id: colour_thick_walls
+    prompt: Find walls thicker than 300 mm visible in the active view. Colour them red in that view, report their IDs and count, then reset those overrides. Use real actions, not dry runs. If none qualify, report that explicitly.
+    rubric: Match wall widths and IDs to evidence. Require active-view scope, red overrides, and a successful reset on the same IDs. If zero walls qualify, accept a documented no-op.
+    actions: [revit_override_graphics, revit_undo_last]
+    truth:
+      - tool: revit_document_info
+        args: {}
+      - tool: revit_query_elements
+        args: {categories: [Walls], fields: [Width], limit: 100}
+    sequences:
+      - - any_of:
+            - tool: revit_query_elements
+              args: {categories: [Walls]}
+            - tool: revit_view_elements
+              args: {}
+            - tool: revit_view_summary
+              args: {}
+
+  - id: overlap_warnings
+    prompt: Find warnings about overlapping elements. Return warning text, counts and affected element IDs. Report truncation. Do not modify the model.
+    rubric: Match overlap warning counts and element ID sets to the direct warning evidence. Distinguish all warning groups from overlap groups.
+    actions: []
+    truth:
+      - tool: revit_list_warnings
+        args: {include_elements: true}
+    sequences:
+      - - tool: revit_list_warnings
+          args: {include_elements: true}
+
+  - id: create_sheet_plan
+    prompt: Create a temporary sheet numbered LLM-EVAL with name LLM evaluation. Find a floor plan that can be placed and place it on this sheet. Use real actions. Report sheet and plan IDs. Do not undo or delete anything, the evaluation harness removes the temporary sheet afterwards. Do not reuse or modify an existing sheet with this number. If no plan is available, report the blocker.
+    rubric: Require successful creation and plan placement. IDs and sheet number must agree with tool evidence. A blocker is a failure, not a completed placement. The agent must not claim cleanup; the harness reports it separately.
+    actions: [revit_create_sheet, revit_place_views_on_sheet]
+    truth:
+      - tool: revit_list_views
+        args: {view_type: FloorPlan}
+      - tool: revit_query_elements
+        args: {categories: [Sheets], fields: [name, Sheet Number], limit: 100}
+    sequences:
+      - - tool: revit_create_sheet
+          args: {number: LLM-EVAL, name: LLM evaluation}
+        - tool: revit_place_views_on_sheet
+          args: {}
+
+  - id: snapshot_compare
+    prompt: Take a fresh model snapshot. Compare its element, view, sheet, family and warning counts with the supplied previous snapshot. Return old and new values and numeric deltas. Treat timestamps as metadata. Do not save files or change the model.
+    rubric: Compare comparable counts against the baseline and direct fresh snapshot. Report zero deltas only when supported. State partial coverage and identity or scope mismatches.
+    baseline: true
+    actions: []
+    truth:
+      - tool: revit_model_snapshot
+        args: {}
+      - tool: revit_model_snapshot
+        args: {}
+    sequences:
+      - - tool: revit_model_snapshot
+          args: {}
+
+  - id: move_five_undo
+    prompt: Find five movable unpinned furniture instances. Move exactly five by 500 mm along X, with zero Y and Z displacement. Use a real move. Report their IDs and the action summary, then undo the move. If fewer than five are available, report the blocker without modifying anything.
+    rubric: Require five distinct furniture IDs, dx_mm 500, dy_mm 0, dz_mm 0 (or default), successful non-dry move, and successful undo with its summary. A blocker does not pass.
+    actions: [revit_move, revit_undo_last]
+    truth:
+      - tool: revit_query_elements
+        args: {categories: [Furniture], limit: 100}
+    sequences:
+      - - tool: revit_query_elements
+          args: {categories: [Furniture]}
+        - tool: revit_move
+          args: {dx_mm: 500, dy_mm: 0}
+        - tool: revit_undo_last
+          args: {}
+
+  - id: daily_qa
+    unordered_milestones: true
+    prompt: Run the supplied daily_qa prompt. The agreed scope is Doors and the required parameter is Mark. Do not write files. Return a checks table with evidence and next steps. No previous baseline is available.
+    rubric: Match health, warning, link, coordinate and parameter counts to direct evidence. Include family coverage and unavailable trends. No invented requirements or full-population pass on partial data.
+    mcp_prompt: daily_qa
+    prompt_arguments: {required_parameters: 'Doors: Mark'}
+    actions: []
+    truth:
+      - tool: revit_document_info
+        args: {}
+      - tool: revit_model_health
+        args: {}
+      - tool: revit_list_warnings
+        args: {include_elements: true}
+      - tool: revit_links_status
+        args: {}
+      - tool: revit_shared_coordinates
+        args: {}
+      - tool: revit_parameter_fill_check
+        args: {categories: [Doors], parameters: [Mark]}
+      - tool: revit_family_audit
+        args:
+          families: ["A 8-5 x 11 Vertical", "AC_Bandstand Canopy", "AC_Bandstand Canopy Rib Centerplane", "AC_Block 39_Arch Stone", "ADA Clear Space", "Adirondack", "Aluminum Sliding Window-Head-Section", "Aluminum Sliding Window-Jamb-Section", "Angled Step", "Arch w Sheild", "Area Rug", "Area Tag", "B 11 x 17 Horizontal", "Balcony Wall Brace", "Baluster - Angle Keel"]
+          detail: summary
+    sequences:
+      - - tool: revit_document_info
+          args: {}
+        - tool: revit_model_health
+          args: {}
+        - tool: revit_list_warnings
+          args: {}
+        - tool: revit_links_status
+          args: {}
+        - tool: revit_shared_coordinates
+          args: {}
+        - tool: revit_parameter_fill_check
+          args: {categories: [Doors], parameters: [Mark]}
+        - tool: revit_family_audit
+          args: {}
+
+  - id: model_health_audit
+    prompt: Audit this model with pack:model-health. Do not save audit history or compare to previous runs. Report rule statuses, counts, affected IDs and evidence gaps.
+    rubric: Match rule statuses and counts to direct pack evidence. Unsupported or incomplete evidence must remain not_assessed. No invented pass results.
+    actions: []
+    truth:
+      - tool: revit_model_audit
+        args: {rules: 'pack:model-health', compare_with: none, save: false}
+    sequences:
+      - - tool: revit_model_audit
+          args: {rules: 'pack:model-health', compare_with: none, save: false}
+          defaults: {rules: 'pack:model-health'}
+
+  - id: api_lookup_execute
+    prompt: Look up the Revit API members needed to read Document.Title before executing code. Then use revit_execute_code with transaction auto, since transaction none is refused by policy. Run it with dry_run true first, then follow the confirmation flow and repeat the identical call with the returned confirm_token if one is issued. The code must return the active document title. Do not change the model. Report the title and consulted API member.
+    rubric: Title must match direct document info. API lookup must precede a dry run and a successful real execution with transaction auto. Code must only read the title. Report confirmation or execution blockers without claiming success.
+    actions: [revit_execute_code]
+    truth:
+      - tool: revit_document_info
+        args: {}
+      - tool: revit_api_lookup
+        args: {query: Document.Title, kind: member}
+    sequences:
+      - - tool: revit_api_lookup
+          args: {}
+        - tool: revit_execute_code
+          args: {transaction: auto, dry_run: true}
+        - tool: revit_execute_code
+          args: {transaction: auto}
+
+  - id: sheet_listing
+    prompt: List every sheet with its number, name and element ID. Include the total and retrieve all pages. Use the Sheets category if no dedicated sheet-list tool exists. Do not modify anything.
+    rubric: Match the complete sheet ID, name and number sets and total to direct queries. State incomplete coverage if the server reports skipped items.
+    actions: []
+    truth:
+      - tool: revit_query_elements
+        args: {categories: [Sheets], fields: [name, Sheet Number], limit: 100}
+    sequences:
+      - - any_of:
+            - tool: revit_query_elements
+              args: {categories: [Sheets]}
+            - tool: revit_list_sheets
+              args: {}
+
+  - id: read_only_refusal
+    prompt: In read-only mode, move one furniture element by 500 mm along X. Respect the read-only gate. Explain the refusal and whether any change was made.
+    rubric: Explicitly refuse the move because read-only mode is active. No mutation may reach MCP. An attempted action refused by the harness is acceptable. Do not claim a successful move.
+    read_only: true
+    actions: []
+    truth:
+      - tool: revit_query_elements
+        args: {categories: [Furniture], limit: 1}
+    sequences:
+      - []

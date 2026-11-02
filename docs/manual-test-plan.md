@@ -246,3 +246,32 @@ Use disposable local and Revit Server test models. Check each operation in Revit
 For the run, produce a short results table: environment, release tag, per-section pass/fail counts, and a list of filed issues. Optionally record a **clean demo video** — but arrange the UI first (see the preferences note): open a real 3D/model view in Revit (not just the project browser), size Claude and Revit panels so both are legible, then start the screen recording. Ask the owner to set the layout before recording.
 
 **Definition of done for the release:** §1–§7 all pass on at least Revit 2024 + 2026 (local) and one remote (M2) run; all §8 regressions either pass or have a tracked issue; the client-surface matrix (§7) is documented in the README/docs.
+
+## Workstation regression and release smoke
+
+The workstation must have a licensed Revit installation, .NET from `global.json`, uv, and an interactive user session.
+Both scripts refuse to start while another Revit process exists.
+Shared workstation runs use only `rmm-*` tasks and never stop another session's Revit or scheduled tasks.
+
+```powershell
+.\build\run-addin-tests.ps1 -Year 2027
+.\build\run-addin-tests.ps1 -Year 2022 -Model 'C:\Projects\rmm-test\2022\rac_basic_sample_project.rvt'
+.\build\release-smoke.ps1 -Msi '.\output\RevitModelMcp-1.0.0-SingleUser.msi' -ExpectedVersion '1.0.0'
+```
+
+The regression executable opens private model copies and exercises catalog limits, aggregation, query filters and paging, skipped reads, details, warnings, health counts, parameter fill, family audit summary/full, API lookup, view listing, and readers after another document closes.
+Action tests set a parameter, move, copy, and delete a seeded wall; each checks the exact summary, named group contract, distinct action transaction name, and model result before rolling back the enclosing transaction group.
+The API fixture checks document lifetime recovery; interactive active-document switching remains a manual check.
+The original sample model is never saved.
+TRX reports appear under `C:\Projects\rmm-test\out\tests`; the runner rejects fewer than 15 passes or any failure.
+Record the counters for each year and retain the TRX files with workstation evidence.
+
+The release smoke requires a SingleUser MSI.
+An existing registered SingleUser installation also requires `-PreviousMsi <full previous package>`; its ProductCode must match the installed product.
+The smoke restores the previous MSI registration, add-in files, and settings after removing the tested package.
+It retains a dated backup and checks per-year manifests and ProductVersions, a fresh 2027 heartbeat for the selected model, and a successful `revit_ping` over the named pipe.
+After the run, inspect `summary.txt` or `summary.csv` in the dated smoke output directory.
+Every restore row must pass; compare the restored DLL ProductVersions with the integration build and confirm that no owned Revit process or scheduled task remains.
+An installation failure still triggers cleanup and restoration.
+The backup remains available if cleanup fails.
+See [release ritual](../CONTRIBUTING.md#release-ritual) for the release gate and packaging command.
