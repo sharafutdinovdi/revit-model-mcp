@@ -629,7 +629,23 @@ internal sealed record HttpSettings
 #endif
         {
             stream.SetAccessControl(security);
-            settings = stream.Length == 0 ? new HttpSettings() : (HttpSettings)serializer.ReadObject(stream)!;
+            if (stream.Length == 0)
+            {
+                settings = new HttpSettings();
+            }
+            else
+            {
+                var content = new byte[stream.Length];
+                var offset = 0;
+                while (offset < content.Length)
+                {
+                    var count = stream.Read(content, offset, content.Length - offset);
+                    if (count == 0) throw new EndOfStreamException();
+                    offset += count;
+                }
+                using var jsonStream = new MemoryStream(Utf8Bom.Strip(content));
+                settings = (HttpSettings)serializer.ReadObject(jsonStream)!;
+            }
             if (string.IsNullOrWhiteSpace(settings.Token))
             {
                 var bytes = new byte[32];

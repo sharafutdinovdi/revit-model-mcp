@@ -382,7 +382,9 @@ using System.Security.Principal; using System.Net; using System.Text;
 "@
 $limits = Get-Content src/RevitModelMcp.Core/Control/HttpLimits.cs -Raw
 $limits = $limits.Replace('namespace RevitModelMcp.Core.Control;', '')
-$source = $imports + $source.Substring($source.IndexOf('[DataContract]')) + $limits
+$bom = Get-Content src/RevitModelMcp.Core/Control/Utf8Bom.cs -Raw
+$bom = $bom.Replace('namespace RevitModelMcp.Core.Control;', '')
+$source = $imports + $source.Substring($source.IndexOf('[DataContract]')) + $limits + $bom
 Add-Type -TypeDefinition $source.Replace('internal sealed record', 'public sealed record')
 if ([HttpSettings]::new().HttpEnabled) { throw 'Constructor enables HTTP by default' }
 $serializer = [Runtime.Serialization.Json.DataContractJsonSerializer]::new([HttpSettings])
