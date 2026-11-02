@@ -304,6 +304,15 @@ For `revit_issue_register`, audit `findings` map to issues through the pure Pyth
 ## My tools
 
 [My tools](my-tools.md) stores parameterized C# procedures on the Revit workstation.
-The stable catalog exposes `revit_save_tool`, `revit_list_tools`, `revit_get_tool`, `revit_run_tool`, and `revit_delete_tool` in the `code` toolset.
+The saved tool commands belong to the `code` toolset.
+
+| Tool | Purpose |
+| --- | --- |
+| `revit_save_tool` | Compile and store a confirmed revision. |
+| `revit_list_tools` | List saved tools on the workstation. |
+| `revit_get_tool` | Read a saved tool and its parameter schema. |
+| `revit_run_tool` | Execute a saved revision with validated arguments. |
+| `revit_delete_tool` | Delete a saved tool after confirmation. |
+
 List and get carry `readOnlyHint`; save and delete require confirmation, and run follows the saved mode and `execute_code` confirmation flow.
 Every saved tool command is unavailable wherever `execute_code` is disabled.
