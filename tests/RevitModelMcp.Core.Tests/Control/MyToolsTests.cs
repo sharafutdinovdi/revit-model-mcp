@@ -55,19 +55,23 @@ public sealed class MyToolsTests
     }
 
     [Test]
-    [Arguments(true)]
-    [Arguments(false)]
-    public async Task ReadOnlyLock_RefusesSavedReadToolsAndExecuteCodeRegardlessOfDryRun(bool dryRun)
+    [Arguments(true, "auto")]
+    [Arguments(false, "auto")]
+    [Arguments(true, "group")]
+    [Arguments(false, "group")]
+    public async Task ReadOnlyLock_RefusesSavedReadToolsAndExecuteCodeRegardlessOfDryRun(bool dryRun, string transaction)
     {
         var readTool = ActionJobParser.Parse("run-tool", new ControlJobContract
         {
             Name = "read_tool",
             ToolMode = "read",
+            Transaction = transaction,
             DryRun = dryRun
         });
         var code = ActionJobParser.Parse("execute-code", new ControlJobContract
         {
             Code = "return 1;",
+            Transaction = transaction,
             DryRun = dryRun
         });
         await Assert.That(readTool.Error).IsNull();

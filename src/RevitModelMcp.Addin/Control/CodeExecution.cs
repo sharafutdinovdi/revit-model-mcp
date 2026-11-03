@@ -7,6 +7,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
@@ -20,6 +21,42 @@ namespace RevitModelMcp.Control;
 public sealed class ScriptContext
 {
     private readonly List<string> _log = [];
+    [ThreadStatic] internal static ScriptContext? Current;
+    private readonly List<IDisposable> _scopes = [];
+
+    public static T TrackScope<T>(T scope) where T : IDisposable
+    {
+        if (scope is not null) Current?._scopes.Add(scope);
+        return scope!;
+    }
+
+    internal bool CloseOpenScopes()
+    {
+        var leftOpen = false;
+        foreach (var scope in _scopes.AsEnumerable().Reverse())
+        {
+            switch (scope)
+            {
+                case SubTransaction { IsValidObject: true } subTransaction when subTransaction.GetStatus() == TransactionStatus.Started:
+                    leftOpen = true;
+                    subTransaction.RollBack();
+                    break;
+                case Transaction { IsValidObject: true } transaction when transaction.GetStatus() == TransactionStatus.Started:
+                    leftOpen = true;
+                    transaction.RollBack();
+                    break;
+                case TransactionGroup { IsValidObject: true } group when group.GetStatus() == TransactionStatus.Started:
+                    leftOpen = true;
+                    group.RollBack();
+                    break;
+                case EditScope { IsValidObject: true, IsActive: true } editScope:
+                    leftOpen = true;
+                    editScope.Cancel();
+                    break;
+            }
+        }
+        return leftOpen;
+    }
 
     internal ScriptContext(UIApplication uiApplication, UIDocument? uiDocument, Document? document)
     {
@@ -80,7 +117,7 @@ internal static class CodeExecution
         if (!compileOnly) WriteAudit(code, clientName, document?.Title, document?.PathName, action.TransactionMode, jobId);
         if (!compileOnly && action.ToolName is not null)
             PluginLog.Info(ToolSession.AuditText(action.ToolName, action.ToolRevision!, action.Args.Keys));
-        var key = action.ToolRevision is null ? CodeSource.CacheKey(code, action.TransactionMode) : ToolSession.CacheKey(action.ToolRevision);
+        var key = action.ToolRevision is null ? CodeSource.CacheKey(code, action.TransactionMode) : ToolSession.CacheKey(action.ToolRevision) + ":" + action.TransactionMode;
         if (!Cache.TryGet(key, out var compiled) || compileOnly)
         {
             var source = CodeSource.BuildSource(code);
@@ -89,6 +126,12 @@ internal static class CodeExecution
                 [CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest))],
                 references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                     optimizationLevel: OptimizationLevel.Release));
+            if (action.TransactionMode == "group")
+            {
+                var tree = compilation.SyntaxTrees.Single();
+                var rewritten = new ScopeTrackingRewriter(compilation.GetSemanticModel(tree)).Visit(tree.GetRoot())!;
+                compilation = compilation.ReplaceSyntaxTree(tree, tree.WithRootAndOptions(rewritten, tree.Options));
+            }
             using var assemblyStream = new MemoryStream();
             using var symbolsStream = new MemoryStream();
             var emitted = compilation.Emit(assemblyStream, symbolsStream,
@@ -147,7 +190,7 @@ internal static class CodeExecution
             changedElementCount += arguments.GetAddedElementIds().Count + arguments.GetModifiedElementIds().Count
                 + arguments.GetDeletedElementIds().Count;
         }
-        var counting = action.TransactionMode == "auto" && !action.DryRun;
+        var counting = action.TransactionMode is "auto" or "group";
         if (counting) application.Application.DocumentChanged += CountChanges;
 #if !NETFRAMEWORK
         var loadContext = new AssemblyLoadContext("McpScript_" + key.Substring(0, 12), isCollectible: true);
@@ -156,13 +199,16 @@ internal static class CodeExecution
 #endif
         try
         {
-            if (action.TransactionMode == "auto")
+            if (action.TransactionMode is "auto" or "group")
             {
                 if (document is null) throw new InvalidOperationException("No active Revit document.");
                 group = new TransactionGroup(document, "MCP action");
                 if (group.Start() != TransactionStatus.Started)
                     throw new InvalidOperationException("Could not start the action transaction group.");
-                transaction = new Transaction(document, "revit_execute_code");
+            }
+            if (action.TransactionMode == "auto")
+            {
+                transaction = new Transaction(document!, "revit_execute_code");
                 if (transaction.Start() != TransactionStatus.Started)
                     throw new InvalidOperationException("Could not start the action transaction.");
                 transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
@@ -185,6 +231,7 @@ internal static class CodeExecution
             object? returned;
             try
             {
+                ScriptContext.Current = action.TransactionMode == "group" ? context : null;
                 returned = method.Invoke(null, [context]);
             }
             catch (TargetInvocationException exception) when (exception.InnerException is not null)
@@ -192,25 +239,27 @@ internal static class CodeExecution
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
                 throw;
             }
+            if (context.CloseOpenScopes() || action.TransactionMode == "group" && document!.IsModifiable)
+                throw new InvalidOperationException("The script left a transaction or edit scope open. The run was rolled back.");
             result.ReturnValue = CodeResultLimiter.Limit(returned, ConvertSpecial);
             result.Log = context.Lines.ToList();
-            if (transaction is not null)
+            if (group is not null)
             {
                 if (action.DryRun || action.ToolMode == "read" && action.ToolName is not null)
                 {
-                    if (transaction.RollBack() != TransactionStatus.RolledBack)
+                    if (transaction is not null && transaction.RollBack() != TransactionStatus.RolledBack)
                         throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
+                    if (group.RollBack() != TransactionStatus.RolledBack)
+                        throw new InvalidOperationException("Could not roll back the action transaction group.");
                     result.RolledBack = true;
-                    group!.RollBack();
                 }
                 else
                 {
-                    if (transaction.Commit() != TransactionStatus.Committed)
+                    if (transaction is not null && transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
                     if (changedElementCount == 0)
                     {
-                        // The script changed nothing: leave no undo entry behind.
-                        if (group!.RollBack() != TransactionStatus.RolledBack)
+                        if (group.RollBack() != TransactionStatus.RolledBack)
                             throw new InvalidOperationException("Could not roll back the empty action transaction group.");
                         result.RolledBack = true;
                         result.Committed = false;
@@ -226,7 +275,7 @@ internal static class CodeExecution
                         var undoName = action.ToolName is null
                             ? ActionSummaryBuilder.BuildGroupName(clientName, "Execute code")
                             : "Model MCP: " + action.ToolName;
-                        group!.SetName(undoName);
+                        group.SetName(undoName);
                         if (group.Assimilate() != TransactionStatus.Committed)
                             throw new InvalidOperationException("Could not assimilate the action transaction group.");
                         result.UndoName = undoName;
@@ -237,9 +286,10 @@ internal static class CodeExecution
         }
         catch (Exception exception)
         {
+            context.CloseOpenScopes();
             if (transaction?.GetStatus() == TransactionStatus.Started) transaction.RollBack();
             if (group?.GetStatus() == TransactionStatus.Started) group.RollBack();
-            result.RolledBack = action.TransactionMode == "auto";
+            result.RolledBack = action.TransactionMode is "auto" or "group";
             result.CodeError = exception.GetType().Name + ": " + exception.Message;
             result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
@@ -255,6 +305,7 @@ internal static class CodeExecution
         }
         finally
         {
+            ScriptContext.Current = null;
             if (counting) application.Application.DocumentChanged -= CountChanges;
             transaction?.Dispose();
             group?.Dispose();
@@ -265,6 +316,42 @@ internal static class CodeExecution
         }
         if (action.ToolName is not null) result.Summary = $"{action.ToolName}: {result.Summary}";
         return result;
+    }
+
+    private sealed class ScopeTrackingRewriter(SemanticModel model) : CSharpSyntaxRewriter
+    {
+        public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
+        {
+            var visited = (InvocationExpressionSyntax)base.VisitInvocationExpression(node)!;
+            if (node.Expression is not MemberAccessExpressionSyntax member || member.Name.Identifier.ValueText != "Start")
+                return visited;
+            if (!IsScope(model.GetTypeInfo(member.Expression).Type)) return visited;
+            var visitedMember = (MemberAccessExpressionSyntax)visited.Expression;
+            return visited.WithExpression(visitedMember.WithExpression(Track(visitedMember.Expression)));
+        }
+
+        public override SyntaxNode? VisitConditionalAccessExpression(ConditionalAccessExpressionSyntax node)
+        {
+            var visited = (ConditionalAccessExpressionSyntax)base.VisitConditionalAccessExpression(node)!;
+            if (node.WhenNotNull is InvocationExpressionSyntax { Expression: MemberBindingExpressionSyntax member }
+                && member.Name.Identifier.ValueText == "Start" && IsScope(model.GetTypeInfo(node.Expression).Type))
+                return visited.WithExpression(Track(visited.Expression));
+            return visited;
+        }
+
+        private static bool IsScope(ITypeSymbol? type)
+        {
+            for (var current = type; current is not null; current = current.BaseType)
+            {
+                if (current.ToDisplayString() is "Autodesk.Revit.DB.Transaction" or "Autodesk.Revit.DB.SubTransaction"
+                    or "Autodesk.Revit.DB.TransactionGroup" or "Autodesk.Revit.DB.EditScope") return true;
+            }
+            return false;
+        }
+
+        private static ExpressionSyntax Track(ExpressionSyntax scope) => SyntaxFactory.InvocationExpression(
+            SyntaxFactory.ParseExpression("global::RevitModelMcp.Control.ScriptContext.TrackScope"),
+            SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(scope))));
     }
 
     private static IEnumerable<Assembly> GetBoundAssemblies() =>

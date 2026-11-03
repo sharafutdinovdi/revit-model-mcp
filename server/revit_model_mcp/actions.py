@@ -467,7 +467,7 @@ class ProcessOpen(BaseModel):
 class ProcessCode(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: Annotated[str, Field(min_length=1, max_length=200000)]
-    transaction: Literal["auto", "none"] = "auto"
+    transaction: Literal["auto", "group", "none"] = "auto"
 
 
 class ProcessExport(BaseModel):
@@ -1120,6 +1120,7 @@ def register_actions(mcp, execute, host_provider) -> None:
     async def revit_run_tool(
         name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{2,47}$")],
         args: dict[str, Any],
+        transaction: Literal["auto", "group"] = "auto",
         dry_run: bool = False,
         confirm_token: str | None = None,
         document: Annotated[
@@ -1127,11 +1128,12 @@ def register_actions(mcp, execute, host_provider) -> None:
         ] = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit."""
+        """Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. transaction=group permits script-owned transactions and edit scopes in one Undo group. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit."""
         return await send(
             "run-tool",
             name=name,
             toolArgs=json.dumps(args, sort_keys=True, allow_nan=False),
+            transaction=transaction,
             dryRun=dry_run,
             confirmToken=confirm_token,
             document=document,
@@ -1149,14 +1151,14 @@ def register_actions(mcp, execute, host_provider) -> None:
     @action
     async def revit_execute_code(
         code: Annotated[str, Field(min_length=1, max_length=200000)],
-        transaction: Literal["auto", "none"] = "auto",
+        transaction: Literal["auto", "group", "none"] = "auto",
         document: Document = None,
         dry_run: bool = False,
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns one Undo; transaction="none" is refused. Needs confirm_token except dry_run, which rolls back."""
-        if dry_run:
+        """Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns a Transaction; group lets scripts own Transactions and edit scopes inside one Undo group. Close all scopes before returning; transaction="none" is refused. Needs confirm_token except dry_run, which rolls back."""
+        if dry_run and transaction == "none":
             transaction = "auto"
         return await send(
             "execute-code",
@@ -1951,7 +1953,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=14400)] = 14400,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run forces code.transaction="auto" and reports the override in warnings."""
+        """Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run replaces only code.transaction="none" with "auto" and reports the override in warnings."""
         if (paths is None) == (folder is None):
             raise ToolError("Provide paths or folder, but not both.")
         warnings = []

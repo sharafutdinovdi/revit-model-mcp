@@ -425,6 +425,19 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("execute-code", false)]
+    [Arguments("execute-code", true)]
+    [Arguments("run-tool", false)]
+    [Arguments("run-tool", true)]
+    public async Task Code_AcceptsGroupMode(string command, bool dryRun)
+    {
+        var json = "{\"command\":\"" + command + "\",\"name\":\"test_tool\",\"code\":\"return 1;\",\"transaction\":\"group\",\"dryRun\":" + (dryRun ? "true" : "false") + "}";
+        var parsed = ControlJobParser.Parse(json);
+        await Assert.That(parsed.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(parsed.Action!.TransactionMode).IsEqualTo("group");
+    }
+
+    [Test]
     public async Task ExecuteCode_SourceAndCacheKeyAreStable()
     {
         var body = CodeSource.BuildSource("return ctx.Document?.Title;");

@@ -869,7 +869,7 @@
     },
     {
       "name": "revit_run_tool",
-      "description": "Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit. Uses a two-step AI app token handshake.",
+      "description": "Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. transaction=group permits script-owned transactions and edit scopes in one Undo group. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit. Uses a two-step AI app token handshake.",
       "toolset": "code",
       "access": "modifying",
       "annotations": {
@@ -913,7 +913,7 @@
     },
     {
       "name": "revit_execute_code",
-      "description": "Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns one Undo; transaction=\"none\" is refused. Needs confirm_token except dry_run, which rolls back. May commit; revit_jobs polls; retry repeats.",
+      "description": "Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns a Transaction; group lets scripts own Transactions and edit scopes inside one Undo group. Close all scopes before returning; transaction=\"none\" is refused. Needs confirm_token except dry_run, which rolls back. May commit; revit_jobs polls; retry repeats.",
       "toolset": "code",
       "access": "modifying",
       "annotations": {
@@ -1553,7 +1553,7 @@
     },
     {
       "name": "revit_process_models",
-      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run forces code.transaction=\"auto\" and reports the override in warnings. May commit; revit_jobs polls; retry repeats.",
+      "description": "Open each model in the interactive session, run steps and C# code, export, save as requested, and close. In-place saves and code need a confirm_token from the preview response. dry_run replaces only code.transaction=\"none\" with \"auto\" and reports the override in warnings. May commit; revit_jobs polls; retry repeats.",
       "toolset": "batch",
       "access": "modifying",
       "annotations": {

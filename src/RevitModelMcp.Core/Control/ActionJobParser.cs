@@ -183,12 +183,12 @@ public static class ActionJobParser
                 action.ProcessModels = job.ProcessModels ?? throw new ArgumentException("process is required.");
                 action.ProcessModels.Validate(trustedNetworkRoots);
             }
-            if (command == "execute-code")
+            if (command is "execute-code" or "run-tool")
             {
-                Require(job.Code is { Length: > 0 and <= 200000 }, "code must contain 1 to 200000 characters.");
+                Require(command == "run-tool" || job.Code is { Length: > 0 and <= 200000 }, "code must contain 1 to 200000 characters.");
                 action.Code = job.Code;
                 action.TransactionMode = job.Transaction ?? "auto";
-                Require(action.TransactionMode is "auto" or "none", "transaction must be auto or none.");
+                Require(action.TransactionMode is "auto" or "group" or "none", "transaction must be auto, group or none.");
                 Require(action.TransactionMode != "none", CodeExecutionPolicy.TransactionNoneRefusal);
             }
             if (command == "update-parameters")
@@ -860,7 +860,7 @@ public static class DocumentConfirmationBinding
 
 public static class CodeExecutionPolicy
 {
-    public const string TransactionNoneRefusal = "transaction=\"none\" is refused: scripts that own their transactions can change the model without a single undo entry. Use transaction=\"auto\". A workstation policy that can allow it is planned.";
+    public const string TransactionNoneRefusal = "transaction=\"none\" is refused: scripts that own their transactions can change the model without a single undo entry. Use transaction=\"auto\" or transaction=\"group\". A workstation policy that can allow it is planned.";
 }
 
 public static class DeletionPolicy

@@ -270,3 +270,8 @@ Repeat the identical call with `confirm_token` only after the user explicitly co
 Never save without the user's yes or infer approval from a successful execution.
 Use `revit_list_tools` and `revit_get_tool` to review an existing procedure before reuse.
 Saved C# follows ExecuteCode policy and the workstation read-only lock.
+
+For code execution and saved-tool runs, `transaction="auto"` owns the transaction.
+Use `transaction="group"` when a script needs its own transactions or a native edit scope such as `StairsEditScope`.
+Group mode requires all script-owned scopes to finish before returning, assimilates successful changes into one undo entry, and rolls back on errors or dry runs.
+Both modes retain confirmation, ExecuteCode policy, activity reporting, and the workstation read-only lock.

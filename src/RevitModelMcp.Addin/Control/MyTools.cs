@@ -24,7 +24,7 @@ internal static class MyTools
         action.ToolMode = tool.Mode;
         action.ToolApprovalBinding = tool.ApprovalBinding();
         action.Code = tool.Code;
-        action.TransactionMode = "auto";
+        action.ToolConfirmationText += $" Transaction mode: {action.TransactionMode}.";
     }
 
     internal static void ExecuteCatalog(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
