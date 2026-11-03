@@ -98,6 +98,7 @@ jobs:
           "older_prs=$(ConvertTo-Json -InputObject $older -Compress -Depth 3)" >> $env:GITHUB_OUTPUT
           'proceed=true' >> $env:GITHUB_OUTPUT
           Write-Host "Submit package version $env:RELEASE_VERSION"
+          $global:LASTEXITCODE = 0
       - name: Generate manifests
         if: steps.decision.outputs.proceed == 'true'
         shell: pwsh
