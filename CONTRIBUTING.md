@@ -197,13 +197,12 @@ Run the SingleUser installer smoke from an interactive Windows workstation with 
 ```
 
 `-ExpectedVersion` matches the DLL ProductVersion before its commit suffix; prerelease suffixes remain significant.
-The smoke installs per user, checks manifests and DLL versions for installed Revit years, opens the test model in Revit 2027 through its own interactive scheduled task, waits for a fresh heartbeat, and calls `revit_ping` through `pipe/1` using the Python server source and `uv run`.
-`-ServerDirectory` selects the server checkout; `-Model` selects the 2027 test model.
+The check installs the package, verifies manifests and DLL versions, starts Revit 2027 through a `release-check-*` scheduled task, and calls `revit_ping` after a fresh heartbeat.
+`-ServerDirectory` selects the server checkout; `-Model` selects the 2027 test project.
 An existing SingleUser MSI installation requires `-PreviousMsi <full previous package>` with the same ProductCode.
-The smoke backs up that package and reinstalls it in its original scope before restoring the previous add-in files and settings.
-The smoke closes only its own Revit process, removes only its own `rmm-smoke-*` task, uninstalls the package, and restores the previous per-year add-in from a retained backup.
-The output directory contains MSI logs, the ping response, the backup, and a PASS/FAIL table with restored ProductVersions.
-A failure returns exit code 1; cleanup failures remain visible in the table.
+The check preserves the previous installation and settings, and closes only the Revit process it starts.
+The output includes installation logs, the ping response and a PASS/FAIL table.
+A failure returns exit code 1, including a failure to recover the previous installation.
 Attach the table and TRX counters to release validation before publication.
 
 1. Merge PRs with Conventional Commit titles.
