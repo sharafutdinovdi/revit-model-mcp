@@ -17,13 +17,15 @@ runtime dependencies. Ribbon icons render at 4x resolution before Lanczos downsa
 
 The first run needs a Chromium build: ``uvx playwright install chromium``.
 ``--readme-media`` renders only the README hero and gallery animations. They need ffmpeg
-with libwebp and the raw Revit takes in work/ws/visuals-spike/film/takes (not in git).
+with libwebp and raw Revit recordings. Set BRAND_TAKES_DIRECTORY to the input folder;
+the default is media/takes relative to the repository root.
 The HTML sources load Inter from Google Fonts, so rendering needs network access.
 """
 
 from __future__ import annotations
 
 import io
+import os
 import shutil
 import struct
 import subprocess
@@ -47,10 +49,10 @@ SIDE = "#1B5BB0"
 FONT_LINK = '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@700;800&amp;display=swap" rel="stylesheet">'
 
 FPS = 15
-TAKES = ROOT / "work" / "ws" / "visuals-spike" / "film" / "takes"
+TAKES = Path(os.environ.get("BRAND_TAKES_DIRECTORY", str(ROOT / "media" / "takes")))
 
-# Source windows come from work/ws/visuals-spike/film/slots.json. Crops are (width, height, x, y) on
-# the 1884 x 874 recordings; "rate" retimes the take and "dur" is the output length in seconds.
+# Crops are (width, height, x, y) on the 1884 x 874 recordings.
+# "rate" retimes the take and "dur" is the output length in seconds.
 WIDE = (1554, 874, 163, 0)
 HERO_TAKE = {
     "file": "A1.mp4",
