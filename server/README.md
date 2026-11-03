@@ -1,14 +1,28 @@
 # Model MCP server
 
-confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
-
 The Python package of Model MCP for Autodesk® Revit® exposes Revit tools over MCP stdio; actions run by default.
-One workstation read-only lock disables them without hiding the action tools. Use the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs explicit confirmation, and the machine policy wins.
-It requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
+One workstation read-only lock refuses ordinary actions without hiding the action tools.
+The Read-only ribbon button and `revit_set_read_only` control the lock.
+Chat unlock requires explicit confirmation, and administrator policy remains enforced.
+The server requires Python 3.11 or later and the matching add-in loaded in Revit on Windows.
+
+## Features in 2.0
+
+2.0 adds [approved saved tools](https://sharafutdinovdi.github.io/revit-model-mcp/my-tools/), grouped C# transactions, [model audit packs and XLSX/HTML reports](https://sharafutdinovdi.github.io/revit-model-mcp/model-audit/), sheet inspection, Revit API lookup, and [progress notifications](https://sharafutdinovdi.github.io/revit-model-mcp/transport/#progress-notifications).
+The add-in provides Activity, a shared read-only lock, and [confirmed channel permission repair](https://sharafutdinovdi.github.io/revit-model-mcp/transport/#channel-permissions).
+See the [installation guide](https://sharafutdinovdi.github.io/revit-model-mcp/install/) for client setup and the [workflow guide](https://sharafutdinovdi.github.io/revit-model-mcp/prompts/) for daily QA, sheet set, and family authoring workflows.
+
+## Upgrading from 1.x
+
+`REVIT_MCP_READ_ONLY` is no longer used.
+Remove it from client configuration and set the workstation lock with the Revit ribbon or `revit_set_read_only`.
+The lock applies across clients and running Revit versions for the Windows user.
+Chat unlock requires explicit confirmation, and administrator policy remains enforced.
+See [read-only mode](https://sharafutdinovdi.github.io/revit-model-mcp/actions/#read-only-mode) and the [2.0.0 changelog](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/CHANGELOG.md#200-2026-11-03).
 
 ## Install and run
 
-After the first PyPI release, run the published package with uv:
+Run the published package with uv:
 
 ```sh
 uvx revit-model-mcp
@@ -49,7 +63,7 @@ Claude Desktop uses this entry in `claude_desktop_config.json` on Windows:
 `uvx` must be available on the client's PATH; an absolute executable path is also supported.
 A remote Desktop client uses `REVIT_MCP_HOST=ssh:revit-host`.
 
-For development or before the first PyPI publication, run from the repository root:
+For development, run from the repository root:
 
 ```sh
 uv run --directory server revit-model-mcp
@@ -66,8 +80,8 @@ Boolean server variables accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`,
 | Variable | Read by | Default | Behavior |
 |---|---|---|---|
 | `REVIT_MCP_HOST` | Server | `local` | Local PowerShell or pipe, `ssh:<alias>` or an `http://` / `https://` add-in endpoint. `--host` overrides it. |
-| `REVIT_MCP_TOOLSETS` | Server | `all` | Comma-separated toolsets whose tools `tools/list` exposes: `all`, `core`, `read`, `actions`, `documents`, `views-sheets`, `family`, `links`, `cad-mep`, `export`, `batch`, `code`. `core` is always included. `--toolsets` overrides it; an unknown name stops the server. It limits visibility, not permission: read-only mode and confirmation tokens still apply. See [Toolsets](../docs/tools.md#toolsets). |
-| `REVIT_MCP_REDACT_PATHS` | Server and add-in | Off | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior in the server. In the add-in it also redacts paths in the activity pane, stored code and logs. |
+| `REVIT_MCP_TOOLSETS` | Server | `all` | Comma-separated toolsets whose tools `tools/list` exposes: `all`, `core`, `read`, `actions`, `documents`, `views-sheets`, `family`, `links`, `cad-mep`, `export`, `batch`, `code`. `core` is always included. `--toolsets` overrides it; an unknown name stops the server. It limits visibility, not permission: read-only mode and confirmation tokens still apply. See [Toolsets](https://sharafutdinovdi.github.io/revit-model-mcp/tools/#toolsets). |
+| `REVIT_MCP_REDACT_PATHS` | Server and add-in | Off | `1` removes directories from response `documentPath`, `path` and `centralPath` fields and Windows paths in message fields. `--redact-paths` enables the same behavior in the server. When also set in Revit, the add-in separately redacts stored C# and Activity code summaries and suppresses exception details in logs. Existing files are not scrubbed. |
 | `REVIT_MCP_TOKEN` | Server and add-in | Unset | HTTP bearer token. The server sends it; `--token` overrides it. In Revit it overrides the `token` in `settings.json`. |
 | `REVIT_MCP_CHANNEL_DIR` | Server and add-in | `%LOCALAPPDATA%\RevitModelMcp` on Windows | Absolute Windows channel path. Set the same value in the server environment and in Revit's environment before starting Revit. In SSH mode this path belongs to the remote host. `settings.json` and the `read-only` file stay in the default directory. |
 | `REVIT_MCP_SSH_MUX` | Server | Enabled | `0` disables OpenSSH connection multiplexing. Local mode ignores SSH settings. |
@@ -84,7 +98,7 @@ Boolean server variables accept `1`, `true`, `yes`, `on` and `0`, `false`, `no`,
 | `REVIT_MCP_RSN_REST_BASE` | Add-in (batch supervisor) | Unset | `AdminRESTService.svc/` URL of the Revit Server host. Required to read RSN model metadata before a batch run. |
 
 The add-in also reads `REVIT_MCP_BATCH_WORKER`; the batch supervisor sets it on worker processes, so do not set it yourself.
-See the [settings reference](../docs/transport.md#settings-reference) for the `settings.json` keys.
+See the [settings reference](https://sharafutdinovdi.github.io/revit-model-mcp/transport/#settings-reference) for the `settings.json` keys.
 
 `revit_family_audit` is a read tool. It inspects an open family when `families` is omitted, or exact family names / `["*"]` in a project. `revit_edit_families` applies ordered shared-parameter, removal, purge and shared-flag operations. Project edits use one family load per family and one undo entry; `dry_run=true` rolls back. The edit tool is refused in read-only mode. Family audit defaults to a 600-second response budget; family edits default to 1800 seconds.
 
@@ -105,17 +119,25 @@ Without a task the server only polls for pickup.
 
 ## Responses and privacy
 
+`confirm_token` is a two-step handshake with the AI app.
+The app is expected to show the action for explicit approval; Model MCP does not show its own dialog.
+The token does not prove human approval.
+A timeout or failed verification can follow a committed change; inspect Revit before retrying.
+
 Model paths occur in responder metadata and instance listings.
 Redaction covers `documentPath`, `path` and `centralPath` fields in MCP results, including RVT/CAD/image link paths from `revit_links_status`.
 It also reduces Windows drive and UNC paths in `confirmationText`, `summary`, `error`, `message`, `warning` and `warnings` strings at any depth to file names, including tool errors.
 It preserves exported image `localPath` values for clients that open the downloaded file.
-Names, parameter values and remaining message text stay visible. Redaction applies to outgoing Python responses, not files stored in the channel or add-in logs.
+Names, parameter values, and remaining message text stay visible.
+Python redaction applies to outgoing responses and does not rewrite channel files.
+With the variable also set in Revit, the add-in separately redacts stored C# and Activity code summaries and suppresses exception details in logs.
+Existing files are not scrubbed.
 Revit model data and errors can retain their original language.
 Python tool descriptions and server-generated messages are English.
 
 ## Request behavior
 
-For HTTP setup and remote access commands, see [transport](../docs/transport.md#http-configuration).
+For HTTP setup and remote access commands, see [transport](https://sharafutdinovdi.github.io/revit-model-mcp/transport/#http-configuration).
 HTTP submits once and polls by job ID within `timeout_seconds`; pickup timeout applies only to file transports.
 HTTP exports download PNG directly without remote PowerShell.
 Each HTTP endpoint represents one Revit process.
@@ -131,7 +153,7 @@ Matching is case-insensitive and accepts substrings.
 A pending job remains in the channel after pickup timeout and may execute later.
 Use one MCP server process per channel directory.
 
-See [transport](../docs/transport.md) for file handling and SSH behavior.
+See [transport](https://sharafutdinovdi.github.io/revit-model-mcp/transport/) for file handling and SSH behavior.
 
 ## Tests
 
@@ -144,8 +166,8 @@ uv run --with pytest pytest -q
 
 The tests use mocked host operations and exercise MCP stdio without Revit.
 
-See the [tool arguments](../docs/tools.md), [action arguments](../docs/actions.md) and [response contract](../docs/feed-format.md#command-responses).
+See the [tool arguments](https://sharafutdinovdi.github.io/revit-model-mcp/tools/), [action arguments](https://sharafutdinovdi.github.io/revit-model-mcp/actions/) and [response contract](https://sharafutdinovdi.github.io/revit-model-mcp/feed-format/#command-responses).
 
 ## License
 
-[MIT](LICENSE), copyright (c) 2026 Dinar Sharafutdinov.
+[MIT](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/LICENSE).

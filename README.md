@@ -7,7 +7,8 @@
 
 Model MCP for Autodesk® Revit® connects Claude Desktop, Claude Code or any MCP client that starts a stdio server to a live Revit project.
 Ask questions about the model, check it, and change it in plain language.
-Every change is one named undo entry in Revit, and read-only mode is one switch away.
+Committed transactional model edits create one named Undo entry in Revit.
+Read-only mode is one switch away.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) [![Codecov](https://codecov.io/gh/sharafutdinovdi/revit-model-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/sharafutdinovdi/revit-model-mcp) [![PyPI](https://img.shields.io/pypi/v/revit-model-mcp?style=flat-square)](https://pypi.org/project/revit-model-mcp/) ![Revit 2022-2027](https://img.shields.io/badge/Revit-2022--2027-368EF5?style=flat-square) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sharafutdinovdi/revit-model-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/sharafutdinovdi/revit-model-mcp) [![MIT](https://img.shields.io/badge/license-MIT-5C6F88?style=flat-square)](LICENSE)
 <!-- best practices badge: add after the project id exists -->
@@ -21,17 +22,15 @@ Tested with Claude Desktop over SSH; other clients are listed on the [tested cli
 **1. Install the add-in.**
 On the Windows machine with Revit, download `RevitModelMcp-<version>-SingleUser.msi` (current user) or `RevitModelMcp-<version>-MultiUser.msi` (all users) from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
 Install only one of them.
-Alternatively, install with WinGet:
-
-```sh
-winget install Sharafutdinov.RevitModelMcp
-```
+WinGet publication is pending.
+The [submission](https://github.com/microsoft/winget-pkgs/pull/469197) is open, and the package is not yet in the catalog.
+Use an MSI from the latest release until it is accepted.
 
 Keep Revit closed during installation, then start Revit and open a model.
 Revit asks whether to load the add-in, because release builds are not code-signed yet.
 
 **2. Add the server to your MCP client.**
-In Revit, Model MCP > Model MCP > Connect AI app registers the bundled server in Claude Desktop, Cursor, VS Code or Codex; Claude Code gets a copy-paste command.
+In Revit, Model MCP > Model MCP > Connect AI app registers the bundled server in Claude Desktop, Cursor, VS Code, or Codex (the ChatGPT app or codex CLI); Claude Code gets a copy-paste command.
 The MSI includes the server executable, so this path needs no separate Python or uv installation.
 
 If you prefer the PyPI server:
@@ -72,7 +71,7 @@ Report bugs in [Issues](https://github.com/sharafutdinovdi/revit-model-mcp/issue
 
 ## Why Model MCP
 
-- **Safe by design.** Each change is one named undo entry in Revit, and one setting makes the whole server read-only.
+- **Model edit controls.** Transactional model edits create one named Undo entry, and one workstation lock enables read-only mode.
 - **Confirmation first.** Saving, syncing and other irreversible steps wait for your explicit approval.
 - **Installs like normal software.** MSI installers, with deployment guides for SCCM, Intune and Group Policy.
 - **Works from a Mac.** MCP stdio runs through SSH to the Windows workstation, so no port opens.
@@ -80,7 +79,10 @@ Report bugs in [Issues](https://github.com/sharafutdinovdi/revit-model-mcp/issue
 ## Features in 2.0
 
 - **Model MCP ribbon tab.** The product menu contains About, Check for updates, and Settings.
-  The panel provides Connect AI app, Activity, Read-only, Help, Report issue, and Support developer.
+  The panel provides Connect AI app, Activity, My tools, Read-only, Help, Report issue, and Support developer.
+  After a channel permission refusal, Activity explains the problem.
+  Model MCP > Repair channel permissions offers a confirmed repair of the reviewed folder permissions.
+  See [channel permissions](docs/transport.md#channel-permissions).
   Update checks depend on the release channel.
   Buttons have contextual help and themed tooltips.
   See the [ribbon guide](docs/install.md#the-model-mcp-ribbon-tab).
@@ -97,8 +99,18 @@ Report bugs in [Issues](https://github.com/sharafutdinovdi/revit-model-mcp/issue
   See [progress notifications](docs/transport.md#progress-notifications).
 - **Document tab highlight.** A border marks the document handling MCP work and clears after completion.
   The [ribbon guide](docs/install.md#the-model-mcp-ribbon-tab) covers timing and settings.
+- **Grouped C# authoring.** `revit_execute_code` and `revit_run_tool` accept `transaction="group"` for procedures that need their own transactions or edit scopes.
+  The runner keeps the group within one Undo entry and rolls it back for dry runs or failures.
 - **Reusable skills.** Coordinator, daily QA, sheet set, and ISO 19650 issue register workflows ship in the repository.
   See [prompts and skills](#prompts-and-skills).
+
+## Upgrading from 1.x
+
+`REVIT_MCP_READ_ONLY` is no longer used.
+Remove it from client configuration and set the workstation lock with the Revit ribbon or `revit_set_read_only`.
+The lock applies across clients and running Revit versions for the Windows user.
+Chat unlock requires explicit confirmation, and administrator policy remains enforced.
+See [read-only mode](docs/actions.md#read-only-mode) and the [2.0.0 changelog](CHANGELOG.md#200-2026-11-03).
 
 ## Try these prompts
 
@@ -174,7 +186,8 @@ Compare and align grids and levels with linked models, inspect links and shared 
 ### Change the model safely
 
 Edit elements, families, views and sheets.
-Each change is one named undo entry, and the riskiest calls use a client token handshake.
+Committed transactional model edits create one named Undo entry.
+High-risk calls use a client token handshake.
 See [safety](#safety).
 
 <details markdown="1">
@@ -183,6 +196,8 @@ See [safety](#safety).
 | Task | Tools |
 | --- | --- |
 | Edit elements | `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_set_parameter`, `revit_update_parameters`, `revit_delete` |
+| Control the workstation lock | `revit_set_read_only` |
+| Save, discover, review, run, and delete approved procedures | `revit_save_tool`, `revit_list_tools`, `revit_get_tool`, `revit_run_tool`, `revit_delete_tool` |
 | Run many steps as one undo | `revit_run_actions` |
 | Create elements | `revit_create_wall`, `revit_create_mep_run` |
 | Work with families | `revit_load_family`, `revit_place_family`, `revit_place_families`, `revit_edit_families` |
@@ -228,16 +243,16 @@ Snapshots also let you audit models later without Revit running.
 
 </details>
 
-### Prompts and skills
-
 ### My tools
 
 Successful C# procedures can be saved as named tools with validated parameters after explicit source review and confirmation.
 The **My tools** ribbon window lists approved revisions and supports **Show code** and confirmed deletion.
-Agents run saved tools through the same execution, read-only lock, and Undo pipeline as `revit_execute_code`.
+MCP clients run saved tools through the same execution, read-only lock, and Undo pipeline as `revit_execute_code`.
 See [My tools](docs/my-tools.md) for saving, running, reviewing, deleting, and the security model.
 
-The [prompts and coordinator guide](docs/prompts.md) describe read-only model review workflows.
+### Prompts and skills
+
+The [prompts and coordinator guide](docs/prompts.md) describes read-only model review workflows.
 For Claude Code, copy `skills/revit-model-coordinator` into `~/.claude/skills/`.
 For Claude Desktop, zip that skill folder and upload it as a skill.
 
@@ -246,6 +261,9 @@ Install it the same way: copy `skills/iso19650-issue-register` into `~/.claude/s
 
 The [daily QA skill](skills/revit-daily-qa/SKILL.md) checks model health, warnings, links, parameters, and families without changing the model.
 The [family authoring skill](skills/revit-family-authoring/SKILL.md) creates and checks families against company rules, with Revit flex, hosting, and connector evidence.
+The [family authoring evaluation profile](docs/evaluation.md#family-authoring-evaluation) supports controlled workstation checks.
+The evaluation guide documents verifier coverage and cases that still need calibration.
+No live comparative result is published.
 The [sheet set skill](skills/revit-sheet-set/SKILL.md) resolves a sheet list, confirms the layout, and creates sheets with placed views.
 Install these folders with the same copy or ZIP procedure.
 
@@ -253,14 +271,14 @@ Install these folders with the same copy or ZIP procedure.
 
 <a id="actions-opt-in"></a>
 
-- **Actions are on by default.** One workstation read-only lock refuses every action. Turn it on with the Read-only ribbon button or `revit_set_read_only`; turning it off with the tool needs your explicit confirmation. The machine policy wins over the lock. Action tools stay listed and return `errorCode: "read_only"` instead of running. See [Actions](docs/actions.md#read-only-mode).
-- **One undo per change.** A committed action is one named Revit undo entry, shown in Revit's Undo list and in the add-in's "MCP activity" pane. `revit_undo_last` undoes it while it is still Revit's last change.
-- **Confirmation tokens for irreversible actions.** Saving, synchronizing, removing links and running C# always need one. Closing with changes, deleting more than 500 elements, overwriting existing export files and in-place saves in batch runs need one too. The first call changes nothing and returns the text to show you; the retry returns the token through the AI app. A token is single use and expires after five minutes.
-- **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export` and `revit_process_models` accept `dry_run` to preview the result without committing it.
-- **A readable summary.** Every action returns `verification` and a one-sentence `summary` of what changed.
-- **Path redaction.** `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields. Names, parameter values and errors stay visible.
-- **Unreachable workstation.** `errorCode: "transport_unavailable"` with `retryable: true` means Revit or the workstation is unreachable and the call did not run. Retry when the workstation or tunnel is back. See [errors and refusals](https://sharafutdinovdi.github.io/revit-model-mcp/tools/#errors-and-refusals).
-- **HTTP.** Direct HTTP callers need the bearer token and are refused while the workstation read-only file is present.
+- **Actions are on by default.** The workstation read-only lock refuses ordinary actions across clients and running Revit versions for the Windows user. Enable it with the Read-only ribbon button or `revit_set_read_only`. Chat unlock requires explicit confirmation. Action tools stay listed. User locks return `errorCode: "read_only"`; enforced machine policy returns `policy_blocked`. Policy overrides the user lock. See [actions](docs/actions.md#read-only-mode).
+- **One Undo entry per transactional model edit.** Committed edits appear in Revit's Undo list and the Activity pane with a summary. Session operations, saves, synchronization, exports, and link removal have separate limits. Link removal cannot be undone. `revit_undo_last` works only while the latest Revit change remains eligible; temporary isolation also makes it ineligible.
+- **Confirmation tokens.** Tokens guard saves, synchronization, committed C#, real link removal, saved-tool saves and deletions, first saved-tool runs per Revit session, and every committed action-mode saved-tool run. Conditional gates cover destructive closes, large deletions, existing-file overwrites, and batch writes or code. See [confirmation exceptions](docs/actions.md#confirmation-tokens-for-irreversible-actions) for dry runs and detached documents. The first call changes nothing and returns confirmation text. The AI app returns the token on retry. Tokens are single use and expire after five minutes.
+- **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export`, and `revit_process_models` accept `dry_run` to preview the result without committing it.
+- **Summaries and verification.** Completed actions report a summary. Model-editing actions include verification where supported. A timeout or failed verification can follow a committed change; inspect Revit before retrying.
+- **Path redaction.** `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields. Names, parameter values, and errors can still contain sensitive data.
+- **Unreachable workstation.** `errorCode: "transport_unavailable"` with `retryable: true` means the transport cannot reach Revit. If an action may have been submitted, inspect its job and the model before resubmitting. See [errors and refusals](https://sharafutdinovdi.github.io/revit-model-mcp/tools/#errors-and-refusals).
+- **HTTP.** Direct requests require the bearer token except for `/health`. Reads and authenticated `set-read-only` remain available while locked. Ordinary actions are refused by either the user lock or enforced policy.
 
 For unattended runs, switch on read-only mode.
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
