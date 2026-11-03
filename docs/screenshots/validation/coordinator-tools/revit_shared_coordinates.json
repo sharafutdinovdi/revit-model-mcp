@@ -1,0 +1,109 @@
+{
+ "command": "shared-coordinates",
+ "success": true,
+ "partial": false,
+ "data": {
+  "activeProjectLocation": "Default Site",
+  "internalOriginToBasePointMm": {
+   "x": 0,
+   "y": 0,
+   "z": 0
+  },
+  "linkInstancesTotal": 6,
+  "listLimit": 100,
+  "projectBasePoint": {
+   "angleToTrueNorthDeg": 334,
+   "clipped": false,
+   "eastWestMm": 417622267.2,
+   "elevationMm": 237896.4,
+   "northSouthMm": 78713983.1
+  },
+  "projectLocations": [
+   "Default Site"
+  ],
+  "projectLocationsTotal": 1,
+  "sharedSiteFromLinks": [
+   {
+    "hasOffset": false,
+    "linkName": "Snowdon Towers Sample Facades.rvt : 16 : location <Not Shared>",
+    "offsetMm": {
+     "x": 0,
+     "y": 0,
+     "z": 0
+    },
+    "rotationDeg": 0,
+    "sharedSiteName": null
+   },
+   {
+    "hasOffset": false,
+    "linkName": "Snowdon Towers Sample Structural.rvt : 18 : location <Not Shared>",
+    "offsetMm": {
+     "x": 0,
+     "y": 0,
+     "z": 0
+    },
+    "rotationDeg": 0,
+    "sharedSiteName": null
+   },
+   {
+    "hasOffset": false,
+    "linkName": "Snowdon Towers Sample Plumbing.rvt : 20 : location <Not Shared>",
+    "offsetMm": {
+     "x": 0,
+     "y": 0,
+     "z": 0
+    },
+    "rotationDeg": 0,
+    "sharedSiteName": null
+   },
+   {
+    "hasOffset": false,
+    "linkName": "Snowdon Towers Sample HVAC.rvt : 21 : location <Not Shared>",
+    "offsetMm": {
+     "x": 0,
+     "y": 0,
+     "z": 0
+    },
+    "rotationDeg": 0,
+    "sharedSiteName": null
+   },
+   {
+    "hasOffset": false,
+    "linkName": "Snowdon Towers Sample Site.rvt : 22 : location <Not Shared>",
+    "offsetMm": {
+     "x": 0,
+     "y": 0,
+     "z": 0
+    },
+    "rotationDeg": 0,
+    "sharedSiteName": null
+   },
+   {
+    "hasOffset": false,
+    "linkName": "Snowdon Towers Sample Electrical.rvt : 23 : location <Not Shared>",
+    "offsetMm": {
+     "x": 0,
+     "y": 0,
+     "z": 0
+    },
+    "rotationDeg": 0,
+    "sharedSiteName": null
+   }
+  ],
+  "siteName": "Default Site",
+  "surveyPoint": {
+   "clipped": null,
+   "eastWestMm": 417621586.8,
+   "elevationMm": -3657.6,
+   "northSouthMm": 78713552.7
+  },
+  "trueNorthAngleDeg": 26
+ },
+ "elapsedMs": 56,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 4784,
+  "revitVersion": "2026"
+ }
+}

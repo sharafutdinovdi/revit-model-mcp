@@ -1,0 +1,137 @@
+{
+ "command": "parameter-fill-check",
+ "success": true,
+ "partial": false,
+ "data": {
+  "parameters": [
+   {
+    "byCategory": [
+     {
+      "category": "Walls",
+      "elements": 1128,
+      "empty": 1128,
+      "filled": 0,
+      "missing": 0
+     },
+     {
+      "category": "Doors",
+      "elements": 142,
+      "empty": 0,
+      "filled": 142,
+      "missing": 0
+     }
+    ],
+    "elements": 1270,
+    "empty": 1128,
+    "emptySampleIds": [
+     619340,
+     619404,
+     619550,
+     619621,
+     619622
+    ],
+    "filled": 142,
+    "missing": 0,
+    "missingSampleIds": [],
+    "name": "Mark",
+    "owner": {
+     "instance": 1270,
+     "type": 0
+    },
+    "storageTypes": {
+     "String": 1270
+    }
+   },
+   {
+    "byCategory": [
+     {
+      "category": "Walls",
+      "elements": 1128,
+      "empty": 1128,
+      "filled": 0,
+      "missing": 0
+     },
+     {
+      "category": "Doors",
+      "elements": 142,
+      "empty": 142,
+      "filled": 0,
+      "missing": 0
+     }
+    ],
+    "elements": 1270,
+    "empty": 1270,
+    "emptySampleIds": [
+     619340,
+     619404,
+     619550,
+     619621,
+     619622
+    ],
+    "filled": 0,
+    "missing": 0,
+    "missingSampleIds": [],
+    "name": "Comments",
+    "owner": {
+     "instance": 1270,
+     "type": 0
+    },
+    "storageTypes": {
+     "String": 1270
+    }
+   },
+   {
+    "byCategory": [
+     {
+      "category": "Walls",
+      "elements": 1128,
+      "empty": 445,
+      "filled": 683,
+      "missing": 0
+     },
+     {
+      "category": "Doors",
+      "elements": 142,
+      "empty": 29,
+      "filled": 113,
+      "missing": 0
+     }
+    ],
+    "elements": 1270,
+    "empty": 474,
+    "emptySampleIds": [
+     630930,
+     687200,
+     742710,
+     759775,
+     786592
+    ],
+    "filled": 796,
+    "missing": 0,
+    "missingSampleIds": [],
+    "name": "Fire Rating",
+    "owner": {
+     "instance": 0,
+     "type": 1270
+    },
+    "storageTypes": {
+     "String": 1270
+    }
+   }
+  ],
+  "scope": {
+   "categories": [
+    "Walls",
+    "Doors"
+   ],
+   "elements": 1270
+  }
+ },
+ "elapsedMs": 294,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 4784,
+  "revitVersion": "2026"
+ }
+}

@@ -446,7 +446,7 @@ Use that same address in the URL ACL and restrict firewall access to the permitt
 See [Tailscale installation for Windows](https://tailscale.com/docs/install/windows).
 
 ```sh
-export REVIT_MCP_HOST=http://100.101.102.103:53110
+export REVIT_MCP_HOST=http://192.0.2.10:53110
 uv run --directory server revit-model-mcp
 ```
 
@@ -467,7 +467,7 @@ In another terminal:
 tailscale --socket="$HOME/.local/state/tailscale-revit/socket" up
 export http_proxy=http://127.0.0.1:1055
 export https_proxy=http://127.0.0.1:1055
-export REVIT_MCP_HOST=http://100.101.102.103:53110
+export REVIT_MCP_HOST=http://192.0.2.10:53110
 uv run --directory server revit-model-mcp
 ```
 
