@@ -19,7 +19,7 @@ The worker inherits the supervisor's Windows account and environment and starts 
 If a batch worker encounters an unsigned add-in prompt, startup fails with the affected year, add-in name, and DLL location read from the dialog, and the worker is stopped.
 Missing dialog fields are reported as unknown, without attributing the prompt to Model MCP.
 
-The v16a workstation replay recorded Always Load for Model MCP at the store bundle path.
+A workstation replay recorded Always Load for Model MCP at the store bundle path.
 The next interactive start recorded repeated prompts only for the two third-party add-ins that had been loaded once before.
 The replay did not capture the worker's prompt text; its generic Model MCP error does not identify the blocking add-in or establish a Model MCP trust persistence failure.
 A successful batch collection still requires a workstation replay after all installed add-ins allow unattended startup.
