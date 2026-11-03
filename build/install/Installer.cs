@@ -75,7 +75,7 @@ void BuildSingleUserMsi()
             new Condition("RMM_APPDATA<>\"\"")),
         new SetPropertyAction("LocalAppDataFolder", "[RMM_LOCALAPPDATA]", Return.check, When.Before, Step.CostFinalize,
             new Condition("RMM_LOCALAPPDATA<>\"\"")),
-        .. store ? Array.Empty<WixSharp.Action>() : UpdateSettingActions("LOCALAPPDATA", false)
+        .. store ? Array.Empty<PathFileAction>() : UpdateSettingActions("LOCALAPPDATA", false)
     ];
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser{(store ? "-store" : "")}";
     project.Dirs =
