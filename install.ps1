@@ -286,7 +286,7 @@ function Invoke-AgentInstall {
         if ($Uninstall) { $operation = '/x' }
         $msiArguments = "$operation `"$msi`" /qn /norestart /l*v `"$($result.log)`""
         # ReleaseDir is also the isolated CI hook. MSI known folders otherwise ignore environment overrides.
-        if ($ReleaseDir) { $msiArguments += " AppDataFolder=`"$env:APPDATA\`" LocalAppDataFolder=`"$env:LOCALAPPDATA\`"" }
+        if ($ReleaseDir) { $msiArguments += " RMM_APPDATA=`"$env:APPDATA`" RMM_LOCALAPPDATA=`"$env:LOCALAPPDATA`"" }
         $process = Start-Process msiexec.exe -ArgumentList $msiArguments -Wait -PassThru
         if ($process.ExitCode -notin @(0, 3010)) { throw "MSI failed ($($process.ExitCode)). See $($result.log)." }
         if ($process.ExitCode -eq 3010) { $result.humanSteps += 'Restart Windows to finish the installation.' }

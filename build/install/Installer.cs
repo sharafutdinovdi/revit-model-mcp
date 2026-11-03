@@ -68,7 +68,15 @@ void BuildSingleUserMsi()
             "Uninstall it from Apps > Installed apps, then run this SingleUser installer again.")
     ];
     project.RegValues = [];
-    project.Actions = store ? [] : [.. UpdateSettingActions("LOCALAPPDATA", false)];
+    // Public directory overrides support offline installs and isolated installation verification.
+    project.Actions =
+    [
+        new SetPropertyAction("AppDataFolder", "[RMM_APPDATA]", Return.check, When.Before, Step.CostFinalize,
+            new Condition("RMM_APPDATA<>\"\"")),
+        new SetPropertyAction("LocalAppDataFolder", "[RMM_LOCALAPPDATA]", Return.check, When.Before, Step.CostFinalize,
+            new Condition("RMM_LOCALAPPDATA<>\"\"")),
+        .. store ? Array.Empty<WixSharp.Action>() : UpdateSettingActions("LOCALAPPDATA", false)
+    ];
     project.OutFileName = $"{outputName}-{versioning.Version}-SingleUser{(store ? "-store" : "")}";
     project.Dirs =
     [

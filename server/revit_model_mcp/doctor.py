@@ -68,9 +68,9 @@ def assess_inventory(inventory: dict[str, Any], version: str) -> dict[str, Any]:
             problems.append(
                 f"Revit {item['year']} add-in files are missing. Repair the MSI installation."
             )
-        if ".".join(item["version"].split("+")[0].split(".")[:3]) != version.split("+")[
-            0
-        ].removesuffix(".0"):
+        if ".".join(item["version"].split("+")[0].split(".")[:3]) != ".".join(
+            version.split("+")[0].split(".")[:3]
+        ):
             problems.append(
                 f"Revit {item['year']} add-in and server versions differ. Install the same release for both."
             )
