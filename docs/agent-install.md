@@ -101,7 +101,7 @@ The MSI installs files for every supported year; `installedYears` lists add-in m
 ```
 
 Doctor reads installed Revit years, add-in manifests and dependencies, version agreement, channel folder state, client configurations, and running Revit instances.
-It performs a read-only ping for running file channels and includes channel ACL refusal reasons from the add-in log with repair instructions.
+It performs a read-only ping for running Revit instances and includes channel ACL refusal reasons from the add-in log with repair instructions.
 It never edits a configuration or repairs permissions.
 After doctor reports a responding instance, ask the AI app: **What model is open in Revit?**
 `uvx revit-model-mcp doctor --json` provides the same diagnostics for package installations.

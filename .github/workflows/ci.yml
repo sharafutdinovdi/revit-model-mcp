@@ -672,16 +672,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $stage = Join-Path $env:RUNNER_TEMP 'agent-install-release'
-          $profile = Join-Path $env:RUNNER_TEMP 'agent-install-profile'
-          New-Item -ItemType Directory $stage, $profile -Force | Out-Null
+          $testProfile = Join-Path $env:RUNNER_TEMP 'agent-install-profile'
+          New-Item -ItemType Directory $stage, $testProfile -Force | Out-Null
           Copy-Item install.ps1 $stage
           $msi = Get-ChildItem output/*-SingleUser.msi
           Copy-Item $msi.FullName $stage
           $name = $msi.Name
           "$((Get-FileHash $msi.FullName -Algorithm SHA256).Hash)  $name" | Set-Content "$stage/SHA256SUMS.txt" -Encoding ASCII
-          $env:APPDATA = Join-Path $profile 'Roaming'
-          $env:LOCALAPPDATA = Join-Path $profile 'Local'
-          $env:USERPROFILE = $profile
+          $env:APPDATA = Join-Path $testProfile 'Roaming'
+          $env:LOCALAPPDATA = Join-Path $testProfile 'Local'
+          $env:USERPROFILE = $testProfile
           $script = Join-Path $stage 'install.ps1'
           # A fresh process avoids loaded Core DLL handles during MSI upgrade and removal.
           function Install-Agent([string[]] $Extra) {
@@ -705,12 +705,12 @@ jobs:
             if (!(Test-Path $server)) { throw 'Installed server does not exist' }
             foreach ($config in @(
               @("$env:APPDATA/Claude/claude_desktop_config.json", 'mcpServers'),
-              @("$profile/.cursor/mcp.json", 'mcpServers'),
+              @("$testProfile/.cursor/mcp.json", 'mcpServers'),
               @("$env:APPDATA/Code/User/mcp.json", 'servers'))) {
               $entry = (Get-Content $config[0] -Raw | ConvertFrom-Json).($config[1]).'revit-model-mcp'
               if ($entry.command -ne $server -or $entry.env.REVIT_MCP_HOST -ne 'local' -or $entry.env.REVIT_MCP_REDACT_PATHS -ne '1') { throw "Invalid config $($config[0])" }
             }
-            $toml = Get-Content "$profile/.codex/config.toml" -Raw
+            $toml = Get-Content "$testProfile/.codex/config.toml" -Raw
             if (!$toml.Contains('REVIT_MCP_HOST = "local"') -or !$toml.Contains('REVIT_MCP_REDACT_PATHS = "1"')) { throw 'Invalid Codex env' }
             $doctor = (& $server doctor --json | ConvertFrom-Json)
             if ($LASTEXITCODE -ne 1 -or !($doctor.problems -match 'No Revit 2022-2027 installed')) { throw 'Doctor must report no Revit installed' }

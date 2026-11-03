@@ -38,7 +38,9 @@ if (!(Test-Path $core)) { $core = Join-Path $env:ProgramData 'Autodesk\Revit\Add
 $clients = @()
 if (Test-Path $core) {
     Add-Type -Path $core
-    $spec = [RevitModelMcp.Core.Connect.McpServerSpec]::ForExecutable($server)
+    $spec = if (Test-Path -LiteralPath $server) {
+        [RevitModelMcp.Core.Connect.McpServerSpec]::ForExecutable($server)
+    } else { [RevitModelMcp.Core.Connect.McpServerSpec]::Uvx }
     $editor = [RevitModelMcp.Core.Connect.McpClientConfigurator]::new($null, $spec)
     $clients = @([RevitModelMcp.Core.Connect.McpClientLocator]::Discover($env:APPDATA, $env:LOCALAPPDATA, $env:USERPROFILE) | ForEach-Object {
         $status = $editor.Inspect($_)
@@ -61,7 +63,9 @@ $channel = if ($env:REVIT_MCP_CHANNEL_DIR) { $env:REVIT_MCP_CHANNEL_DIR } else {
 """
 
 
-def assess_inventory(inventory: dict[str, Any], version: str) -> dict[str, Any]:
+def assess_inventory(
+    inventory: dict[str, Any], version: str, *, require_bundled_server: bool = True
+) -> dict[str, Any]:
     """Assess installation facts without writing files or changing client settings."""
     problems: list[str] = []
     human_steps: list[str] = []
@@ -69,7 +73,7 @@ def assess_inventory(inventory: dict[str, Any], version: str) -> dict[str, Any]:
     addins = inventory["addins"]
     if not years:
         problems.append("No Revit 2022-2027 installed. Install Revit on this Windows PC.")
-    if not inventory["serverExists"]:
+    if require_bundled_server and not inventory["serverExists"]:
         problems.append("Bundled server is missing. Run the SingleUser MSI installer again.")
     for year in years:
         if not any(item["year"] == year for item in addins):
@@ -87,8 +91,9 @@ def assess_inventory(inventory: dict[str, Any], version: str) -> dict[str, Any]:
             )
     for client in inventory["clients"]:
         if client["state"] in ("Unreadable", "ConfiguredDifferentCommand"):
+            client_id = "claude-desktop" if client["id"] == "claude-desktop-store" else client["id"]
             problems.append(
-                f"{client['id']} registration is {client['state']}. Back up its config and rerun install.ps1 -Client {client['id']}."
+                f"{client['id']} registration is {client['state']}. Back up its config and rerun install.ps1 -Client {client_id}."
             )
     if not inventory["channelExists"]:
         human_steps.append("Start Revit to create the Model MCP channel folder.")
@@ -119,7 +124,9 @@ async def diagnose(version: str) -> dict[str, Any]:
     host = SshPowerShellHost(local=True)
     try:
         inventory = json.loads(await host._run(INVENTORY_SCRIPT))
-        result = assess_inventory(inventory, version)
+        result = assess_inventory(
+            inventory, version, require_bundled_server=bool(getattr(sys, "frozen", False))
+        )
         instances = await LocalPipeHost(host).list_revit_instances()
         # Report only channel facts. Model titles and paths stay out of doctor output.
         result["instances"] = [

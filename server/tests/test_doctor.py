@@ -101,3 +101,19 @@ def test_diagnostic_failure_is_json_result(monkeypatch):
     result = asyncio.run(doctor.diagnose("2.0.0"))
     assert not result["ok"]
     assert "PowerShell unavailable" in result["problems"][0]
+
+
+def test_uvx_does_not_require_a_bundled_executable():
+    result = doctor.assess_inventory(
+        inventory(serverExists=False), "2.0.0", require_bundled_server=False
+    )
+    assert result["ok"]
+
+
+def test_store_desktop_remediation_uses_supported_client_name():
+    result = doctor.assess_inventory(
+        inventory(clients=[{"id": "claude-desktop-store", "state": "ConfiguredDifferentCommand"}]),
+        "2.0.0",
+    )
+    assert not result["ok"]
+    assert result["problems"][0].endswith("-Client claude-desktop.")

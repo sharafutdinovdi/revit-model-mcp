@@ -31,6 +31,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
 $repo = $PSScriptRoot
 $tempRoot = $null
 $script:releaseAssets = @()
