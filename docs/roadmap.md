@@ -1,3 +1,7 @@
+---
+description: "Model MCP planned work and current scope for Revit integration and coordination workflows."
+---
+
 # Roadmap
 
 Review date: 2026-10-23.

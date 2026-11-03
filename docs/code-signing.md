@@ -1,3 +1,7 @@
+---
+description: "Model MCP code-signing status, first-start Revit trust prompts, installer checksums, and release verification."
+---
+
 # Code signing policy
 
 Status: releases are not signed yet. This policy takes effect with the first signed release, and the release notes will say so.

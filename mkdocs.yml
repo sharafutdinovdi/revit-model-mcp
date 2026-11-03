@@ -1,4 +1,5 @@
 site_name: Model MCP
+site_description: Connect AI assistants to live Revit 2022-2027 models for BIM coordination and reviewed edits with Undo and read-only controls.
 copyright: Autodesk and Revit are registered trademarks or trademarks of Autodesk, Inc., and/or its subsidiaries and/or affiliates in the USA and/or other countries. Model MCP is an independent project and is not affiliated with or endorsed by Autodesk.
 site_url: https://sharafutdinovdi.github.io/revit-model-mcp/
 repo_url: https://github.com/sharafutdinovdi/revit-model-mcp
@@ -77,42 +78,63 @@ plugins:
   - llmstxt:
       full_output: llms-full.txt
       sections:
-        Getting started:
-          - agent-install.md
-          - index.md
-          - install.md
-          - server.md
-          - contributing.md
-        Concepts:
-          - how-it-works.md
-          - transport.md
-          - batch.md
-          - security.md
-          - architecture.md
-          - updates.md
-          - admin/deployment.md
-          - admin/policy-reference.md
-          - admin/security-whitepaper.md
-          - admin/security-questionnaire.md
-          - design/model-audit.md
-        Reference:
-          - tools.md
-          - stability.md
-          - prompts.md
-          - actions.md
-          - validation.md
-          - performance.md
-          - feed-format.md
-          - mcp-specifications.md
-          - tested-clients.md
-          - not-doing.md
-          - roadmap.md
-          - changelog.md
-          - security-policy.md
+        Agent install:
+          - agent-install.md: "Install and verify Model MCP for Revit with one release command, checksum verification, client registration, diagnostics, and uninstall steps."
+        Guides:
+          - guides/connect-claude-to-revit.md: "Connect Claude Desktop or Claude Code to Revit 2022-2027 with one verified release command, first-start steps, and connection diagnostics."
+          - guides/connect-chatgpt-codex-cursor-vscode-to-revit.md: "Connect local Codex, Cursor, or VS Code to Revit, and understand the boundary between ChatGPT cloud chat and local MCP access."
+          - guides/revit-mcp-servers-compared.md: "Compare seven public Revit MCP servers using their own documentation: supported versions, installation, model access, and distinct strengths."
+          - guides/ai-model-coordination-in-revit.md: "Run daily Revit QA, warnings triage, parameter checks, issue registers, sheet sets, link datum checks, and batch audits with Model MCP."
+          - guides/build-bim-model-in-revit-with-ai.md: "Plan native Revit family authoring, stairs and railings, linked structure checks, and project naming with AI and Model MCP."
+          - guides/safety.md: "Understand Model MCP read-only controls, confirmation tokens, Undo limits, C# execution, and AI client privacy before connecting Revit."
+          - guides/faq.md: "Answers on versions, cost, installation, clients, privacy, offline use, and uninstall."
+        Tools reference:
+          - tools.md: "Model MCP tool reference with toolsets, arguments, response contracts, query filters, and context size measurements."
+          - prompts.md: "Model MCP coordination prompts and public skills for daily QA, warnings, parameters, issue registers, families, and sheet sets."
+          - actions.md: "Model MCP action tools, confirmation tokens, transaction modes, read-only controls, Undo, and verification warnings."
+          - tool-manifest.md: "Model MCP machine-readable tool manifest and schema reference for client integration."
+          - stability.md: "Model MCP stability guarantees and compatibility boundaries for tool names, arguments, and response contracts."
+        Install:
+          - install.md: "Model MCP requirements, release MSI installation, client configuration, managed deployment, and uninstall instructions."
+          - server.md: "Configure and run the Model MCP Python server with transport options, toolsets, diagnostics, and MCP client settings."
+          - transport.md: "Model MCP local, SSH, and authenticated HTTP transports with setup, addressing, timeouts, and result retention."
+          - how-it-works.md: "How Model MCP connects an AI client to a running Revit add-in through local, SSH, or HTTP transport."
+          - updates.md: "Model MCP automatic update behavior, release feeds, managed deployment, and update controls."
+          - admin/deployment.md: "Deploy Model MCP with managed MSI installation, workstation configuration, Intune, and enterprise update controls."
+        Security:
+          - security.md: "Model MCP security boundaries for read-only mode, code execution, confirmation tokens, authentication, paths, and remote access."
+          - privacy.md: "Model MCP privacy policy: AI client data flow, update checks, local files, logs, redaction, retention, and removal."
+          - admin/policy-reference.md: "Model MCP administrator policy reference for machine-enforced restrictions and workstation settings."
+          - admin/security-whitepaper.md: "Model MCP administrator security architecture, threat boundaries, deployment controls, and operational limitations."
+          - admin/security-questionnaire.md: "Model MCP security questionnaire covering access, data flow, code execution, privacy, and deployment governance."
+          - security-policy.md: "Report Model MCP vulnerabilities privately and review the project security reporting policy."
+        More documentation:
+          - index.md: "Model MCP overview and task-focused guides."
+          - batch.md: "Collect read-only snapshots from multiple Revit models and build Excel audit reports with persistent batch status and completeness diagnostics."
+          - model-audit.md: "Model MCP read-only model audit checks, result interpretation, and evidence for coordination reviews."
+          - architecture.md: "Model MCP architecture: the Windows Revit add-in, ExternalEvent API access, Python MCP server, and transport boundaries."
+          - design/model-audit.md: "Design contract for Model MCP audit results, checks, completeness, and report behavior."
+          - validation.md: "Model MCP validation evidence for releases, server packaging, Revit workflows, and client compatibility."
+          - performance.md: "Model MCP performance measurements, request limits, and practical constraints for live Revit queries."
+          - feed-format.md: "Model MCP file-channel request and response formats, result envelopes, and transport compatibility."
+          - mcp-specifications.md: "MCP specification versions, protocol features, and compatibility decisions used by Model MCP."
+          - tested-clients.md: "Recorded Model MCP client validation, configuration support, untested clients, and live Revit evidence limits."
+          - not-doing.md: "Model MCP scope boundaries and workflows the project does not implement."
+          - roadmap.md: "Model MCP planned work and current scope for Revit integration and coordination workflows."
+          - contributing.md: "Contribute to Model MCP with local checks, C# and Python tests, packaging prerequisites, and the release ritual."
+          - changelog.md: "Model MCP release history with versioned fixes, features, and compatibility changes."
 
 nav:
   - Home: index.md
-  - Guide:
+  - Guides:
+      - "Connect Claude to Revit": guides/connect-claude-to-revit.md
+      - "Connect ChatGPT, Codex, Cursor or VS Code to Revit": guides/connect-chatgpt-codex-cursor-vscode-to-revit.md
+      - "Revit MCP servers compared": guides/revit-mcp-servers-compared.md
+      - "AI model coordination in Revit": guides/ai-model-coordination-in-revit.md
+      - "Build a BIM model in Revit with AI": guides/build-bim-model-in-revit-with-ai.md
+      - "Is it safe? Read-only, Undo and privacy": guides/safety.md
+      - FAQ: guides/faq.md
+  - Setup and concepts:
       - Install with an AI agent: agent-install.md
       - Requirements and install: install.md
       - Server: server.md

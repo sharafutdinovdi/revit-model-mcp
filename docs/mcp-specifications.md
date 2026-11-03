@@ -1,3 +1,7 @@
+---
+description: "MCP specification versions, protocol features, and compatibility decisions used by Model MCP."
+---
+
 # MCP specifications
 
 This page answers the structured questions that Autodesk Marketplace asks about an MCP app. The machine-readable source is the [tool manifest](tool-manifest.md); the numbers below come from `tool-manifest.json` at the time of writing, and a CI check keeps the manifest in step with the server.

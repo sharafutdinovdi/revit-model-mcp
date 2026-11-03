@@ -1,3 +1,7 @@
+---
+description: "Model MCP automatic update behavior, release feeds, managed deployment, and update controls."
+---
+
 # Automatic updates
 
 The add-in checks the latest stable release after Revit starts. The check runs in the background at most once every 24 hours. It uses the system proxy and has a 10-second request timeout. Drafts and prereleases are ignored.

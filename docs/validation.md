@@ -1,3 +1,7 @@
+---
+description: "Model MCP validation evidence for releases, server packaging, Revit workflows, and client compatibility."
+---
+
 # Validation evidence
 
 Validation status as of 2026-10-06; ✅ denotes a completed check and - denotes no validation evidence for that check.

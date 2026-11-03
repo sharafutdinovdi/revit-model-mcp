@@ -1,3 +1,7 @@
+---
+description: "Install and verify Model MCP for Revit with one release command, checksum verification, client registration, diagnostics, and uninstall steps."
+---
+
 # Install with an AI agent
 
 Model MCP installs per user on Windows 10 or 11 with Revit 2022-2027.

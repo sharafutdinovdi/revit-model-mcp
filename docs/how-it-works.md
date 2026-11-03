@@ -1,3 +1,7 @@
+---
+description: "How Model MCP connects an AI client to a running Revit add-in through local, SSH, or HTTP transport."
+---
+
 # How it works
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.

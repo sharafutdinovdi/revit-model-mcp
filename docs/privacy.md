@@ -1,3 +1,7 @@
+---
+description: "Model MCP privacy policy: AI client data flow, update checks, local files, logs, redaction, retention, and removal."
+---
+
 # Privacy policy
 
 Effective date: 30 October 2026.

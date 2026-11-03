@@ -1,3 +1,7 @@
+---
+description: "Model MCP action tools, confirmation tokens, transaction modes, read-only controls, Undo, and verification warnings."
+---
+
 # Actions (enabled by default)
 
 Actions run unless the workstation read-only lock is active.

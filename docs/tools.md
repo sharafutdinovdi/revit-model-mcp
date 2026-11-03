@@ -1,3 +1,7 @@
+---
+description: "Model MCP tool reference with toolsets, arguments, response contracts, query filters, and context size measurements."
+---
+
 # Tool reference
 
 The default tool list contains 89 tools, about 26,944 tokens.

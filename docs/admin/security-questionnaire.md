@@ -1,3 +1,7 @@
+---
+description: "Model MCP security questionnaire covering access, data flow, code execution, privacy, and deployment governance."
+---
+
 # Security questionnaire answers
 
 Short answers for vendor security reviews in the style of CAIQ and SIG Lite. Each answer states a status and points to evidence. "Gap" means the control does not exist today. Details are in the [security whitepaper](security-whitepaper.md).

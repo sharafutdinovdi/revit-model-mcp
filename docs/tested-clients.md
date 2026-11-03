@@ -1,3 +1,7 @@
+---
+description: "Recorded Model MCP client validation, configuration support, untested clients, and live Revit evidence limits."
+---
+
 # Tested MCP clients
 
 This page states which MCP clients were checked against Model MCP, which were not, and what that means. A client counts as tested only when someone ran it against a live Revit model. Last update: 2026-10-10.

@@ -1,3 +1,7 @@
+---
+description: "Model MCP coordination prompts and public skills for daily QA, warnings, parameters, issue registers, families, and sheet sets."
+---
+
 # Prompts and coordinator guide
 
 The server exposes MCP prompts for reviewing one open Revit model or auditing a batch of models.

@@ -1,3 +1,7 @@
+---
+description: "Design contract for Model MCP audit results, checks, completeness, and report behavior."
+---
+
 # Model audit: rule format and snapshot storage
 
 This page records the design decisions for `revit_model_audit` ([#98](https://github.com/sharafutdinovdi/revit-model-mcp/issues/98)).
