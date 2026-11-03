@@ -7,6 +7,7 @@ import json
 import sys
 from typing import Any
 
+from revit_model_mcp.pipe_host import LocalPipeHost
 from revit_model_mcp.ssh_host import CHANNEL_REPAIR_HINT, SshPowerShellHost
 
 # Config inspection uses the same .NET Framework Core assembly as the installer and GUI.
@@ -43,6 +44,16 @@ if (Test-Path $core) {
         $status = $editor.Inspect($_)
         [ordered]@{ id = $_.Id; configPath = $_.ConfigPath; state = $status.State.ToString(); detail = $status.Detail }
     })
+}
+if (Get-Command claude -ErrorAction SilentlyContinue) {
+    $ErrorActionPreference = 'Continue'
+    $registration = & claude mcp get revit-model-mcp 2>$null
+    $registered = $LASTEXITCODE -eq 0
+    $ErrorActionPreference = 'Stop'
+    if ($registered) {
+        $state = if (($registration -join "`n").Contains($server)) { 'Configured' } else { 'ConfiguredDifferentCommand' }
+        $clients += [ordered]@{ id = 'claude-code'; configPath = 'Managed by claude mcp'; state = $state; detail = $null }
+    }
 }
 $channel = if ($env:REVIT_MCP_CHANNEL_DIR) { $env:REVIT_MCP_CHANNEL_DIR } else { Join-Path $env:LOCALAPPDATA 'RevitModelMcp' }
 [ordered]@{ revitYears = $years; addins = $addins; clients = $clients;
@@ -109,7 +120,7 @@ async def diagnose(version: str) -> dict[str, Any]:
     try:
         inventory = json.loads(await host._run(INVENTORY_SCRIPT))
         result = assess_inventory(inventory, version)
-        instances = await host.list_revit_instances()
+        instances = await LocalPipeHost(host).list_revit_instances()
         # Report only channel facts. Model titles and paths stay out of doctor output.
         result["instances"] = [
             {key: instance.get(key) for key in ("processId", "pluginResponding", "channelLog")}
@@ -130,7 +141,7 @@ async def diagnose(version: str) -> dict[str, Any]:
             )
         result["ok"] = not result["problems"]
         return result
-    except (OSError, ValueError, RuntimeError) as error:
+    except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
         return {
             "ok": False,
             "version": version,

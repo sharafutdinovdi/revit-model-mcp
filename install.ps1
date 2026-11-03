@@ -244,12 +244,12 @@ function Invoke-AgentInstall {
     $download = $null
     try {
         if ($env:OS -ne 'Windows_NT') { throw 'Run this script on Windows.' }
-        if (@(Get-Process Revit -ErrorAction SilentlyContinue).Count -and !$Force) {
-            throw 'Close Revit before installing or uninstalling, then run the command again.'
-        }
         $result.plan = @('Resolve release', 'Verify SingleUser MSI SHA256', 'Install per user', 'Register clients through Core', 'Run doctor')
         if ($Uninstall) { $result.plan = @('Uninstall SingleUser MSI; client configurations and backups remain') }
         if ($DryRun) { $result.ok = $true; return }
+        if (@(Get-Process Revit -ErrorAction SilentlyContinue).Count -and !$Force) {
+            throw 'Close Revit before installing or uninstalling, then run the command again.'
+        }
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
         if ($ReleaseDir) {
             $packages = @(Get-ChildItem -LiteralPath $ReleaseDir -Filter '*-SingleUser.msi')
@@ -311,10 +311,20 @@ function Invoke-AgentInstall {
         if ('claude-code' -in $Client -or ('all-detected' -in $Client -and (Get-Command claude -ErrorAction SilentlyContinue))) {
             $command = $spec.ClaudeCodeCommand
             if (Get-Command claude -ErrorAction SilentlyContinue) {
-                $output = & claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- $server 2>&1
-                # A repeated install may find an existing entry. Verify it instead of treating that as success.
-                $check = & claude mcp get revit-model-mcp 2>&1
-                if ($LASTEXITCODE -ne 0 -or ($check -join "`n") -notlike "*$server*") { throw "Claude Code registration failed: $output $check" }
+                # Native CLI stderr on Windows PowerShell 5.1 must not terminate an idempotent probe.
+                $savedPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Continue'
+                try {
+                    $check = & claude mcp get revit-model-mcp 2>&1
+                    $registered = $LASTEXITCODE -eq 0 -and ($check -join "`n").Contains($server)
+                    if (!$registered) {
+                        $output = & claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- $server 2>&1
+                        if ($LASTEXITCODE -ne 0) { throw "Claude Code registration failed. Remove the conflicting revit-model-mcp entry with claude mcp remove, then retry. $output" }
+                        $check = & claude mcp get revit-model-mcp 2>&1
+                        if ($LASTEXITCODE -ne 0 -or !($check -join "`n").Contains($server)) { throw 'Claude Code registration could not be verified. Run claude mcp get revit-model-mcp.' }
+                    }
+                }
+                finally { $ErrorActionPreference = $savedPreference }
                 $result.clients += [ordered]@{ id = 'claude-code'; configPath = 'Managed by claude mcp'; command = $command }
             }
             else { $result.humanSteps += $command }

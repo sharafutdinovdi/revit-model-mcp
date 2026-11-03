@@ -79,6 +79,7 @@ def test_live_channel_diagnostics_redact_models(monkeypatch):
 
     monkeypatch.setattr(doctor.sys, "platform", "win32")
     monkeypatch.setattr(doctor, "SshPowerShellHost", Host)
+    monkeypatch.setattr(doctor, "LocalPipeHost", lambda fallback: fallback)
     result = asyncio.run(doctor.diagnose("2.0.0"))
     assert not result["ok"]
     assert "ACL refusal" in result["problems"][0]
@@ -96,6 +97,7 @@ def test_diagnostic_failure_is_json_result(monkeypatch):
 
     monkeypatch.setattr(doctor.sys, "platform", "win32")
     monkeypatch.setattr(doctor, "SshPowerShellHost", Host)
+    monkeypatch.setattr(doctor, "LocalPipeHost", lambda fallback: fallback)
     result = asyncio.run(doctor.diagnose("2.0.0"))
     assert not result["ok"]
     assert "PowerShell unavailable" in result["problems"][0]

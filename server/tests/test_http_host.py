@@ -888,3 +888,55 @@ try {
 } finally { Remove-Item $root -Recurse -Force }
 """
     )
+
+
+def test_agent_installer_resolves_and_verifies_remote_release_without_checkout():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+New-Item $root -ItemType Directory | Out-Null
+$env:OS = 'Windows_NT'
+$env:TEMP = $root
+$repo = ''
+$PSScriptRoot = ''
+$Json = $true
+$Uninstall = $true
+$headers = @{}
+function Get-Process { return @() }
+function Invoke-RestMethod {
+    param($Uri, $Headers)
+    if ($Version -eq 'latest' -and $Uri -notlike '*/latest') { throw 'Wrong latest endpoint' }
+    if ($Version -ne 'latest' -and $Uri -notlike '*/tags/v2.0.0') { throw 'Wrong exact endpoint' }
+    return @{ tag_name = 'v2.0.0'; assets = @(
+        @{ name = 'RevitModelMcp-2.0.0-SingleUser.msi'; browser_download_url = 'https://example.invalid/package' },
+        @{ name = 'SHA256SUMS.txt'; browser_download_url = 'https://example.invalid/sums' }) }
+}
+function Invoke-WebRequest {
+    param($Uri, $Headers, $OutFile, [switch]$UseBasicParsing)
+    if ($Uri -like '*/package') {
+        Set-Content -LiteralPath $OutFile 'MSI payload' -Encoding ASCII
+        $script:hash = (Get-FileHash $OutFile -Algorithm SHA256).Hash
+    } else { "$script:hash  RevitModelMcp-2.0.0-SingleUser.msi" | Set-Content $OutFile -Encoding ASCII }
+}
+function Start-Process {
+    param($FilePath, $ArgumentList, [switch]$Wait, [switch]$PassThru)
+    if ($FilePath -ne 'msiexec.exe' -or $ArgumentList -notlike '/x * /qn /norestart /l*v *') { throw 'Wrong MSI invocation' }
+    return @{ ExitCode = 0 }
+}
+try {
+    foreach ($Version in 'latest', '2.0.0') {
+        $lines = @(Invoke-AgentInstall)
+        if ($lines.Count -ne 1) { throw 'Expected one JSON object' }
+        $result = $lines[0] | ConvertFrom-Json
+        if (!$result.ok -or $result.version -ne '2.0.0') { throw 'Remote release was not verified' }
+    }
+    if (@(Get-ChildItem $root -Directory).Count) { throw 'Temporary download remains' }
+} finally { Remove-Item $root -Recurse -Force }
+"""
+    )
