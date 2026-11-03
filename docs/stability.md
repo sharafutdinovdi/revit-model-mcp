@@ -1,3 +1,7 @@
+---
+description: "Model MCP stability guarantees and compatibility boundaries for tool names, arguments, and response contracts."
+---
+
 # Stability of 1.x
 
 From 1.0.0 I follow [semantic versioning](https://semver.org/) for the surface below.

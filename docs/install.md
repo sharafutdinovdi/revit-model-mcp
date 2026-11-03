@@ -1,3 +1,7 @@
+---
+description: "Model MCP requirements, release MSI installation, client configuration, managed deployment, and uninstall instructions."
+---
+
 # Requirements and installation
 
 Model MCP has two parts. The add-in runs inside Revit on Windows. The server runs next to your MCP client and talks to the add-in. You need both.

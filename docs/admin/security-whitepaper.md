@@ -1,3 +1,7 @@
+---
+description: "Model MCP administrator security architecture, threat boundaries, deployment controls, and operational limitations."
+---
+
 # Security whitepaper
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.

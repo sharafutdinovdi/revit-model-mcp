@@ -1,3 +1,7 @@
+---
+description: "Model MCP local, SSH, and authenticated HTTP transports with setup, addressing, timeouts, and result retention."
+---
+
 # Transport
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.

@@ -1,3 +1,7 @@
+---
+description: "Model MCP architecture: the Windows Revit add-in, ExternalEvent API access, Python MCP server, and transport boundaries."
+---
+
 # Architecture
 
 ## Components

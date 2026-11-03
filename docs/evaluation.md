@@ -1,3 +1,7 @@
+---
+description: "Evaluate Model MCP against real Revit coordination tasks with stated evidence and limitations."
+---
+
 # LLM scenario evaluation
 
 The evaluation harness measures tool use against Snowdon Architectural in Revit 2027.

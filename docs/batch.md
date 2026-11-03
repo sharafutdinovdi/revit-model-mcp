@@ -1,3 +1,7 @@
+---
+description: "Collect read-only snapshots from multiple Revit models and build Excel audit reports with persistent batch status and completeness diagnostics."
+---
+
 # Batch model collection
 
 Batch collection runs on a Windows Revit workstation.

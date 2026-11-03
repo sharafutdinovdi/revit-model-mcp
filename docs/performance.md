@@ -1,3 +1,7 @@
+---
+description: "Model MCP performance measurements, request limits, and practical constraints for live Revit queries."
+---
+
 # Performance
 
 The bench script times the MCP read and action paths against a live Revit workstation.

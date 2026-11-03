@@ -1,3 +1,7 @@
+---
+description: "Model MCP scope boundaries and workflows the project does not implement."
+---
+
 # What Model MCP deliberately does not do
 
 A short list of limits, so that you know what to expect before you install.

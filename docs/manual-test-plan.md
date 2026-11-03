@@ -1,3 +1,7 @@
+---
+description: "Manual Revit workstation validation plan for Model MCP tools, model changes, and transport behavior."
+---
+
 # Model MCP: manual end-to-end test plan
 
 Full manual validation checklist. Goal: exercise **every tool** and **every install/transport path**, from a clean install through live model reads and gated actions, on each supported Revit version.

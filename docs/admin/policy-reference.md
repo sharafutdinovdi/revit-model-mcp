@@ -1,3 +1,7 @@
+---
+description: "Model MCP administrator policy reference for machine-enforced restrictions and workstation settings."
+---
+
 # Policy reference
 
 This page lists every setting that controls Model MCP, where it lives, and which one wins when two disagree.

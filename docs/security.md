@@ -1,3 +1,7 @@
+---
+description: "Model MCP security boundaries for read-only mode, code execution, confirmation tokens, authentication, paths, and remote access."
+---
+
 # Security
 
 See the [privacy policy](privacy.md) for data handling, retention and contact information.

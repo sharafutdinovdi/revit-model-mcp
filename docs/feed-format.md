@@ -1,3 +1,7 @@
+---
+description: "Model MCP file-channel request and response formats, result envelopes, and transport compatibility."
+---
+
 # Feed format
 
 This page is the normative description of the channel between the server and the add-in: the JSON job and response format, the file channel and the version numbers of each contract.

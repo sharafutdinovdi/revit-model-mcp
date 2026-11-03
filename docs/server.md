@@ -1,3 +1,7 @@
+---
+description: "Configure and run the Model MCP Python server with transport options, toolsets, diagnostics, and MCP client settings."
+---
+
 --8<-- "server/README.md"
 
 ## Automatic updates and compatibility

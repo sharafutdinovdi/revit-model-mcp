@@ -1,3 +1,7 @@
+---
+description: "Model MCP icon asset inventory, variants, and usage conventions."
+---
+
 # Ribbon icons
 
 The ribbon SVG masters use a 32 × 32 viewBox and at least 2 units of edge padding.

@@ -1,3 +1,7 @@
+---
+description: "Model MCP read-only model audit checks, result interpretation, and evidence for coordination reviews."
+---
+
 # Model audit
 
 `revit_model_audit` evaluates one live model with a stated rule file. It reads the model and writes local results. It never changes Revit elements. `revit_audit_report` builds reports later without Revit.

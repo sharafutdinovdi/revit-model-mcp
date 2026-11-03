@@ -1,3 +1,7 @@
+---
+description: "Deploy Model MCP with managed MSI installation, workstation configuration, Intune, and enterprise update controls."
+---
+
 # Deployment guide for administrators
 
 This guide covers rolling out Model MCP to many Windows workstations. It has two parts: the add-in inside Revit and the Python server next to the MCP client.

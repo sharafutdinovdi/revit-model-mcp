@@ -1,3 +1,7 @@
+---
+description: "Model MCP machine-readable tool manifest and schema reference for client integration."
+---
+
 # Tool manifest
 
 [`tool-manifest.json`](tool-manifest.json) lists every tool, resource and prompt of the server with a declaration of what each tool can do.
