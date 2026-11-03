@@ -1,7 +1,7 @@
 # Tool reference
 
-The default tool list contains 84 tools, about 26,450 tokens.
-The `core,read` selection contains 22 tools, about 6,730 tokens.
+The default tool list contains 89 tools, about 26,944 tokens.
+The `core,read` selection contains 22 tools, about 6,564 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
@@ -14,7 +14,7 @@ Toolsets limit visibility only. They are not a permission: read-only mode, confi
 
 Session tools `revit_activate_view`, `revit_activate_document`, `revit_select`, `revit_show`, `revit_isolate` (temporary view state) and `revit_close_views` do not change the model. Their MCP annotations are `readOnlyHint=true` and `destructiveHint=false`. Model-changing tools retain their action annotations. These hints describe model access; workstation locks and policy checks still apply.
 
-The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (22 tools, about 6,730 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (22 tools, about 6,564 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
 
 | Toolset | Tools |
 | --- | --- |
@@ -28,7 +28,7 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 | `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
 | `export` | `revit_export`, `revit_export_nwc`, `revit_nwc_settings_check`, `revit_issue_register` |
 | `batch` | `revit_batch_start`, `revit_batch_status`, `revit_batch_cancel`, `revit_batch_fetch`, `revit_build_report`, `revit_audit_report`, `revit_process_models` |
-| `code` | `revit_execute_code`, `revit_api_lookup` |
+| `code` | `revit_execute_code`, `revit_api_lookup`, `revit_save_tool`, `revit_list_tools`, `revit_get_tool`, `revit_run_tool`, `revit_delete_tool` |
 
 ### Tool list size
 
@@ -37,19 +37,19 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 9 | 7,574 | 1,893 |
-| `read` | 13 | 19,347 | 4,836 |
+| `core` | 9 | 7,389 | 1,847 |
+| `read` | 13 | 18,870 | 4,717 |
 | `actions` | 9 | 11,103 | 2,775 |
-| `documents` | 6 | 4,952 | 1,238 |
-| `views-sheets` | 22 | 25,837 | 6,459 |
-| `family` | 5 | 8,967 | 2,241 |
-| `links` | 3 | 4,104 | 1,026 |
+| `documents` | 6 | 4,810 | 1,202 |
+| `views-sheets` | 22 | 25,765 | 6,441 |
+| `family` | 5 | 8,788 | 2,197 |
+| `links` | 3 | 4,067 | 1,016 |
 | `cad-mep` | 4 | 5,663 | 1,415 |
-| `export` | 4 | 7,283 | 1,820 |
-| `batch` | 7 | 8,149 | 2,037 |
-| `code` | 2 | 2,821 | 705 |
-| `all` (default) | 84 | 105,800 | 26,450 |
-| `core,read` | 22 | 26,921 | 6,730 |
+| `export` | 4 | 7,226 | 1,806 |
+| `batch` | 7 | 8,042 | 2,010 |
+| `code` | 7 | 6,055 | 1,513 |
+| `all` (default) | 89 | 107,778 | 26,944 |
+| `core,read` | 22 | 26,259 | 6,564 |
 
 These measurements use the default tool schemas. Optional server arguments can increase the payload.
 
