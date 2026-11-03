@@ -4,7 +4,7 @@
 # WITHOUT a live Revit connection — only tool *calls* need Revit, introspection
 # does not. Glama builds this image, runs it, and reads the tool list to score
 # the server. Build context is the repository root.
-FROM python:3.12-slim@sha256:ddb0207ae1f0356c2b724d740769b0c5f5f51cc54a0525178f721825f78fe74c
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913
 
 WORKDIR /app
 COPY server/ /app/
