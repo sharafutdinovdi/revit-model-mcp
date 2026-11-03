@@ -13,7 +13,7 @@ Use Python 3.11 or newer and uv. Run from the repository root.
 The script declares its dependencies inline. No package metadata changes are needed.
 
 ```sh
-export OPENAI_API_KEY="$(~/Projects/compass-brain/scripts/secret.sh get OPENAI_API_KEY)"
+# Set OPENAI_API_KEY in the environment before running.
 uv run build/llm-eval/run.py --provider openai --judge openai --out work/ws/v2/llm-eval
 ```
 
@@ -23,7 +23,7 @@ An explicit `--model` never falls back. Authentication and rate errors never tri
 The actual model is recorded for each scenario.
 
 ```sh
-export ANTHROPIC_API_KEY="$(~/Projects/compass-brain/scripts/secret.sh get ANTHROPIC_API_KEY)"
+# Set ANTHROPIC_API_KEY in the environment before running.
 uv run build/llm-eval/run.py --provider anthropic --model claude-sonnet-5-5 \
   --judge anthropic --judge-model claude-sonnet-5-5 --out work/ws/v2/llm-eval
 ```

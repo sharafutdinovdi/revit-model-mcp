@@ -925,7 +925,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                         self.assertIn(remote.response_name, remote.deleted_names)
 
     async def test_recorded_family_audit_partial_results_are_terminal(self) -> None:
-        # V10 audit-full-raw.json and audit-summary-raw.json from b64a15a.
+        # Full and summary responses include nested raw pipe diagnostics.
         # Model paths removed; family and skip lists reduced to their first entry.
         fixtures = {
             "full": {
@@ -978,7 +978,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                 "correlationId": "2cbf57d236554ddcbdbce2a2130baed7",
                 "client": {
                     "id": "5acb294328294e138f0ee9d39239b228",
-                    "name": "V10 raw pipe diagnostic",
+                    "name": "Nested raw pipe diagnostic",
                 },
                 "jobId": "f48ee3eec7bc4886b116a4de2cb461a6",
                 "queuedMs": 2,
@@ -1026,7 +1026,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
                 "correlationId": "08df4244a8e24cc188d3917954267481",
                 "client": {
                     "id": "5acb294328294e138f0ee9d39239b228",
-                    "name": "V10 raw pipe diagnostic",
+                    "name": "Nested raw pipe diagnostic",
                 },
                 "jobId": "56bc5d7557fb4747845a0b4b5849fd43",
                 "queuedMs": 105,

@@ -12,12 +12,12 @@ Use Python 3.11 or newer and uv. Run from the repository root.
 Open the test model on the workstation first. Action scenarios require an isolated test session.
 
 ```sh
-export OPENAI_API_KEY="$(~/Projects/compass-brain/scripts/secret.sh get OPENAI_API_KEY)"
+# Set OPENAI_API_KEY in the environment before running.
 uv run build/llm-eval/run.py --provider openai --judge openai --out work/ws/v2/llm-eval
 ```
 
 ```sh
-export ANTHROPIC_API_KEY="$(~/Projects/compass-brain/scripts/secret.sh get ANTHROPIC_API_KEY)"
+# Set ANTHROPIC_API_KEY in the environment before running.
 uv run build/llm-eval/run.py --provider anthropic --model claude-sonnet-5-5 \
   --judge anthropic --out work/ws/v2/llm-eval
 ```

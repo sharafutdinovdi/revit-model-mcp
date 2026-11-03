@@ -50,7 +50,7 @@ $backup = Join-Path $runDirectory 'backup'
 New-Item -ItemType Directory $backup | Out-Null
 $addinRoot = Join-Path $env:APPDATA 'Autodesk\Revit\Addins'
 $backedUp = [Collections.Generic.List[int]]::new()
-$taskName = 'rmm-smoke-' + [guid]::NewGuid().ToString('N')
+$taskName = 'release-check-' + [guid]::NewGuid().ToString('N')
 $ownedId = 0
 $installationAttempted = $false
 $previousRemoved = $false
