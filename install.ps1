@@ -235,6 +235,12 @@ function Register-Claude {
     if ($LASTEXITCODE -ne 0) { throw "Claude registration failed (exit $LASTEXITCODE)." }
 }
 
+function Get-ClaudeCodeConfigPath {
+    $configurationRoot = $env:USERPROFILE
+    if ($env:CLAUDE_CONFIG_DIR) { $configurationRoot = $env:CLAUDE_CONFIG_DIR }
+    return Join-Path $configurationRoot '.claude.json'
+}
+
 function Invoke-AgentInstall {
     $result = [ordered]@{
         version = $Version; msi = $null; installedYears = @(); clients = @()
@@ -326,7 +332,7 @@ function Invoke-AgentInstall {
                     }
                 }
                 finally { $ErrorActionPreference = $savedPreference }
-                $result.clients += [ordered]@{ id = 'claude-code'; configPath = 'Managed by claude mcp'; command = $command }
+                $result.clients += [ordered]@{ id = 'claude-code'; configPath = (Get-ClaudeCodeConfigPath); scope = 'local'; projectPath = (Get-Location).Path; command = $command }
             }
             else { $result.humanSteps += $command }
         }

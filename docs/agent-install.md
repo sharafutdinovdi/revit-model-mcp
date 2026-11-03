@@ -27,6 +27,8 @@ The script resolves the latest release, verifies the MSI, installs silently, reg
 
 If `claude` is on PATH, the script runs `claude mcp add` with the installed executable and local, redacted transport settings.
 Otherwise `humanSteps` contains the exact command to run after Claude Code installation.
+The command uses Claude Code's default local scope for the current folder, stored in `.claude.json`; `CLAUDE_CONFIG_DIR` overrides its home folder.
+See [Claude Code installation scopes](https://code.claude.com/docs/en/mcp#mcp-installation-scopes).
 
 ### Claude Desktop
 

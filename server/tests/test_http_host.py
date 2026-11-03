@@ -940,3 +940,21 @@ try {
 } finally { Remove-Item $root -Recurse -Force }
 """
     )
+
+
+def test_agent_installer_reports_claude_code_configuration_path():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+$env:USERPROFILE = [IO.Path]::GetTempPath()
+$env:CLAUDE_CONFIG_DIR = $null
+if ((Get-ClaudeCodeConfigPath) -ne (Join-Path $env:USERPROFILE '.claude.json')) { throw 'Wrong default Claude Code config' }
+$env:CLAUDE_CONFIG_DIR = Join-Path $env:USERPROFILE 'custom-config'
+if ((Get-ClaudeCodeConfigPath) -ne (Join-Path $env:CLAUDE_CONFIG_DIR '.claude.json')) { throw 'Claude config override ignored' }
+"""
+    )

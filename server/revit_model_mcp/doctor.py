@@ -54,7 +54,8 @@ if (Get-Command claude -ErrorAction SilentlyContinue) {
     $ErrorActionPreference = 'Stop'
     if ($registered) {
         $state = if (($registration -join "`n").Contains($server)) { 'Configured' } else { 'ConfiguredDifferentCommand' }
-        $clients += [ordered]@{ id = 'claude-code'; configPath = 'Managed by claude mcp'; state = $state; detail = $null }
+        $configurationRoot = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { $env:USERPROFILE }
+        $clients += [ordered]@{ id = 'claude-code'; configPath = (Join-Path $configurationRoot '.claude.json'); state = $state; detail = $null }
     }
 }
 $channel = if ($env:REVIT_MCP_CHANNEL_DIR) { $env:REVIT_MCP_CHANNEL_DIR } else { Join-Path $env:LOCALAPPDATA 'RevitModelMcp' }
