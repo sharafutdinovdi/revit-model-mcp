@@ -1496,6 +1496,14 @@ LEGACY_READ_ONLY_VARIABLE = "REVIT_MCP_READ_ONLY"
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        from revit_model_mcp.doctor import main as doctor_main
+
+        parser = argparse.ArgumentParser(prog="revit-model-mcp doctor")
+        parser.add_argument("--json", action="store_true")
+        args = parser.parse_args(sys.argv[2:])
+        doctor_main(package_version(), json_output=args.json)
+        return
     if LEGACY_READ_ONLY_VARIABLE in os.environ:
         print(
             "REVIT_MCP_READ_ONLY is no longer used; use the workstation read-only lock "

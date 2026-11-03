@@ -1,5 +1,7 @@
 # Model MCP server
 
+Windows release installation: [Install with an AI agent](https://sharafutdinovdi.github.io/revit-model-mcp/agent-install/).
+
 The Python package of Model MCP for Autodesk® Revit® exposes Revit tools over MCP stdio; actions run by default.
 One workstation read-only lock refuses ordinary actions without hiding the action tools.
 The Read-only ribbon button and `revit_set_read_only` control the lock.

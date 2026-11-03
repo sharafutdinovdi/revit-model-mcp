@@ -437,8 +437,8 @@ jobs:
       - name: Stage release assets and checksums
         shell: pwsh
         run: |
-          Copy-Item output/*.msi, server/dist/*.whl, server/dist/*.tar.gz artifacts/release/
-          $expected = @{ '*.zip' = 8; '*.msi' = 3; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1; '*.cdx.json' = 2; '*.mcp-manifest.json' = 1 }
+          Copy-Item output/*.msi, server/dist/*.whl, server/dist/*.tar.gz, install.ps1 artifacts/release/
+          $expected = @{ 'install.ps1' = 1; '*.zip' = 8; '*.msi' = 3; '*.whl' = 1; '*.tar.gz' = 1; '*.mcpb' = 1; '*.cdx.json' = 2; '*.mcp-manifest.json' = 1 }
           foreach ($pattern in $expected.Keys) {
             $count = @(Get-ChildItem "artifacts/release/$pattern").Count
             if ($count -ne $expected[$pattern]) { throw "Unexpected $pattern count: $count" }

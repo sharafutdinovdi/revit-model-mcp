@@ -1,3 +1,5 @@
+Installers: follow [Install with an AI agent](docs/agent-install.md). This file is the contributor guide.
+
 # Agent instructions
 
 ## Purpose and runtime

@@ -13,6 +13,12 @@ Read-only mode is one switch away.
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) [![Codecov](https://codecov.io/gh/sharafutdinovdi/revit-model-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/sharafutdinovdi/revit-model-mcp) [![PyPI](https://img.shields.io/pypi/v/revit-model-mcp?style=flat-square)](https://pypi.org/project/revit-model-mcp/) ![Revit 2022-2027](https://img.shields.io/badge/Revit-2022--2027-368EF5?style=flat-square) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sharafutdinovdi/revit-model-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/sharafutdinovdi/revit-model-mcp) [![MIT](https://img.shields.io/badge/license-MIT-5C6F88?style=flat-square)](LICENSE)
 <!-- best practices badge: add after the project id exists -->
 
+## Install with an AI agent
+
+On Windows, paste this prompt into Claude Code, Codex, Cursor, or another agent:
+`Install Model MCP for Revit from https://github.com/sharafutdinovdi/revit-model-mcp. Follow docs/agent-install.md exactly.`
+The [agent install guide](docs/agent-install.md) uses one release command with no checkout, Python, SDK, or administrator rights.
+
 ## Quick start
 
 You need two parts: the add-in inside Revit on Windows, and the server next to your MCP client.

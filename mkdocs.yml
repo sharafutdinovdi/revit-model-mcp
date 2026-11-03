@@ -78,6 +78,7 @@ plugins:
       full_output: llms-full.txt
       sections:
         Getting started:
+          - agent-install.md
           - index.md
           - install.md
           - server.md
@@ -112,6 +113,7 @@ plugins:
 nav:
   - Home: index.md
   - Guide:
+      - Install with an AI agent: agent-install.md
       - Requirements and install: install.md
       - Server: server.md
       - How it works: how-it-works.md
