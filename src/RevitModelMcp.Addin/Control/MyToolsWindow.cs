@@ -12,6 +12,7 @@ using RevitModelMcp.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Policy;
 using Binding = System.Windows.Data.Binding;
+using Grid = System.Windows.Controls.Grid;
 using TextBox = System.Windows.Controls.TextBox;
 using WpfControl = System.Windows.Controls.Control;
 
@@ -46,18 +47,22 @@ internal sealed class MyToolsWindow : Window
         MinWidth = 620;
         MinHeight = 320;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        var root = new DockPanel { Margin = new Thickness(16) };
+        var root = new Grid { Margin = new Thickness(16) };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
         buttons.Children.Add(_showCode);
         buttons.Children.Add(_delete);
         var close = new Button { Content = "Close", IsCancel = true, MinWidth = 80, Padding = new Thickness(12, 4, 12, 4) };
         buttons.Children.Add(close);
-        DockPanel.SetDock(buttons, Dock.Bottom);
+        Grid.SetRow(buttons, 2);
         root.Children.Add(buttons);
-        DockPanel.SetDock(_status, Dock.Top);
+        Grid.SetRow(_status, 0);
         root.Children.Add(_status);
         foreach (var (heading, property) in new[] { ("Name", "Name"), ("Description", "Description"), ("Mode", "Mode"), ("Revision", "RevisionShort"), ("Revit years", "Years"), ("Saved (UTC)", "Created"), ("Replacement", "Replacement") })
             _list.Columns.Add(new DataGridTextColumn { Header = heading, Binding = new Binding(property), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+        Grid.SetRow(_list, 1);
         root.Children.Add(_list);
         Content = root;
         _list.SetResourceReference(DataGrid.HorizontalGridLinesBrushProperty, "HairlineBrush");
@@ -94,10 +99,14 @@ internal sealed class MyToolsWindow : Window
             if (controlType == typeof(Button))
             {
                 var template = (ControlTemplate)System.Windows.Markup.XamlReader.Parse("""
-                    <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Control">
+                    <ControlTemplate xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" TargetType="Button">
                         <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="1" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                            <ContentPresenter Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              ContentStringFormat="{TemplateBinding ContentStringFormat}"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -112,6 +121,7 @@ internal sealed class MyToolsWindow : Window
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                     """);
+                style.Setters.Add(new Setter(MinHeightProperty, 30.0));
                 style.Setters.Add(new Setter(WpfControl.TemplateProperty, template));
             }
             if (controlType == typeof(DataGridRow) || controlType == typeof(DataGridCell))
