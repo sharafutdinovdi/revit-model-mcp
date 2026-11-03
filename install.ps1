@@ -1,9 +1,9 @@
 <#
-Installs or removes Model MCP for selected or detected Revit 2022-2027 years.
-Release installs check available assets and report missing Revit year packages.
+Installs Model MCP from a verified SingleUser release MSI without a checkout.
+Explicit -Year and -Source Build retain the per-year checkout installation modes.
 Keep this script ASCII-only for BOM-less Windows PowerShell 5.1 compatibility.
-Examples (run on Windows from a repository checkout):
-  .\install.ps1
+Examples (run on Windows):
+  .\install.ps1 -Client claude-code -Json
   .\install.ps1 -Year 2024,2026 -Source Build -RegisterClaude
   .\install.ps1 -Year 2027 -Version 0.2.0 -SignThumbprint ABC123
   .\install.ps1 -Year 2026 -Uninstall
@@ -301,7 +301,8 @@ function Invoke-AgentInstall {
         $targets = [RevitModelMcp.Core.Connect.McpClientLocator]::Discover($env:APPDATA, $env:LOCALAPPDATA, $env:USERPROFILE)
         foreach ($target in $targets) {
             $detected = Test-Path -LiteralPath $target.InstallProbe -PathType Container
-            if ($target.Id -notin $Client -and !('all-detected' -in $Client -and $detected)) { continue }
+            $desktopStore = $target.Id -eq 'claude-desktop-store' -and 'claude-desktop' -in $Client -and $detected
+            if ($target.Id -notin $Client -and !$desktopStore -and !('all-detected' -in $Client -and $detected)) { continue }
             if (!$detected) { New-Item -ItemType Directory -Path $target.InstallProbe -Force | Out-Null }
             $change = $configurator.Add($target)
             if ($configurator.Inspect($target).State.ToString() -eq 'ConfiguredDifferentCommand') { $change = $configurator.Update($target) }
@@ -324,6 +325,7 @@ function Invoke-AgentInstall {
         $result.humanSteps += @($result.doctor.humanSteps)
         $result.humanSteps += 'Start Revit and choose Always Load for Model MCP on first start.'
         if ($result.clients.Count) { $result.humanSteps += 'Restart the registered AI apps.' }
+        elseif ('all-detected' -in $Client) { $result.humanSteps += 'No AI apps were detected. Install an AI app, then run install.ps1 with its explicit -Client name.' }
         $result.ok = $true
     }
     catch {
