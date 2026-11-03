@@ -72,7 +72,6 @@ internal static class ClientLane
     {
         if (name.StartsWith("claude", StringComparison.Ordinal)) return "#D9A441";
         if (name.StartsWith("codex", StringComparison.Ordinal)) return "#3AA9A0";
-        if (name.StartsWith("omp", StringComparison.Ordinal)) return "#8B7CF6";
         if (name.StartsWith("cursor", StringComparison.Ordinal)) return "#4FA3D9";
         // FNV-1a: string.GetHashCode is randomized per process on .NET Core, so it is not stable.
         var hash = 2166136261u;

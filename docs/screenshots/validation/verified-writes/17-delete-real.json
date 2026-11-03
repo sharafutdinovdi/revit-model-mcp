@@ -1,0 +1,33 @@
+{
+ "command": "delete",
+ "success": true,
+ "partial": false,
+ "data": {
+  "count": 1,
+  "dryRun": false,
+  "failedStep": null,
+  "verification": {
+   "after": {
+    "stillPresent": []
+   },
+   "before": {
+    "dependents": [],
+    "requested": [
+     2661049
+    ]
+   },
+   "changed": [
+    2661049
+   ]
+  }
+ },
+ "elapsedMs": 156,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 15100,
+  "revitVersion": "2026"
+ },
+ "activeView": "L1_SD",
+ "dialogsSuppressed": []
+}

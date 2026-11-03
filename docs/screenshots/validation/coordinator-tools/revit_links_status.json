@@ -1,0 +1,248 @@
+{
+ "command": "links-status",
+ "success": true,
+ "partial": false,
+ "data": {
+  "cadLinks": [],
+  "images": [
+   {
+    "instances": 1,
+    "name": "SD_Exterior River View",
+    "path": "",
+    "status": "Generated",
+    "typeId": 1022630
+   },
+   {
+    "instances": 1,
+    "name": "SD_Exterior Street View",
+    "path": "",
+    "status": "Generated",
+    "typeId": 1022640
+   },
+   {
+    "instances": 1,
+    "name": "PerennialProjectLogo.jpg",
+    "path": "PerennialProjectLogo.jpg",
+    "status": "Imported",
+    "typeId": 2239284
+   },
+   {
+    "instances": 1,
+    "name": "BrownsvilleStreetView.jpg",
+    "path": "BrownsvilleStreetView.jpg",
+    "status": "Imported",
+    "typeId": 2282504
+   },
+   {
+    "instances": 1,
+    "name": "FayetteCountyLogo2018.jpg",
+    "path": "FayetteCountyLogo2018.jpg",
+    "status": "Imported",
+    "typeId": 2282507
+   },
+   {
+    "instances": 1,
+    "name": "BrownsvilleLocationMap.jpg",
+    "path": "BrownsvilleLocationMap.jpg",
+    "status": "Imported",
+    "typeId": 2282510
+   },
+   {
+    "instances": 1,
+    "name": "23-8 1900-06(preSnwdnBldg)3rdMonNatBnk 10x7.8 335.jpg",
+    "path": "23-8 1900-06(preSnwdnBldg)3rdMonNatBnk 10x7.8 335.jpg",
+    "status": "Imported",
+    "typeId": 2282513
+   },
+   {
+    "instances": 1,
+    "name": "27-98 Betw1900-27,3rdMonBnk,SndnBldg,color 10x6.3 320.jpg",
+    "path": "27-98 Betw1900-27,3rdMonBnk,SndnBldg,color 10x6.3 320.jpg",
+    "status": "Imported",
+    "typeId": 2282516
+   },
+   {
+    "instances": 1,
+    "name": "27-120 Pstmrk1913,3rdMonNatBnk,nearbyBldgs 10x6.4 325.jpg",
+    "path": "27-120 Pstmrk1913,3rdMonNatBnk,nearbyBldgs 10x6.4 325.jpg",
+    "status": "Imported",
+    "typeId": 2282534
+   },
+   {
+    "instances": 1,
+    "name": "2412.JPG",
+    "path": "2412.JPG",
+    "status": "Imported",
+    "typeId": 2282537
+   },
+   {
+    "instances": 0,
+    "name": "1394575_typeImage",
+    "path": "RPC Shrub__Century 1'-10_Image.png",
+    "status": "Imported",
+    "typeId": 2289579
+   },
+   {
+    "instances": 0,
+    "name": "1394593_typeImage",
+    "path": "RPC Shrub__Hydrangea 3'-9_Image.png",
+    "status": "Imported",
+    "typeId": 2289606
+   },
+   {
+    "instances": 0,
+    "name": "1394599_typeImage",
+    "path": "RPC Shrub__Lupin 3'-10_Image.png",
+    "status": "Imported",
+    "typeId": 2289615
+   },
+   {
+    "instances": 0,
+    "name": "1394609_typeImage",
+    "path": "RPC Shrub__Prairie Dropseed 5'-0_Image.png",
+    "status": "Imported",
+    "typeId": 2289630
+   },
+   {
+    "instances": 0,
+    "name": "1394617_typeImage",
+    "path": "RPC Shrub__Switchgrass 4'-6_Image.png",
+    "status": "Imported",
+    "typeId": 2289642
+   },
+   {
+    "instances": 0,
+    "name": "1233119_typeImage",
+    "path": "Tree - Honey-Locust__15' Canopy_Image.png",
+    "status": "Imported",
+    "typeId": 2289669
+   },
+   {
+    "instances": 1,
+    "name": "How to Use this Project.pdf - 1",
+    "path": "How to Use this Project.pdf",
+    "status": "Imported",
+    "typeId": 2382585
+   },
+   {
+    "instances": 1,
+    "name": "How to Use this Project.pdf - 2",
+    "path": "How to Use this Project.pdf",
+    "status": "Imported",
+    "typeId": 2382588
+   },
+   {
+    "instances": 1,
+    "name": "How to Use this Project.pdf - 3",
+    "path": "How to Use this Project.pdf",
+    "status": "Imported",
+    "typeId": 2382591
+   },
+   {
+    "instances": 1,
+    "name": "How to Use this Project.pdf - 4",
+    "path": "How to Use this Project.pdf",
+    "status": "Imported",
+    "typeId": 2382594
+   },
+   {
+    "instances": 1,
+    "name": "01 Insert Tab.png",
+    "path": "01 Insert Tab.png",
+    "status": "Imported",
+    "typeId": 2383789
+   },
+   {
+    "instances": 1,
+    "name": "02 Link.png",
+    "path": "02 Link.png",
+    "status": "Imported",
+    "typeId": 2383792
+   },
+   {
+    "instances": 1,
+    "name": "BrownsvilleBorough.jpg",
+    "path": "BrownsvilleBorough.jpg",
+    "status": "Imported",
+    "typeId": 2431261
+   }
+  ],
+  "listLimit": 100,
+  "rvtLinks": [
+   {
+    "instances": 1,
+    "name": "Snowdon Towers Sample Facades.rvt",
+    "nested": false,
+    "path": "Snowdon Towers Sample Facades.rvt",
+    "pathType": "Relative",
+    "pinned": false,
+    "status": "Loaded",
+    "typeId": 2403931
+   },
+   {
+    "instances": 1,
+    "name": "Snowdon Towers Sample Structural.rvt",
+    "nested": false,
+    "path": "Snowdon Towers Sample Structural.rvt",
+    "pathType": "Relative",
+    "pinned": false,
+    "status": "Loaded",
+    "typeId": 2409045
+   },
+   {
+    "instances": 1,
+    "name": "Snowdon Towers Sample Plumbing.rvt",
+    "nested": false,
+    "path": "Snowdon Towers Sample Plumbing.rvt",
+    "pathType": "Relative",
+    "pinned": false,
+    "status": "Loaded",
+    "typeId": 2409051
+   },
+   {
+    "instances": 1,
+    "name": "Snowdon Towers Sample HVAC.rvt",
+    "nested": false,
+    "path": "Snowdon Towers Sample HVAC.rvt",
+    "pathType": "Relative",
+    "pinned": false,
+    "status": "Loaded",
+    "typeId": 2409054
+   },
+   {
+    "instances": 1,
+    "name": "Snowdon Towers Sample Site.rvt",
+    "nested": false,
+    "path": "Snowdon Towers Sample Site.rvt",
+    "pathType": "Relative",
+    "pinned": false,
+    "status": "Loaded",
+    "typeId": 2448216
+   },
+   {
+    "instances": 1,
+    "name": "Snowdon Towers Sample Electrical.rvt",
+    "nested": false,
+    "path": "Snowdon Towers Sample Electrical.rvt",
+    "pathType": "Relative",
+    "pinned": false,
+    "status": "Loaded",
+    "typeId": 2637312
+   }
+  ],
+  "summary": {
+   "cad": 0,
+   "cadImports": 0,
+   "images": 23,
+   "rvt": 6,
+   "rvtLoaded": 6
+  }
+ },
+ "elapsedMs": 85,
+ "responder": {
+  "documentName": "Snowdon Towers Sample Architectural",
+  "documentPath": "Snowdon Towers Sample Architectural.rvt",
+  "processId": 4784,
+  "revitVersion": "2026"
+ }
+}
