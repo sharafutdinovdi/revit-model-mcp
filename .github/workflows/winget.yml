@@ -1,6 +1,6 @@
 # The maintainer must provision WINGET_TOKEN from a dedicated account that owns
 # only the winget-pkgs fork. It needs public_repo and workflow scopes to sync the fork.
-# wingetcreate reads it through WINGET_CREATE_GITHUB_TOKEN, not a CLI argument.
+# gh reads it through GH_TOKEN, not a CLI argument.
 # Without the token, manifests are generated and uploaded without submission.
 name: WinGet
 
@@ -87,6 +87,7 @@ jobs:
           if ($response -notmatch '(?m)HTTP/\S+\s+404\b|HTTP 404\b') { throw 'Could not check the target version in winget-pkgs master' }
           $older = @()
           foreach ($open in $matching) {
+            if ($forced -and $open.version -ceq $env:RELEASE_VERSION) { continue }
             $openVersion = $null
             if (-not [version]::TryParse($open.version, [ref]$openVersion) -or $openVersion -ge [version]$env:RELEASE_VERSION) {
               Write-Host "Skip: package version $($open.version) already has an open PR at $($open.url)"
@@ -158,7 +159,6 @@ jobs:
         shell: pwsh
         env:
           WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
-          WINGET_CREATE_GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           INSTALL_TESTED: ${{ steps.install_test.outputs.install_tested }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
@@ -169,12 +169,6 @@ jobs:
             Write-Host 'WINGET_TOKEN is not set. Manifests are available in the artifact.'
             exit 0
           }
-          gh release download v1.12.13.0 --repo microsoft/winget-create --pattern wingetcreate.exe --dir "$env:RUNNER_TEMP/wingetcreate"
-          if ($LASTEXITCODE -ne 0) { throw 'wingetcreate download failed' }
-          $actualHash = (Get-FileHash "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" -Algorithm SHA256).Hash
-          if ($actualHash -ne '24042bd37915805615e6cf969ac57c6439124c3fe85823327f5f3fb24bd9ffea') {
-            throw 'wingetcreate SHA256 mismatch'
-          }
           $version = $env:RELEASE_VERSION
           $env:GH_TOKEN = $env:WINGET_TOKEN
           $forkOwner = gh api user --jq .login
@@ -184,13 +178,39 @@ jobs:
             gh repo sync "$forkOwner/winget-pkgs" --branch master
             if ($LASTEXITCODE -ne 0) { throw "Could not sync $forkOwner/winget-pkgs with microsoft/winget-pkgs; WINGET_TOKEN needs the public_repo and workflow scopes" }
           }
-          $submitLog = "$env:RUNNER_TEMP/wingetcreate-submit.txt"
-          & "$env:RUNNER_TEMP/wingetcreate/wingetcreate.exe" submit artifacts/winget 2>&1 | Tee-Object -FilePath $submitLog | Out-String | Write-Host
-          if ($LASTEXITCODE -ne 0) { throw 'WinGet submission failed' }
-          $prUrl = (Select-String -Path $submitLog -Pattern 'https://github.com/microsoft/winget-pkgs/pull/\d+' -AllMatches).Matches.Value | Select-Object -Last 1
-          if (-not $prUrl) { throw 'wingetcreate did not print a pull request URL' }
+          $branch = "Sharafutdinov.RevitModelMcp-$version"
+          $fork = "$forkOwner/winget-pkgs"
+          $refs = @(gh api "repos/$fork/git/matching-refs/heads/$branch" | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not look up the submission branch' }
+          $existing = $refs | Where-Object { $_.ref -eq "refs/heads/$branch" } | Select-Object -First 1
+          if ($existing) {
+            $parent = $existing.object.sha
+          } else {
+            $parent = gh api "repos/$fork/git/ref/heads/master" --jq .object.sha
+            if ($LASTEXITCODE -ne 0) { throw 'Could not read the fork base' }
+          }
+          $baseTree = gh api "repos/$fork/git/commits/$parent" --jq .tree.sha
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read the base tree' }
+          $tree = @(Get-ChildItem 'artifacts/winget/*.yaml' | ForEach-Object {
+            @{ path = "manifests/s/Sharafutdinov/RevitModelMcp/$version/$($_.Name)"; mode = '100644'; type = 'blob'; content = (Get-Content $_.FullName -Raw) }
+          })
+          $treeSha = @{ base_tree = $baseTree; tree = $tree } | ConvertTo-Json -Depth 5 -Compress | gh api -X POST "repos/$fork/git/trees" --input - --jq .sha
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create the manifest tree' }
+          $commit = @{ message = "New version: Sharafutdinov.RevitModelMcp version $version"; tree = $treeSha; parents = @($parent) } | ConvertTo-Json -Compress | gh api -X POST "repos/$fork/git/commits" --input - --jq .sha
+          if ($LASTEXITCODE -ne 0) { throw 'Could not commit the manifests' }
+          if ($existing) {
+            gh api -X PATCH "repos/$fork/git/refs/heads/$branch" -f "sha=$commit" -F force=false --silent
+          } else {
+            gh api -X POST "repos/$fork/git/refs" -f "ref=refs/heads/$branch" -f "sha=$commit" --silent
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Could not update the submission branch' }
+          $prUrl = gh pr list --repo microsoft/winget-pkgs --head "$forkOwner`:$branch" --json url --jq '.[0].url'
+          if ($LASTEXITCODE -ne 0) { throw 'Could not look up the submission pull request' }
+          if (-not $prUrl) {
+            $prUrl = gh pr create --repo microsoft/winget-pkgs --base master --head "$forkOwner`:$branch" --title "Sharafutdinov.RevitModelMcp version $version" --body "Model MCP $version."
+            if ($LASTEXITCODE -ne 0) { throw 'Could not open the submission pull request' }
+          }
           "prUrl=$prUrl" >> $env:GITHUB_OUTPUT
-          # wingetcreate submits the PR template unfilled; complete it with what this workflow verified.
           if ($env:INSTALL_TESTED -eq 'true') {
             $installLine = '- [x] Tested manifest locally with ``winget install --manifest <path>`` (installed and uninstalled in the WinGet workflow on windows-latest; the project CI also runs silent install and uninstall smoke tests)'
           } else {
