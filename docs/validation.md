@@ -20,7 +20,7 @@ Live action checks cover `select`, `show`, `isolate`, `move`, `create_wall`, `se
 Installer checks cover `-Source Build` for 2024 and 2026 with `-SignThumbprint`, `-Source Release` for 2024 from v0.1.0, and `-Uninstall`.
 Revit 2022 to 2027 were validated live with the v0.9.0 release artifacts, see [v0.9.0 live validation](#v090-live-validation).
 The Install script column also covers the release installers for every year from that pass.
-Screenshots and JSON evidence are on the [`validation-assets` branch](https://github.com/sharafutdinovdi/revit-model-mcp/tree/validation-assets).
+Screenshots and JSON responses are in the [validation archive](https://github.com/sharafutdinovdi/revit-model-mcp/tree/f3366da2999ab15ca531999618157de3a56643f1/docs/screenshots/validation).
 The Revit undo menu label for a group of actions (`MCP (<clientName>): <short summary>`) cannot be verified through the API.
 
 ## Revit 2026 live validation

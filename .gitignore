@@ -52,7 +52,6 @@ site/
 .idea/
 .claude/
 .codex/
-.omp/
 .playwright-mcp/
 .mcp.json
 CLAUDE.local.md
