@@ -35,6 +35,9 @@ Issues = "https://github.com/sharafutdinovdi/revit-model-mcp/issues"
 [project.scripts]
 revit-model-mcp = "revit_model_mcp.server:main"
 
+[tool.hatch.build.targets.sdist]
+exclude = [".hypothesis", ".pytest_cache", "__pycache__", ".ruff_cache", "**/.hypothesis", "**/.pytest_cache", "**/__pycache__", "**/.ruff_cache"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["revit_model_mcp"]
 
