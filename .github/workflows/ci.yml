@@ -656,3 +656,92 @@ jobs:
             dotnet build src/RevitModelMcp.Addin -c "Release.R$year" -p:DeployAddin=false -p:Channel=store "-p:Version=$env:CI_VERSION" --no-restore -m:1 -nr:false
             if ($LASTEXITCODE -ne 0) { throw "R$year store build failed" }
           }
+
+  agent-install:
+    needs: installer
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: installers
+          path: output
+      - name: Verify agent installation in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'agent-install-release'
+          $profile = Join-Path $env:RUNNER_TEMP 'agent-install-profile'
+          New-Item -ItemType Directory $stage, $profile -Force | Out-Null
+          Copy-Item install.ps1 $stage
+          $msi = Get-ChildItem output/*-SingleUser.msi
+          Copy-Item $msi.FullName $stage
+          $name = $msi.Name
+          "$((Get-FileHash $msi.FullName -Algorithm SHA256).Hash)  $name" | Set-Content "$stage/SHA256SUMS.txt" -Encoding ASCII
+          $env:APPDATA = Join-Path $profile 'Roaming'
+          $env:LOCALAPPDATA = Join-Path $profile 'Local'
+          $env:USERPROFILE = $profile
+          $script = Join-Path $stage 'install.ps1'
+          # A fresh process avoids loaded Core DLL handles during MSI upgrade and removal.
+          function Install-Agent([string[]] $Extra) {
+            $output = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -ReleaseDir $stage -Json @Extra
+            if ($LASTEXITCODE -ne 0) { throw "Installer failed: $output" }
+            $parsed = ($output -join "`n") | ConvertFrom-Json
+            if (!$parsed.ok) { throw 'Installer JSON is not ok' }
+            return $parsed
+          }
+          try {
+            $dry = Install-Agent @('-DryRun')
+            if (Test-Path "$env:LOCALAPPDATA/Programs/Model MCP/server/revit-model-mcp.exe") { throw 'DryRun installed files' }
+            $first = Install-Agent @('-Client', 'all-detected')
+            # Explicit clients create configs even before the AI apps have been opened.
+            foreach ($client in 'claude-desktop', 'cursor', 'vscode', 'codex') {
+              $result = Install-Agent @('-Client', $client)
+              if ($result.clients.Count -ne 1 -or $result.clients[0].id -ne $client) { throw "Missing client $client" }
+              if (!(Test-Path $result.clients[0].configPath)) { throw "Missing config $client" }
+            }
+            $server = Join-Path $env:LOCALAPPDATA 'Programs/Model MCP/server/revit-model-mcp.exe'
+            if (!(Test-Path $server)) { throw 'Installed server does not exist' }
+            foreach ($config in @(
+              @("$env:APPDATA/Claude/claude_desktop_config.json", 'mcpServers'),
+              @("$profile/.cursor/mcp.json", 'mcpServers'),
+              @("$env:APPDATA/Code/User/mcp.json", 'servers'))) {
+              $entry = (Get-Content $config[0] -Raw | ConvertFrom-Json).($config[1]).'revit-model-mcp'
+              if ($entry.command -ne $server -or $entry.env.REVIT_MCP_HOST -ne 'local' -or $entry.env.REVIT_MCP_REDACT_PATHS -ne '1') { throw "Invalid config $($config[0])" }
+            }
+            $toml = Get-Content "$profile/.codex/config.toml" -Raw
+            if (!$toml.Contains('REVIT_MCP_HOST = "local"') -or !$toml.Contains('REVIT_MCP_REDACT_PATHS = "1"')) { throw 'Invalid Codex env' }
+            $doctor = (& $server doctor --json | ConvertFrom-Json)
+            if ($LASTEXITCODE -ne 1 -or !($doctor.problems -match 'No Revit 2022-2027 installed')) { throw 'Doctor must report no Revit installed' }
+            if (@($doctor.clients | Where-Object state -eq 'Configured').Count -ne 4) { throw 'Doctor did not verify four registrations' }
+            $again = Install-Agent @('-Client', 'all-detected')
+            if (@($again.clients | Where-Object changed).Count) { throw 'Repeated registration changed configs' }
+            if ($again.installedYears.Count -ne 6) { throw 'Missing installed years' }
+            $again | ConvertTo-Json -Depth 12 | Set-Content "$stage/result.json" -Encoding UTF8
+            Write-Host ($again | ConvertTo-Json -Depth 12)
+            # Checksum tampering is refused before msiexec.
+            ('0' * 64 + "  $name") | Set-Content "$stage/SHA256SUMS.txt" -Encoding ASCII
+            $ErrorActionPreference = 'Continue'
+            $bad = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $script -ReleaseDir $stage -Json 2>$null
+            $badExit = $LASTEXITCODE
+            $ErrorActionPreference = 'Stop'
+            if ($badExit -ne 1 -or (($bad -join "`n") | ConvertFrom-Json).error -notmatch 'SHA256') { throw 'Bad hash was accepted' }
+          } finally {
+            "$((Get-FileHash $msi.FullName -Algorithm SHA256).Hash)  $name" | Set-Content "$stage/SHA256SUMS.txt" -Encoding ASCII
+            $removed = Install-Agent @('-Uninstall')
+          }
+          foreach ($year in 2022..2027) {
+            if (Test-Path "$env:APPDATA/Autodesk/Revit/Addins/$year/RevitModelMcp.addin") { throw "Manifest remains: $year" }
+            if (Test-Path "$env:APPDATA/Autodesk/Revit/Addins/$year/RevitModelMcp/RevitModelMcp.dll") { throw "Add-in remains: $year" }
+          }
+          if (Test-Path "$env:LOCALAPPDATA/Programs/Model MCP/server/revit-model-mcp.exe") { throw 'Server remains after uninstall' }
+      - name: Upload agent installation evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-install-evidence
+          path: |
+            ${{ runner.temp }}/agent-install-release/result.json
+            ${{ runner.temp }}/revit-model-mcp-msi-*.log
+          if-no-files-found: warn

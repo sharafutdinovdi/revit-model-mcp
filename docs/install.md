@@ -2,6 +2,8 @@
 
 Model MCP has two parts. The add-in runs inside Revit on Windows. The server runs next to your MCP client and talks to the add-in. You need both.
 
+For installation by Claude Code, Codex, or Cursor, follow [Install with an AI agent](agent-install.md).
+
 ## Requirements
 
 | Part | Requirement |

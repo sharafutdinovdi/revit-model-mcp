@@ -824,3 +824,67 @@ def test_http_action_preserves_workstation_lock_description(endpoint, message, c
     state.update(status=403, error_text=message)
     result = asyncio.run(RevitChannel(host).execute(Job("select", {"command": "select"})))
     assert result == {"success": False, "command": "select", "error": message, "errorCode": code}
+
+
+def test_agent_installer_dry_run_has_one_json_object_and_no_writes():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+$env:OS = 'Windows_NT'
+$DryRun = $true
+$Json = $true
+$Version = 'latest'
+function Get-Process { return @() }
+function Invoke-RestMethod { throw 'DryRun accessed the network' }
+function New-Item { throw 'DryRun wrote a file' }
+function Start-Process { throw 'DryRun started a process' }
+$lines = @(Invoke-AgentInstall)
+if ($lines.Count -ne 1) { throw 'Expected exactly one stdout line' }
+$result = $lines[0] | ConvertFrom-Json
+if (!$result.ok -or $result.plan.Count -ne 5) { throw 'Missing installation plan' }
+$Uninstall = $true
+$result = Invoke-AgentInstall | ConvertFrom-Json
+if (!$result.ok -or $result.plan.Count -ne 1 -or $result.plan[0] -notlike '*Uninstall*') { throw 'Missing uninstall plan' }
+"""
+    )
+
+
+def test_script_build_payload_and_uninstall_remain_available():
+    run_powershell(
+        r"""
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PWD 'install.ps1'), [ref]$null, [ref]$null)
+$ast.FindAll({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst]
+}, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
+$root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
+$repo = $root
+$tempRoot = Join-Path $root 'stage'
+$env:APPDATA = Join-Path $root 'appdata'
+$Source = 'Build'
+$SignThumbprint = $null
+function dotnet {
+    if (($args -join ' ') -notlike '*Release.R26*') { throw 'Wrong build year' }
+    $global:LASTEXITCODE = 0
+}
+try {
+    $output = Join-Path $root 'src/RevitModelMcp.Addin/bin/Release.R26'
+    New-Item "$output/publish", $tempRoot -ItemType Directory -Force | Out-Null
+    Set-Content "$output/RevitModelMcp.dll" 'test'
+    Copy-Item 'src/RevitModelMcp.Addin/RevitModelMcp.addin' "$output/publish/"
+    $payload = Get-Payload '2026'
+    Install-Year '2026' $payload
+    $installed = Join-Path $env:APPDATA 'Autodesk/Revit/Addins/2026'
+    if (!(Test-Path "$installed/RevitModelMcp.addin")) { throw 'Build install failed' }
+    Uninstall-Year '2026'
+    if (Test-Path "$installed/RevitModelMcp.addin") { throw 'Manifest remains' }
+    if (Test-Path "$installed/RevitModelMcp") { throw 'Payload remains' }
+} finally { Remove-Item $root -Recurse -Force }
+"""
+    )

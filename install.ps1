@@ -14,6 +14,11 @@ RegisterClaude commands also write their normal build/cache and Claude settings.
 [CmdletBinding()]
 param(
     [string[]] $Year,
+    [ValidateSet('claude-desktop', 'claude-code', 'cursor', 'vscode', 'codex', 'all-detected')]
+    [string[]] $Client = @(),
+    [string] $ReleaseDir,
+    [switch] $Json,
+    [switch] $DryRun,
     [ValidateSet('Build', 'Release')] [string] $Source = 'Release',
     [string] $Version = 'latest',
     [string] $SignThumbprint,
@@ -227,6 +232,120 @@ function Register-Claude {
     if (!(Test-Path -LiteralPath $server -PathType Container)) { throw "Server checkout missing: $server" }
     & claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uv run --directory "$server" revit-model-mcp | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Claude registration failed (exit $LASTEXITCODE)." }
+}
+
+function Invoke-AgentInstall {
+    $result = [ordered]@{
+        version = $Version; msi = $null; installedYears = @(); clients = @()
+        doctor = $null; humanSteps = @(); nextPrompt = 'What model is open in Revit?'
+        ok = $false; log = $null; plan = @()
+    }
+    $exitCode = 0
+    $download = $null
+    try {
+        if ($env:OS -ne 'Windows_NT') { throw 'Run this script on Windows.' }
+        if (@(Get-Process Revit -ErrorAction SilentlyContinue).Count -and !$Force) {
+            throw 'Close Revit before installing or uninstalling, then run the command again.'
+        }
+        $result.plan = @('Resolve release', 'Verify SingleUser MSI SHA256', 'Install per user', 'Register clients through Core', 'Run doctor')
+        if ($Uninstall) { $result.plan = @('Uninstall SingleUser MSI; client configurations and backups remain') }
+        if ($DryRun) { $result.ok = $true; return }
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        if ($ReleaseDir) {
+            $packages = @(Get-ChildItem -LiteralPath $ReleaseDir -Filter '*-SingleUser.msi')
+            if ($packages.Count -ne 1) { throw 'ReleaseDir must contain one SingleUser MSI and SHA256SUMS.txt.' }
+            $msi = $packages[0].FullName
+            $sums = Join-Path $ReleaseDir 'SHA256SUMS.txt'
+            $result.version = $packages[0].BaseName -replace '^RevitModelMcp-', '' -replace '-SingleUser$', ''
+        }
+        else {
+            $tag = 'v' + $Version.TrimStart('v')
+            $endpoint = "https://api.github.com/repos/sharafutdinovdi/revit-model-mcp/releases/tags/$tag"
+            if ($Version -eq 'latest') { $endpoint = 'https://api.github.com/repos/sharafutdinovdi/revit-model-mcp/releases/latest' }
+            $release = Invoke-RestMethod -Uri $endpoint -Headers $headers
+            $result.version = ([string]$release.tag_name).TrimStart('v')
+            $asset = @($release.assets | Where-Object name -eq "RevitModelMcp-$($result.version)-SingleUser.msi")
+            if ($asset.Count -ne 1) { throw 'Release has no SingleUser MSI.' }
+            $download = Join-Path $env:TEMP ('revit-model-mcp-' + [guid]::NewGuid().ToString('N'))
+            New-Item -ItemType Directory $download | Out-Null
+            $msi = Join-Path $download $asset[0].name
+            $sums = Join-Path $download 'SHA256SUMS.txt'
+            Invoke-WebRequest $asset[0].browser_download_url -Headers $headers -OutFile $msi -UseBasicParsing
+            $checksum = @($release.assets | Where-Object name -eq 'SHA256SUMS.txt')
+            if ($checksum.Count -ne 1) { throw 'Release has no SHA256SUMS.txt.' }
+            Invoke-WebRequest $checksum[0].browser_download_url -Headers $headers -OutFile $sums -UseBasicParsing
+        }
+        $result.msi = $msi
+        $name = [IO.Path]::GetFileName($msi)
+        $entries = @(Get-Content -LiteralPath $sums | Where-Object { $_ -match ('^([a-fA-F0-9]{64})  ' + [regex]::Escape($name) + '$') })
+        if ($entries.Count -ne 1 -or (Get-FileHash $msi -Algorithm SHA256).Hash -ne $entries[0].Substring(0, 64)) {
+            throw 'SingleUser MSI SHA256 verification failed. Download the release again.'
+        }
+        $result.log = Join-Path $env:TEMP ('revit-model-mcp-msi-' + [guid]::NewGuid().ToString('N') + '.log')
+        $operation = '/i'
+        if ($Uninstall) { $operation = '/x' }
+        $msiArguments = "$operation `"$msi`" /qn /norestart /l*v `"$($result.log)`""
+        # ReleaseDir is also the isolated CI hook. MSI known folders otherwise ignore environment overrides.
+        if ($ReleaseDir) { $msiArguments += " AppDataFolder=`"$env:APPDATA\`" LocalAppDataFolder=`"$env:LOCALAPPDATA\`"" }
+        $process = Start-Process msiexec.exe -ArgumentList $msiArguments -Wait -PassThru
+        if ($process.ExitCode -notin @(0, 3010)) { throw "MSI failed ($($process.ExitCode)). See $($result.log)." }
+        if ($process.ExitCode -eq 3010) { $result.humanSteps += 'Restart Windows to finish the installation.' }
+        if ($Uninstall) { $result.ok = $true; return }
+        $server = Join-Path $env:LOCALAPPDATA 'Programs\Model MCP\server\revit-model-mcp.exe'
+        if (!(Test-Path -LiteralPath $server)) { throw "Installed server is missing: $server" }
+        # R22 contains the .NET Framework 4.8 Core build, loadable by Windows PowerShell 5.1.
+        $core = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\2022\RevitModelMcp\RevitModelMcp.Core.dll'
+        Add-Type -Path $core
+        $spec = [RevitModelMcp.Core.Connect.McpServerSpec]::ForExecutable($server)
+        $configurator = [RevitModelMcp.Core.Connect.McpClientConfigurator]::new($null, $spec)
+        $targets = [RevitModelMcp.Core.Connect.McpClientLocator]::Discover($env:APPDATA, $env:LOCALAPPDATA, $env:USERPROFILE)
+        foreach ($target in $targets) {
+            $detected = Test-Path -LiteralPath $target.InstallProbe -PathType Container
+            if ($target.Id -notin $Client -and !('all-detected' -in $Client -and $detected)) { continue }
+            if (!$detected) { New-Item -ItemType Directory -Path $target.InstallProbe -Force | Out-Null }
+            $change = $configurator.Add($target)
+            if ($configurator.Inspect($target).State.ToString() -eq 'ConfiguredDifferentCommand') { $change = $configurator.Update($target) }
+            $result.clients += [ordered]@{ id = $target.Id; configPath = $target.ConfigPath; changed = $change.Changed; backupPath = $change.BackupPath }
+        }
+        if ('claude-code' -in $Client -or ('all-detected' -in $Client -and (Get-Command claude -ErrorAction SilentlyContinue))) {
+            $command = $spec.ClaudeCodeCommand
+            if (Get-Command claude -ErrorAction SilentlyContinue) {
+                $output = & claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- $server 2>&1
+                # A repeated install may find an existing entry. Verify it instead of treating that as success.
+                $check = & claude mcp get revit-model-mcp 2>&1
+                if ($LASTEXITCODE -ne 0 -or ($check -join "`n") -notlike "*$server*") { throw "Claude Code registration failed: $output $check" }
+                $result.clients += [ordered]@{ id = 'claude-code'; configPath = 'Managed by claude mcp'; command = $command }
+            }
+            else { $result.humanSteps += $command }
+        }
+        $doctorOutput = & $server doctor --json
+        $result.doctor = ($doctorOutput -join "`n") | ConvertFrom-Json
+        $result.installedYears = @($result.doctor.installedYears)
+        $result.humanSteps += @($result.doctor.humanSteps)
+        $result.humanSteps += 'Start Revit and choose Always Load for Model MCP on first start.'
+        if ($result.clients.Count) { $result.humanSteps += 'Restart the registered AI apps.' }
+        $result.ok = $true
+    }
+    catch {
+        $result['error'] = $_.Exception.Message
+        [Console]::Error.WriteLine($_.Exception.Message)
+        $exitCode = 1
+    }
+    finally {
+        if ($download -and (Test-Path -LiteralPath $download)) { Remove-Item -LiteralPath $download -Recurse -Force }
+        if ($Json) { $result | ConvertTo-Json -Depth 12 -Compress }
+        else { $result | ConvertTo-Json -Depth 12 }
+    }
+    if ($exitCode) { exit $exitCode }
+}
+
+if ($Source -eq 'Release' -and !$Year -and !$SignThumbprint -and !$EnableHttp) {
+    if ($RegisterClaude) { $Client += 'claude-code' }
+    Invoke-AgentInstall
+    return
+}
+if ($Json -or $DryRun -or $Client.Count -or $ReleaseDir) {
+    throw '-Json, -DryRun, -Client and -ReleaseDir require MSI mode: omit -Year, -Source Build, -SignThumbprint and -EnableHttp.'
 }
 
 try {
