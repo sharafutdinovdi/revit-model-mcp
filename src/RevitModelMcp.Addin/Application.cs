@@ -48,6 +48,9 @@ public sealed class Application : ExternalApplication
     ];
     private readonly List<(RibbonButton Button, string Icon)> _ribbonButtons = [];
     private ReadOnlyRibbon? _readOnlyRibbon;
+    private PushButton? _connectButton;
+    private PushButton? _repairButton;
+    private string? _fileChannelWarning;
     private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
@@ -73,6 +76,7 @@ public sealed class Application : ExternalApplication
         _instance = this;
         PluginLog.Info($"RevitModelMcp started. LogPath='{PluginLog.FilePath}'.");
         var (fileChannelEnabled, fileChannelWarning) = Output.ChannelDirectory.InitializeChannel();
+        _fileChannelWarning = fileChannelWarning;
         if (fileChannelWarning is not null)
             PluginLog.Warn(fileChannelWarning);
         _controlChannel = new ControlChannel(Output.ChannelDirectory.OutputDirectory)
@@ -154,6 +158,8 @@ public sealed class Application : ExternalApplication
         ActivityHost.Scheduler = _controlChannel.Scheduler;
         ActivityHost.CancelJob = _controlChannel.CancelJob;
         RegisterActivityPane();
+        if (!fileChannelEnabled)
+            ActivityRecorder.RecordSystemNotice(fileChannelWarning + " Use Repair channel permissions on the Model MCP ribbon.", failed: true);
         _instanceHeartbeat?.Start(_activeDocument, _documents);
         var httpStatus = httpSettings is null
             ? HttpListenerStatus.ConfigError(httpSettingsError!)
@@ -284,7 +290,12 @@ public sealed class Application : ExternalApplication
 #endif
         ConfigureRibbonButton(brand.AddPushButton<OpenSettingsFolderCommand>("Settings"), "Settings",
             RibbonText.SettingsToolTip, RibbonText.SettingsDescription, HelpLinks.AddinHelpUrl);
-        ConfigureRibbonButton(panel.AddPushButton<ConnectAiCommand>(ConnectText.RibbonButton), "Connect",
+        _repairButton = brand.AddPushButton<RepairChannelPermissionsCommand>("Repair channel permissions");
+        ConfigureRibbonButton(_repairButton, "Settings", "Repair the refused file channel after reviewing folder permissions.",
+            "Review the owner and every principal removed from the channel folder and existing children. Changes require confirmation.", HelpLinks.AddinHelpUrl);
+        _repairButton.SetAvailabilityController<RepairChannelPermissionsAvailability>();
+        _connectButton = panel.AddPushButton<ConnectAiCommand>(ConnectText.RibbonButton);
+        ConfigureRibbonButton(_connectButton, "Connect",
             RibbonText.ConnectToolTip, RibbonText.ConnectDescription, HelpLinks.AddinHelpUrl);
         ConfigureRibbonButton(panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton), "Activity",
             RibbonText.ActivityToolTip, RibbonText.ActivityDescription, HelpLinks.AddinHelpUrl);
@@ -302,8 +313,57 @@ public sealed class Application : ExternalApplication
         ConfigureRibbonButton((RibbonButton)items[2], "Support", RibbonText.SupportToolTip, RibbonText.SupportDescription, HelpLinks.Support);
         PaneTheme.Changed += RefreshRibbonImages;
         _readOnlyRibbon = new ReadOnlyRibbon();
+        UpdateChannelRibbon();
         RibbonBranding.ApplyPanelBackground();
         RibbonBranding.ApplyTabIcon();
+    }
+
+    private void UpdateChannelRibbon()
+    {
+        if (_repairButton is not null) _repairButton.Enabled = Output.ChannelDirectory.AclRepairAvailable;
+        if (_connectButton is null) return;
+        _connectButton.ItemText = _controlChannel.FileChannelEnabled ? ConnectText.RibbonButton : "AI connection off";
+        _connectButton.ToolTip = _controlChannel.FileChannelEnabled ? RibbonText.ConnectToolTip
+            : "AI connection is off because of folder permissions. Use Repair channel permissions in the Model MCP menu.";
+        _connectButton.LongDescription = _controlChannel.FileChannelEnabled ? RibbonText.ConnectDescription : _fileChannelWarning;
+    }
+
+    internal static bool RetryFileChannel()
+    {
+        var instance = _instance ?? throw new InvalidOperationException("Model MCP is not running.");
+        var (enabled, warning) = Output.ChannelDirectory.InitializeChannel();
+        instance._fileChannelWarning = warning;
+        if (warning is not null) PluginLog.Warn(warning);
+        if (!enabled)
+        {
+            instance.UpdateChannelRibbon();
+            return false;
+        }
+        try
+        {
+            instance._jobWatcher = new JobFileWatcher(Output.ChannelDirectory.OutputDirectory, instance.RequestExecution,
+                exception => PluginLog.Error("Job file watcher failed.", exception), TimeSpan.FromSeconds(10));
+            instance._jobWatcher.Start();
+            instance._instanceHeartbeat = new InstanceHeartbeat(Output.ChannelDirectory.RootDirectory,
+                Process.GetCurrentProcess().Id, instance.Application.ControlledApplication.VersionNumber,
+                instance._instanceId, instance._pipeChannel?.PipeName);
+            instance._controlChannel.FileChannelEnabled = true;
+            instance._instanceHeartbeat.Start(instance._activeDocument, instance._documents);
+            instance._instanceHeartbeat.UpdateHttpPort(instance._httpChannel?.BoundPort);
+            instance._instanceHeartbeat.UpdateHttpStatus(instance._httpChannel?.Status ?? HttpListenerStatus.DisabledBySettings());
+            instance.UpdateChannelRibbon();
+            return true;
+        }
+        catch
+        {
+            instance._controlChannel.FileChannelEnabled = false;
+            instance._instanceHeartbeat?.Dispose();
+            instance._instanceHeartbeat = null;
+            instance._jobWatcher?.Dispose();
+            instance._jobWatcher = null;
+            instance.UpdateChannelRibbon();
+            throw;
+        }
     }
 
     private static PushButtonData UrlButtonData<TCommand>(string text) where TCommand : IExternalCommand =>

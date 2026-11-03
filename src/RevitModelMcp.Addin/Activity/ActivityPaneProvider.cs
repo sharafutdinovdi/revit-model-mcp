@@ -1,6 +1,7 @@
 using Autodesk.Revit.UI;
 using JetBrains.Annotations;
 using Nice3point.Revit.Toolkit.Decorators;
+using RevitModelMcp.Control;
 
 namespace RevitModelMcp.Activity;
 
@@ -32,6 +33,20 @@ public sealed class ShowActivityPaneCommand : Autodesk.Revit.UI.IExternalCommand
 {
     public Result Execute(ExternalCommandData commandData, ref string message, Autodesk.Revit.DB.ElementSet elements)
     {
+        if (!DockablePane.PaneIsRegistered(ActivityPaneProvider.PaneId) ||
+            !DockablePane.PaneExists(ActivityPaneProvider.PaneId))
+        {
+            var entries = ActivityLog.Snapshot();
+            var recent = entries.Take(10);
+            var notices = entries.Where(entry => entry.Command == "system-notice");
+            var content = string.Join("\n\n", recent.Concat(notices).Distinct()
+                .Select(entry => $"{entry.Time:t} [{entry.State}] {entry.Summary}"));
+            AppDialog.Show(PaneText.Caption,
+                "The activity pane opens once a model or view is open.\n\n" +
+                (content.Length > 0 ? content : PaneText.EmptyTitle + "\n" + PaneText.EmptyHint));
+            return Result.Succeeded;
+        }
+
         var pane = new DockablePane(ActivityPaneProvider.PaneId);
         if (pane.IsShown()) pane.Hide();
         else pane.Show();

@@ -230,7 +230,13 @@ internal static class AppDialog
         if (owner is not null) dialog.Owner = owner;
         else new WindowInteropHelper(dialog).Owner = Autodesk.Windows.ComponentManager.ApplicationWindow;
         var content = new StackPanel { Margin = new Thickness(16) };
-        content.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });
+        content.Children.Add(new ScrollViewer
+        {
+            MaxHeight = Math.Min(480, SystemParameters.WorkArea.Height * 0.6),
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }
+        });
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
