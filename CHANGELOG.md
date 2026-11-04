@@ -6,6 +6,29 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v2.0.0...v2.1.0) (2026-11-04)
+
+
+### Features
+
+* install and verify with one command for AI agents ([#348](https://github.com/sharafutdinovdi/revit-model-mcp/issues/348)) ([4578f6a](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4578f6a0fb64fcf680fd427cd1b883d42c3c7579))
+
+
+### Bug Fixes
+
+* **addin:** keep My tools buttons visible ([476a4b5](https://github.com/sharafutdinovdi/revit-model-mcp/commit/476a4b5e94d49b0ec0ad2e39e2145258e49d21be))
+* **addin:** load product icons before opening windows ([#350](https://github.com/sharafutdinovdi/revit-model-mcp/issues/350)) ([4079dfe](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4079dfe33fd6c2693dc23cd0f0e0ba365a826403))
+* **winget:** add package moniker after review ([#345](https://github.com/sharafutdinovdi/revit-model-mcp/issues/345)) ([2d92857](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2d928571b48083feb264fa1c73b57664a4d49497))
+* **winget:** clear the expected lookup failure before submission ([#342](https://github.com/sharafutdinovdi/revit-model-mcp/issues/342)) ([e730a43](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e730a4335f61663c16aad102a3c96aebfabb94a2))
+* **winget:** submit current schemas through GitHub ([#343](https://github.com/sharafutdinovdi/revit-model-mcp/issues/343)) ([ed11ac8](https://github.com/sharafutdinovdi/revit-model-mcp/commit/ed11ac81a9def5bef4ba07d8d6efaacfce07991c))
+* **winget:** use manifest schema 1.28.0 ([#340](https://github.com/sharafutdinovdi/revit-model-mcp/issues/340)) ([e6ac562](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e6ac5629dc8e0360d54f2eff7c2f71d9fa177097))
+
+
+### Documentation
+
+* improve AI discovery with guides and structured metadata ([#349](https://github.com/sharafutdinovdi/revit-model-mcp/issues/349)) ([a15de74](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a15de743bdb150e1e7f4ea69f8939fe402f06aa3))
+* refresh README and tool reference for 2.0 ([#347](https://github.com/sharafutdinovdi/revit-model-mcp/issues/347)) ([9e8f729](https://github.com/sharafutdinovdi/revit-model-mcp/commit/9e8f729adcfb14c7f35871cf3db5603c4fb2c096))
+
 ## [2.0.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v1.0.0...v2.0.0) (2026-11-03)
 
 
