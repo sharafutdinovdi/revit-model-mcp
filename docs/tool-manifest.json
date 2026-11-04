@@ -392,7 +392,7 @@
     },
     {
       "name": "revit_export_view",
-      "description": "Create a PNG image of a selected Revit view. The user chooses the destination file through output_path on the computer running the AI app; omitting it uses a temporary folder on that computer. The image is retrieved from the Revit workstation through the configured connection. Existing files are refused. The active view and model stay unchanged. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
+      "description": "Save a PNG picture of the selected view in a folder the user names through output_path, or in a temporary folder when omitted. Existing files are refused. The active view and model stay unchanged. A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries.",
       "toolset": "views-sheets",
       "access": "modifying",
       "annotations": {
@@ -1324,7 +1324,7 @@
     },
     {
       "name": "revit_export",
-      "description": "Create PDF, DWG, IFC or schedule CSV output on the Revit workstation. The user chooses the destination folder through output_dir; omitting it uses the Model MCP exports folder under the Windows user profile. dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
+      "description": "Save sheets and views as PDF, DWG or IFC files, or a schedule as a comma-separated table, in a folder the user names with output_dir on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. A long action can return status=running and jobId when the wait budget expires; it may already have changed the model, and revit_jobs returns its result. Resubmitting repeats the action.",
       "toolset": "export",
       "access": "modifying",
       "annotations": {

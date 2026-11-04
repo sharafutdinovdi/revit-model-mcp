@@ -60,6 +60,10 @@ Every Revit-backed read tool except `revit_ui_state`, `revit_export_view`, `revi
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Every timeout argument is named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
 Arguments named `output_path` (a file) and `output_dir` (a directory) write on the machine that runs the MCP client, unless the description says the path is on the workstation. `revit_export`, `revit_process_models` exports and `save.output_dir` write on the workstation. `save_as` is a Revit Save As path on the workstation.
+
+`revit_export` saves sheets and views as PDF, DWG or IFC files, or a schedule as a comma-separated table, in the workstation folder named by `output_dir`.
+Omitting `output_dir` uses the Model MCP exports folder under the Windows user profile.
+`dry_run` returns planned file names; replacing existing files with `overwrite=true` requires the two-step `confirm_token` handshake.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
 
@@ -80,7 +84,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
 | `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `output_path=null`, `document=null`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Local/SSH only. |
-| `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Create a PNG on the AI app computer at the user chosen `output_path`, or in a temporary folder when omitted. The configured connection retrieves the image from Revit. Existing files are refused; `pixel_size` is 32-4000 pixels (Revit rejects smaller images) on the fitted image dimension. |
+| `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Save a PNG picture of the selected view through `output_path`, or in a temporary folder when omitted. The file is saved on the machine running the MCP client; the configured connection retrieves the image from Revit. Existing files are refused; `pixel_size` is 32-4000 pixels (Revit rejects smaller images) on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
 | `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID; `element_id` must be at least 1. |
