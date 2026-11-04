@@ -41,7 +41,7 @@ internal sealed class MyToolsWindow : Window
     {
         FollowTheme(this);
         Title = "My tools";
-        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png"));
+        Icon = AppDialog.LoadAppIcon();
         Width = 1000;
         Height = 550;
         MinWidth = 620;
@@ -180,7 +180,7 @@ internal sealed class MyToolsWindow : Window
             var viewer = new Window
             {
                 Title = "Show code: " + row.Name,
-                Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png")),
+                Icon = AppDialog.LoadAppIcon(),
                 Owner = this,
                 Width = 850,
                 Height = 650,
@@ -225,12 +225,23 @@ internal sealed class MyToolsWindow : Window
 
 internal static class AppDialog
 {
+    internal static System.Windows.Media.Imaging.BitmapImage LoadAppIcon()
+    {
+        var icon = new System.Windows.Media.Imaging.BitmapImage();
+        icon.BeginInit();
+        icon.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        icon.UriSource = new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png");
+        icon.EndInit();
+        icon.Freeze();
+        return icon;
+    }
+
     internal static bool Show(string title, string message, bool confirm = false, Window? owner = null)
     {
         var dialog = new Window
         {
             Title = title,
-            Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/Logo32.png")),
+            Icon = AppDialog.LoadAppIcon(),
             Width = 460,
             SizeToContent = SizeToContent.Height,
             ResizeMode = ResizeMode.NoResize,
