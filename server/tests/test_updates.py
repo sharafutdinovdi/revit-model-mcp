@@ -170,3 +170,32 @@ def test_update_status_latest_known_is_never_older_than_current(cached, current,
     state = {"latestKnown": cached} if cached else {}
     with patch.object(updates, "read_state", return_value=state):
         assert updates.update_status(current)["latestKnownVersion"] == expected
+
+
+@pytest.mark.parametrize("instance", [{}, {"addinVersion": package_version(), "commands": []}])
+def test_store_compatibility_guidance_has_no_url(instance):
+    import subprocess
+    import sys
+
+    script = """
+import json
+import sys
+import revit_model_mcp
+revit_model_mcp.CHANNEL = "store"
+from revit_model_mcp.revit_channel import check_addin_compatibility, RevitChannelError
+try:
+    check_addin_compatibility("ping", json.loads(sys.argv[1]))
+except RevitChannelError as error:
+    print(error)
+else:
+    raise AssertionError("Expected an incompatible add-in to be refused")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(instance)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert "Update the Model MCP add-in from the Autodesk App Store." in result.stdout
+    assert "https://" not in result.stdout

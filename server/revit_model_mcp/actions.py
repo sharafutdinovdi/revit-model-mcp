@@ -1737,7 +1737,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Save PDF, DWG, IFC or schedule CSV files to a folder the user names with output_dir on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog."""
+        """Create PDF, DWG, IFC or schedule CSV output on the Revit workstation. The user chooses the destination folder through output_dir; omitting it uses the Model MCP exports folder under the Windows user profile. dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog."""
         return await send(
             "export",
             format=format,

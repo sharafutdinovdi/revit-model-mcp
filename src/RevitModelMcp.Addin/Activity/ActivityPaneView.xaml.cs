@@ -479,20 +479,7 @@ internal sealed class ActivityDialog : Window
     private ActivityDialog(string message, IntPtr owner)
     {
         Title = "Model MCP";
-        try
-        {
-            var icon = new System.Windows.Media.Imaging.BitmapImage();
-            icon.BeginInit();
-            icon.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            icon.UriSource = new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/App32.png");
-            icon.EndInit();
-            icon.Freeze();
-            Icon = icon;
-        }
-        catch (Exception)
-        {
-            // Branding is optional for an action result dialog.
-        }
+        Icon = LoadAppIcon();
         Width = 460;
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
@@ -513,6 +500,17 @@ internal sealed class ActivityDialog : Window
         content.Children.Add(buttons);
         Content = content;
         Loaded += (_, _) => close.Focus();
+    }
+
+    internal static System.Windows.Media.Imaging.BitmapImage LoadAppIcon()
+    {
+        var icon = new System.Windows.Media.Imaging.BitmapImage();
+        icon.BeginInit();
+        icon.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+        icon.UriSource = new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/App32.png");
+        icon.EndInit();
+        icon.Freeze();
+        return icon;
     }
 
     internal static void Show(string message, IntPtr owner) => new ActivityDialog(message, owner).ShowDialog();

@@ -567,12 +567,13 @@ class RemoteHost(Protocol):
 
 
 if CHANNEL == "store":
-    RELEASES_URL = "https://sharafutdinovdi.github.io/revit-model-mcp/install/"
-    RELEASES_LABEL = "installation instructions"
+    ADDIN_UPDATE_INSTRUCTION = "Update the Model MCP add-in from the Autodesk App Store."
 else:
     from revit_model_mcp.updates import RELEASES_URL
 
-    RELEASES_LABEL = "releases page"
+    ADDIN_UPDATE_INSTRUCTION = (
+        f"Install the matching add-in from the releases page: {RELEASES_URL}."
+    )
 ADDIN_VERSION = re.compile(
     r"(\d+(?:\.\d+)+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
     r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
@@ -590,14 +591,13 @@ def check_addin_compatibility(command: str, instance: dict[str, Any]) -> None:
         installed = version or "no add-in version"
         raise RevitChannelError(
             f"This server needs a Model MCP add-in of major version {server_major}; "
-            f"the Revit workstation has {installed}. "
-            f"Install the matching add-in from the {RELEASES_LABEL}: {RELEASES_URL}."
+            f"the Revit workstation has {installed}. " + ADDIN_UPDATE_INSTRUCTION
         )
     commands = instance.get("commands")
     if not isinstance(commands, list) or command not in commands:
         raise RevitChannelError(
             f"The Model MCP add-in {version} does not support {command}. "
-            f"Install the matching add-in from the {RELEASES_LABEL}: {RELEASES_URL}."
+            + ADDIN_UPDATE_INSTRUCTION
         )
 
 

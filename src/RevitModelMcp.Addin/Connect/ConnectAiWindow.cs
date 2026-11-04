@@ -34,7 +34,7 @@ internal sealed class ConnectAiWindow : Window
         SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = false;
-        Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/RevitModelMcp;component/Resources/Icons/App32.png"));
+        Icon = RevitModelMcp.Activity.ActivityDialog.LoadAppIcon();
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         FontFamily = new FontFamily("Segoe UI Variable Text, Segoe UI");
         FontSize = 12;
