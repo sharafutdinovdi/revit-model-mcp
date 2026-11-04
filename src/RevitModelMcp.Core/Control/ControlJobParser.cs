@@ -3,6 +3,7 @@ using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.RegularExpressions;
 using RevitModelMcp.Core.Export;
+using RevitModelMcp.Core.Families;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Control;
@@ -35,6 +36,7 @@ public enum ControlJobKind
     ListWarnings,
     ListRelations,
     FamilyAudit,
+    FamilyCheck,
     Action,
     NwcSettingsCheck,
     Invalid,
@@ -209,6 +211,7 @@ public sealed class ControlJobParseResult
             "list-warnings" => UniversalJobParser.ParseWarnings(job),
             "list-relations" => UniversalJobParser.ParseRelations(job),
             "family-audit" => ParseFamilyAudit(job),
+            "family-check" => ParseFamilyCheck(job),
             "nwc-settings-check" => ParseNwcSettingsCheck(job.SettingsXml, trustedNetworkRoots),
             "compare-link-datums" => ParseCompareLinkDatums(job),
             _ when ActionJobParser.IsAction(command) => ActionJobParser.Parse(command, job, trustedNetworkRoots),
@@ -219,8 +222,8 @@ public sealed class ControlJobParseResult
         result.ClientId = string.IsNullOrWhiteSpace(job.ClientId) ? "unknown" : job.ClientId!;
         result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
-        if (command is "family-audit" or "nwc-settings-check" or "batch-supervisor-start" or "batch-prepass" or "batch-open" or "batch-snapshot" or "batch-close" or "model-snapshot") result.CoordinatorJob = job;
-        result.TargetDocument = command == "family-audit" ? null : Normalize(job.TargetDocument);
+        if (command is "family-check" or "family-audit" or "nwc-settings-check" or "batch-supervisor-start" or "batch-prepass" or "batch-open" or "batch-snapshot" or "batch-close" or "model-snapshot") result.CoordinatorJob = job;
+        result.TargetDocument = command is "family-audit" or "family-check" ? null : Normalize(job.TargetDocument);
         result.TargetProcessId = job.TargetProcessId;
         if (job.TargetProcessId is <= 0)
             return Invalid(command, "targetProcessId must be a strict positive integer.");
@@ -241,6 +244,15 @@ public sealed class ControlJobParseResult
             return Invalid(command, "limit must be between 1 and 100.");
         var result = Create(ControlJobKind.ApiLookup, command);
         result.ApiLookup = new ApiLookupRequest(query, kind, limit, job.IncludeInherited ?? false, job.IncludeObsolete ?? true);
+        return result;
+    }
+
+    private static ControlJobParseResult ParseFamilyCheck(ControlJobContract job)
+    {
+        var parsed = ActionJobParser.Parse("family-check", job);
+        if (parsed.Error is not null) return parsed;
+        var result = Create(ControlJobKind.FamilyCheck, "family-check");
+        result.Action = parsed.Action;
         return result;
     }
 
@@ -503,6 +515,7 @@ public static class ControlJobParser
 [DataContract]
 public sealed partial class ControlJobContract
 {
+    [DataMember(Name = "familyCheck")] public FamilyCheckOptions? FamilyCheck { get; set; }
     [DataMember(Name = "includeUnplacedViews")] public bool? IncludeUnplacedViews { get; set; }
     [DataMember(Name = "query")] public string? Query { get; set; }
     [DataMember(Name = "includeInherited")] public bool? IncludeInherited { get; set; }

@@ -34,6 +34,7 @@ from revit_model_mcp.revit_channel import (
     RevitChannel,
     RevitChannelError,
     TransportUnavailableError,
+    _save_family_check_previews,
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
@@ -216,14 +217,14 @@ Document = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("document", "targetDocument"),
-        description="Title or file name substring of the target document; needed when several Revit instances run.",
+        description="Document title/file substring; required with several Revit instances.",
     ),
 ]
 ProcessId = Annotated[
     int | None,
     Field(
         validation_alias=AliasChoices("process_id", "processId"),
-        description="Revit process ID; takes precedence over document.",
+        description="Revit process ID.",
     ),
 ]
 _addressed_process_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
@@ -544,7 +545,10 @@ async def _execute(
                 result.update(update_status(package_version()))
         result.setdefault("skipped", [])
         result.setdefault("skippedCount", 0)
-        return redact_model_paths(result)
+        result = redact_model_paths(result)
+        if job.command in {"family-check", "jobs"}:
+            _save_family_check_previews(result.get("data"))
+        return result
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(job.command, str(error)))
     except RevitChannelError as error:
@@ -552,9 +556,7 @@ async def _execute(
 
 
 def addressed_tool(function):
-    function.__doc__ = (
-        function.__doc__ or ""
-    ) + " skipped means incomplete; skippedCount is the total skipped."
+    function.__doc__ = (function.__doc__ or "") + " Incomplete if skippedCount>0."
     title = {
         "revit_ping": "Check Revit Connection",
         "revit_jobs": "List Revit Jobs",
@@ -586,6 +588,7 @@ def addressed_tool(function):
         "revit_shared_coordinates": "Shared Coordinates",
         "revit_parameter_fill_check": "Parameter Fill Check",
         "revit_family_audit": "Audit Families",
+        "revit_family_check": "Check Families",
         "revit_nwc_settings_check": "Check NWC Settings",
         "revit_compare_link_datums": "Compare Link Datums",
     }[function.__name__]
@@ -1290,6 +1293,79 @@ async def revit_list_instances(document: Document = None) -> dict[str, Any]:
         return redact_model_paths(unavailable("list-instances", str(error)))
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
+
+
+class FamilyCheckVariant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    parameter: Annotated[str, Field(min_length=1)]
+    values_mm: Annotated[
+        list[Annotated[float, Field(ge=1, le=100000, allow_inf_nan=False)]], Field(min_length=1)
+    ]
+
+    @field_validator("parameter")
+    @classmethod
+    def nonblank_parameter(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("parameter must not be blank.")
+        return value
+
+
+class FamilyCheckExpected(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    width_mm: Annotated[float | None, Field(gt=0, allow_inf_nan=False)] = None
+    depth_mm: Annotated[float | None, Field(gt=0, allow_inf_nan=False)] = None
+    height_mm: Annotated[float | None, Field(gt=0, allow_inf_nan=False)] = None
+    tolerance_mm: Annotated[float, Field(ge=0, allow_inf_nan=False)] = 2
+
+
+@addressed_tool
+async def revit_family_check(
+    families: Annotated[list[str] | None, Field(min_length=1, max_length=200)] = None,
+    types: Annotated[list[str] | None, Field(min_length=1)] = None,
+    flex: bool = True,
+    variants: list[FamilyCheckVariant] | None = None,
+    expected: dict[str, FamilyCheckExpected] | None = None,
+    previews: list[Literal["3d", "plan", "front", "right"]] = ["3d", "plan", "front"],
+    detail_levels: list[Literal["coarse", "medium", "fine"]] = ["coarse", "fine"],
+    host_test: bool = True,
+    max_types: Annotated[int, Field(ge=1, le=100)] = 10,
+    image_px: Annotated[int, Field(ge=128, le=4096)] = 800,
+    timeout: Annotated[int, Field(ge=30, le=3600)] = 900,
+) -> dict[str, Any]:
+    """Flex family types, compare expected millimetre bounds, test placement and export previews. Omit families in a family document; projects accept names or ["*"], capped at 20. All changes roll back. Only errors fail. Inspect client PNGs against the source; appearance is not graded. Long jobs return jobId for revit_jobs."""
+    for label, names in (("families", families), ("types", types)):
+        if names is not None and any(not name.strip() for name in names):
+            raise ToolError(f"{label} must contain non-empty names.")
+    if families is not None and "*" in families and families != ["*"]:
+        raise ToolError("The '*' family selector must be alone.")
+    if expected is not None and any(not name.strip() for name in expected):
+        raise ToolError("expected keys must be non-empty type names.")
+    return await _execute(
+        Job(
+            "family-check",
+            {
+                "command": "family-check",
+                "families": families,
+                "familyCheck": {
+                    "types": types,
+                    "flex": flex,
+                    "variants": None
+                    if variants is None
+                    else [variant.model_dump() for variant in variants],
+                    "expected": None
+                    if expected is None
+                    else {name: dimensions.model_dump() for name, dimensions in expected.items()},
+                    "previews": previews,
+                    "detailLevels": detail_levels,
+                    "hostTest": host_test,
+                    "maxTypes": max_types,
+                    "imagePx": image_px,
+                },
+            },
+        ),
+        timeout,
+        None,
+    )
 
 
 @addressed_tool

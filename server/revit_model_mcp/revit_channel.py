@@ -249,7 +249,9 @@ ACTION_COMMANDS = frozenset(
 )
 
 
-LONG_ACTION_COMMANDS = frozenset({"process-models", "export", "export-nwc", "edit-families"})
+LONG_ACTION_COMMANDS = frozenset(
+    {"process-models", "export", "export-nwc", "edit-families", "family-check"}
+)
 
 
 def configured_pickup_timeout_seconds() -> int:
@@ -1168,6 +1170,29 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
         "Processing is waiting for the next ExternalEvent call.",
         "New job rejected: RevitModelMcp is busy reading elements.",
     ) or (response.get("data") == "accepted" and response.get("elapsedMs") == 0)
+
+
+def _save_family_check_previews(data: Any) -> None:
+    if not isinstance(data, dict):
+        return
+    from revit_model_mcp.artifact_download import save_artifact
+
+    for family in data.get("families", []):
+        for preview in family.get("previews", []):
+            if "artifact" not in preview:
+                continue
+            try:
+                preview["path"] = save_artifact(preview, None)
+            except (ValueError, OSError) as error:
+                data.setdefault("skipped", []).append({"what": "preview", "reason": str(error)})
+                data["skippedCount"] = len(data["skipped"])
+            finally:
+                preview.pop("artifact", None)
+                preview.pop("artifactName", None)
+    for key in ("result", "response", "data"):
+        _save_family_check_previews(data.get(key))
+    for job in data.get("jobs", []):
+        _save_family_check_previews(job)
 
 
 def parse_response(content: str, expected_command: str) -> dict[str, Any]:

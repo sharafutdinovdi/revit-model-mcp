@@ -60,6 +60,7 @@ EXPECTED_TOOLS = {
     "revit_list_relations",
     "revit_list_instances",
     "revit_family_audit",
+    "revit_family_check",
     "revit_compare_link_datums",
     "revit_nwc_settings_check",
     "revit_batch_start",
@@ -353,6 +354,19 @@ EXPECTED_PARAMETERS = {
         "document",
     ],
     "revit_list_instances": ["document"],
+    "revit_family_check": [
+        "families",
+        "types",
+        "flex",
+        "variants",
+        "expected",
+        "previews",
+        "detail_levels",
+        "host_test",
+        "max_types",
+        "image_px",
+        "timeout",
+    ],
     "revit_family_audit": ["families", "detail", "timeout_seconds", "document"],
     "revit_nwc_settings_check": [
         "settings_xml",
@@ -1415,3 +1429,108 @@ def test_manifests_do_not_offer_the_removed_server_read_only_setting():
         assert revit_server.LEGACY_READ_ONLY_VARIABLE not in {
             variable["name"] for variable in package["environmentVariables"]
         }
+
+
+def test_family_check_forwards_options_and_uses_long_job():
+    import asyncio
+
+    async def run():
+        from revit_model_mcp.revit_channel import LONG_ACTION_COMMANDS
+
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            await revit_server.mcp.call_tool(
+                "revit_family_check",
+                {
+                    "families": ["Example"],
+                    "types": ["Standard"],
+                    "variants": [{"parameter": "Width", "values_mm": [950, 1050]}],
+                    "expected": {"Standard": {"height_mm": 1000}},
+                    "process_id": 123,
+                    "timeout": 900,
+                    "previews": [],
+                    "host_test": False,
+                },
+            )
+        job, response_timeout, _ = channel.calls[0]
+        assert job.command == "family-check"
+        assert job.command in LONG_ACTION_COMMANDS
+        assert job.payload["targetProcessId"] == 123
+        assert response_timeout == 900
+        options = job.payload["familyCheck"]
+        assert options["variants"][0]["values_mm"] == [950, 1050]
+        assert options["expected"]["Standard"]["tolerance_mm"] == 2
+        assert options["types"] == ["Standard"]
+        assert options["hostTest"] is False
+        tool = next(
+            tool
+            for tool in await revit_server.mcp.list_tools()
+            if tool.name == "revit_family_check"
+        )
+        assert tool.annotations.read_only_hint is True
+        assert tool.annotations.destructive_hint is False
+        assert tool.annotations.idempotent_hint is True
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"families": [" "]},
+        {"families": ["*", "Example"]},
+        {"types": []},
+        {"max_types": 0},
+        {"max_types": 101},
+        {"previews": ["perspective"]},
+        {"detail_levels": ["extra"]},
+        {"image_px": 0},
+        {"variants": [{"parameter": "Width", "values_mm": [0]}]},
+        {"expected": {"Standard": {"tolerance_mm": -1}}},
+    ],
+)
+def test_family_check_rejects_invalid_input(arguments):
+    import asyncio
+
+    async def run():
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            with pytest.raises(Exception):
+                await revit_server.mcp.call_tool("revit_family_check", arguments)
+        assert channel.calls == []
+
+    asyncio.run(run())
+
+
+def test_family_check_previews_download_in_persisted_results():
+    import base64
+
+    from revit_model_mcp.revit_channel import _save_family_check_previews, parse_response
+
+    preview = {
+        "artifactName": "example.png",
+        "artifact": base64.b64encode(b"\x89PNG\r\n\x1a\nexample").decode(),
+    }
+    response = {
+        "command": "jobs",
+        "success": True,
+        "data": {
+            "result": {
+                "data": {
+                    "families": [{"previews": [preview]}],
+                    "skipped": [],
+                    "skippedCount": 0,
+                }
+            }
+        },
+    }
+    parsed = parse_response(json.dumps(response), "jobs")
+    _save_family_check_previews(parsed["data"])
+    image = parsed["data"]["result"]["data"]["families"][0]["previews"][0]
+    path = Path(image["path"])
+    try:
+        assert path.read_bytes().startswith(b"\x89PNG")
+        assert "artifact" not in image
+    finally:
+        path.unlink()
+        path.parent.rmdir()

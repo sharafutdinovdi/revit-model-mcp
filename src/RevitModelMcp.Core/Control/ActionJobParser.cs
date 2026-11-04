@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using RevitModelMcp.Core.Export;
+using RevitModelMcp.Core.Families;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -266,7 +267,7 @@ public static class ActionJobParser
                     action.Steps.Add(parsed);
                 }
             }
-            if (command is "edit-families" or "family-audit")
+            if (command is "edit-families" or "family-audit" or "family-check")
             {
                 Require(job.Families is null || job.Families.Count is > 0 and <= 200,
                     "families must contain 1 to 200 names.");
@@ -274,6 +275,27 @@ public static class ActionJobParser
                     "Family names must not be blank.");
                 Require(job.Families is null || !job.Families.Contains("*") || job.Families.Count == 1,
                     "The '*' family selector must be alone.");
+            }
+            if (command == "family-check")
+            {
+                var options = job.FamilyCheck ?? new FamilyCheckOptions();
+                job.FamilyCheck = options;
+                Require(options.MaxTypes is >= 1 and <= 100, "max_types must be between 1 and 100.");
+                Require(options.ImagePx is >= 128 and <= 4096, "image_px must be between 128 and 4096.");
+                Require(options.Types is null || options.Types.Count > 0 && options.Types.All(name => !string.IsNullOrWhiteSpace(name)), "types must contain non-empty names.");
+                Require(options.Previews is not null && options.Previews.All(view => view is "3d" or "plan" or "front" or "right"), "Invalid previews value.");
+                Require(options.DetailLevels is not null && options.DetailLevels.All(detail => detail is "coarse" or "medium" or "fine"), "Invalid detail_levels value.");
+                foreach (var variant in options.Variants ?? [])
+                    Require(variant is not null && !string.IsNullOrWhiteSpace(variant.Parameter) && variant.ValuesMm is not null && variant.ValuesMm.Count > 0 &&
+                        variant.ValuesMm.All(value => !double.IsNaN(value) && value is >= 1 and <= 100000), "variants require a parameter and values_mm between 1 and 100000.");
+                foreach (var expected in options.Expected ?? [])
+                {
+                    Require(!string.IsNullOrWhiteSpace(expected.Key) && expected.Value is not null, "expected requires type names and dimensions.");
+                    var dimensions = expected.Value!;
+                    Require(!double.IsNaN(dimensions.ToleranceMm) && !double.IsInfinity(dimensions.ToleranceMm) && dimensions.ToleranceMm >= 0, "tolerance_mm must be finite and non-negative.");
+                    foreach (var value in new[] { dimensions.WidthMm, dimensions.DepthMm, dimensions.HeightMm })
+                        Require(value is null || !double.IsNaN(value.Value) && !double.IsInfinity(value.Value) && value > 0, "expected dimensions must be finite and positive.");
+                }
             }
             if (command == "family-audit")
                 Require(action.Detail is "summary" or "full", "detail must be summary or full.");

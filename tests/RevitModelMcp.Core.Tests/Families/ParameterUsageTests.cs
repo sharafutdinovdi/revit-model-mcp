@@ -57,3 +57,103 @@ public sealed class ParameterUsageTests
         await Assert.That(result["BuiltIn"].UsedBy).Contains("association");
     }
 }
+
+public sealed class FamilyCheckRulesTests
+{
+    [Test]
+    public async Task FamilySelectionCapsAssessmentAndListsEveryRemainder()
+    {
+        var selected = FamilyCheckRules.SelectFamilies(Enumerable.Range(1, 23));
+        await Assert.That(selected.Assessed.Count).IsEqualTo(20);
+        await Assert.That(selected.Skipped.SequenceEqual(new[] { 21, 22, 23 })).IsTrue();
+    }
+
+    [Test]
+    public async Task ParserPreservesExpectedDimensionsFromJson()
+    {
+        var parsed = RevitModelMcp.Core.Control.ControlJobParser.Parse("""
+            {"command":"family-check","families":["Example"],"familyCheck":{"maxTypes":10,"imagePx":800,"flex":true,"hostTest":false,"types":null,"variants":[{"parameter":"Width","values_mm":[950,1050]}],"expected":{"Standard":{"width_mm":1000}},"previews":[],"detailLevels":["fine"]}}
+            """);
+        await Assert.That(parsed.Error).IsNull();
+        await Assert.That(parsed.CoordinatorJob.FamilyCheck!.Expected!["Standard"].WidthMm).IsEqualTo(1000.0);
+        await Assert.That(parsed.CoordinatorJob.FamilyCheck.Variants![0].ValuesMm.Count).IsEqualTo(2);
+        await Assert.That(parsed.CoordinatorJob.FamilyCheck.Expected["Standard"].ToleranceMm).IsEqualTo(2.0);
+    }
+
+    [Test]
+    [Arguments("regen_failed", "error")]
+    [Arguments("geometry_empty", "error")]
+    [Arguments("geometry_invalid", "error")]
+    [Arguments("parameter_no_effect", "error")]
+    [Arguments("expected_mismatch", "error")]
+    [Arguments("place_failed", "error")]
+    [Arguments("host_not_cut", "error")]
+    [Arguments("imported_cad", "warning")]
+    [Arguments("overlap_high", "warning")]
+    [Arguments("structure", "info")]
+    public async Task ClassifiesSeverity(string id, string expected) =>
+        await Assert.That(FamilyCheckRules.Severity(id)).IsEqualTo(expected);
+
+    [Test]
+    public async Task ExpectedToleranceIncludesBoundary()
+    {
+        var bounds = new FamilyCheckBounds { Width = 1002, Depth = 998, Height = 1000 };
+        var expected = new FamilyCheckExpected { WidthMm = 1000, DepthMm = 1000, HeightMm = 1000 };
+        await Assert.That(FamilyCheckRules.ExpectedMatches(bounds, expected)).IsTrue();
+        bounds.Width += 0.001;
+        await Assert.That(FamilyCheckRules.ExpectedMatches(bounds, expected)).IsFalse();
+    }
+
+    [Test]
+    public async Task NoEffectRequiresUnambiguousLabelledDrivingGeometry()
+    {
+        var before = new FamilyCheckBounds { Width = 1000 };
+        var same = new FamilyCheckBounds { Width = 1000.005 };
+        await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1, true, false, false)).IsEqualTo("error");
+        await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1, true, false, true)).IsEqualTo("info");
+        await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1, true, true, false)).IsNull();
+        await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1, false, false, false)).IsNull();
+        await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1.01, true, false, false)).IsNull();
+    }
+
+    [Test]
+    public async Task MissingOverlapCategoryHasNoInventedThreshold() =>
+        await Assert.That(FamilyCheckRules.OverlapThreshold("unknown")).IsNull();
+
+    [Test]
+    public async Task WarningsNeverFailAFamily()
+    {
+        var findings = new[] { new FamilyCheckFinding { Severity = "warning" } };
+        await Assert.That(FamilyCheckRules.Status(findings, true)).IsEqualTo("passed");
+        await Assert.That(FamilyCheckRules.Status(findings, false)).IsEqualTo("not_assessed");
+        findings[0].Severity = "error";
+        await Assert.That(FamilyCheckRules.Status(findings, false)).IsEqualTo("failed");
+    }
+
+    [Test]
+    public async Task ParserRoutesReadOnlyCheckAndPreservesOptions()
+    {
+        var job = new RevitModelMcp.Core.Control.ControlJobContract { Command = "family-check", Families = ["*"], FamilyCheck = new FamilyCheckOptions() };
+        var parsed = RevitModelMcp.Core.Control.ControlJobParseResult.FromContract(job);
+        await Assert.That(parsed.Kind).IsEqualTo(RevitModelMcp.Core.Control.ControlJobKind.FamilyCheck);
+        await Assert.That(parsed.CoordinatorJob.FamilyCheck!.MaxTypes).IsEqualTo(10);
+        var rejected = false;
+        try { RevitModelMcp.Core.Control.ActionJobParser.ValidateFamilyMode(parsed.Action!, true); }
+        catch (ArgumentException) { rejected = true; }
+        await Assert.That(rejected).IsTrue();
+    }
+
+    [Test]
+    [Arguments(0, "3d")]
+    [Arguments(101, "3d")]
+    [Arguments(10, "perspective")]
+    public async Task ParserRejectsInvalidOptions(int maxTypes, string preview)
+    {
+        var parsed = RevitModelMcp.Core.Control.ControlJobParseResult.FromContract(new()
+        {
+            Command = "family-check",
+            FamilyCheck = new() { MaxTypes = maxTypes, Previews = [preview] }
+        });
+        await Assert.That(parsed.Error).IsNotNull();
+    }
+}

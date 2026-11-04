@@ -9,7 +9,7 @@
   "tools": [
     {
       "name": "revit_jobs",
-      "description": "List recent jobs, or wait up to wait_seconds (0 to 50, default 40) for the result of an action jobId. Results stay on the workstation for 24 hours, across server restarts. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List recent jobs, or wait up to wait_seconds (0 to 50, default 40) for the result of an action jobId. Results stay on the workstation for 24 hours, across server restarts. Incomplete if skippedCount>0.",
       "toolset": "core",
       "access": "read_only",
       "annotations": {
@@ -28,7 +28,7 @@
     },
     {
       "name": "revit_compare_link_datums",
-      "description": "Compare host grids and levels with one loaded Revit link. Changes nothing. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Compare host grids and levels with one loaded Revit link. Changes nothing. Incomplete if skippedCount>0.",
       "toolset": "links",
       "access": "read_only",
       "annotations": {
@@ -47,7 +47,7 @@
     },
     {
       "name": "revit_ping",
-      "description": "Check the connection to Revit without reading the model. Returns data=\"pong\", even when no document is active. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Check the connection to Revit without reading the model. Returns data=\"pong\", even when no document is active. Incomplete if skippedCount>0.",
       "toolset": "core",
       "access": "read_only",
       "annotations": {
@@ -66,7 +66,7 @@
     },
     {
       "name": "revit_nwc_settings_check",
-      "description": "Parse a Navisworks exporter XML file on the Revit workstation without exporting. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Parse a Navisworks exporter XML file on the Revit workstation without exporting. Incomplete if skippedCount>0.",
       "toolset": "export",
       "access": "read_only",
       "annotations": {
@@ -86,7 +86,7 @@
     },
     {
       "name": "revit_document_info",
-      "description": "Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count. Incomplete if skippedCount>0.",
       "toolset": "core",
       "access": "read_only",
       "annotations": {
@@ -105,7 +105,7 @@
     },
     {
       "name": "revit_documents",
-      "description": "List every open document in one Revit process, including background documents. Linked documents are listed only when include_linked is set. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List every open document in one Revit process, including background documents. Linked documents are listed only when include_linked is set. Incomplete if skippedCount>0.",
       "toolset": "core",
       "access": "read_only",
       "annotations": {
@@ -124,7 +124,7 @@
     },
     {
       "name": "revit_ui_state",
-      "description": "Read the active document, open views, selection and open documents. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read the active document, open views, selection and open documents. Incomplete if skippedCount>0.",
       "toolset": "core",
       "access": "read_only",
       "annotations": {
@@ -143,7 +143,7 @@
     },
     {
       "name": "revit_api_lookup",
-      "description": "Look up public Revit API types and members. The agent calls this before writing C# for an unfamiliar type. Results describe the running Revit's API version only. XML summaries are optional. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Look up public Revit API types and members. The agent calls this before writing C# for an unfamiliar type. Results describe the running Revit's API version only. XML summaries are optional. Incomplete if skippedCount>0.",
       "toolset": "code",
       "access": "read_only",
       "annotations": {
@@ -162,7 +162,7 @@
     },
     {
       "name": "revit_model_snapshot",
-      "description": "Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -181,7 +181,7 @@
     },
     {
       "name": "revit_model_health",
-      "description": "Read model quality counts: project metadata, file size, counts, units and the ten most frequent warning groups. Unavailable metrics are null and listed in skipped. output_path also writes an .xlsx health report with up to five snapshots. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read model quality counts: project metadata, file size, counts, units and the ten most frequent warning groups. Unavailable metrics are null and listed in skipped. output_path also writes an .xlsx health report with up to five snapshots. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "modifying",
       "annotations": {
@@ -201,7 +201,7 @@
     },
     {
       "name": "revit_links_status",
-      "description": "Read RVT, CAD and image link status. Each list is capped at 100 entries; summary counts cover all links. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read RVT, CAD and image link status. Each list is capped at 100 entries; summary counts cover all links. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -220,7 +220,7 @@
     },
     {
       "name": "revit_shared_coordinates",
-      "description": "Read project and survey coordinates: base and survey points, active site, project locations and link offsets (mm, degrees). Lists are capped at 100 with total counts. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read project and survey coordinates: base and survey points, active site, project locations and link offsets (mm, degrees). Lists are capped at 100 with total counts. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -239,7 +239,7 @@
     },
     {
       "name": "revit_parameter_fill_check",
-      "description": "Count filled, empty and missing parameters per parameter and category, with samples of empty and missing element IDs. Numeric zero counts as filled. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Count filled, empty and missing parameters per parameter and category, with samples of empty and missing element IDs. Numeric zero counts as filled. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -258,7 +258,7 @@
     },
     {
       "name": "revit_list_catalog",
-      "description": "List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -277,7 +277,7 @@
     },
     {
       "name": "revit_aggregate_elements",
-      "description": "Summarize matching elements by one or two fields, with optional sum and average. Lengths use mm, areas m2, volumes m3. For area totals, group by level and select the area scheme. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Summarize matching elements by one or two fields, with optional sum and average. Lengths use mm, areas m2, volumes m3. For area totals, group by level and select the area scheme. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -296,7 +296,7 @@
     },
     {
       "name": "revit_query_elements",
-      "description": "Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -315,7 +315,7 @@
     },
     {
       "name": "revit_list_sheets",
-      "description": "List sheets with title blocks, revisions and placed view IDs, plus unplaced views. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List sheets with title blocks, revisions and placed view IDs, plus unplaced views. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "read_only",
       "annotations": {
@@ -334,7 +334,7 @@
     },
     {
       "name": "revit_list_views",
-      "description": "List non-template views with id, name, type, level, scale and template. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List non-template views with id, name, type, level, scale and template. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "read_only",
       "annotations": {
@@ -353,7 +353,7 @@
     },
     {
       "name": "revit_view_info",
-      "description": "Inspect one view's template, display, categories, worksets, filters and links. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Inspect one view's template, display, categories, worksets, filters and links. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "read_only",
       "annotations": {
@@ -372,7 +372,7 @@
     },
     {
       "name": "revit_view_summary",
-      "description": "Read element categories and counts for a selected view. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read element categories and counts for a selected view. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "read_only",
       "annotations": {
@@ -391,7 +391,7 @@
     },
     {
       "name": "revit_schedule_data",
-      "description": "Read displayed schedule header and body cell text, with paging. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read displayed schedule header and body cell text, with paging. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -410,7 +410,7 @@
     },
     {
       "name": "revit_capture_elements",
-      "description": "Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "modifying",
       "annotations": {
@@ -430,7 +430,7 @@
     },
     {
       "name": "revit_export_view",
-      "description": "Save a picture of the selected view as a PNG file in a folder the user names on the AI app computer. output_path names the new file; without it, a temporary folder is used. Existing files are refused. The active view and model stay unchanged. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Save a picture of the selected view as a PNG file in a folder the user names on the AI app computer. output_path names the new file; without it, a temporary folder is used. Existing files are refused. The active view and model stay unchanged. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "modifying",
       "annotations": {
@@ -450,7 +450,7 @@
     },
     {
       "name": "revit_view_elements",
-      "description": "Read one page of elements in a selected view, with IDs, category, family, type, level and measurements (mm, m2, m3). skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read one page of elements in a selected view, with IDs, category, family, type, level and measurements (mm, m2, m3). Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "read_only",
       "annotations": {
@@ -469,7 +469,7 @@
     },
     {
       "name": "revit_element_details",
-      "description": "Read parameters and geometry of an element by Revit ID, with its type parameters and related warnings. Geometry is in model mm; roomCenterMm is a point inside the room. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read parameters and geometry of an element by Revit ID, with its type parameters and related warnings. Geometry is in model mm; roomCenterMm is a point inside the room. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -488,7 +488,7 @@
     },
     {
       "name": "revit_view_warnings",
-      "description": "Read warnings involving elements present in a selected view. A warning may also involve elements outside the view. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read warnings involving elements present in a selected view. A warning may also involve elements outside the view. Incomplete if skippedCount>0.",
       "toolset": "views-sheets",
       "access": "read_only",
       "annotations": {
@@ -507,7 +507,7 @@
     },
     {
       "name": "revit_list_warnings",
-      "description": "Group model warnings by description text. warning_text with include_elements=true returns the elements of one group. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Group model warnings by description text. warning_text with include_elements=true returns the elements of one group. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -526,7 +526,7 @@
     },
     {
       "name": "revit_list_relations",
-      "description": "Read model object membership or dependencies. relation is level-rooms, area-scheme-elements or view-template-dependents (with source_name), or group-elements or nested-family (with source_id). skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read model object membership or dependencies. relation is level-rooms, area-scheme-elements or view-template-dependents (with source_name), or group-elements or nested-family (with source_id). Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -563,8 +563,27 @@
       "networkAccess": "none"
     },
     {
+      "name": "revit_family_check",
+      "description": "Flex family types, compare expected millimetre bounds, test placement and export previews. Omit families in a family document; projects accept names or [\"*\"], capped at 20. All changes roll back. Only errors fail. Inspect client PNGs against the source; appearance is not graded. Long jobs return jobId for revit_jobs. Incomplete if skippedCount>0.",
+      "toolset": "family",
+      "access": "read_only",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true
+      },
+      "irreversible": false,
+      "confirmation": {
+        "required": "never"
+      },
+      "fileSystem": {
+        "access": "none"
+      },
+      "networkAccess": "none"
+    },
+    {
       "name": "revit_family_audit",
-      "description": "Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or [\"*\"]; family mode takes none. detail=\"summary\" returns parameter counts and up to 20 unused parameter names; detail=\"full\" returns all parameter metadata with group IDs and groupName labels. The wildcard audits the first 200 editable families sorted by name; data.skipped lists each remaining name and reason, with skippedCount. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Audit an open family or named project families without saving or loading changes. Project mode takes exact family names or [\"*\"]; family mode takes none. detail=\"summary\" returns parameter counts and up to 20 unused parameter names; detail=\"full\" returns all parameter metadata with group IDs and groupName labels. The wildcard audits the first 200 editable families sorted by name; data.skipped lists each remaining name and reason, with skippedCount. Incomplete if skippedCount>0.",
       "toolset": "family",
       "access": "read_only",
       "annotations": {
@@ -1673,7 +1692,7 @@
     },
     {
       "name": "revit_model_audit",
-      "description": "Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes. Incomplete if skippedCount>0.",
       "toolset": "read",
       "access": "modifying",
       "annotations": {
@@ -1731,7 +1750,7 @@
     },
     {
       "name": "revit_issue_register",
-      "description": "Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused. Incomplete if skippedCount>0.",
       "toolset": "export",
       "access": "modifying",
       "annotations": {

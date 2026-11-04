@@ -2850,6 +2850,217 @@
     },
     "type": "object"
   },
+  "revit_family_check": {
+    "$defs": {
+      "FamilyCheckExpected": {
+        "additionalProperties": false,
+        "properties": {
+          "depth_mm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "height_mm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "tolerance_mm": {
+            "default": 2,
+            "minimum": 0,
+            "type": "number"
+          },
+          "width_mm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "FamilyCheckVariant": {
+        "additionalProperties": false,
+        "properties": {
+          "parameter": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "values_mm": {
+            "items": {
+              "maximum": 100000,
+              "minimum": 1,
+              "type": "number"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "parameter",
+          "values_mm"
+        ],
+        "type": "object"
+      }
+    },
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": null,
+      "readOnlyHint": true
+    },
+    "properties": {
+      "detail_levels": {
+        "default": [
+          "coarse",
+          "fine"
+        ],
+        "items": {
+          "enum": [
+            "coarse",
+            "medium",
+            "fine"
+          ],
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expected": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "$ref": "#/$defs/FamilyCheckExpected"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "families": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "flex": {
+        "default": true,
+        "type": "boolean"
+      },
+      "host_test": {
+        "default": true,
+        "type": "boolean"
+      },
+      "image_px": {
+        "default": 800,
+        "maximum": 4096,
+        "minimum": 128,
+        "type": "integer"
+      },
+      "max_types": {
+        "default": 10,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "previews": {
+        "default": [
+          "3d",
+          "plan",
+          "front"
+        ],
+        "items": {
+          "enum": [
+            "3d",
+            "plan",
+            "front",
+            "right"
+          ],
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "timeout": {
+        "default": 900,
+        "maximum": 3600,
+        "minimum": 30,
+        "type": "integer"
+      },
+      "types": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "variants": {
+        "anyOf": [
+          {
+            "items": {
+              "$ref": "#/$defs/FamilyCheckVariant"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "type": "object"
+  },
   "revit_get_tool": {
     "annotations": {
       "destructiveHint": false,

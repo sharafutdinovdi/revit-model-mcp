@@ -80,6 +80,7 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
     ),
     "family": (
         "revit_family_audit",
+        "revit_family_check",
         "revit_edit_families",
         "revit_load_family",
         "revit_place_family",

@@ -182,6 +182,7 @@ def test_every_tool_has_reviewed_access_annotations():
         "revit_list_relations",
         "revit_list_instances",
         "revit_family_audit",
+        "revit_family_check",
         "revit_activate_document",
         "revit_activate_view",
         "revit_close_views",
@@ -193,7 +194,7 @@ def test_every_tool_has_reviewed_access_annotations():
         "revit_batch_status",
     }
     tools, live = registry()
-    assert len(tools) == 89
+    assert len(tools) == 90
     assert {tool["name"] for tool in live if tool["annotations"]["readOnlyHint"]} == read_only
     assert all(
         isinstance(tool["annotations"][hint], bool)

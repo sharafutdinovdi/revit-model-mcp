@@ -27,7 +27,7 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 | `actions` | `revit_set_parameter`, `revit_update_parameters`, `revit_move`, `revit_rotate`, `revit_copy`, `revit_mirror`, `revit_change_type`, `revit_delete`, `revit_run_actions` |
 | `documents` | `revit_open_document`, `revit_activate_document`, `revit_new_document`, `revit_close_document`, `revit_save_document`, `revit_sync_document` |
 | `views-sheets` | `revit_list_sheets`, `revit_list_views`, `revit_view_info`, `revit_view_summary`, `revit_view_elements`, `revit_view_warnings`, `revit_capture_elements`, `revit_export_view`, `revit_activate_view`, `revit_close_views`, `revit_create_view`, `revit_duplicate_view`, `revit_apply_view_template`, `revit_set_view_visibility`, `revit_override_graphics`, `revit_tag_elements`, `revit_create_schedule`, `revit_select`, `revit_show`, `revit_isolate`, `revit_create_sheet`, `revit_place_views_on_sheet` |
-| `family` | `revit_family_audit`, `revit_edit_families`, `revit_load_family`, `revit_place_family`, `revit_place_families` |
+| `family` | `revit_family_check`, `revit_family_audit`, `revit_edit_families`, `revit_load_family`, `revit_place_family`, `revit_place_families` |
 | `links` | `revit_compare_link_datums`, `revit_align_link_datums`, `revit_remove_links` |
 | `cad-mep` | `revit_link_cad`, `revit_walls_from_cad`, `revit_create_wall`, `revit_create_mep_run` |
 | `export` | `revit_export`, `revit_export_nwc`, `revit_nwc_settings_check`, `revit_issue_register` |
@@ -67,10 +67,10 @@ Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` 
 
 Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every Revit-backed read tool except `revit_list_sheets`, `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120` and `document=null`.
+Every Revit-backed read tool except `revit_list_sheets`, `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances`, `revit_family_audit` and `revit_family_check` accepts `timeout_seconds=120` and `document=null`.
 The server environment variable `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` configures the file-channel pickup timeout (default 300 seconds). `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
-Every timeout argument is named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
+Family check uses `timeout=900`. Other timeout arguments are named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
 Arguments named `output_path` (a file) and `output_dir` (a directory) write on the machine that runs the MCP client, unless the description says the path is on the workstation. `revit_export`, `revit_process_models` exports and `save.output_dir` write on the workstation. `save_as` is a Revit Save As path on the workstation.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.
@@ -173,6 +173,47 @@ The `settings_xml` path rejects device paths, `..` segments and UNC shares absen
 Geometric alignment does not create a monitor relationship or later Coordination Review warnings.
 
 `revit_view_info` returns `id`, `name`, `type`, `isTemplate`, `template` with controlled parameter names, detail level, display style, discipline, phase and phase filter, scale, crop and 3D section box in millimetres. It also returns the background type and colours where supported, category class toggles, individually hidden categories, filter visibility and enabled flags, Revit link visibility, and active temporary mode flags. `worksets` is null outside workshared documents. Link graphic overrides are inspected on Revit 2024 and later; earlier versions report instance and category hiding.
+
+### Family check
+
+`revit_family_check` checks regeneration, geometry, parameter flexing, source dimensions, project placement, and preview coverage without saving model changes.
+The default arguments are `families=null`, `types=null`, `flex=true`, `variants=null`, `expected=null`, `previews=["3d","plan","front"]`, `detail_levels=["coarse","fine"]`, `host_test=true`, `max_types=10`, `image_px=800`, and `timeout=900`.
+`process_id` selects the Revit process.
+An open family checks itself with `families` omitted; a project accepts exact names or `["*"]` and checks at most 20 families.
+The result lists overflow families and previews in `skipped`; types beyond `max_types` remain `not_assessed`.
+A family without types receives one temporary type.
+
+`variants` accepts objects such as `{"parameter":"Width","values_mm":[950,1050]}`.
+The default flex changes up to two writable positive length parameters to 95% and 105%, bounded to 1–100,000 mm.
+Built-in width and height take priority, followed by labelled parameters.
+`expected` maps type names to `width_mm`, `depth_mm`, `height_mm`, and optional `tolerance_mm` (default 2).
+The comparison uses the regenerated geometry extents along family X, Y, and Z; a difference exactly at the tolerance passes.
+Unchanged bounds and volume produce `parameter_no_effect` only for labelled driving lengths; nested-geometry ambiguity produces info.
+
+Each family returns `name`, `category`, `status`, `reason`, `types`, `checks`, `previews`, and `structure`.
+Each check contains `id`, `severity`, `type`, `message`, and `evidence`.
+Only errors fail a family; warnings and info never fail it.
+Regeneration, empty or invalid geometry, ineffective labelled parameters, source mismatch, failed placement, and missing host cuts produce errors.
+CAD imports produce warnings.
+Structure counts, subcategories, materials, and coarse/fine similarity provide descriptive evidence.
+Overlap thresholds require a corpus P90 and sample count; categories without measured thresholds skip that comparison.
+The threshold dataset is unavailable in this checkout, so overlap warnings remain unassessed and appear in `skipped`.
+The result `summary` counts errors, warnings, and info findings.
+
+Project placement uses disposable hosts and rolls back the instance and host.
+Family mode loads the family into a temporary project and closes that project without saving.
+Unsupported hosting remains unassessed with a reason.
+Door and window placement compares the temporary wall volume before and after insertion.
+All family type changes, variants, and preview view changes occur inside rolled-back transaction groups with temporary Undo tracking.
+Project families close with `Close(false)`.
+
+Preview entries contain `type`, `view`, `detail`, `path`, `widthPx`, and `heightPx`.
+`path` identifies a PNG on the MCP client machine.
+The call returns at most 24 previews within a 512 KiB encoded-image budget; `right` elevation is optional.
+Images beyond either limit appear in `skipped`; fewer previews or a smaller `image_px` reduce the payload.
+The reviewing agent must open the images and compare them with the source drawing; the tool does not grade appearance.
+Missing views and failed exports appear in `skipped`.
+The command runs as a long job and can return a `jobId`; `revit_jobs` collects the completed result and previews.
 
 ### Family audit
 

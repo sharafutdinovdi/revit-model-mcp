@@ -52,6 +52,16 @@ internal static class ReadCommandExecutor
                 return;
             }
 
+            if (job.Command == "family-check")
+            {
+                var target = ActionCommandExecutor.ResolveDocument(application, job.CoordinatorJob.TargetDocument);
+                ActionJobParser.ValidateFamilyMode(job.Action!, target.IsFamilyDocument);
+                var check = FamilyChecker.Read(application, target, job.CoordinatorJob,
+                    () => ResponseDelivery.CancellationRequested?.Invoke() == true);
+                output.Write(CommandResponse<RevitModelMcp.Core.Families.FamilyCheckData>.Ok(job.Command, check, stopwatch.ElapsedMilliseconds));
+                LogFinished(job.Command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
+                return;
+            }
             if (job.Command == "family-audit")
             {
                 var reference = job.CoordinatorJob.TargetDocument;
