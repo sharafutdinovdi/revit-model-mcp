@@ -90,6 +90,7 @@ public sealed class FamilyCheckRulesTests
     [Arguments("host_not_cut", "error")]
     [Arguments("imported_cad", "warning")]
     [Arguments("overlap_high", "warning")]
+    [Arguments("form_not_following", "warning")]
     [Arguments("structure", "info")]
     public async Task ClassifiesSeverity(string id, string expected) =>
         await Assert.That(FamilyCheckRules.Severity(id)).IsEqualTo(expected);
@@ -114,6 +115,48 @@ public sealed class FamilyCheckRulesTests
         await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1, true, true, false)).IsNull();
         await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1, false, false, false)).IsNull();
         await Assert.That(FamilyCheckRules.NoEffectSeverity(before, 1, same, 1.01, true, false, false)).IsNull();
+    }
+
+    [Test]
+    [Arguments(800, 1.1, 0, true)]
+    [Arguments(799, 1.1, 0, false)]
+    [Arguments(800, 1, 0, false)]
+    [Arguments(800, 1.1, 0.5, false)]
+    [Arguments(800, 1.1, 0.499, true)]
+    [Arguments(800, -1.1, -0.499, true)]
+    [Arguments(800, -1.1, -0.5, false)]
+    public async Task FormFollowingUsesExactThresholds(double formExtent, double familyChange, double formChange, bool flagged)
+    {
+        var result = FamilyCheckRules.FormNotFollowing(new() { Width = 1000 }, new() { Width = 1000 + familyChange },
+            new() { Width = formExtent }, new() { Width = formExtent + formChange });
+        await Assert.That(result.HasValue).IsEqualTo(flagged);
+    }
+
+    [Test]
+    [Arguments("X", 10, 2, 3)]
+    [Arguments("Y", 2, 10, 3)]
+    [Arguments("Z", 2, 3, 10)]
+    public async Task FormFollowingSelectsLargestAbsoluteFamilyChange(string axis, double x, double y, double z)
+    {
+        var before = new FamilyCheckBounds { Width = 1000, Depth = 1000, Height = 1000 };
+        var after = new FamilyCheckBounds { Width = 1000 - x, Depth = 1000 + y, Height = 1000 + z };
+        var form = new FamilyCheckBounds { Width = 800, Depth = 800, Height = 800 };
+        var result = FamilyCheckRules.FormNotFollowing(before, after, form, form);
+        await Assert.That(result.HasValue).IsTrue();
+        await Assert.That(result!.Value.Axis).IsEqualTo(axis);
+        await Assert.That(result.Value.FamilyBefore).IsEqualTo(1000.0);
+        await Assert.That(result.Value.FamilyAfter).IsEqualTo(axis == "X" ? 1000 - x : axis == "Y" ? 1000 + y : 1000 + z);
+        await Assert.That(result.Value.FormBefore).IsEqualTo(800.0);
+        await Assert.That(result.Value.FormAfter).IsEqualTo(800.0);
+    }
+
+    [Test]
+    public async Task FormFollowingIgnoresSmallerAxesAndEmptyBaseline()
+    {
+        await Assert.That(FamilyCheckRules.FormNotFollowing(new() { Width = 1000, Height = 1000 },
+            new() { Width = 1002, Height = 1005 }, new() { Width = 1000, Height = 799 },
+            new() { Width = 1000, Height = 799 }).HasValue).IsFalse();
+        await Assert.That(FamilyCheckRules.FormNotFollowing(new(), new() { Width = 10 }, new(), new()).HasValue).IsFalse();
     }
 
     [Test]

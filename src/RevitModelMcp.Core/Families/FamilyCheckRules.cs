@@ -12,7 +12,7 @@ public static class FamilyCheckRules
     {
         "regen_failed" or "geometry_empty" or "geometry_invalid" or "parameter_no_effect" or
             "expected_mismatch" or "place_failed" or "host_not_cut" => "error",
-        "imported_cad" or "overlap_high" => "warning",
+        "imported_cad" or "overlap_high" or "form_not_following" => "warning",
         _ => "info"
     };
 
@@ -23,6 +23,21 @@ public static class FamilyCheckRules
     public static string? NoEffectSeverity(FamilyCheckBounds before, double beforeVolume, FamilyCheckBounds after,
         double afterVolume, bool labelled, bool reporting, bool ambiguous) =>
         reporting || !labelled || !SameGeometry(before, beforeVolume, after, afterVolume) ? null : ambiguous ? "info" : "error";
+
+    public static (string Axis, double FamilyBefore, double FamilyAfter, double FormBefore, double FormAfter)? FormNotFollowing(
+        FamilyCheckBounds familyBefore, FamilyCheckBounds familyAfter, FamilyCheckBounds formBefore, FamilyCheckBounds formAfter)
+    {
+        var axes = new[]
+        {
+            (Axis: "X", FamilyBefore: familyBefore.Width, FamilyAfter: familyAfter.Width, FormBefore: formBefore.Width, FormAfter: formAfter.Width),
+            (Axis: "Y", FamilyBefore: familyBefore.Depth, FamilyAfter: familyAfter.Depth, FormBefore: formBefore.Depth, FormAfter: formAfter.Depth),
+            (Axis: "Z", FamilyBefore: familyBefore.Height, FamilyAfter: familyAfter.Height, FormBefore: formBefore.Height, FormAfter: formAfter.Height)
+        };
+        var axis = axes.OrderByDescending(item => Math.Abs(item.FamilyAfter - item.FamilyBefore)).First();
+        return axis.FamilyBefore > 0 && axis.FormBefore >= 0.8 * axis.FamilyBefore &&
+            Math.Abs(axis.FamilyAfter - axis.FamilyBefore) > 1 && Math.Abs(axis.FormAfter - axis.FormBefore) < 0.5
+            ? axis : null;
+    }
 
     public static bool ExpectedMatches(FamilyCheckBounds actual, FamilyCheckExpected expected) =>
         (!expected.WidthMm.HasValue || Math.Abs(actual.Width - expected.WidthMm.Value) <= expected.ToleranceMm + 1e-9) &&

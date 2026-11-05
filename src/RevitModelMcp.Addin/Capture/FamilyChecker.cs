@@ -181,11 +181,14 @@ internal static class FamilyChecker
         }
     }
 
-    private sealed record Measurement(FamilyCheckBounds Bounds, double Volume, string Fingerprint);
+    private sealed record FormMeasurement(string Kind, FamilyCheckBounds Bounds);
+    private sealed record Measurement(FamilyCheckBounds Bounds, double Volume, string Fingerprint,
+        Dictionary<string, FormMeasurement> Forms);
 
     private static Measurement Measure(Document document, FamilyCheckFamily result, string typeName, ViewDetailLevel detail)
     {
         var solids = new List<Solid>();
+        var forms = new Dictionary<string, FormMeasurement>();
         using var geometryOptions = new Options { DetailLevel = detail, IncludeNonVisibleObjects = false };
         var category = document.OwnerFamily.FamilyCategory;
         foreach (var element in new FilteredElementCollector(document).WhereElementIsNotElementType())
@@ -195,7 +198,18 @@ internal static class FamilyChecker
             if (element is FamilyInstance && (element.Category is null || category is null ||
                 element.Category.Id != category.Id && element.Category.Parent?.Id != category.Id)) continue;
             var geometry = element.get_Geometry(geometryOptions);
-            if (geometry is not null) ReadSolids(geometry, solids);
+            if (geometry is null) continue;
+            var elementSolids = new List<Solid>();
+            ReadSolids(geometry, elementSolids);
+            solids.AddRange(elementSolids);
+            if (element is GenericForm { IsSolid: true } && elementSolids.Any(solid => solid.Volume > 0))
+            {
+                var formPoints = new List<XYZ>();
+                foreach (var solid in elementSolids.Where(solid => solid.Volume > 0))
+                    foreach (Face face in solid.Faces)
+                        formPoints.AddRange(face.Triangulate().Vertices);
+                forms[element.Id.ToString()] = new FormMeasurement(element.GetType().Name, Bounds(formPoints));
+            }
         }
         if (detail == ViewDetailLevel.Fine && (solids.Count == 0 || !solids.Any(solid => solid.Volume > 1e-12)))
             Add(result, "geometry_empty", typeName, "No visible model-category solid has positive volume.");
@@ -222,17 +236,18 @@ internal static class FamilyChecker
                 }
                 catch (Exception exception) { Add(result, "geometry_invalid", typeName, exception.Message); }
             }
-        var bounds = new FamilyCheckBounds();
-        if (points.Count > 0)
-        {
-            bounds.Width = (points.Max(point => point.X) - points.Min(point => point.X)) * MillimetresPerFoot;
-            bounds.Depth = (points.Max(point => point.Y) - points.Min(point => point.Y)) * MillimetresPerFoot;
-            bounds.Height = (points.Max(point => point.Z) - points.Min(point => point.Z)) * MillimetresPerFoot;
-        }
+        var bounds = Bounds(points);
         var fingerprint = string.Join(";", points.Select(point => $"{Number(Math.Round(point.X, 6))},{Number(Math.Round(point.Y, 6))},{Number(Math.Round(point.Z, 6))}")
             .Distinct().OrderBy(point => point, StringComparer.Ordinal));
-        return new Measurement(bounds, volume * CubicMetresPerCubicFoot, fingerprint);
+        return new Measurement(bounds, volume * CubicMetresPerCubicFoot, fingerprint, forms);
     }
+
+    private static FamilyCheckBounds Bounds(List<XYZ> points) => points.Count == 0 ? new() : new()
+    {
+        Width = (points.Max(point => point.X) - points.Min(point => point.X)) * MillimetresPerFoot,
+        Depth = (points.Max(point => point.Y) - points.Min(point => point.Y)) * MillimetresPerFoot,
+        Height = (points.Max(point => point.Z) - points.Min(point => point.Z)) * MillimetresPerFoot
+    };
 
     private static void ReadSolids(GeometryElement geometry, List<Solid> solids)
     {
@@ -289,6 +304,25 @@ internal static class FamilyChecker
                     if (severity is not null && original.HasValue && Math.Abs(value - original.Value * MillimetresPerFoot) > 0.01)
                         Add(result, "parameter_no_effect", type.Name, "Labelled length changed without changing the total bounds or volume.", severity,
                             new() { ["parameter"] = variant.Parameter, ["valueMm"] = Number(value), ["ambiguousNestedGeometry"] = ambiguous.ToString() });
+                    foreach (var (id, form) in baseline.Forms)
+                    {
+                        if (!measured.Forms.TryGetValue(id, out var after)) continue;
+                        var evidence = FamilyCheckRules.FormNotFollowing(baseline.Bounds, measured.Bounds, form.Bounds, after.Bounds);
+                        if (evidence is not { } extent) continue;
+                        Add(result, "form_not_following", type.Name, "A large solid form does not follow the changed family extent.",
+                            evidence: new()
+                            {
+                                ["parameter"] = variant.Parameter,
+                                ["valueMm"] = Number(value),
+                                ["axis"] = extent.Axis,
+                                ["formId"] = id,
+                                ["formKind"] = form.Kind,
+                                ["familyExtentBeforeMm"] = Number(extent.FamilyBefore),
+                                ["familyExtentAfterMm"] = Number(extent.FamilyAfter),
+                                ["formExtentBeforeMm"] = Number(extent.FormBefore),
+                                ["formExtentAfterMm"] = Number(extent.FormAfter)
+                            });
+                    }
                     trial.Status = severity == "error" || result.Checks.Any(check => check.Type == type.Name && check.Id is "geometry_empty" or "geometry_invalid") ? "failed" : "passed";
                 }
                 catch (Exception exception)

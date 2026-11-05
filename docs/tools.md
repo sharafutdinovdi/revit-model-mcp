@@ -188,6 +188,8 @@ The default flex changes up to two writable positive length parameters to 95% an
 Built-in width and height take priority, followed by labelled parameters.
 `expected` maps type names to `width_mm`, `depth_mm`, `height_mm`, and optional `tolerance_mm` (default 2).
 The comparison uses the regenerated geometry extents along family X, Y, and Z; a difference exactly at the tolerance passes.
+Each length variant also reports `form_not_following` (warning) for a top-level solid form matched by element id when its baseline extent is at least 80% of the family extent on the axis with the largest absolute family extent change, the family extent changes by more than 1 mm, and the form extent changes by less than 0.5 mm.
+Evidence includes the parameter, axis, form id and kind, and family and form extents before and after in millimetres.
 Unchanged bounds and volume produce `parameter_no_effect` only for labelled driving lengths; nested-geometry ambiguity produces info.
 
 Each family returns `name`, `category`, `status`, `reason`, `types`, `checks`, `previews`, and `structure`.
