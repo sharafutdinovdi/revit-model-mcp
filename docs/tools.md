@@ -189,7 +189,8 @@ Built-in width and height take priority, followed by labelled parameters.
 `expected` maps type names to `width_mm`, `depth_mm`, `height_mm`, and optional `tolerance_mm` (default 2).
 The comparison uses the regenerated model solids visible for the checked type at Fine detail along family X, Y, and Z; a difference exactly at the tolerance passes.
 Forms whose evaluated Visible parameter is false or whose Fine detail visibility is disabled are excluded, including forms hidden at every detail level.
-Extents come from `Solid.GetBoundingBox` with all eight corners transformed to family coordinates; mesh triangulation supplies only the geometry fingerprint.
+Extents come from face tessellation at maximum detail (`Face.Triangulate(1.0)`); the geometry fingerprint uses the default tessellation.
+Revit solid bounding boxes can contain excess margin on curved faces.
 The `geometry_measurement` finding records the actual bounds, visibility scope, and measurement method.
 Each length variant also reports `form_not_following` (warning) for a top-level solid form matched by element id when its baseline extent is at least 80% of the family extent on the axis with the largest absolute family extent change, the family extent changes by more than 1 mm, and the form extent changes by less than 0.5 mm.
 Evidence includes the parameter, axis, form id and kind, and family and form extents before and after in millimetres.

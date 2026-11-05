@@ -129,7 +129,7 @@ internal static class FamilyChecker
                         evidence: new()
                         {
                             ["actualMm"] = BoundsText(baseline.Bounds),
-                            ["boundsMethod"] = "Solid.GetBoundingBox with all eight corners transformed to family coordinates",
+                            ["boundsMethod"] = "Face.Triangulate(1.0) at maximum level of detail",
                             ["visibility"] = "Forms with evaluated Visible=false or hidden at Fine detail are excluded; forms hidden at every detail level are excluded."
                         });
                     if (options.Expected?.TryGetValue(name, out var expected) == true && !FamilyCheckRules.ExpectedMatches(baseline.Bounds, expected))
@@ -223,7 +223,7 @@ internal static class FamilyChecker
             if (element is GenericForm { IsSolid: true } && elementSolids.Any(solid => solid.Volume > 0))
             {
                 forms[element.Id.ToString()] = new FormMeasurement(element.GetType().Name,
-                    Bounds(elementSolids.Where(solid => solid.Volume > 0).SelectMany(SolidBoundsCorners).ToList()));
+                    Bounds(elementSolids.Where(solid => solid.Volume > 0).SelectMany(SolidExtentPoints).ToList()));
             }
         }
         if (detail == ViewDetailLevel.Fine && (solids.Count == 0 || !solids.Any(solid => solid.Volume > 1e-12)))
@@ -251,7 +251,7 @@ internal static class FamilyChecker
                 }
                 catch (Exception exception) { Add(result, "geometry_invalid", typeName, exception.Message); }
             }
-        var bounds = Bounds(solids.SelectMany(SolidBoundsCorners).ToList());
+        var bounds = Bounds(solids.SelectMany(SolidExtentPoints).ToList());
         var fingerprint = string.Join(";", points.Select(point => $"{Number(Math.Round(point.X, 6))},{Number(Math.Round(point.Y, 6))},{Number(Math.Round(point.Z, 6))}")
             .Distinct().OrderBy(point => point, StringComparer.Ordinal));
         return new Measurement(bounds, volume * CubicMetresPerCubicFoot, fingerprint, forms);
@@ -264,14 +264,11 @@ internal static class FamilyChecker
         Height = (points.Max(point => point.Z) - points.Min(point => point.Z)) * MillimetresPerFoot
     };
 
-    private static IEnumerable<XYZ> SolidBoundsCorners(Solid solid)
+    private static IEnumerable<XYZ> SolidExtentPoints(Solid solid)
     {
-        using var bounds = solid.GetBoundingBox();
-        for (var corner = 0; corner < 8; corner++)
-            yield return bounds.Transform.OfPoint(new XYZ(
-                (corner & 1) == 0 ? bounds.Min.X : bounds.Max.X,
-                (corner & 2) == 0 ? bounds.Min.Y : bounds.Max.Y,
-                (corner & 4) == 0 ? bounds.Min.Z : bounds.Max.Z));
+        foreach (Face face in solid.Faces)
+            foreach (var vertex in face.Triangulate(1.0).Vertices)
+                yield return vertex;
     }
 
     private static void ReadSolids(GeometryElement geometry, List<Solid> solids)
