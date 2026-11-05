@@ -314,7 +314,10 @@ internal static class FamilyChecker
             catch (Autodesk.Revit.Exceptions.InvalidOperationException) { }
         }
         result.Structure["labelledDimensions"] = labelledDimensions;
-        result.Structure["lockedDimensions"] = new FilteredElementCollector(document).OfClass(typeof(Dimension)).Cast<Dimension>().Count(dimension => dimension.IsLocked);
+        result.Structure["lockedDimensions"] = new FilteredElementCollector(document).OfClass(typeof(Dimension)).Cast<Dimension>()
+            .Count(dimension => dimension.NumberOfSegments > 0
+                ? dimension.Segments.Cast<DimensionSegment>().Any(segment => segment.IsLocked)
+                : dimension.IsLocked);
         result.Structure["formulas"] = parameters.Count(parameter => !string.IsNullOrWhiteSpace(parameter.Formula));
         result.Structure["nestedFamilies"] = new FilteredElementCollector(document).OfClass(typeof(FamilyInstance)).GetElementCount();
         Add(result, "structure", null, "Structure counts are descriptive evidence only.", evidence: result.Structure.ToDictionary(item => item.Key, item => item.Value.ToString(CultureInfo.InvariantCulture)));
