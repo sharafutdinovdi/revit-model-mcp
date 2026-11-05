@@ -151,11 +151,11 @@ internal static class FamilyChecker
         return result;
     }
 
-    private static void Commit(Document document, Action change)
+    private static void Commit(Document document, Action change, bool failOnWarnings = true)
     {
         using var transaction = new Transaction(document, "Check family temporarily");
         transaction.Start();
-        var failures = new CheckFailures();
+        var failures = new CheckFailures(failOnWarnings);
         transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
             .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
         change();
@@ -164,13 +164,17 @@ internal static class FamilyChecker
             throw new InvalidOperationException("Regeneration raised a Revit failure or did not commit. " + failures.Message);
     }
 
-    private sealed class CheckFailures : IFailuresPreprocessor
+    private sealed class CheckFailures(bool failOnWarnings) : IFailuresPreprocessor
     {
         internal bool HadFailure { get; private set; }
         internal string Message { get; private set; } = string.Empty;
         public FailureProcessingResult PreprocessFailures(FailuresAccessor accessor)
         {
-            var messages = accessor.GetFailureMessages();
+            var messages = accessor.GetFailureMessages().Where(message =>
+                failOnWarnings || message.GetSeverity() != FailureSeverity.Warning).ToList();
+            if (!failOnWarnings)
+                foreach (var warning in accessor.GetFailureMessages().Where(message => message.GetSeverity() == FailureSeverity.Warning))
+                    accessor.DeleteWarning(warning);
             HadFailure |= messages.Count > 0;
             Message = string.Join("; ", messages.Select(failure => failure.GetDescriptionText()));
             return messages.Count > 0 ? FailureProcessingResult.ProceedWithRollBack : FailureProcessingResult.Continue;
@@ -470,7 +474,7 @@ internal static class FamilyChecker
                         wallType.SetCompoundStructure(compound);
                         wall = Wall.Create(document, Line.CreateBound(new XYZ(-10, 0, 0), new XYZ(10, 0, 0)), wallType.Id, level.Id, 3000 / MillimetresPerFoot, 0, false, false);
                     }
-                });
+                }, false);
                 if (wall is not null) beforeVolume = WallVolume(wall);
                 Commit(document, () =>
                 {
@@ -489,7 +493,7 @@ internal static class FamilyChecker
                         instance = document.Create.NewFamilyInstance(XYZ.Zero, symbol, level, StructuralType.NonStructural);
                     else throw new NotSupportedException("This placement mode requires a supplied host or placement curve.");
                     if (instance is null) throw new InvalidOperationException("Revit did not create an instance.");
-                });
+                }, false);
                 type.Placed = true;
                 if (wall is not null && CategoryKey(document, family) is "OST_Doors" or "OST_Windows")
                 {
