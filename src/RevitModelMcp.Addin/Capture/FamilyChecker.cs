@@ -125,6 +125,13 @@ internal static class FamilyChecker
                 {
                     Commit(document, () => manager.CurrentType = type);
                     var baseline = Measure(document, result, name, ViewDetailLevel.Fine);
+                    Add(result, "geometry_measurement", name, "Bounds measure visible regenerated model solids for the checked type at Fine detail.",
+                        evidence: new()
+                        {
+                            ["actualMm"] = BoundsText(baseline.Bounds),
+                            ["boundsMethod"] = "Solid.GetBoundingBox with all eight corners transformed to family coordinates",
+                            ["visibility"] = "Forms with evaluated Visible=false or hidden at Fine detail are excluded; forms hidden at every detail level are excluded."
+                        });
                     if (options.Expected?.TryGetValue(name, out var expected) == true && !FamilyCheckRules.ExpectedMatches(baseline.Bounds, expected))
                         Add(result, "expected_mismatch", name, "Regenerated bounds exceed the source tolerance.",
                             evidence: new() { ["actualMm"] = BoundsText(baseline.Bounds), ["toleranceMm"] = Number(expected.ToleranceMm) });
@@ -193,7 +200,18 @@ internal static class FamilyChecker
         var category = document.OwnerFamily.FamilyCategory;
         foreach (var element in new FilteredElementCollector(document).WhereElementIsNotElementType())
         {
-            if (element is GenericForm { IsSolid: false }) continue;
+            if (element is GenericForm form)
+            {
+                if (!form.IsSolid) continue;
+                using var visibility = form.GetVisibility();
+                var shownAtDetail = detail switch
+                {
+                    ViewDetailLevel.Coarse => visibility.IsShownInCoarse,
+                    ViewDetailLevel.Medium => visibility.IsShownInMedium,
+                    _ => visibility.IsShownInFine
+                };
+                if (!FamilyCheckRules.IsFormVisible(form.Visible, shownAtDetail)) continue;
+            }
             if (element is not GenericForm && element is not FamilyInstance) continue;
             if (element is FamilyInstance && (element.Category is null || category is null ||
                 element.Category.Id != category.Id && element.Category.Parent?.Id != category.Id)) continue;
@@ -204,11 +222,8 @@ internal static class FamilyChecker
             solids.AddRange(elementSolids);
             if (element is GenericForm { IsSolid: true } && elementSolids.Any(solid => solid.Volume > 0))
             {
-                var formPoints = new List<XYZ>();
-                foreach (var solid in elementSolids.Where(solid => solid.Volume > 0))
-                    foreach (Face face in solid.Faces)
-                        formPoints.AddRange(face.Triangulate().Vertices);
-                forms[element.Id.ToString()] = new FormMeasurement(element.GetType().Name, Bounds(formPoints));
+                forms[element.Id.ToString()] = new FormMeasurement(element.GetType().Name,
+                    Bounds(elementSolids.Where(solid => solid.Volume > 0).SelectMany(SolidBoundsCorners).ToList()));
             }
         }
         if (detail == ViewDetailLevel.Fine && (solids.Count == 0 || !solids.Any(solid => solid.Volume > 1e-12)))
@@ -236,7 +251,7 @@ internal static class FamilyChecker
                 }
                 catch (Exception exception) { Add(result, "geometry_invalid", typeName, exception.Message); }
             }
-        var bounds = Bounds(points);
+        var bounds = Bounds(solids.SelectMany(SolidBoundsCorners).ToList());
         var fingerprint = string.Join(";", points.Select(point => $"{Number(Math.Round(point.X, 6))},{Number(Math.Round(point.Y, 6))},{Number(Math.Round(point.Z, 6))}")
             .Distinct().OrderBy(point => point, StringComparer.Ordinal));
         return new Measurement(bounds, volume * CubicMetresPerCubicFoot, fingerprint, forms);
@@ -248,6 +263,16 @@ internal static class FamilyChecker
         Depth = (points.Max(point => point.Y) - points.Min(point => point.Y)) * MillimetresPerFoot,
         Height = (points.Max(point => point.Z) - points.Min(point => point.Z)) * MillimetresPerFoot
     };
+
+    private static IEnumerable<XYZ> SolidBoundsCorners(Solid solid)
+    {
+        using var bounds = solid.GetBoundingBox();
+        for (var corner = 0; corner < 8; corner++)
+            yield return bounds.Transform.OfPoint(new XYZ(
+                (corner & 1) == 0 ? bounds.Min.X : bounds.Max.X,
+                (corner & 2) == 0 ? bounds.Min.Y : bounds.Max.Y,
+                (corner & 4) == 0 ? bounds.Min.Z : bounds.Max.Z));
+    }
 
     private static void ReadSolids(GeometryElement geometry, List<Solid> solids)
     {

@@ -96,6 +96,26 @@ public sealed class FamilyCheckRulesTests
         await Assert.That(FamilyCheckRules.Severity(id)).IsEqualTo(expected);
 
     [Test]
+    [Arguments(false, false, false)]
+    [Arguments(false, true, false)]
+    [Arguments(true, false, false)]
+    [Arguments(true, true, true)]
+    public async Task GeometryRequiresEvaluatedVisibilityAndDetailVisibility(bool visible, bool shownAtDetail, bool expected) =>
+        await Assert.That(FamilyCheckRules.IsFormVisible(visible, shownAtDetail)).IsEqualTo(expected);
+
+    [Test]
+    [Arguments(549.5, true)]
+    [Arguments(550.5, true)]
+    [Arguments(549.499999, false)]
+    [Arguments(550.500001, false)]
+    public async Task SphereDiameterUsesHalfMillimetreTolerance(double diameter, bool matches)
+    {
+        var bounds = new FamilyCheckBounds { Width = diameter, Depth = diameter, Height = diameter };
+        var expected = new FamilyCheckExpected { WidthMm = 550, DepthMm = 550, HeightMm = 550, ToleranceMm = 0.5 };
+        await Assert.That(FamilyCheckRules.ExpectedMatches(bounds, expected)).IsEqualTo(matches);
+    }
+
+    [Test]
     public async Task ExpectedToleranceIncludesBoundary()
     {
         var bounds = new FamilyCheckBounds { Width = 1002, Depth = 998, Height = 1000 };
