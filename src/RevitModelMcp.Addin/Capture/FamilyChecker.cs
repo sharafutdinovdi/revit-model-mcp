@@ -187,9 +187,9 @@ internal static class FamilyChecker
         foreach (var element in new FilteredElementCollector(document).WhereElementIsNotElementType())
         {
             if (element is GenericForm { IsSolid: false }) continue;
-            if (element.Category is null || category is null ||
-                element.Category.Id != category.Id && element.Category.Parent?.Id != category.Id) continue;
             if (element is not GenericForm && element is not FamilyInstance) continue;
+            if (element is FamilyInstance && (element.Category is null || category is null ||
+                element.Category.Id != category.Id && element.Category.Parent?.Id != category.Id)) continue;
             var geometry = element.get_Geometry(geometryOptions);
             if (geometry is not null) ReadSolids(geometry, solids);
         }
@@ -425,7 +425,10 @@ internal static class FamilyChecker
         foreach (var type in result.Types.Where(type => type.Status != "not_assessed"))
         {
             if (shouldStop()) break;
-            var symbol = family.GetFamilySymbolIds().Select(id => document.GetElement(id)).OfType<FamilySymbol>().FirstOrDefault(candidate => candidate.Name == type.Name);
+            var symbols = family.GetFamilySymbolIds().Select(id => document.GetElement(id)).OfType<FamilySymbol>().ToList();
+            var symbol = symbols.FirstOrDefault(candidate => candidate.Name == type.Name);
+            if (symbol is null && string.IsNullOrWhiteSpace(type.Name) && symbols.Count == 1)
+                symbol = symbols[0];
             if (symbol is null)
             {
                 data.Skipped.Add(new SkippedRead { What = type.Name, Reason = "No project symbol for this type." });
@@ -486,7 +489,7 @@ internal static class FamilyChecker
                     if (instance is null) throw new InvalidOperationException("Revit did not create an instance.");
                 });
                 type.Placed = true;
-                if (wall is not null && CategoryKey(document, family) is "doors" or "windows")
+                if (wall is not null && CategoryKey(document, family) is "OST_Doors" or "OST_Windows")
                 {
                     type.HostCut = beforeVolume - WallVolume(wall) > 1e-9;
                     if (type.HostCut == false)
@@ -521,15 +524,18 @@ internal static class FamilyChecker
     {
         var category = (family ?? document.OwnerFamily).FamilyCategory;
         if (category is null) return "unknown";
-        if (category.Id == new ElementId(BuiltInCategory.OST_Doors)) return "doors";
-        if (category.Id == new ElementId(BuiltInCategory.OST_Windows)) return "windows";
-        if (category.Id == new ElementId(BuiltInCategory.OST_Furniture)) return "furniture";
-        if (category.Id == new ElementId(BuiltInCategory.OST_LightingFixtures)) return "lighting";
-        if (category.Id == new ElementId(BuiltInCategory.OST_Casework)) return "casework";
+        if (category.Id == new ElementId(BuiltInCategory.OST_Doors)) return "OST_Doors";
+        if (category.Id == new ElementId(BuiltInCategory.OST_Windows)) return "OST_Windows";
+        if (category.Id == new ElementId(BuiltInCategory.OST_Furniture)) return "OST_Furniture";
+        if (category.Id == new ElementId(BuiltInCategory.OST_LightingFixtures)) return "OST_LightingFixtures";
+        if (category.Id == new ElementId(BuiltInCategory.OST_Casework)) return "OST_Casework";
+        if (category.Id == new ElementId(BuiltInCategory.OST_GenericModel)) return "OST_GenericModel";
+        if (category.Id == new ElementId(BuiltInCategory.OST_StructuralColumns)) return "OST_StructuralColumns";
         return "unknown";
     }
 
-    private static bool SimplificationCommon(Document document) => CategoryKey(document) != "unknown";
+    private static bool SimplificationCommon(Document document) => CategoryKey(document) is
+        "OST_Doors" or "OST_Windows" or "OST_Furniture" or "OST_LightingFixtures" or "OST_Casework";
     private static string Number(double value) => value.ToString("G17", CultureInfo.InvariantCulture);
     private static string BoundsText(FamilyCheckBounds bounds) => $"{Number(bounds.Width)}, {Number(bounds.Depth)}, {Number(bounds.Height)}";
 
