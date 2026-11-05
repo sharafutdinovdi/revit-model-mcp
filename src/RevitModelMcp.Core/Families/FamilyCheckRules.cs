@@ -29,8 +29,19 @@ public static class FamilyCheckRules
         (!expected.DepthMm.HasValue || Math.Abs(actual.Depth - expected.DepthMm.Value) <= expected.ToleranceMm + 1e-9) &&
         (!expected.HeightMm.HasValue || Math.Abs(actual.Height - expected.HeightMm.Value) <= expected.ToleranceMm + 1e-9);
 
-    // Corpus thresholds require measured P90 and sample count. Missing categories are not assessed.
-    public static (double P90, int Count)? OverlapThreshold(string category) => null;
+    // Maximum category P90 across corpus groups with at least four complete flex families.
+    // Count belongs to the group supplying the selected P90. Missing categories are not assessed.
+    public static (double P90, int Count)? OverlapThreshold(string category) => category switch
+    {
+        "OST_Casework" => (0.03367, 7),
+        "OST_Doors" => (0.4418, 16),
+        "OST_Furniture" => (0.05211, 15),
+        "OST_GenericModel" => (0.00674, 8),
+        "OST_LightingFixtures" => (0.01481, 4),
+        "OST_StructuralColumns" => (0.329, 4),
+        "OST_Windows" => (0.1107, 17),
+        _ => null
+    };
 
     public static string Status(IEnumerable<FamilyCheckFinding> findings, bool assessed) =>
         findings.Any(finding => finding.Severity == "error") ? "failed" : assessed ? "passed" : "not_assessed";

@@ -117,8 +117,44 @@ public sealed class FamilyCheckRulesTests
     }
 
     [Test]
-    public async Task MissingOverlapCategoryHasNoInventedThreshold() =>
-        await Assert.That(FamilyCheckRules.OverlapThreshold("unknown")).IsNull();
+    [Arguments("OST_Casework", 0.03367, 7)]
+    [Arguments("OST_Doors", 0.4418, 16)]
+    [Arguments("OST_Furniture", 0.05211, 15)]
+    [Arguments("OST_GenericModel", 0.00674, 8)]
+    [Arguments("OST_LightingFixtures", 0.01481, 4)]
+    [Arguments("OST_StructuralColumns", 0.329, 4)]
+    [Arguments("OST_Windows", 0.1107, 17)]
+    public async Task OverlapThresholdUsesLargestQualifyingGroup(string category, double expectedP90, int expectedCount)
+    {
+        var threshold = FamilyCheckRules.OverlapThreshold(category);
+        await Assert.That(threshold).IsNotNull();
+        await Assert.That(threshold!.Value.P90).IsEqualTo(expectedP90);
+        await Assert.That(threshold.Value.Count).IsEqualTo(expectedCount);
+    }
+
+    [Test]
+    [Arguments(0.4418, false)]
+    [Arguments(0.4418000000000001, true)]
+    public async Task OverlapWarningRequiresRatioStrictlyAboveThreshold(double ratio, bool expectedWarning)
+    {
+        var threshold = FamilyCheckRules.OverlapThreshold("OST_Doors");
+        await Assert.That(threshold.HasValue && ratio > threshold.Value.P90).IsEqualTo(expectedWarning);
+    }
+
+    [Test]
+    public async Task OverlapThresholdIgnoresHigherP90FromUndersizedGroup()
+    {
+        // The open structural-column group has P90 0.4975 from only two families.
+        var threshold = FamilyCheckRules.OverlapThreshold("OST_StructuralColumns");
+        await Assert.That(threshold).IsEqualTo(((double P90, int Count)?)(0.329, 4));
+    }
+
+    [Test]
+    [Arguments("unknown")]
+    [Arguments("OST_Columns")]
+    [Arguments("OST_StairsRailingBaluster")]
+    public async Task MissingOverlapCategoryHasNoInventedThreshold(string category) =>
+        await Assert.That(FamilyCheckRules.OverlapThreshold(category)).IsNull();
 
     [Test]
     public async Task WarningsNeverFailAFamily()
