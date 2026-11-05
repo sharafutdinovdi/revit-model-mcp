@@ -278,8 +278,10 @@ internal static class FamilyChecker
                     trial.VolumeM3 = measured.Volume;
                     var labelled = metadata.Any(item => item.Name == variant.Parameter && item.UsedBy.Contains("label"));
                     var ambiguous = new FilteredElementCollector(document).OfClass(typeof(FamilyInstance)).Any();
-                    var severity = FamilyCheckRules.NoEffectSeverity(baseline.Bounds, baseline.Volume, measured.Bounds, measured.Volume,
-                        labelled, parameter.IsReporting, ambiguous);
+                    var severity = baseline.Fingerprint == measured.Fingerprint
+                        ? FamilyCheckRules.NoEffectSeverity(baseline.Bounds, baseline.Volume, measured.Bounds, measured.Volume,
+                            labelled, parameter.IsReporting, ambiguous)
+                        : null;
                     if (severity is not null && original.HasValue && Math.Abs(value - original.Value * MillimetresPerFoot) > 0.01)
                         Add(result, "parameter_no_effect", type.Name, "Labelled length changed without changing the total bounds or volume.", severity,
                             new() { ["parameter"] = variant.Parameter, ["valueMm"] = Number(value), ["ambiguousNestedGeometry"] = ambiguous.ToString() });
