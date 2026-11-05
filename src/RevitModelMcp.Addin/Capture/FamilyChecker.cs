@@ -125,12 +125,12 @@ internal static class FamilyChecker
                 {
                     Commit(document, () => manager.CurrentType = type);
                     var baseline = Measure(document, result, name, ViewDetailLevel.Fine);
-                    Add(result, "geometry_measurement", name, "Bounds measure visible regenerated model solids for the checked type at Fine detail.",
+                    Add(result, "geometry_measurement", name, "Bounds measure regenerated model solids visible for the checked type at any detail level.",
                         evidence: new()
                         {
                             ["actualMm"] = BoundsText(baseline.Bounds),
                             ["boundsMethod"] = "Face.Triangulate(1.0) at maximum level of detail",
-                            ["visibility"] = "Forms with evaluated Visible=false or hidden at Fine detail are excluded; forms hidden at every detail level are excluded."
+                            ["visibility"] = "Forms with evaluated Visible=false or hidden at every detail level are excluded; forms shown at Coarse, Medium, or Fine detail are included."
                         });
                     if (options.Expected?.TryGetValue(name, out var expected) == true && !FamilyCheckRules.ExpectedMatches(baseline.Bounds, expected))
                         Add(result, "expected_mismatch", name, "Regenerated bounds exceed the source tolerance.",
@@ -204,13 +204,10 @@ internal static class FamilyChecker
             {
                 if (!form.IsSolid) continue;
                 using var visibility = form.GetVisibility();
-                var shownAtDetail = detail switch
-                {
-                    ViewDetailLevel.Coarse => visibility.IsShownInCoarse,
-                    ViewDetailLevel.Medium => visibility.IsShownInMedium,
-                    _ => visibility.IsShownInFine
-                };
-                if (!FamilyCheckRules.IsFormVisible(form.Visible, shownAtDetail)) continue;
+                if (!FamilyCheckRules.IsFormVisible(form.Visible, visibility.IsShownInCoarse,
+                    visibility.IsShownInMedium, visibility.IsShownInFine)) continue;
+                if (detail == ViewDetailLevel.Coarse && !visibility.IsShownInCoarse) continue;
+                if (detail == ViewDetailLevel.Medium && !visibility.IsShownInMedium) continue;
             }
             if (element is not GenericForm && element is not FamilyInstance) continue;
             if (element is FamilyInstance && (element.Category is null || category is null ||

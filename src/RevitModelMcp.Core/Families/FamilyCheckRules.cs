@@ -16,7 +16,7 @@ public static class FamilyCheckRules
         _ => "info"
     };
 
-    public static bool IsFormVisible(bool visible, bool shownAtDetail) => visible && shownAtDetail;
+    public static bool IsFormVisible(bool visible, bool coarse, bool medium, bool fine) => visible && (coarse || medium || fine);
 
     public static bool SameGeometry(FamilyCheckBounds before, double beforeVolume, FamilyCheckBounds after, double afterVolume) =>
         Math.Abs(before.Width - after.Width) <= 0.01 && Math.Abs(before.Depth - after.Depth) <= 0.01 &&

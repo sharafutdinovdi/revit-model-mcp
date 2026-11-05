@@ -96,12 +96,24 @@ public sealed class FamilyCheckRulesTests
         await Assert.That(FamilyCheckRules.Severity(id)).IsEqualTo(expected);
 
     [Test]
-    [Arguments(false, false, false)]
-    [Arguments(false, true, false)]
-    [Arguments(true, false, false)]
-    [Arguments(true, true, true)]
-    public async Task GeometryRequiresEvaluatedVisibilityAndDetailVisibility(bool visible, bool shownAtDetail, bool expected) =>
-        await Assert.That(FamilyCheckRules.IsFormVisible(visible, shownAtDetail)).IsEqualTo(expected);
+    [Arguments(false, false, false, false, false)]
+    [Arguments(false, false, false, true, false)]
+    [Arguments(false, false, true, false, false)]
+    [Arguments(false, false, true, true, false)]
+    [Arguments(false, true, false, false, false)]
+    [Arguments(false, true, false, true, false)]
+    [Arguments(false, true, true, false, false)]
+    [Arguments(false, true, true, true, false)]
+    [Arguments(true, false, false, false, false)]
+    [Arguments(true, false, false, true, true)]
+    [Arguments(true, false, true, false, true)]
+    [Arguments(true, false, true, true, true)]
+    [Arguments(true, true, false, false, true)]
+    [Arguments(true, true, false, true, true)]
+    [Arguments(true, true, true, false, true)]
+    [Arguments(true, true, true, true, true)]
+    public async Task GeometryRequiresEvaluatedVisibilityAtAnyDetailLevel(bool visible, bool coarse, bool medium, bool fine, bool expected) =>
+        await Assert.That(FamilyCheckRules.IsFormVisible(visible, coarse, medium, fine)).IsEqualTo(expected);
 
     [Test]
     [Arguments(549.5, true)]

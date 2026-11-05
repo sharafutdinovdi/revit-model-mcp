@@ -187,8 +187,9 @@ A family without types receives one temporary type.
 The default flex changes up to two writable positive length parameters to 95% and 105%, bounded to 1–100,000 mm.
 Built-in width and height take priority, followed by labelled parameters.
 `expected` maps type names to `width_mm`, `depth_mm`, `height_mm`, and optional `tolerance_mm` (default 2).
-The comparison uses the regenerated model solids visible for the checked type at Fine detail along family X, Y, and Z; a difference exactly at the tolerance passes.
-Forms whose evaluated Visible parameter is false or whose Fine detail visibility is disabled are excluded, including forms hidden at every detail level.
+The comparison uses the regenerated model solids visible for the checked type at any detail level along family X, Y, and Z; a difference exactly at the tolerance passes.
+Forms whose evaluated Visible parameter is false and forms hidden at every detail level are excluded.
+Fine geometry sampling includes forms shown only at Coarse or Medium detail; the separate Coarse comparison respects Coarse visibility.
 Extents come from face tessellation at maximum detail (`Face.Triangulate(1.0)`); the geometry fingerprint uses the default tessellation.
 Revit solid bounding boxes can contain excess margin on curved faces.
 The `geometry_measurement` finding records the actual bounds, visibility scope, and measurement method.
