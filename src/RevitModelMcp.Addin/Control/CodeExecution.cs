@@ -4,12 +4,14 @@ using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
 using RevitModelMcp.Core.Activity;
+using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
 
 #if !NETFRAMEWORK
@@ -93,6 +95,7 @@ internal static class CodeExecution
     }
 
     private static readonly BoundedLruCache<string, CompiledCode> Cache = new(32);
+    [ThreadStatic] private static ActionCommandExecutor.ActionFailures? _currentFailures;
 
     public static ActionResultData Execute(UIApplication application, Document? document, UIDocument? uiDocument,
         ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId, bool compileOnly = false)
@@ -180,6 +183,10 @@ internal static class CodeExecution
 
         if (compileOnly) return result;
         var context = new ScriptContext(application, uiDocument, document) { Args = action.Args };
+        void ProcessFailures(object? sender, FailuresProcessingEventArgs arguments)
+        {
+            if (ReferenceEquals(_currentFailures, failures)) failures.ProcessCallFailures(arguments);
+        }
         TransactionGroup? group = null;
         Transaction? transaction = null;
         var changedElementCount = 0;
@@ -197,6 +204,12 @@ internal static class CodeExecution
         loadContext.Resolving += (_, name) => GetBoundAssemblies().Concat(AppDomain.CurrentDomain.GetAssemblies())
             .FirstOrDefault(item => item.GetName().Name == name.Name);
 #endif
+        var previousContext = ScriptContext.Current;
+        var previousFailures = _currentFailures;
+        _currentFailures = failures;
+        using var handlers = new ScopedCallHandlers(
+            () => application.Application.FailuresProcessing += ProcessFailures,
+            () => application.Application.FailuresProcessing -= ProcessFailures);
         try
         {
             if (action.TransactionMode is "auto" or "group")
@@ -211,8 +224,6 @@ internal static class CodeExecution
                 transaction = new Transaction(document!, "revit_execute_code");
                 if (transaction.Start() != TransactionStatus.Started)
                     throw new InvalidOperationException("Could not start the action transaction.");
-                transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
-                    .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
             }
 #if NETFRAMEWORK
             // .NET Framework cannot unload assemblies, so load once per cache entry.
@@ -239,6 +250,7 @@ internal static class CodeExecution
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
                 throw;
             }
+            if (failures.Message is not null) throw new InvalidOperationException(failures.Message);
             if (context.CloseOpenScopes() || action.TransactionMode == "group" && document!.IsModifiable)
                 throw new InvalidOperationException("The script left a transaction or edit scope open. The run was rolled back.");
             result.ReturnValue = CodeResultLimiter.Limit(returned, ConvertSpecial);
@@ -305,7 +317,10 @@ internal static class CodeExecution
         }
         finally
         {
-            ScriptContext.Current = null;
+            ScriptContext.Current = previousContext;
+            handlers.Dispose();
+            _currentFailures = previousFailures;
+            result.Failures = failures.Records.Count > 0 ? failures.Records : null;
             if (counting) application.Application.DocumentChanged -= CountChanges;
             transaction?.Dispose();
             group?.Dispose();

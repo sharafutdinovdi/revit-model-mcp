@@ -307,6 +307,22 @@ See [Model audit](model-audit.md) for rule examples, packs, evidence limits, sta
 
 For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.
 
+## Execute code
+
+`revit_execute_code` applies the same failure policy to `auto`, `group`, and permitted script-owned (`none`) transactions.
+Warnings are deleted during failure processing and returned in `data.failures` with `severity`, `text`, `failureDefinitionId`, and `elementIds`.
+Errors cause a silent transaction rollback and retain their texts in the failed response and `data.failures`.
+In `none` mode, earlier script commits remain committed when a later transaction fails.
+
+Modal dialogs remain unanswered unless an exact dialog ID and runtime type pair has an allowlisted result.
+The built-in allowlist is empty.
+`data.dialogs` records dialog IDs, messages, available buttons, and decisions.
+Button capture depends on the visible native controls; a dialog that closes before capture may have no buttons recorded.
+While a dialog blocks execution, progress and persisted job responses report `waiting_dialog` with the dialog record.
+Progress text reads `waiting for dialog <id> / <text>`.
+The usual timeout warning still applies: a waiting call may already have committed changes.
+Failure and dialog handlers are removed when execution ends, including exceptional exits.
+
 ## My tools
 
 [My tools](my-tools.md) stores parameterized C# procedures on the Revit workstation.
