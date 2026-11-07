@@ -251,7 +251,11 @@ public sealed class JobSchedulerTests
             var actionId = NewId();
             scheduler.Submit(actionId, "client", "Client", "batch", "{}");
             scheduler.TakeNext();
-            var result = new ActionResultData { Steps = [], Committed = false };
+            var result = new ActionResultData
+            {
+                Steps = [],
+                Committed = false
+            };
             result.PublishBatchProgress(50, "set-parameter", _ => { });
             writes = 0;
             persistenceTicks = 0;
@@ -266,7 +270,12 @@ public sealed class JobSchedulerTests
                     Success = true,
                     Data = new ActionResultData
                     {
-                        Values = [new ParameterChange { Id = 42, OldValue = "", NewValue = "benchmark" }]
+                        Values = [new ParameterChange
+                        {
+                            Id = 42,
+                            OldValue = "",
+                            NewValue = "benchmark"
+                        }]
                     }
                 });
                 now += TimeSpan.FromMilliseconds(2);
@@ -446,7 +455,11 @@ public sealed class JobSchedulerTests
     public async Task ResponseIncludesClientAndQueueMetadata()
     {
         JobResponseMetadata.Current = new JobResponseMetadata(
-            new ClientIdentity { Name = "codex", Id = "client-1" }, "job-1", 42);
+            new ClientIdentity
+            {
+                Name = "codex",
+                Id = "client-1"
+            }, "job-1", 42);
         try
         {
             var json = CommandResponseJsonSerializer.Serialize(CommandResponse<string>.Ok("ping", "pong", 1));

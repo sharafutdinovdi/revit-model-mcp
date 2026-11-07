@@ -137,7 +137,11 @@ internal sealed class ControlChannel
                         var response = CommandResponse<object>.Fail(parsed.Command, message ?? submitted.Error, 0, parsed.CorrelationId);
                         response.Error = submitted.Error;
                         response.RetryAfterMs = submitted.RetryAfterMs;
-                        response.Client = new ClientIdentity { Name = parsed.ClientName, Id = parsed.ClientId };
+                        response.Client = new ClientIdentity
+                        {
+                            Name = parsed.ClientName,
+                            Id = parsed.ClientId
+                        };
                         response.JobId = jobId;
                         response.Responder.ProcessId = Process.GetCurrentProcess().Id;
                         var responsePath = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
@@ -185,7 +189,11 @@ internal sealed class ControlChannel
             }
             if (_current is null || _currentJob is null) return;
             JobResponseMetadata.Current = new JobResponseMetadata(
-                new ClientIdentity { Name = _current.ClientName, Id = _current.ClientId },
+                new ClientIdentity
+                {
+                    Name = _current.ClientName,
+                    Id = _current.ClientId
+                },
                 _current.JobId,
                 _currentQueuedMs);
             var isHttp = HasHttpCompletion(_current.JobId);
@@ -240,7 +248,11 @@ internal sealed class ControlChannel
                 var fallback = CommandResponse<object>.Fail(_current.Command,
                     "The command ended without a response.", 0, _currentJob?.CorrelationId);
                 fallback.Error = fallback.Message;
-                fallback.Client = new ClientIdentity { Name = _current.ClientName, Id = _current.ClientId };
+                fallback.Client = new ClientIdentity
+                {
+                    Name = _current.ClientName,
+                    Id = _current.ClientId
+                };
                 fallback.JobId = _current.JobId;
                 fallback.QueuedMs = _currentQueuedMs;
                 fallback.Responder.ProcessId = Process.GetCurrentProcess().Id;
@@ -327,8 +339,16 @@ internal sealed class ControlChannel
             return cancellation;
         var parsed = ControlJobParser.Parse(job.Payload);
         var response = CommandResponse<ActionResultData>.Fail(job.Command, "Job cancelled by its client.", 0, parsed.CorrelationId);
-        if (job.Command == "process-models") response.Data = new ActionResultData { Cancelled = true, Models = [] };
-        response.Client = new ClientIdentity { Name = job.ClientName, Id = job.ClientId };
+        if (job.Command == "process-models") response.Data = new ActionResultData
+        {
+            Cancelled = true,
+            Models = []
+        };
+        response.Client = new ClientIdentity
+        {
+            Name = job.ClientName,
+            Id = job.ClientId
+        };
         response.JobId = job.JobId;
         response.QueuedMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds);
         response.Responder.ProcessId = Process.GetCurrentProcess().Id;

@@ -322,7 +322,11 @@ public sealed class ControlJobParseResult
         {
             if (rule is null || string.IsNullOrWhiteSpace(rule.Category) || string.IsNullOrWhiteSpace(rule.Parameter))
                 return Invalid(command, "Each parameterRules entry requires a non-blank category and parameter.");
-            rules.Add(new ModelSnapshotParameterRule { Category = rule.Category.Trim(), Parameter = rule.Parameter.Trim() });
+            rules.Add(new ModelSnapshotParameterRule
+            {
+                Category = rule.Category.Trim(),
+                Parameter = rule.Parameter.Trim()
+            });
         }
         var result = Create(kind, command);
         result.ParameterRules = rules;
