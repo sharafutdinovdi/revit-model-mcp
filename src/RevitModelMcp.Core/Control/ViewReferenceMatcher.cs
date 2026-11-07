@@ -64,9 +64,13 @@ public static class JobTargetMatcher
         return MatchesDocument(documentTitle, documentPath, job.TargetDocument);
     }
 
-    public static bool MatchesDocument(string? title, string? path, string reference)
+    public static bool MatchesDocument(string? title, string? path, string reference, string? documentId = null)
     {
-        var fileName = Path.GetFileName(path ?? string.Empty);
+        if (reference.StartsWith("doc:", StringComparison.OrdinalIgnoreCase))
+            return string.Equals(reference, documentId, StringComparison.OrdinalIgnoreCase);
+        if (reference.IndexOfAny(['/', '\\']) >= 0)
+            return string.Equals(path?.Replace('\\', '/'), reference.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
+        var fileName = Path.GetFileName((path ?? string.Empty).Replace('\\', '/'));
         return Contains(title, reference) || Contains(fileName, reference);
     }
 

@@ -395,6 +395,22 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    [Arguments("doc:first", "doc:first", true)]
+    [Arguments("doc:first", "doc:second", false)]
+    [Arguments("doc:first", null, false)]
+    public async Task DocumentSessionIdentity_IsExact(string reference, string? identity, bool expected)
+    {
+        await Assert.That(JobTargetMatcher.MatchesDocument("Same", "", reference, identity)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task FullDocumentPath_DistinguishesSameNameDocuments()
+    {
+        await Assert.That(JobTargetMatcher.MatchesDocument("Same", @"C:\One\Same.rvt", @"C:\One\Same.rvt")).IsTrue();
+        await Assert.That(JobTargetMatcher.MatchesDocument("Same", @"C:\Two\Same.rvt", @"C:\One\Same.rvt")).IsFalse();
+    }
+
+    [Test]
     [Arguments(42, true)]
     [Arguments(43, false)]
     public async Task JobTargetMatcher_PinnedProcess_IgnoresActiveDocument(int processId, bool expected)

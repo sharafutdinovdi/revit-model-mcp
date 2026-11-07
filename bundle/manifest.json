@@ -374,7 +374,7 @@
     },
     {
       "name": "revit_batch_start",
-      "description": "Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."
+      "description": "Start a persistent, read-only run over local, UNC or RSN models. process_id selects the launcher Revit process. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."
     },
     {
       "name": "revit_batch_status",
