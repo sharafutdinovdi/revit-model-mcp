@@ -42,6 +42,7 @@ RELAY_CONNECTION_LIMIT = 5
 RELAY_WINDOW_SECONDS = 30.0
 MUX_RECONNECT_SECONDS = 540.0
 POLL_INTERVAL_SECONDS = 10.0
+POLL_INITIAL_INTERVAL_SECONDS = 0.5
 POLL_COMMAND_TIMEOUT_SECONDS = 5.0
 PICKUP_COMMAND_TIMEOUT_SECONDS = 10.0
 ACTIVATION_DELAY_SECONDS = 60.0
@@ -230,6 +231,7 @@ class SshPowerShellHost:
         self._directory = self._root_directory
         self._instance: dict[str, object] | None = None
         self._published_job_file: str | None = None
+        self._verified_instances: dict[int, tuple[object, ...]] = {}
 
     @property
     def instance_info(self) -> dict[str, object]:
@@ -449,10 +451,24 @@ class SshPowerShellHost:
 
     async def select_job(self, job: Job) -> tuple[SshPowerShellHost, Job]:
         instances = await self._discover_instances()
+        current = {
+            item["processId"]: _instance_identity(item)
+            for item in instances
+            if item.get("updatedUtc") and item.get("startedUtc")
+        }
+        for process_id, identity in list(self._verified_instances.items()):
+            if current.get(process_id) != identity:
+                del self._verified_instances[process_id]
         instance = select_instance(instances, job)
         selected = self._for_instance(instance)
-        if not job.payload.get("fetchJobId"):
+        process_id = instance["processId"]
+        identity = _instance_identity(instance)
+        if (
+            not job.payload.get("fetchJobId")
+            and self._verified_instances.get(process_id) != identity
+        ):
             await selected._handshake()
+            self._verified_instances[process_id] = identity
         return selected, replace(
             job, payload={**job.payload, "targetProcessId": instance["processId"]}
         )
@@ -465,11 +481,9 @@ class SshPowerShellHost:
         if (
             current is None
             or not current.get("updatedUtc")
-            or any(
-                current.get(key) != self._instance.get(key)
-                for key in ("startedUtc", "fileChannelVersion")
-            )
+            or _instance_identity(current) != _instance_identity(self._instance)
         ):
+            self._verified_instances.pop(self._instance["processId"], None)
             raise RevitChannelError(
                 "The selected Revit instance identity changed or its heartbeat expired. Retry discovery."
             )
@@ -690,6 +704,7 @@ class SshPowerShellHost:
         last_error: RevitChannelError | None = None
         successful_poll = False
         attempts = 0
+        interval = min(POLL_INITIAL_INTERVAL_SECONDS, POLL_INTERVAL_SECONDS)
         while True:
             remaining = deadline - loop.time()
             if remaining <= 0:
@@ -714,7 +729,8 @@ class SshPowerShellHost:
                 if not successful_poll and last_error is not None:
                     raise last_error
                 return None, attempts, loop.time() - started
-            await asyncio.sleep(min(POLL_INTERVAL_SECONDS, remaining))
+            await asyncio.sleep(min(interval, remaining))
+            interval = min(interval * 2, POLL_INTERVAL_SECONDS)
 
     def _activation_script(self) -> str:
         task_name = _ps_quote(ACTIVATION_TASK)
@@ -1041,6 +1057,7 @@ def _parse_instance_package(
                 "windowTitle": "",
                 "pluginResponding": False,
                 "updatedUtc": status["updatedUtc"],
+                "processStartedUtc": running[process_id].get("processStartedUtc"),
                 **{
                     key: status[key]
                     for key in (
@@ -1109,6 +1126,19 @@ def _ps_quote(value: str) -> str:
     for quote in ("'", "\u2018", "\u2019", "\u201a", "\u201b"):
         value = value.replace(quote, quote * 2)
     return value
+
+
+def _instance_identity(instance: dict[str, object]) -> tuple[object, ...]:
+    return tuple(
+        instance.get(key)
+        for key in (
+            "processId",
+            "processStartedUtc",
+            "startedUtc",
+            "instanceId",
+            "fileChannelVersion",
+        )
+    )
 
 
 def _validated_started_utc(value: object) -> str:
