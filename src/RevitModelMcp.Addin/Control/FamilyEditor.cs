@@ -87,7 +87,9 @@ internal static class FamilyEditor
                     throw new InvalidOperationException($"Could not start the edit group for '{family.Name}'.");
                 using var suppression = new FamilyAuditReader.FamilySuppression(uiApplication, family.Name, data.Skipped);
                 Document? familyDocument = null;
-                FamilyEditFamily familyResult;
+                var existingDocuments = application.Documents.Cast<Document>().ToList();
+                var identity = new DocumentIdentityComparer<Document>((first, second) => first.Equals(second));
+                var familyResult = new FamilyEditFamily { Name = family.Name, Status = "failed" };
                 try
                 {
                     familyDocument = document.EditFamily(family);
@@ -114,7 +116,11 @@ internal static class FamilyEditor
                 }
                 finally
                 {
-                    familyDocument?.Close(false);
+                    if (familyDocument is not null)
+                    {
+                        familyResult.ApplyClosure(OwnedDocumentCleanup.Close(familyDocument, existingDocuments, identity,
+                            $"{familyDocument.Title} [{familyDocument.GetHashCode():X}]", owned => owned.Close(false)));
+                    }
                 }
                 if (familyResult.Status == "failed" || job.DryRun)
                 {
@@ -128,7 +134,7 @@ internal static class FamilyEditor
                 if (familyResult.Status == "failed")
                 {
                     data.FailedFamily ??= family.Name;
-                    if (job.StopOnError) break;
+                    if (job.StopOnError || data.HasRetainedDocument) break;
                 }
             }
             var editedCount = data.Families.Count(family => family.Status != "skipped");
@@ -140,7 +146,7 @@ internal static class FamilyEditor
                 DryRun = job.DryRun
             });
             data.Summary = summary;
-            if (job.DryRun || data.FailedFamily is not null && job.StopOnError)
+            if (job.DryRun || data.FailedFamily is not null && job.StopOnError || data.HasRetainedDocument)
             {
                 // Dry runs must never commit: some deletions are irreversible.
                 projectGroup.RollBack();

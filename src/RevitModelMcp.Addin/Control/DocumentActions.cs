@@ -421,34 +421,88 @@ internal static class DocumentActions
         var created = action.Kind == "family" ? application.Application.NewFamilyDocument(template) :
             application.Application.NewProjectDocument(template);
         var path = action.SaveAs;
-        if (path is not null || action.Activate)
+        var owned = new List<Document> { created };
+        var closures = new List<DocumentClosureResult>();
+        var activationAttempted = false;
+        Exception? failure = null;
+        ActionResultData? result = null;
+        try
         {
-            if (path is null)
+            if (path is not null || action.Activate)
             {
-                var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "new");
-                Directory.CreateDirectory(directory);
-                var name = action.NewDocumentName ?? $"{(action.Kind == "family" ? "Family" : "Project")} {DateTime.Now:yyyyMMdd-HHmmss}";
-                var extension = action.Kind == "family" ? ".rfa" : ".rvt";
-                path = Path.Combine(directory, name + extension);
-                for (var suffix = 2; File.Exists(path); suffix++)
-                    path = Path.Combine(directory, $"{name} {suffix}{extension}");
+                if (path is null)
+                {
+                    var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "new");
+                    Directory.CreateDirectory(directory);
+                    var name = action.NewDocumentName ?? $"{(action.Kind == "family" ? "Family" : "Project")} {DateTime.Now:yyyyMMdd-HHmmss}";
+                    var extension = action.Kind == "family" ? ".rfa" : ".rvt";
+                    path = Path.Combine(directory, name + extension);
+                    for (var suffix = 2; File.Exists(path); suffix++)
+                        path = Path.Combine(directory, $"{name} {suffix}{extension}");
+                }
+                created.SaveAs(path);
             }
-            created.SaveAs(path);
+            var document = created;
+            if (action.Activate)
+            {
+                activationAttempted = true;
+                var active = application.OpenAndActivateDocument(path!).Document;
+                if (!active.Equals(created))
+                {
+                    owned.Add(active);
+                    owned.Remove(created);
+                    var closure = OwnedDocumentCleanup.Close(created, before, Identity,
+                        $"{created.Title} [{created.GetHashCode():X}]", background => background.Close(false));
+                    if (closure is not null)
+                    {
+                        closures.Add(closure);
+                        if (!closure.Closed) throw new InvalidOperationException("Revit did not close the new document's background copy.");
+                    }
+                }
+                document = active;
+            }
+            var after = application.Application.Documents.Cast<Document>().ToList();
+            if (!DocumentIdentityMatcher.AllPresent(before, after, Identity) ||
+                path is not null && after.Count(item => DocumentPathValidator.SamePath(item.PathName, path)) != 1 ||
+                action.Activate && !document.Equals(application.ActiveUIDocument?.Document))
+                throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
+            result = new ActionResultData
+            {
+                Title = document.Title, Path = document.PathName, Active = action.Activate, Saved = path is not null,
+                Warning = closures.Count > 0 ? string.Join(" ", closures) : null
+            };
         }
-        var document = created;
-        if (action.Activate)
+        catch (Exception exception)
         {
-            var active = application.OpenAndActivateDocument(path!).Document;
-            if (!active.Equals(created) && !created.Close(false))
-                throw new InvalidOperationException($"Revit did not close the new document's background copy. Open documents: {OpenDocumentNames(application)}.");
-            document = active;
+            failure = exception;
         }
-        var after = application.Application.Documents.Cast<Document>().ToList();
-        if (!DocumentIdentityMatcher.AllPresent(before, after, Identity) ||
-            path is not null && after.Count(item => DocumentPathValidator.SamePath(item.PathName, path)) != 1 ||
-            action.Activate && !document.Equals(application.ActiveUIDocument?.Document))
-            throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
-        return new ActionResultData { Title = document.Title, Path = document.PathName, Active = action.Activate, Saved = path is not null };
+        finally
+        {
+            if (failure is not null)
+            {
+                // Activation can open a document before throwing.
+                if (activationAttempted && path is not null)
+                {
+                    foreach (var candidate in application.Application.Documents.Cast<Document>())
+                    {
+                        if (!before.Contains(candidate, Identity) && !owned.Contains(candidate, Identity) &&
+                            !closures.Any(closure => closure.Identity == $"{candidate.Title} [{candidate.GetHashCode():X}]") &&
+                            DocumentPathValidator.SamePath(candidate.PathName, path))
+                            owned.Add(candidate);
+                    }
+                }
+                foreach (var retained in owned)
+                {
+                    if (!retained.IsValidObject) continue;
+                    var closure = OwnedDocumentCleanup.Close(retained, before, Identity,
+                        $"{retained.Title} [{retained.GetHashCode():X}]", pending => pending.Close(false));
+                    if (closure is not null) closures.Add(closure);
+                }
+            }
+        }
+        if (failure is not null)
+            throw new InvalidOperationException($"{failure.Message} {string.Join(" ", closures)}".Trim(), failure);
+        return result!;
     }
 
     private static string OpenDocumentNames(UIApplication application) =>
