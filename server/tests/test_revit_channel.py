@@ -3802,6 +3802,27 @@ class ActionJournalRecoveryTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["jobId"], receipt["jobId"])
         self.assertEqual(len([event for event in remote.events if event == "prepare"]), 1)
 
+    async def test_recovery_rejects_receipt_from_another_process_generation(self):
+        remote = FakeRemoteHost()
+        remote.instance_info = {
+            "addinVersion": package_version(),
+            "commands": ["delete"],
+            "processId": 12,
+            "instanceId": "original",
+        }
+        remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))
+        remote.fetch_job = AsyncMock(
+            return_value={
+                "command": "delete",
+                "success": True,
+                "responder": {"processId": 12, "instanceId": "replacement"},
+            }
+        )
+        result = await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertEqual(result["processId"], 12)
+        self.assertFalse(result["retryable"])
+
     async def test_disconnect_during_commit_never_reports_non_execution(self):
         remote = FakeRemoteHost()
         remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))

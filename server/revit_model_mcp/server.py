@@ -222,14 +222,14 @@ Document = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("document", "targetDocument"),
-        description="Title or file name substring of the target document; needed when several Revit instances run.",
+        description="Session documentId, full path, title/file substring; selects among several Revit instances.",
     ),
 ]
 ProcessId = Annotated[
     int | None,
     Field(
         validation_alias=AliasChoices("process_id", "processId"),
-        description="Revit process ID; takes precedence over document.",
+        description="Process ID; must also match document.",
     ),
 ]
 _addressed_process_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(

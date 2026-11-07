@@ -391,11 +391,16 @@ public sealed class JobScheduler
         }
     }
 
-    public void PublishProgress(string jobId, string response)
+    public void PublishProgress(string jobId, string response, bool persist = false)
     {
         lock (_sync)
         {
             if (_running?.JobId != jobId) return;
+            if (persist)
+            {
+                TryStoreResult(_running, response);
+                return;
+            }
             _running.Result = Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1"
                 ? CommandResponseJsonSerializer.RedactPaths(response)
                 : response;

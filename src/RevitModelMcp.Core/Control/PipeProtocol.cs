@@ -97,6 +97,7 @@ public static class PipeProtocol
                 builder.Append('{');
                 String(builder, "title", documents[index].Title);
                 String(builder, "path", documents[index].Path);
+                String(builder, "documentId", documents[index].DocumentId);
                 Literal(builder, "isActive", documents[index].IsActive ? "true" : "false");
                 Literal(builder, "isFamilyDocument", documents[index].IsFamilyDocument ? "true" : "false");
                 builder.Append('}');
@@ -180,6 +181,7 @@ public static class PipeProtocol
             {
                 Title = Text(item, "title") ?? string.Empty,
                 Path = Text(item, "path") ?? string.Empty,
+                DocumentId = Text(item, "documentId"),
                 IsActive = Boolean(item, "isActive") ?? false,
                 IsFamilyDocument = Boolean(item, "isFamilyDocument") ?? false
             };
