@@ -97,7 +97,11 @@ public sealed class RevitTests : RevitApiUiTest
             Command = "query-elements",
             Categories = ["OST_Walls"],
             Limit = 10000,
-            ParameterFilters = [new ParameterFilterContract { Parameter = parameterName, Operator = "empty" }]
+            ParameterFilters = [new ParameterFilterContract
+            {
+                Parameter = parameterName,
+                Operator = "empty"
+            }]
         });
         if (job.Error is not null) throw new ArgumentException(job.Error);
         var result = Read<QueryElementsData>("ElementQueryReader", "ReadQuery", Model, job);
@@ -313,7 +317,10 @@ public sealed class RevitTests : RevitApiUiTest
             {
                 RevitModelMcp.Control.DocumentActions.Execute(UiApplication, "new-document", new ActionJobContract
                 {
-                    Kind = "project", Template = template, SaveAs = path, Activate = true
+                    Kind = "project",
+                    Template = template,
+                    SaveAs = path,
+                    Activate = true
                 }, (application, savedPath) =>
                 {
                     // Force a replacement wrapper; normal activation can reuse the background document.

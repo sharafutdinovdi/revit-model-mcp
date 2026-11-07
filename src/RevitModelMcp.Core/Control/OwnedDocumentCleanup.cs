@@ -23,11 +23,19 @@ public static class OwnedDocumentCleanup
         if (preExisting.Contains(document, comparer)) return null;
         try
         {
-            return new DocumentClosureResult { Identity = identity, Closed = close(document) };
+            return new DocumentClosureResult
+            {
+                Identity = identity,
+                Closed = close(document)
+            };
         }
         catch (Exception exception)
         {
-            return new DocumentClosureResult { Identity = identity, Error = exception.GetType().Name };
+            return new DocumentClosureResult
+            {
+                Identity = identity,
+                Error = exception.GetType().Name
+            };
         }
     }
 }

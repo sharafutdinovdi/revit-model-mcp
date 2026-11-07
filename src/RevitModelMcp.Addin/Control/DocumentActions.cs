@@ -269,7 +269,12 @@ internal static class DocumentActions
         _batchDocument = null;
         Opened.Remove(document);
         if (!document.Close(false)) throw new InvalidOperationException("Revit did not close the batch document.");
-        return new ActionResultData { Title = title, Path = path, Saved = false };
+        return new ActionResultData
+        {
+            Title = title,
+            Path = path,
+            Saved = false
+        };
     }
 
     private static (WorksetConfiguration Configuration, List<string> Unmatched) WorksetConfiguration(ModelPath path, string selection, List<string>? names)
@@ -286,7 +291,13 @@ internal static class DocumentActions
     private static ActionResultData Activate(UIApplication application, Document document)
     {
         if (document.Equals(application.ActiveUIDocument?.Document))
-            return new ActionResultData { Title = document.Title, Path = document.PathName, Active = true, Changed = false };
+            return new ActionResultData
+            {
+                Title = document.Title,
+                Path = document.PathName,
+                Active = true,
+                Changed = false
+            };
         var path = document.PathName;
         var title = document.Title;
         if (string.IsNullOrWhiteSpace(path))
@@ -323,7 +334,13 @@ internal static class DocumentActions
             }
             throw new InvalidOperationException("Revit opened another copy instead of activating the requested document.");
         }
-        return new ActionResultData { Title = title, Path = path, Active = true, Changed = true };
+        return new ActionResultData
+        {
+            Title = title,
+            Path = path,
+            Active = true,
+            Changed = true
+        };
     }
 
     private static ActionResultData ActivateView(UIApplication application, Document document, ActionJobContract action)
@@ -350,7 +367,11 @@ internal static class DocumentActions
             Title = document.Title,
             Path = document.PathName,
             Active = true,
-            View = new RevitModelMcp.Core.Models.NwcViewResult { Name = view.Name, Id = RevitValueReader.GetId(view.Id) },
+            View = new RevitModelMcp.Core.Models.NwcViewResult
+            {
+                Name = view.Name,
+                Id = RevitValueReader.GetId(view.Id)
+            },
             ViewOpened = !wasOpen,
             Changed = !wasActive
         };
@@ -417,7 +438,13 @@ internal static class DocumentActions
                 refused.Add(name);
             }
         }
-        return new ActionResultData { Title = document.Title, ClosedViews = closed, RefusedViews = refused, Changed = closed.Count > 0 };
+        return new ActionResultData
+        {
+            Title = document.Title,
+            ClosedViews = closed,
+            RefusedViews = refused,
+            Changed = closed.Count > 0
+        };
     }
 
     private static ActionResultData New(UIApplication application, ActionJobContract action,
@@ -478,7 +505,10 @@ internal static class DocumentActions
                 throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
             result = new ActionResultData
             {
-                Title = document.Title, Path = document.PathName, Active = action.Activate, Saved = path is not null,
+                Title = document.Title,
+                Path = document.PathName,
+                Active = action.Activate,
+                Saved = path is not null,
                 Warning = closures.Count > 0 ? string.Join(" ", closures) : null
             };
         }
@@ -542,7 +572,12 @@ internal static class DocumentActions
         Opened.Remove(document);
         if (!document.Close(action.Save))
             throw new InvalidOperationException($"Revit did not close '{title}'.");
-        return new ActionResultData { Title = title, Path = path, Saved = action.Save };
+        return new ActionResultData
+        {
+            Title = title,
+            Path = path,
+            Saved = action.Save
+        };
     }
 
     private static ActionResultData Save(UIApplication application, Document document, ActionJobContract action,
@@ -593,12 +628,21 @@ internal static class DocumentActions
         }
         else
         {
-            var options = new SaveAsOptions { OverwriteExistingFile = action.Overwrite, Compact = action.Compact };
+            var options = new SaveAsOptions
+            {
+                OverwriteExistingFile = action.Overwrite,
+                Compact = action.Compact
+            };
             if (document.IsWorkshared && document.IsDetached)
                 options.SetWorksharingOptions(new WorksharingSaveAsOptions { SaveAsCentral = true });
             document.SaveAs(action.SaveAs, options);
         }
-        return new ActionResultData { Title = document.Title, Path = document.PathName, Saved = true };
+        return new ActionResultData
+        {
+            Title = document.Title,
+            Path = document.PathName,
+            Saved = true
+        };
     }
 
     private static ActionResultData Sync(Document document, ActionJobContract action)
@@ -626,7 +670,12 @@ internal static class DocumentActions
         try { document.SynchronizeWithCentral(transactionOptions, syncOptions); }
         catch (Autodesk.Revit.Exceptions.CentralModelContentionException)
         { throw new InvalidOperationException("The central model is locked."); }
-        return new ActionResultData { Title = document.Title, CentralPath = central, Saved = true };
+        return new ActionResultData
+        {
+            Title = document.Title,
+            CentralPath = central,
+            Saved = true
+        };
     }
 
     private static RelinquishOptions RelinquishOptions(string selection, Dictionary<string, bool>? values)

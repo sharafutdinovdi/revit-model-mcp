@@ -21,8 +21,16 @@ public sealed class OwnedDocumentCleanupTests
         var documents = OwnedDocumentCleanup.FindUntrackedActivationDocuments(
             [new string(candidate.ToCharArray())], ["existing"], ["owned"], comparer,
             [
-                new DocumentClosureResult { Identity = "closed", Closed = true },
-                new DocumentClosureResult { Identity = "refused", Closed = false }
+                new DocumentClosureResult
+                {
+                    Identity = "closed",
+                    Closed = true
+                },
+                new DocumentClosureResult
+                {
+                    Identity = "refused",
+                    Closed = false
+                }
             ], document => document, document => document != "unrelated").ToList();
 
         await Assert.That(documents.Count).IsEqualTo(expected ? 1 : 0);
@@ -88,8 +96,17 @@ public sealed class OwnedDocumentCleanupTests
     [Arguments(false)]
     public async Task ApplyClosure_OnlyRetainedDocumentsRequireBatchStop(bool closed)
     {
-        var family = new FamilyEditFamily { Name = "Family", Status = "changed", Reason = "Original failure." };
-        family.ApplyClosure(new DocumentClosureResult { Identity = "Family [42]", Closed = closed });
+        var family = new FamilyEditFamily
+        {
+            Name = "Family",
+            Status = "changed",
+            Reason = "Original failure."
+        };
+        family.ApplyClosure(new DocumentClosureResult
+        {
+            Identity = "Family [42]",
+            Closed = closed
+        });
         var batch = new FamilyEditData { Families = [family] };
 
         await Assert.That(batch.HasRetainedDocument).IsEqualTo(!closed);
@@ -101,7 +118,11 @@ public sealed class OwnedDocumentCleanupTests
     [Test]
     public async Task ApplyClosure_PreExistingDocumentDoesNotRequireBatchStop()
     {
-        var family = new FamilyEditFamily { Name = "Family", Status = "changed" };
+        var family = new FamilyEditFamily
+        {
+            Name = "Family",
+            Status = "changed"
+        };
         family.ApplyClosure(null);
         var batch = new FamilyEditData { Families = [family] };
 
@@ -116,8 +137,16 @@ public sealed class OwnedDocumentCleanupTests
         var closure = OwnedDocumentCleanup.Close(new object(), [], EqualityComparer<object>.Default, "Family [42]", _ => false);
         var data = new FamilyEditData
         {
-            Mode = "project", RolledBack = true, FailedFamily = "Family",
-            Families = [new FamilyEditFamily { Name = "Family", Status = "failed", Closure = closure, RolledBack = true }]
+            Mode = "project",
+            RolledBack = true,
+            FailedFamily = "Family",
+            Families = [new FamilyEditFamily
+            {
+                Name = "Family",
+                Status = "failed",
+                Closure = closure,
+                RolledBack = true
+            }]
         };
         var response = CommandResponse<FamilyEditData>.Fail("edit-families", closure!.ToString(), 0);
         response.Data = data;
