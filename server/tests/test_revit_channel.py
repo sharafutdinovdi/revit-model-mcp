@@ -3650,3 +3650,38 @@ def test_channel_refusal_checks_log_file_process(name, quoted):
         {"processId": 42, "processStartedUtc": "2026-11-02T08:00:00Z"},
     )
     assert bool(result) == quoted
+
+
+def test_waiting_dialog_progress_and_running_result():
+    from revit_model_mcp.revit_channel import (
+        ProgressReporter,
+        _is_intermediate_response,
+        running_job,
+    )
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        dialog = {"dialogId": "Review", "message": "Choose an option", "buttons": []}
+        response = {"partial": True, "data": {"state": "waiting_dialog", "dialog": dialog}}
+        assert _is_intermediate_response(response)
+        reporter.started = asyncio.get_running_loop().time() - 10
+        await reporter.observe(response)
+        await reporter.tick()
+        await reporter._sender
+        assert ctx.calls[-1][2] == "waiting for dialog Review / Choose an option"
+        assert reporter.started is None
+        result = running_job("abc", response)
+        assert result["state"] == "waiting_dialog"
+        assert result["dialog"] == dialog
+        assert result["message"].startswith("waiting for dialog Review / Choose an option.")
+        top_level = running_job("abc", {"state": "waiting_dialog", "dialog": dialog})
+        for key in ("state", "dialog", "message"):
+            assert top_level[key] == result[key]
+        assert "may already have changed" in result["message"]
+        reporter.last_sent = float("-inf")
+        await reporter.observe({"state": "waiting_dialog", "dialog": {"dialogId": "Next"}})
+        await reporter._sender
+        assert ctx.calls[-1][2] == "waiting for dialog Next"
+
+    asyncio.run(check())
