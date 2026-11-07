@@ -3668,6 +3668,7 @@ def test_waiting_dialog_progress_and_running_result():
         reporter.started = asyncio.get_running_loop().time() - 10
         await reporter.observe(response)
         await reporter.tick()
+        await reporter._sender
         assert ctx.calls[-1][2] == "waiting for dialog Review / Choose an option"
         assert reporter.started is None
         result = running_job("abc", response)
@@ -3680,6 +3681,7 @@ def test_waiting_dialog_progress_and_running_result():
         assert "may already have changed" in result["message"]
         reporter.last_sent = float("-inf")
         await reporter.observe({"state": "waiting_dialog", "dialog": {"dialogId": "Next"}})
+        await reporter._sender
         assert ctx.calls[-1][2] == "waiting for dialog Next"
 
     asyncio.run(check())
