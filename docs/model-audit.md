@@ -49,7 +49,14 @@ Categories and parameters resolve through `revit_list_catalog`. Use `builtin`, s
 
 Checks include `parameter_filled`, `parameter_in`, `parameter_matches`, `name_matches`, `count`, `model_health`, `coordinates`, `sheets` and `worksets`. The last is validated but not assessed until #213 supplies a reader. Thresholds accept one of `max_count`, `max_percent`, or `min_percent`. Omitted thresholds allow zero findings. For parameter fill, use `min_percent`. For `coordinates` metric `link_offset_mm`, `max_count` is the tolerance in millimetres.
 
+Threshold units are validated after inheritance, before any model read.
+`count`, `coordinates` and `worksets` accept only `max_count`.
+Percentage thresholds require a supported population conversion, as provided by name, parameter-value, model-health and sheet checks.
+
 Scopes accept categories, level, workset, view, phase, family and type_name. Parameter fill supports categories, level, workset and view only. Regex patterns are limited to 200 characters. Nested quantifiers are rejected. Each match has a two second limit.
+
+`warnings_total` has no scoped reader.
+A warning count rule with a nonempty scope returns `not_assessed` with a reason and no measured value.
 
 ## Evidence and statuses
 
@@ -61,6 +68,11 @@ Scopes accept categories, level, workset, view, phase, family and type_name. Par
 | `not_assessed` | Disabled rule, unsupported check, unresolved reference or unavailable reader. The reason is included. |
 
 Each rule records measured value, threshold, population, read names, skipped entries and up to 500 evidence element ids. `element_ids_truncated` identifies limited samples. Identical reads are cached for one run. Queries cover at most 20 pages of 500 elements per rule. A run has a ten minute budget.
+
+Live audits capture the responding process and document identity at the initial snapshot read.
+Every subsequent read targets that process and the resolved document path, or its title for an unsaved document.
+Responses with missing or changed identity return `not_assessed`; their measurements are not used.
+Identity validation precedes path redaction.
 
 The Python `SnapshotReadSource` adapter accepts a loaded snapshot v1 dictionary. Load snapshot directories with `snapshot_report.load_snapshots`. Snapshot counts, warnings and matching parameterFill rows can be assessed. V1 has no element rows, sheets, links or stable catalog identifier mappings. Those checks are `not_assessed`. The MCP audit tool addresses a live document; offline callers use the same evaluator directly.
 

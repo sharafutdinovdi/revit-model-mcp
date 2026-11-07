@@ -235,6 +235,9 @@ ProcessId = Annotated[
 _addressed_process_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "addressed_process_id", default=None
 )
+_audit_response_validator: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "audit_response_validator", default=None
+)
 
 
 class ParameterRule(BaseModel):
@@ -538,6 +541,53 @@ def batch_audit(
     )
 
 
+def _merge_read_diagnostics(result: dict[str, Any]) -> None:
+    skipped: list[dict[str, Any]] = []
+    unlisted = 0
+
+    def merge(value: Any) -> None:
+        nonlocal unlisted
+        if not isinstance(value, dict):
+            return
+        details = value.get("skipped", [])
+        if isinstance(details, list):
+            details = [item for item in details if isinstance(item, dict)]
+            for item in details:
+                if item not in skipped:
+                    skipped.append(item)
+            count = value.get("skippedCount", len(details))
+            if isinstance(count, int):
+                unlisted = max(unlisted, count - len(details))
+
+    data = result.get("data")
+    merge(data)
+    if result.get("command") == "family-audit" and isinstance(data, dict):
+        for family in data.get("families", []):
+            if family.get("status") in {"skipped", "failed"}:
+                merge(
+                    {
+                        "skipped": [
+                            {
+                                "what": f"family {family['name']} audit",
+                                "reason": family.get("reason") or "Family inspection was omitted.",
+                            }
+                        ]
+                    }
+                )
+    envelope = result.get("skipped", [])
+    if isinstance(envelope, list):
+        for item in envelope:
+            if isinstance(item, dict) and item not in skipped:
+                skipped.append(item)
+    count = result.get("skippedCount", 0)
+    if isinstance(count, int):
+        unlisted = max(unlisted, count - len(skipped))
+    result["skipped"] = skipped[:100]
+    result["skippedCount"] = len(skipped) + unlisted
+    if result["skippedCount"]:
+        result["partial"] = True
+
+
 async def _execute(
     job: Job,
     timeout_seconds: int,
@@ -550,13 +600,18 @@ async def _execute(
             job.for_document(document).for_process(_addressed_process_id.get()),
             timeout_seconds,
         )
+        if validator := _audit_response_validator.get():
+            validator(result)
         if job.command == "ping":
             result["serverVersion"] = package_version()
             if CHANNEL != "store":
                 result.update(update_status(package_version()))
-        result.setdefault("skipped", [])
-        result.setdefault("skippedCount", 0)
-        return redact_model_paths(result)
+        _merge_read_diagnostics(result)
+        from revit_model_mcp.artifact_download import complete_code_result
+
+        result = redact_model_paths(result)
+        complete_code_result(result)
+        return result
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(job.command, str(error)))
     except RevitChannelError as error:
@@ -1339,7 +1394,7 @@ async def revit_model_audit(
     """Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes."""
     from jsonschema import ValidationError
 
-    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource
+    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
     from revit_model_mcp.audit.result import build_result, model_identity
     from revit_model_mcp.audit.rules import load_rules
 
@@ -1348,10 +1403,8 @@ async def revit_model_audit(
         for command in ("revit_model_audit", "model-snapshot"):
             if (blocked := policy_refusal(command)) is not None:
                 raise ToolError(blocked)
-        source = LiveReadSource(document, timeout_seconds)
-        evaluator = Evaluator(source)
         # Snapshot passport is the existing reader with full model and version identity.
-        # Keep raw paths only long enough to hash the history key; result paths are redacted.
+        # Raw paths address pinned reads and history keys; result paths are redacted.
         identity = await asyncio.wait_for(
             channel.execute(
                 Job("model-snapshot", {"command": "model-snapshot", "parameterRules": []})
@@ -1363,9 +1416,11 @@ async def revit_model_audit(
         )
         if not isinstance(identity.get("data"), dict):
             raise ValueError("Model identity is unavailable; audit history cannot be addressed.")
+        source = LiveReadSource(document, timeout_seconds, identity=identity)
+        evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
         return build_result(model_identity(identity["data"]), loaded, findings, compare_with, save)
-    except (OSError, ValueError, TypeError, ValidationError, TimeoutError) as error:
+    except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 
 

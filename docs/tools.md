@@ -332,6 +332,21 @@ A timed-out action is a tool error, not a result: the action may have changed th
 The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` and `revit_batch_cancel`. The last two start and stop Revit processes, so they are refused in read-only mode like any action; `revit_batch_status` and `revit_batch_fetch` stay available.
 
 
+## Code execution results
+
+`revit_execute_code` and `revit_run_tool` expose `data.resultCompleteness` with `truncated`, `retainedCount`, `omittedCount`, and `reasons`.
+The inline result retains at most 5,000 entries, six container levels, and 262,144 UTF-8 JSON bytes.
+Reasons are `itemBudget`, `depth`, and `inlineSize`; several reasons can apply.
+Counts cover dictionary properties and sequence entries across all nesting levels; a scalar or empty container counts as one value.
+An oversized inline value is replaced with null.
+A truncated result has `partial:true` and a top-level `skipped` receipt.
+`data.resultArtifact.path` names a UTF-8 JSON file on the MCP server computer containing the full supported result, with configured path redaction.
+The artifact reference includes `format:"json"` and `complete:true`.
+Artifact-write failures retain the partial result and add a skipped receipt with `complete:false` and an error instead of a retrieval path.
+Serialization supports primitives, dictionaries, sequences, public properties of plain objects, and the execution context's special conversions.
+Other values use their string representation.
+Cycles, nesting of 128 levels, colliding dictionary keys after string conversion, enumeration failures, and failing property getters fail execution explicitly; no complete artifact is claimed.
+
 ## Model audits
 
 | Tool | Purpose |
@@ -342,6 +357,22 @@ The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` 
 See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html` or `both`).
 
 For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.
+
+## Execute code
+
+`revit_execute_code` applies the same failure policy to `auto`, `group`, and permitted script-owned (`none`) transactions.
+Warnings are deleted during failure processing and returned in `data.failures` with `severity`, `text`, `failureDefinitionId`, and `elementIds`.
+Errors cause a silent transaction rollback and retain their texts in the failed response and `data.failures`.
+In `none` mode, earlier script commits remain committed when a later transaction fails.
+
+Modal dialogs remain unanswered unless an exact dialog ID and runtime type pair has an allowlisted result.
+The built-in allowlist is empty.
+`data.dialogs` records dialog IDs, messages, available buttons, and decisions.
+Button capture depends on the visible native controls; a dialog that closes before capture may have no buttons recorded.
+While a dialog blocks execution, progress and persisted job responses report `waiting_dialog` with the dialog record.
+Progress text reads `waiting for dialog <id> / <text>`.
+The usual timeout warning still applies: a waiting call may already have committed changes.
+Failure and dialog handlers are removed when execution ends, including exceptional exits.
 
 ## My tools
 
