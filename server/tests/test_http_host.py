@@ -118,6 +118,9 @@ def endpoint():
                 self.end_headers()
                 return
             if state["status"] not in (200, 202):
+                if route.path == "/jobs" and state.get("accept_before_error"):
+                    state["payload"] = json.loads(body)
+                    state["executions"] = state.get("executions", 0) + 1
                 return self.reply(state["status"], {"error": state.get("error_text", "error")})
             if self.command == "POST":
                 state["payload"] = json.loads(body)
@@ -740,6 +743,36 @@ def test_http_503_points_to_listener_diagnostics(endpoint):
     assert "netsh http show urlacl" in message
     assert "netsh http show servicestate" in message
     assert "docs/transport.md" in message
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 408, 413, 429, 503])
+def test_documented_submission_refusals_are_pre_acceptance(endpoint, status):
+    host, state = endpoint
+    state["status"] = status
+    with pytest.raises(RevitChannelError) as captured:
+        asyncio.run(
+            host.prepare_job("job.tmp", '{"command":"export","jobId":"' + "a" * 32 + '"}', "export")
+        )
+    assert captured.value.before_send is True
+    assert state["payload"] is None
+
+
+@pytest.mark.parametrize("status", [404, 409, 410, 500, 502, 504, 599])
+def test_ambiguous_submission_error_preserves_action_id_and_never_resubmits(endpoint, status):
+    host, state = endpoint
+    state["status"] = status
+    state["accept_before_error"] = True
+    result = asyncio.run(RevitChannel(host).execute(Job("export", {"command": "export"})))
+    assert result["errorCode"] == "outcome_unknown"
+    assert result["jobId"] == state["payload"]["jobId"]
+    assert result["retryable"] is False
+    assert "query revit_jobs" in result["error"]
+    assert "Inspect" in result["error"]
+    assert state["executions"] == 1
+    assert any(
+        method == "GET" and path == "/jobs/" + result["jobId"]
+        for method, path, _ in state["requests"]
+    )
 
 
 def test_unreachable_endpoint_points_to_heartbeat_listener_reason():

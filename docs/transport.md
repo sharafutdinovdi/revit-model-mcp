@@ -350,6 +350,10 @@ It is final: do not poll it again, and inspect the model before resubmitting an 
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
+For a submission, the Python client treats only HTTP 400, 401, 403, 408, 413, 429 and 503 as pre-acceptance refusals.
+HTTP 500 and other unrecognized submission statuses do not establish whether an action executed.
+The client attempts to fetch the original job; without a recorded outcome it returns `outcome_unknown`, the original job ID and model-inspection advice.
+It does not resubmit the action.
 
 Direct HTTP `POST /jobs` validates a supplied `jobId` for action commands, whose results are persisted: the ID must be a 32-character hexadecimal GUID without dashes.
 An invalid value returns HTTP 400 with `error:invalid_job_id` and `message:"jobId must be a 32-character hexadecimal GUID without dashes."`.
