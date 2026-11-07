@@ -105,6 +105,8 @@ internal static class ActionCommandExecutor
                 if (job.Command is not ("open-document" or "new-document"))
                     responder = ReadCommandReader.ReadResponder(application,
                         ResolveDocument(application, documentAction.Document));
+                CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command, responder, job.CorrelationId)
+                    .Write(CommandResponse<string>.PartialResult(job.Command, "accepted", "Command accepted and running.", stopwatch.ElapsedMilliseconds));
                 if (job.Command == "open-document") openAttempted = true;
                 var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
                 if (job.Command is "open-document" or "new-document")
@@ -132,6 +134,8 @@ internal static class ActionCommandExecutor
                 ? application.ActiveUIDocument?.Document
                 : ResolveDocument(application, job.TargetDocument);
             responder = ReadCommandReader.ReadResponder(application, document);
+            CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command, responder, job.CorrelationId)
+                .Write(CommandResponse<string>.PartialResult(job.Command, "accepted", "Command accepted and running.", stopwatch.ElapsedMilliseconds));
             if (document is not null && !(job.Command == "execute-code" && job.Action?.TransactionMode == "none"))
                 changes = ChangeCapture.Start(application.Application, document);
             var activeUiDocument = application.ActiveUIDocument;
@@ -639,6 +643,7 @@ internal static class ActionCommandExecutor
             ActionJobParser.ValidateFamilyMode(action, document.IsFamilyDocument);
             var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
                 ReadCommandReader.ReadResponder(application, document), job.CorrelationId);
+            output.Write(CommandResponse<string>.PartialResult(job.Command, "accepted", "Command accepted and running.", stopwatch.ElapsedMilliseconds));
             var failures = new ActionFailures();
             result = FamilyEditor.Execute(document, action, failures, application, job.ClientName);
             var failed = !result.Committed && result.FailedFamily is not null;

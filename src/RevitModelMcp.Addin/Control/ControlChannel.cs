@@ -173,10 +173,12 @@ internal sealed class ControlChannel
             var isHttp = HasHttpCompletion(_current.JobId);
             ResponseDelivery.Current = content =>
             {
+                var firstResponse = _httpResponse is null;
                 _httpResponse = content;
                 _responseDeliveredAt = DateTimeOffset.UtcNow;
                 _tabActivity.Progress(_current.JobId, content);
-                if (ActionJobParser.IsAction(_current.Command)) _scheduler.PublishProgress(_current.JobId, content);
+                if (ActionJobParser.IsAction(_current.Command))
+                    _scheduler.PublishProgress(_current.JobId, content, persist: firstResponse);
                 if (!isHttp)
                 {
                     if (_current.Command == "batch" && _fileProgressWrite.IsRunning &&

@@ -28,6 +28,38 @@ public sealed class JobSchedulerTests
     }
 
     [Test]
+    public async Task AcceptedActionIdentityIsPersistedBeforeLongRunningWork()
+    {
+        var persisted = new List<string>();
+        var scheduler = new JobScheduler(resultDirectory: "unused",
+            writeResult: (_, content) => persisted.Add(content));
+        var jobId = NewId();
+        scheduler.Submit(jobId, "client", "Client", "execute-code", "{}");
+        scheduler.TakeNext();
+        persisted.Clear();
+        var accepted = CommandResponse<string>.PartialResult("execute-code", "accepted",
+            "Command accepted and running.", 0);
+        accepted.Responder = new ResponderInfo
+        {
+            ProcessId = 42,
+            InstanceId = "instance-42",
+            RevitVersion = "2026",
+            DocumentId = "doc:background",
+            DocumentName = "Target",
+            ActiveDocument = new InstanceDocument { DocumentId = "doc:active", Title = "UI" }
+        };
+        var response = CommandResponseJsonSerializer.Serialize(accepted);
+        scheduler.PublishProgress(jobId, response, persist: true);
+
+        await Assert.That(persisted).IsEquivalentTo([response]);
+        await Assert.That(scheduler.Status(jobId)!.Result).IsEqualTo(response);
+        await Assert.That(scheduler.Status(jobId)!.State).IsEqualTo(JobState.Running);
+        scheduler.PublishProgress(jobId, "later progress");
+        await Assert.That(persisted.Count).IsEqualTo(1);
+        await Assert.That(scheduler.Status(jobId)!.Result).IsEqualTo("later progress");
+    }
+
+    [Test]
     public async Task ProgressStaysInMemoryUntilCompletion()
     {
         var now = DateTimeOffset.UtcNow;

@@ -281,6 +281,8 @@ def running_job(
     response: dict[str, Any] | None = None,
     process_id: int | None = None,
     identity: dict[str, Any] | None = None,
+    target_document: str | None = None,
+    command: str | None = None,
 ) -> dict[str, Any]:
     data = (response or {}).get("data")
     progress = (
@@ -301,21 +303,39 @@ def running_job(
     )
     if progress is not None and models:
         progress["models"] = models
+    identity = identity or {}
+    documents = [entry for entry in identity.get("documents", []) if isinstance(entry, dict)]
+    active_document = next((entry for entry in documents if entry.get("isActive")), None)
+    targets = (
+        [entry for entry in documents if matches_document({"documents": [entry]}, target_document)]
+        if target_document
+        else ([active_document] if active_document else [])
+    )
+    if command in {"process-models", "open-document", "new-document"}:
+        targets = []
+    target = targets[0] if len(targets) == 1 else {}
+    responder = {
+        "processId": process_id,
+        "revitVersion": identity.get("revitVersion"),
+        "instanceId": identity.get("instanceId"),
+        "documentId": target.get("documentId"),
+        "documentName": target.get("title", ""),
+        "documentPath": target.get("path", ""),
+        "activeDocument": active_document,
+    }
+    reported = (response or {}).get("responder")
+    if isinstance(reported, dict):
+        if reported.get("processId") and reported.get("instanceId"):
+            responder.update(reported)
+        else:
+            responder.update({key: value for key, value in reported.items() if value})
     return {
         "status": "running",
         "jobId": job_id,
         "progress": progress,
         "partial": models,
         **({"processId": process_id} if process_id is not None else {}),
-        "responder": (response or {}).get("responder")
-        or {
-            "processId": process_id,
-            "revitVersion": (identity or {}).get("revitVersion"),
-            "instanceId": (identity or {}).get("instanceId"),
-            "documentId": None,
-            "documentName": "",
-            "documentPath": "",
-        },
+        "responder": responder,
         "message": "The action may already have changed the model. Poll revit_jobs with "
         f"job_id='{job_id}'"
         + (f", process_id={process_id}" if process_id is not None else "")
@@ -942,6 +962,8 @@ class RevitChannel:
                         response,
                         job.payload.get("targetProcessId"),
                         getattr(remote, "instance_info", {}),
+                        (original_job if route is not None else job).payload.get("targetDocument"),
+                        original_job.command if route is not None else response.get("command"),
                     )
                 await asyncio.sleep(min(0.25, remaining))
 
@@ -1011,6 +1033,7 @@ class RevitChannel:
         finish_attempted = False
         trigger_taken = False
         result: dict[str, Any] | None = None
+        latest_response: dict[str, Any] | None = None
         failure: BaseException | None = None
 
         try:
@@ -1028,7 +1051,11 @@ class RevitChannel:
                 )
             except TimeoutError:
                 return running_job(
-                    job_id, process_id=job.payload.get("targetProcessId"), identity=instance
+                    job_id,
+                    process_id=job.payload.get("targetProcessId"),
+                    identity=instance,
+                    target_document=job.payload.get("targetDocument"),
+                    command=job.command,
                 )
 
             if not getattr(self.remote, "reports_job_progress", False):
@@ -1113,6 +1140,7 @@ class RevitChannel:
                         )
                     if not _is_intermediate_response(result):
                         break
+                    latest_response = result
                     result = None
                 left = remaining()
                 if left <= 0:
@@ -1139,13 +1167,23 @@ class RevitChannel:
                     raise
                 except (RevitChannelError, TimeoutError):
                     return running_job(
-                        job_id, process_id=job.payload.get("targetProcessId"), identity=instance
+                        job_id,
+                        latest_response,
+                        job.payload.get("targetProcessId"),
+                        instance,
+                        job.payload.get("targetDocument"),
+                        command=job.command,
                     )
                 await current_progress_reporter().observe(response)
                 validate_job_identity(response, instance)
                 if _is_intermediate_response(response):
                     return running_job(
-                        job_id, response, job.payload.get("targetProcessId"), instance
+                        job_id,
+                        response,
+                        job.payload.get("targetProcessId"),
+                        instance,
+                        job.payload.get("targetDocument"),
+                        command=job.command,
                     )
                 return parse_response(json.dumps(response), job.command)
 

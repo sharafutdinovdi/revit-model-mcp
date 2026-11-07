@@ -538,6 +538,8 @@ Zero or multiple matching processes fail before publication. Actions and directe
 A directed read can target an inactive document.
 Response `responder` fields identify the actual process, Revit version and resolved target document; `documentId:null` and empty target name/path explicitly indicate no resolved target.
 `responder.activeDocument` describes the separate active UI document.
+Running and timeout receipts preserve the resolved responder snapshot, including the target document ID and separate active UI document.
+Before execution publishes a snapshot, running receipts use the selected process's discovery identity; an empty queued responder does not replace known identity fields.
 Long-running responses include `processId` and polling instructions with `process_id`. Subsequent `revit_jobs` calls remain bound to the original process generation during the server lifetime; a changed process generation or conflicting selector fails closed.
 Persisted results carrying `instanceId` are also checked against the selected process generation after a server restart.
 `revit_batch_start(process_id=...)` selects the launcher explicitly and never substitutes another process if that launcher is absent.
