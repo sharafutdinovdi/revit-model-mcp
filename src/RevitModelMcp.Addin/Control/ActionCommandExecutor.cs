@@ -132,13 +132,12 @@ internal static class ActionCommandExecutor
             if (job.Command is "export" or "export-nwc") action.ConfirmOverwrites = true;
             if (job.Command is "execute-code" or "run-tool")
             {
-                if (job.Command == "run-tool"
+                if (action.ConfirmToken is not null || (job.Command == "run-tool"
                     ? MyTools.Session.RequiresConfirmation(action.ToolName!, action.ToolRevision!, action.ToolMode, action.DryRun)
-                    : !action.DryRun)
+                    : !action.DryRun))
                     data = ConfirmationStore.Gate(job.Command,
                         document is null ? "none" : DocumentConfirmationBinding.Identity(document.PathName, document.Title),
-                        DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
-                        (job.Command == "run-tool" ? $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}" : ""), "", action.ConfirmToken,
+                        ToolArguments.ExecutionBinding(action), "", action.ConfirmToken,
                         action.ToolConfirmationText ?? $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(action.Code!)[..12]}, {action.Code!.Length} characters, transaction {action.TransactionMode}) on '{document?.Title ?? "no document"}'. The code has full Revit API access and the user's file and network rights. Review it before confirming.",
                         action.ToolName is null ? "Needs confirmation to run C# code." : $"Needs confirmation to run {action.ToolName} ({action.ToolRevision}).",
                         "The confirmation state changed. Repeat the call without confirm_token to get a new one.");
