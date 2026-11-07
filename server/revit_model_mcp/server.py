@@ -595,7 +595,11 @@ async def _execute(
             if CHANNEL != "store":
                 result.update(update_status(package_version()))
         _merge_read_diagnostics(result)
-        return redact_model_paths(result)
+        from revit_model_mcp.artifact_download import complete_code_result
+
+        result = redact_model_paths(result)
+        complete_code_result(result)
+        return result
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(job.command, str(error)))
     except RevitChannelError as error:
