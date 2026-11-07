@@ -20,7 +20,11 @@ internal static class FamilyEditor
         if (document.IsFamilyDocument)
         {
             if (job.Families is not null) throw new ArgumentException("families must be absent in family mode.");
-            var result = new FamilyEditData { Mode = "family", DryRun = job.DryRun };
+            var result = new FamilyEditData
+            {
+                Mode = "family",
+                DryRun = job.DryRun
+            };
             var summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
                 Command = "edit-families",
@@ -61,7 +65,11 @@ internal static class FamilyEditor
         }
         if (job.Families is null) throw new ArgumentException("families is required in project mode.");
         if (document.IsModifiable) throw new InvalidOperationException("Close the project transaction before editing families.");
-        var data = new FamilyEditData { Mode = "project", DryRun = job.DryRun };
+        var data = new FamilyEditData
+        {
+            Mode = "project",
+            DryRun = job.DryRun
+        };
         using var projectGroup = new TransactionGroup(document, "MCP action");
         if (projectGroup.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family edit group.");
         try
@@ -70,7 +78,12 @@ internal static class FamilyEditor
             {
                 if (family is null)
                 {
-                    data.Families.Add(new FamilyEditFamily { Name = name, Status = "skipped", Reason = "not found" });
+                    data.Families.Add(new FamilyEditFamily
+                    {
+                        Name = name,
+                        Status = "skipped",
+                        Reason = "not found"
+                    });
                     continue;
                 }
                 var reason = FamilyAuditReader.SkipReason(family);
@@ -79,7 +92,12 @@ internal static class FamilyEditor
                     reason = $"owned by {owner}";
                 if (reason is not null)
                 {
-                    data.Families.Add(new FamilyEditFamily { Name = family.Name, Status = "skipped", Reason = reason });
+                    data.Families.Add(new FamilyEditFamily
+                    {
+                        Name = family.Name,
+                        Status = "skipped",
+                        Reason = reason
+                    });
                     continue;
                 }
                 using var familyGroup = new TransactionGroup(document, "revit_edit_families");
@@ -87,7 +105,13 @@ internal static class FamilyEditor
                     throw new InvalidOperationException($"Could not start the edit group for '{family.Name}'.");
                 using var suppression = new FamilyAuditReader.FamilySuppression(uiApplication, family.Name, data.Skipped);
                 Document? familyDocument = null;
-                FamilyEditFamily familyResult;
+                var existingDocuments = application.Documents.Cast<Document>().ToList();
+                var identity = new DocumentIdentityComparer<Document>((first, second) => first.Equals(second));
+                var familyResult = new FamilyEditFamily
+                {
+                    Name = family.Name,
+                    Status = "failed"
+                };
                 try
                 {
                     familyDocument = document.EditFamily(family);
@@ -110,11 +134,20 @@ internal static class FamilyEditor
                 }
                 catch (Exception exception)
                 {
-                    familyResult = new FamilyEditFamily { Name = family.Name, Status = "failed", Reason = exception.Message };
+                    familyResult = new FamilyEditFamily
+                    {
+                        Name = family.Name,
+                        Status = "failed",
+                        Reason = exception.Message
+                    };
                 }
                 finally
                 {
-                    familyDocument?.Close(false);
+                    if (familyDocument is not null)
+                    {
+                        familyResult.ApplyClosure(OwnedDocumentCleanup.Close(familyDocument, existingDocuments, identity,
+                            $"{familyDocument.Title} [{familyDocument.GetHashCode():X}]", owned => owned.Close(false)));
+                    }
                 }
                 if (familyResult.Status == "failed" || job.DryRun)
                 {
@@ -128,7 +161,7 @@ internal static class FamilyEditor
                 if (familyResult.Status == "failed")
                 {
                     data.FailedFamily ??= family.Name;
-                    if (job.StopOnError) break;
+                    if (job.StopOnError || data.HasRetainedDocument) break;
                 }
             }
             var editedCount = data.Families.Count(family => family.Status != "skipped");
@@ -140,7 +173,7 @@ internal static class FamilyEditor
                 DryRun = job.DryRun
             });
             data.Summary = summary;
-            if (job.DryRun || data.FailedFamily is not null && job.StopOnError)
+            if (job.DryRun || data.FailedFamily is not null && job.StopOnError || data.HasRetainedDocument)
             {
                 // Dry runs must never commit: some deletions are irreversible.
                 projectGroup.RollBack();
@@ -168,7 +201,11 @@ internal static class FamilyEditor
     private static FamilyEditFamily Edit(Document familyDocument, string name, ActionJobContract job,
         ActionCommandExecutor.ActionFailures failures, Autodesk.Revit.ApplicationServices.Application application)
     {
-        var result = new FamilyEditFamily { Name = name, Status = "unchanged" };
+        var result = new FamilyEditFamily
+        {
+            Name = name,
+            Status = "unchanged"
+        };
         using var transaction = new Transaction(familyDocument, "revit_edit_families");
         if (transaction.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the family transaction.");
         transaction.SetFailureHandlingOptions(transaction.GetFailureHandlingOptions()
@@ -221,7 +258,11 @@ internal static class FamilyEditor
             NwcPathValidator.EnsureAbsoluteNoTraversal(operation.SharedParameterFile, "shared_parameter_file");
         if (string.IsNullOrWhiteSpace(path) || !Path.IsPathRooted(path) || !File.Exists(path))
             throw new FileNotFoundException("Shared parameter file is missing or unreadable.", path);
-        var result = new FamilyOperationResult { Op = operation.Op!, Results = [] };
+        var result = new FamilyOperationResult
+        {
+            Op = operation.Op!,
+            Results = []
+        };
         try
         {
             application.SharedParametersFilename = path;
@@ -246,7 +287,11 @@ internal static class FamilyEditor
                     throw new ArgumentException($"Unknown parameter group: {requested.Group}.");
                 var existing = document.FamilyManager.Parameters.Cast<FamilyParameter>()
                     .FirstOrDefault(parameter => parameter.IsShared && parameter.GUID == definition.GUID);
-                var item = new FamilyItemResult { Name = requested.Name!, Guid = definition.GUID.ToString() };
+                var item = new FamilyItemResult
+                {
+                    Name = requested.Name!,
+                    Guid = definition.GUID.ToString()
+                };
                 if (existing is not null) item.Status = "exists";
                 else
                 {
@@ -276,7 +321,11 @@ internal static class FamilyEditor
 
     private static FamilyOperationResult Remove(Document document, FamilyEditOperationContract operation)
     {
-        var result = new FamilyOperationResult { Op = operation.Op!, Results = [] };
+        var result = new FamilyOperationResult
+        {
+            Op = operation.Op!,
+            Results = []
+        };
         var parameters = FamilyAuditReader.ReadParameters(document);
         foreach (var name in operation.Names!)
         {
