@@ -148,15 +148,25 @@ Successful changes are assimilated into the same single named undo entry as `aut
 Confirmation tokens, machine ExecuteCode policy, the workstation read-only lock, activity entries, and summaries apply to both modes.
 `revit_run_tool(transaction="group")` uses the same runner; read-mode saved tools always roll back.
 
-`documentReceipts` records each protected or changed document by title, its observed added, modified and deleted element counts, and its `committed`, `rolledBack` or `unknown` outcome.
+`auto` and `group` start a transaction group in every open, writable, non-linked document without an open transaction.
+Protection covers changes made through helpers, reflection and family loading, not only transactions declared in submitted source.
+Dry runs, read-mode tools and script failures roll back every owned group where possible.
+Successful runs assimilate each changed document into one named undo entry and roll back empty groups.
+Revit has no cross-document atomic commit; a failure during assimilation can leave previously committed documents changed.
+
+`documentReceipts` identifies each document by title and a session-local `documentKey`, with observed added, modified and deleted element counts, outcome and any undo name or warning.
 Counts accumulate transaction commit notifications; repeated edits can count the same element more than once.
-Transaction and edit-scope constructors in submitted source protect additional documents with owned groups before the scope starts.
-`ScriptContext.TrackDocument(document)` explicitly protects an additional document before a helper or reflection-based transaction starts.
-Dry runs, read-mode tools and script failures roll back all owned groups where possible.
-Changes made through external helpers or reflection without prior protection are reported with an unknown outcome.
-Already committed changes outside owned groups cannot be rolled back by the runner.
+Unchanged documents whose group cannot start have outcome `unchanged`.
+If an existing document cannot accept a transaction group and changes during the call, its outcome is `unknown`; committed changes in that document cannot be rolled back by the runner.
+An open transaction that prevents protection also leaves the outcome unknown, even without a commit notification.
 An unknown or mixed outcome never reports aggregate commit or rollback success and never claims that nothing changed.
-Each committed document has its own named undo entry; Revit has no cross-document atomic commit.
+Empty sibling groups do not invalidate a confirmed commit in a changed document.
+
+Documents opened or created during execution have `openedByCall: true`.
+Dry runs, read-mode tools and failures close those documents without saving; a failed close has outcome `unknown`.
+Successful calls leave their lifecycle under script ownership and report `leftOpen` or `closed`.
+A document already closed by the script cannot be confirmed rolled back.
+Files explicitly saved or written by a script are not reverted.
 
 A successful call that changes only the target model creates one undo entry named `MCP (<client>): Execute code`.
 A script that changes nothing is rolled back: the result has `committed: false` and `rolledBack: true`, and no undo entry or `undoName`.

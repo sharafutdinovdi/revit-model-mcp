@@ -6,17 +6,29 @@ namespace RevitModelMcp.Core.Control;
 public sealed record CodeDocumentReceipt
 {
     [DataMember(Name = "document")] public string Document { get; init; } = string.Empty;
+    [DataMember(Name = "documentKey")] public string DocumentKey { get; init; } = string.Empty;
+    [DataMember(Name = "openedByCall")] public bool OpenedByCall { get; init; }
+    [DataMember(Name = "undoName", EmitDefaultValue = false)] public string? UndoName { get; set; }
     [DataMember(Name = "added")] public int Added { get; set; }
     [DataMember(Name = "modified")] public int Modified { get; set; }
     [DataMember(Name = "deleted")] public int Deleted { get; set; }
     [DataMember(Name = "outcome")] public string Outcome { get; set; } = "unknown";
     [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
+    [IgnoreDataMember] public bool HasChanges => Added > 0 || Modified > 0 || Deleted > 0;
+
+    public static bool ShouldProtect(bool isLinked, bool isReadOnly, bool isModifiable) =>
+        !isLinked && !isReadOnly && !isModifiable;
+
+    public static string GroupOutcome(bool rollbackRequested, bool completionConfirmed, bool hasChanges) =>
+        !completionConfirmed ? "unknown" : rollbackRequested || !hasChanges ? "rolledBack" : "committed";
 
     public static void ApplyOutcome(ActionResultData result, IReadOnlyCollection<CodeDocumentReceipt> receipts)
     {
-        result.Committed = receipts.Count > 0 && receipts.All(receipt => receipt.Outcome == "committed");
-        result.RolledBack = receipts.Count > 0 && receipts.All(receipt => receipt.Outcome == "rolledBack");
-        if (receipts.Any(receipt => receipt.Outcome == "unknown"))
+        var relevant = receipts.Where(receipt => receipt.HasChanges || receipt.OpenedByCall || receipt.Outcome == "unknown").ToList();
+        if (relevant.Count == 0) relevant.AddRange(receipts);
+        result.Committed = relevant.Count > 0 && relevant.All(receipt => receipt.Outcome is "committed" or "leftOpen" or "closed");
+        result.RolledBack = relevant.Count > 0 && relevant.All(receipt => receipt.Outcome is "rolledBack" or "unchanged");
+        if (relevant.Any(receipt => receipt.Outcome == "unknown"))
         {
             const string warning = "Some document changes have an unknown outcome and could not be confirmed rolled back. Changes may remain; inspect documentReceipts.";
             result.Warning = string.IsNullOrEmpty(result.Warning) ? warning : result.Warning + " " + warning;
