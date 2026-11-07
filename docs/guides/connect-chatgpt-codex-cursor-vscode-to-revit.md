@@ -11,15 +11,14 @@ The add-in runs on Windows with Revit 2022-2027, while a remote MCP client can u
 ## Install a local client
 
 1. Close Revit and select the target client.
-2. Follow [one-command installation](../agent-install.md#one-command-per-client) with `-Client codex`, `-Client cursor`, or `-Client vscode`.
+2. Follow [MSI download and verification](../agent-install.md#download-and-verify).
    The release MSI includes the server executable and requires no Python or SDK installation.
 3. Start Revit, choose **Always Load**, and open a model.
-4. Restart the selected client and finish the installer's `humanSteps`.
-5. Run [doctor](../agent-install.md#verify) and request `revit_ping` before asking for model work.
+4. Use **Model MCP > Model MCP > Connect AI app** to register Codex, Cursor, or VS Code, then restart the selected client.
+5. Follow [connection verification](../agent-install.md#verify) and request `revit_ping` before asking for model work.
 
-The same installation can target several clients with `-Client cursor,codex`.
-Existing configuration files receive timestamped backups before changes.
-The Model MCP ribbon's **Connect AI app** provides registration after installation.
+The same installation supports registration in several clients through **Connect AI app**.
+The [one-command installer](../agent-install.md#next-release-one-command-installer) arrives with the next release.
 
 ## ChatGPT and remote access
 
