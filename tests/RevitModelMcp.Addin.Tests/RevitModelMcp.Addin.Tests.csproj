@@ -28,7 +28,6 @@
     <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="$(RevitVersion).0.*" Condition="'$(RevitVersion)' != '2022' And '$(RevitVersion)' != '2027'" />
     <PackageReference Include="Nice3point.TUnit.Revit" Version="$(RevitTestVersion)" />
     <PackageReference Include="TUnit" Version="1.73.19" />
-    <PackageReference Include="Polyfill" Version="11.4.5" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
