@@ -106,6 +106,9 @@ def endpoint():
                 return self.reply(401, {"error": "unauthorized"})
             if route.path == "/jobs" and state.get("drop_once"):
                 state["drop_once"] = False
+                if state.get("accept_before_drop"):
+                    state["payload"] = json.loads(body)
+                    state["executions"] = state.get("executions", 0) + 1
                 self.close_connection = True
                 return
             if state["status"] == 302:
@@ -115,6 +118,9 @@ def endpoint():
                 self.end_headers()
                 return
             if state["status"] not in (200, 202):
+                if route.path == "/jobs" and state.get("accept_before_error"):
+                    state["payload"] = json.loads(body)
+                    state["executions"] = state.get("executions", 0) + 1
                 return self.reply(state["status"], {"error": state.get("error_text", "error")})
             if self.command == "POST":
                 state["payload"] = json.loads(body)
@@ -739,6 +745,36 @@ def test_http_503_points_to_listener_diagnostics(endpoint):
     assert "docs/transport.md" in message
 
 
+@pytest.mark.parametrize("status", [400, 401, 403, 408, 413, 429, 503])
+def test_documented_submission_refusals_are_pre_acceptance(endpoint, status):
+    host, state = endpoint
+    state["status"] = status
+    with pytest.raises(RevitChannelError) as captured:
+        asyncio.run(
+            host.prepare_job("job.tmp", '{"command":"export","jobId":"' + "a" * 32 + '"}', "export")
+        )
+    assert captured.value.before_send is True
+    assert state["payload"] is None
+
+
+@pytest.mark.parametrize("status", [404, 409, 410, 500, 502, 504, 599])
+def test_ambiguous_submission_error_preserves_action_id_and_never_resubmits(endpoint, status):
+    host, state = endpoint
+    state["status"] = status
+    state["accept_before_error"] = True
+    result = asyncio.run(RevitChannel(host).execute(Job("export", {"command": "export"})))
+    assert result["errorCode"] == "outcome_unknown"
+    assert result["jobId"] == state["payload"]["jobId"]
+    assert result["retryable"] is False
+    assert f"call revit_jobs with job_id {result['jobId']}" in result["error"]
+    assert "Inspect" in result["error"]
+    assert state["executions"] == 1
+    assert any(
+        method == "GET" and path == "/jobs/" + result["jobId"]
+        for method, path, _ in state["requests"]
+    )
+
+
 def test_unreachable_endpoint_points_to_heartbeat_listener_reason():
     server = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
     port = server.server_port
@@ -958,3 +994,32 @@ $env:CLAUDE_CONFIG_DIR = Join-Path $env:USERPROFILE 'custom-config'
 if ((Get-ClaudeCodeConfigPath) -ne (Join-Path $env:CLAUDE_CONFIG_DIR '.claude.json')) { throw 'Claude config override ignored' }
 """
     )
+
+
+@pytest.mark.parametrize("phase", ["before_acceptance", "after_acceptance", "after_commit"])
+def test_action_disconnect_recovers_only_original_request(endpoint, phase):
+    host, state = endpoint
+    state["drop_once"] = True
+    if phase == "before_acceptance":
+        state["poll_status"] = 404
+    else:
+        state["accept_before_drop"] = True
+        state["forever"] = phase == "after_acceptance"
+        state["polls"] = 1
+    request_id = "c" * 32
+    result = asyncio.run(
+        RevitChannel(host).execute(
+            Job("select", {"command": "select", "jobId": request_id, "elementIds": [42]})
+        )
+    )
+    if phase == "after_commit":
+        assert result["success"] is True
+        assert result["data"] == "pong"
+    else:
+        assert result["errorCode"] == "outcome_unknown"
+        assert result["jobId"] == request_id
+        assert result["retryable"] is False
+        assert "did not run" not in result["error"]
+    assert state.get("executions", 0) == (0 if phase == "before_acceptance" else 1)
+    assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
+    assert any(path == "/jobs/" + request_id for _, path, _ in state["requests"])

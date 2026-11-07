@@ -172,6 +172,8 @@ public sealed record JobSummary
     [DataMember(Name = "state")] public string State { get; init; } = string.Empty;
     [DataMember(Name = "position")] public int Position { get; init; }
     [DataMember(Name = "ageMs")] public long AgeMs { get; init; }
+    [DataMember(Name = "targetDocument")] public string? TargetDocument { get; init; }
+    [DataMember(Name = "finishedUtc")] public string? FinishedUtc { get; init; }
 }
 
 [DataContract]

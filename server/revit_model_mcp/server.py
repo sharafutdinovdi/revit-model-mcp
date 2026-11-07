@@ -714,6 +714,10 @@ async def revit_jobs(
     document: Document = None,
 ) -> dict[str, Any]:
     """List recent jobs, or wait up to wait_seconds (0 to 50, default 40) for the result of an action jobId. Results stay on the workstation for 24 hours, across server restarts."""
+    # Recover uncertain outcomes with the original jobId. Identical requests return the
+    # retained receipt; changed payloads are refused. Results expire after 24 hours
+    # or budget eviction. Request fingerprints remain and prevent re-execution.
+    # Expiry cannot prove non-execution; inspect the affected document before a new action.
     job = Job.jobs()
     if job_id is not None:
         job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_seconds})

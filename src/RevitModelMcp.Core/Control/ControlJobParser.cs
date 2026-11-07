@@ -61,6 +61,7 @@ public sealed class ControlJobParseResult
     public string Command { get; }
     public string? CorrelationId { get; internal set; }
     public string? JobId { get; internal set; }
+    public bool Retry { get; internal set; }
     public string ClientId { get; internal set; } = "unknown";
     public string ClientName { get; internal set; } = "unknown";
     public ApiLookupRequest? ApiLookup { get; internal set; }
@@ -216,6 +217,7 @@ public sealed class ControlJobParseResult
         };
         result.CorrelationId = job.CorrelationId;
         result.JobId = job.JobId;
+        result.Retry = job.Attempt == "retry";
         result.ClientId = string.IsNullOrWhiteSpace(job.ClientId) ? "unknown" : job.ClientId!;
         result.ClientName = string.IsNullOrWhiteSpace(job.ClientName) ? "unknown" : job.ClientName!;
         result.CoordinatorJob.CorrelationId = job.CorrelationId;
@@ -320,7 +322,11 @@ public sealed class ControlJobParseResult
         {
             if (rule is null || string.IsNullOrWhiteSpace(rule.Category) || string.IsNullOrWhiteSpace(rule.Parameter))
                 return Invalid(command, "Each parameterRules entry requires a non-blank category and parameter.");
-            rules.Add(new ModelSnapshotParameterRule { Category = rule.Category.Trim(), Parameter = rule.Parameter.Trim() });
+            rules.Add(new ModelSnapshotParameterRule
+            {
+                Category = rule.Category.Trim(),
+                Parameter = rule.Parameter.Trim()
+            });
         }
         var result = Create(kind, command);
         result.ParameterRules = rules;
@@ -511,6 +517,8 @@ public sealed partial class ControlJobContract
     public string? RunId { get; set; }
     [DataMember(Name = "jobId", EmitDefaultValue = false)]
     public string? JobId { get; set; }
+    [DataMember(Name = "attempt", EmitDefaultValue = false)]
+    public string? Attempt { get; set; }
     [DataMember(Name = "clientId", EmitDefaultValue = false)]
     public string? ClientId { get; set; }
     [DataMember(Name = "clientName", EmitDefaultValue = false)]

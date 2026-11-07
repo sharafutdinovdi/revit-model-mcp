@@ -8,14 +8,19 @@ import json
 import logging
 import os
 import re
+import sys
+import time
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
 from revit_model_mcp import CHANNEL
 from revit_model_mcp.errors import (
+    OUTCOME_UNKNOWN,
     POLICY_BLOCKED,
     READ_ONLY,
     READ_ONLY_MESSAGE,
@@ -46,6 +51,47 @@ def _dialog_wait_message(dialog: dict[str, Any]) -> str:
         or "unknown"
     )
     return f"waiting for dialog {detail}"
+
+
+def _request_journal_directory() -> Path:
+    if sys.platform == "win32":
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Caches"
+    else:
+        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return root / "revit-model-mcp" / "requests"
+
+
+def _persist_request_id(job: Job, instance: dict[str, Any]) -> Path:
+    directory = _request_journal_directory()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    cutoff = time.time() - 24 * 60 * 60
+    records = []
+    for record in directory.glob("*.json"):
+        try:
+            records.append((record.stat().st_mtime, record))
+        except FileNotFoundError:
+            continue
+    for index, (modified, record) in enumerate(sorted(records, reverse=True)):
+        if index >= 99 or modified < cutoff:
+            record.unlink(missing_ok=True)
+    path = directory / f"{uuid.UUID(job.payload['jobId']).hex}.json"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(
+            {
+                "jobId": job.payload["jobId"],
+                "command": job.command,
+                "targetDocument": job.payload.get("targetDocument"),
+                "processId": instance.get("processId"),
+                "submittedUtc": datetime.now(timezone.utc).isoformat(),
+            },
+            stream,
+        )
+        stream.flush()
+        os.fsync(stream.fileno())
+    return path
 
 
 class ProgressReporter:
@@ -421,17 +467,22 @@ def refused_response(command: str, error: ReadOnlyRefusedError) -> dict[str, Any
     )
 
 
+class SubmissionRefusedError(RevitChannelError):
+    before_send = True
+
+
 class ResultExpiredError(RevitChannelError):
     pass
 
 
 class TransportUnavailableError(RevitChannelError):
+    before_send = False
     transport = "transport"
 
     def __str__(self) -> str:
         return (
             f"Revit is not reachable over {self.transport}: {super().__str__().rstrip('.')}. "
-            "The call did not run. Retry when the workstation or tunnel is back."
+            "Check the workstation or tunnel connection."
         )
 
 
@@ -1052,8 +1103,8 @@ class RevitChannel:
         )
         loop = asyncio.get_running_loop()
         tool_deadline = loop.time() + budget if background else None
-        correlation_id = uuid.uuid4().hex
-        job_id = uuid.uuid4().hex
+        job_id = job.payload.get("jobId") or uuid.uuid4().hex
+        correlation_id = job.payload.get("correlationId") or job_id
         now = loop.time()
         for expired in [key for key, route in self._job_routes.items() if now - route[2] >= 86400]:
             del self._job_routes[expired]
@@ -1065,6 +1116,7 @@ class RevitChannel:
                 **job.payload,
                 "correlationId": correlation_id,
                 "jobId": job_id,
+                "attempt": "retry" if job.payload.get("jobId") else "initial",
                 "clientId": CLIENT_ID,
                 "clientName": _client_name.get(),
             },
@@ -1077,6 +1129,14 @@ class RevitChannel:
         result: dict[str, Any] | None = None
         latest_response: dict[str, Any] | None = None
         failure: BaseException | None = None
+
+        if job.command in ACTION_COMMANDS:
+            try:
+                _persist_request_id(job, instance)
+            except OSError as error:
+                raise RevitChannelError(
+                    f"Request id {job_id} was not persisted; the action was not sent: {error}"
+                ) from error
 
         try:
             known_responses = await self.remote.prepare_job(
@@ -1283,7 +1343,40 @@ class RevitChannel:
                     f"Could not clean up channel temporary files: {cleanup_error}"
                 )
 
+        if (
+            failure is not None
+            and job.command in ACTION_COMMANDS
+            and not isinstance(
+                failure, (ReadOnlyRefusedError, ResultExpiredError, asyncio.CancelledError)
+            )
+            and not (not job_prepared and getattr(failure, "before_send", False))
+        ):
+            try:
+                recovered = await asyncio.wait_for(self.remote.fetch_job(job_id), 2)
+                validate_job_identity(recovered, instance)
+                if not _is_intermediate_response(recovered):
+                    return parse_response(json.dumps(recovered), job.command)
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "command": job.command,
+                "errorCode": OUTCOME_UNKNOWN,
+                "error": f"Action outcome unknown, request id {job_id}: call revit_jobs with job_id {job_id}. Inspect the model before resubmitting.",
+                "jobId": job_id,
+                **(
+                    {"processId": job.payload["targetProcessId"]}
+                    if job.payload.get("targetProcessId") is not None
+                    else {}
+                ),
+                "retryable": False,
+                "warnings": [str(failure)],
+            }
         if failure is not None:
+            if job.command in ACTION_COMMANDS and isinstance(failure, TransportUnavailableError):
+                failure.args = (
+                    f"{failure.args[0]} Request id {job_id}: call revit_jobs with job_id {job_id}.",
+                )
             raise failure
         if result is None:
             raise RevitChannelError("Channel completed without a response.")

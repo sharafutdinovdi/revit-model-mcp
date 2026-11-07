@@ -83,6 +83,8 @@ class RemoteCommandTimeoutError(RevitChannelError):
 
 
 class RemoteCommandNotStartedError(RemoteCommandTimeoutError, TransportUnavailableError):
+    before_send = True
+
     transport = "SSH"
 
     def __init__(self, message: str) -> None:
@@ -942,9 +944,11 @@ class SshPowerShellHost:
             if process is not None and process.returncode is None:
                 process.kill()
                 await process.communicate()
-            raise SshUnavailableError(
+            unavailable = SshUnavailableError(
                 "Could not start the transport executable. Check that PowerShell (local mode) or ssh (SSH mode) is available in PATH."
-            ) from error
+            )
+            unavailable.before_send = process is None
+            raise unavailable from error
         if process is None:
             raise SshUnavailableError(
                 f"Host {self.host} is unavailable: the transport process did not start."
