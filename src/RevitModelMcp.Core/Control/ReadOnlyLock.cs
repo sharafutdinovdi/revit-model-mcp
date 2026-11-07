@@ -68,7 +68,7 @@ public sealed class ReadOnlyLock : IDisposable
             using var guard = AcquireWriteGuard();
             if (_policyLocked()) throw new InvalidOperationException(new ReadOnlyLockState { Source = "policy" }.Refusal);
             if (enabled)
-                File.WriteAllLines(_path, [setBy, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture), Guid.NewGuid().ToString("N")]);
+                WriteState(setBy);
             else
                 File.Delete(_path);
         }
@@ -123,6 +123,40 @@ public sealed class ReadOnlyLock : IDisposable
         Changed?.Invoke(current);
     }
 
+    private void WriteState(string setBy)
+    {
+        var temporary = _path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllLines(temporary, [setBy, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture), Guid.NewGuid().ToString("N")]);
+            if (File.Exists(_path)) File.Replace(temporary, _path, null);
+            else File.Move(temporary, _path);
+        }
+        finally
+        {
+            File.Delete(temporary);
+        }
+    }
+
+    private string[] ReadLines()
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using var stream = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using var reader = new StreamReader(stream);
+                var lines = new List<string>();
+                while (reader.ReadLine() is string line) lines.Add(line);
+                return lines.ToArray();
+            }
+            catch (IOException exception) when ((exception.HResult & 0xffff) == 32 && attempt < 9)
+            {
+                Thread.Sleep(10);
+            }
+        }
+    }
+
     private FileStream AcquireWriteGuard()
     {
         // The guard file is permanent; deleting it would allow concurrent owners of different file handles.
@@ -146,7 +180,7 @@ public sealed class ReadOnlyLock : IDisposable
         try
         {
             if (Directory.GetFiles(Path.GetDirectoryName(_path)!, Path.GetFileName(_path)).Length == 0) return new();
-            var lines = File.ReadAllLines(_path);
+            var lines = ReadLines();
             var metadata = lines.Length is 2 or 3 && lines[0] is "ribbon" or "chat" &&
                            DateTimeOffset.TryParse(lines[1], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out _);
             return new ReadOnlyLockState

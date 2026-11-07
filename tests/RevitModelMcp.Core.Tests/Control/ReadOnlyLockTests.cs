@@ -2,6 +2,7 @@ using System.Diagnostics;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
+using TUnit.Core.Enums;
 
 namespace RevitModelMcp.Core.Tests.Control;
 
@@ -10,12 +11,92 @@ public sealed class ReadOnlyLockTests : IDisposable
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "model-mcp-lock-" + Guid.NewGuid().ToString("N"));
     private string LockPath => Path.Combine(_folder, "read-only");
 
+    private void WriteLockFile(string content)
+    {
+        using var guard = new FileStream(LockPath + ".guard", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        var temporary = LockPath + ".tmp";
+        File.WriteAllText(temporary, content);
+        if (File.Exists(LockPath)) File.Replace(temporary, LockPath, null);
+        else File.Move(temporary, LockPath);
+    }
+
+    private string ReadLockFile()
+    {
+        using var stream = new FileStream(LockPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    [Test]
+    public async Task OpenReaderAllowsReplacementAndUnlock()
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false);
+        service.Set(true, "chat");
+        using var stream = new FileStream(LockPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        service.Set(true, "ribbon");
+        await Assert.That(service.LockedBy).IsEqualTo("ribbon");
+        await Assert.That(reader.ReadLine()).IsEqualTo("chat");
+        service.Set(false, "ribbon");
+        await Assert.That(service.IsLocked).IsFalse();
+    }
+
+    [Test]
+    public async Task ReadersAllowConcurrentWriter()
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false);
+        service.Set(true, "chat");
+        using var writer = new FileStream(LockPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+        await Assert.That(service.LockedBy).IsEqualTo("chat");
+    }
+
+    [Test]
+    [RunOn(OS.Windows)]
+    public async Task SharingViolationRetriesUntilReaderCanOpen()
+    {
+        Directory.CreateDirectory(_folder);
+        WriteLockFile(string.Join(Environment.NewLine, "ribbon", DateTimeOffset.UtcNow.ToString("O")));
+        using var stream = new FileStream(LockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        using var service = new ReadOnlyLock(LockPath, () => false);
+        using var release = new ManualResetEventSlim();
+        var owner = new Thread(() =>
+        {
+            release.Wait();
+            Thread.Sleep(30);
+            stream.Dispose();
+        });
+        owner.Start();
+        try
+        {
+            release.Set();
+            await Assert.That(service.LockedBy).IsEqualTo("ribbon");
+            await Assert.That(service.LockedAtUtc).IsNotEqualTo("unknown");
+        }
+        finally
+        {
+            release.Set();
+            owner.Join();
+        }
+    }
+
+    [Test]
+    public async Task PersistentSharingViolationFailsClosed()
+    {
+        Directory.CreateDirectory(_folder);
+        WriteLockFile("manual lock");
+        using var stream = new FileStream(LockPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        using var service = new ReadOnlyLock(LockPath, () => false);
+        await Assert.That(service.IsLocked).IsTrue();
+        await Assert.That(service.LockedBy).IsEqualTo("file");
+        await Assert.That(service.LockedAtUtc).IsEqualTo("unknown");
+    }
+
     [Test]
     public async Task FilePresentAndAbsent()
     {
         using var service = new ReadOnlyLock(LockPath, () => false);
         await Assert.That(service.IsLocked).IsFalse();
-        File.WriteAllText(LockPath, "");
+        WriteLockFile("");
         await Assert.That(service.IsLocked).IsTrue();
         await Assert.That(service.LockedBy).IsEqualTo("file");
         await Assert.That(service.LockedAtUtc).IsNotNull();
@@ -65,7 +146,7 @@ public sealed class ReadOnlyLockTests : IDisposable
         using var service = new ReadOnlyLock(LockPath, () => false);
         var changed = new TaskCompletionSource<ReadOnlyLockState>(TaskCreationOptions.RunContinuationsAsynchronously);
         service.Changed += state => { if (state.IsLocked) changed.TrySetResult(state); };
-        File.WriteAllText(LockPath, "manual lock");
+        WriteLockFile("manual lock");
         await Assert.That(await Task.WhenAny(changed.Task, Task.Delay(1000)) == changed.Task).IsTrue();
         await Assert.That((await changed.Task).LockedBy).IsEqualTo("file");
         await Assert.That((await changed.Task).Refusal).Contains("set from file at ");
@@ -120,10 +201,10 @@ public sealed class ReadOnlyLockTests : IDisposable
             .Throws<InvalidOperationException>().WithMessage("The read-only lock changed. Repeat the call without confirm_token.");
         await Assert.That(writer.IsLocked).IsTrue();
         await Assert.That(writer.LockedBy).IsEqualTo("ribbon");
-        var replacement = File.ReadAllText(LockPath);
+        var replacement = ReadLockFile();
         await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
             .Throws<InvalidOperationException>();
-        await Assert.That(File.ReadAllText(LockPath)).IsEqualTo(replacement);
+        await Assert.That(ReadLockFile()).IsEqualTo(replacement);
     }
 
     [Test]
@@ -131,10 +212,10 @@ public sealed class ReadOnlyLockTests : IDisposable
     {
         using var service = new ReadOnlyLock(LockPath, () => false);
         var timestamp = DateTimeOffset.UtcNow.ToString("O");
-        File.WriteAllLines(LockPath, ["ribbon", timestamp, Guid.NewGuid().ToString("N")]);
+        WriteLockFile(string.Join(Environment.NewLine, "ribbon", timestamp, Guid.NewGuid().ToString("N")));
         var tokens = new DocumentConfirmationTokens();
         var preview = service.SetFromChat(false, null, tokens, "user", "machine");
-        File.WriteAllLines(LockPath, ["ribbon", timestamp, Guid.NewGuid().ToString("N")]);
+        WriteLockFile(string.Join(Environment.NewLine, "ribbon", timestamp, Guid.NewGuid().ToString("N")));
         await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
             .Throws<InvalidOperationException>();
         await Assert.That(service.IsLocked).IsTrue();
@@ -160,7 +241,7 @@ public sealed class ReadOnlyLockTests : IDisposable
     public async Task LegacyMetadataCanBeUnlocked()
     {
         using var service = new ReadOnlyLock(LockPath, () => false);
-        File.WriteAllLines(LockPath, ["ribbon", DateTimeOffset.UtcNow.ToString("O")]);
+        WriteLockFile(string.Join(Environment.NewLine, "ribbon", DateTimeOffset.UtcNow.ToString("O")));
         var tokens = new DocumentConfirmationTokens();
         var preview = service.SetFromChat(false, null, tokens, "user", "machine");
         service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine");
@@ -187,6 +268,8 @@ public sealed class ReadOnlyLockTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false
         };
+        start.ArgumentList.Add("--fx-version");
+        start.ArgumentList.Add(Environment.Version.ToString());
         start.ArgumentList.Add(typeof(ReadOnlyLockTests).Assembly.Location);
         start.ArgumentList.Add("--treenode-filter");
         start.ArgumentList.Add("/*/*/ReadOnlyLockTests/WritesWaitForGuardAcrossProcesses");
@@ -237,6 +320,8 @@ public sealed class ReadOnlyLockTests : IDisposable
             RedirectStandardError = true,
             UseShellExecute = false
         };
+        start.ArgumentList.Add("--fx-version");
+        start.ArgumentList.Add(Environment.Version.ToString());
         start.ArgumentList.Add(typeof(ReadOnlyLockTests).Assembly.Location);
         start.ArgumentList.Add("--treenode-filter");
         start.ArgumentList.Add("/*/*/ReadOnlyLockTests/ReplacementAfterValidationSurvivesUnlockAcrossProcesses");
@@ -256,10 +341,10 @@ public sealed class ReadOnlyLockTests : IDisposable
                 process.WaitForExit();
                 throw new TimeoutException("The replacement writer did not exit.");
             }
-            replacement = File.ReadAllText(LockPath);
+            replacement = ReadLockFile();
         });
         service.Set(true, "chat");
-        var original = File.ReadAllText(LockPath);
+        var original = ReadLockFile();
         var tokens = new DocumentConfirmationTokens();
         var preview = service.SetFromChat(false, null, tokens, "user", "machine");
 
@@ -268,7 +353,7 @@ public sealed class ReadOnlyLockTests : IDisposable
         var output = await standardOutput! + await standardError!;
         await Assert.That(process.ExitCode).IsEqualTo(0).Because(output);
         await Assert.That(replacement).IsNotEqualTo(original);
-        await Assert.That(File.ReadAllText(LockPath)).IsEqualTo(replacement);
+        await Assert.That(ReadLockFile()).IsEqualTo(replacement);
         await Assert.That(service.IsLocked).IsTrue();
         await Assert.That(service.LockedBy).IsEqualTo("ribbon");
     }
