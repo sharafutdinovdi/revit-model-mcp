@@ -4,6 +4,19 @@ namespace RevitModelMcp.Core.Control;
 
 public static class OwnedDocumentCleanup
 {
+    public static IEnumerable<T> FindUntrackedActivationDocuments<T>(IEnumerable<T> open,
+        IEnumerable<T> preExisting, IEnumerable<T> owned, IEqualityComparer<T> comparer,
+        IEnumerable<DocumentClosureResult> closures, Func<T, string> identity, Func<T, bool> matchesPath)
+        where T : class
+    {
+        foreach (var candidate in open)
+        {
+            if (!preExisting.Contains(candidate, comparer) && !owned.Contains(candidate, comparer) &&
+                !closures.Any(closure => closure.Identity == identity(candidate)) && matchesPath(candidate))
+                yield return candidate;
+        }
+    }
+
     public static DocumentClosureResult? Close<T>(T document, IEnumerable<T> preExisting,
         IEqualityComparer<T> comparer, string identity, Func<T, bool> close) where T : class
     {

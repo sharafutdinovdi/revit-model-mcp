@@ -8,6 +8,28 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class OwnedDocumentCleanupTests
 {
     [Test]
+    [Arguments("new", true)]
+    [Arguments("existing", false)]
+    [Arguments("owned", false)]
+    [Arguments("closed", false)]
+    [Arguments("refused", false)]
+    [Arguments("unrelated", false)]
+    public async Task FindUntrackedActivationDocuments_TracksOnlyNewUnaccountedMatchingDocuments(
+        string candidate, bool expected)
+    {
+        var comparer = new DocumentIdentityComparer<string>((first, second) => first == second);
+        var documents = OwnedDocumentCleanup.FindUntrackedActivationDocuments(
+            [new string(candidate.ToCharArray())], ["existing"], ["owned"], comparer,
+            [
+                new DocumentClosureResult { Identity = "closed", Closed = true },
+                new DocumentClosureResult { Identity = "refused", Closed = false }
+            ], document => document, document => document != "unrelated").ToList();
+
+        await Assert.That(documents.Count).IsEqualTo(expected ? 1 : 0);
+        if (expected) await Assert.That(documents.Single()).IsEqualTo(candidate);
+    }
+
+    [Test]
     [Arguments(true)]
     [Arguments(false)]
     public async Task Close_ReportsClosureResult(bool closed)

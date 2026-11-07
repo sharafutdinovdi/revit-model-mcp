@@ -292,6 +292,65 @@ public sealed class RevitTests : RevitApiUiTest
     [Test]
     [Arguments(false)]
     [Arguments(true)]
+    public async Task NewDocumentActivationFailureAccountsForReplacementDocumentAsync(bool retainActiveDocument)
+    {
+        var originalActive = UiApplication.ActiveUIDocument?.Document;
+        // Revit cannot close its active document or restore a session with no active document through the API.
+        if (originalActive is null || !File.Exists(originalActive.PathName))
+            Skip.Test("Activation cleanup requires an existing saved active document for restoring the UI session.");
+        var template = Environment.GetEnvironmentVariable("RMM_TEST_PROJECT_TEMPLATE")
+            ?? Application.DefaultProjectTemplate;
+        if (!File.Exists(template)) Skip.Test("Set RMM_TEST_PROJECT_TEMPLATE to an existing project template.");
+        var before = Application.Documents.Cast<Document>().ToList();
+        var path = Path.Combine(_directory!, "activation-failure.rvt");
+        Document? replacement = null;
+        string? identity = null;
+        var injected = false;
+        try
+        {
+            Exception? failure = null;
+            try
+            {
+                RevitModelMcp.Control.DocumentActions.Execute(UiApplication, "new-document", new ActionJobContract
+                {
+                    Kind = "project", Template = template, SaveAs = path, Activate = true
+                }, (application, savedPath) =>
+                {
+                    // Force a replacement wrapper; normal activation can reuse the background document.
+                    var background = Application.Documents.Cast<Document>().Single(document => document.PathName == savedPath);
+                    if (!background.Close(false)) throw new InvalidOperationException("Could not prepare replacement activation.");
+                    replacement = application.OpenAndActivateDocument(savedPath).Document;
+                    identity = $"{replacement.Title} [{replacement.GetHashCode():X}]";
+                    if (!retainActiveDocument) application.OpenAndActivateDocument(originalActive!.PathName);
+                    injected = true;
+                    throw new InvalidOperationException("Injected activation failure after opening the UI document.");
+                });
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+            await Assert.That(injected).IsTrue();
+            await Assert.That(failure is not null).IsTrue();
+            await Assert.That(failure!.Message.Contains("Injected activation failure")).IsTrue();
+            await Assert.That(failure.Message.Contains(retainActiveDocument
+                ? $"Retained document '{identity}'" : $"Closed '{identity}'")).IsTrue();
+            await Assert.That(replacement!.IsValidObject).IsEqualTo(retainActiveDocument);
+            await AssertInventoryAsync(retainActiveDocument ? [.. before, replacement!] : before);
+        }
+        finally
+        {
+            if (replacement is { IsValidObject: true })
+            {
+                UiApplication.OpenAndActivateDocument(originalActive!.PathName);
+                replacement.Close(false);
+            }
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task NewDocumentSaveFailurePreservesExistingDocumentsAsync(bool refuseClosure)
     {
         var template = Environment.GetEnvironmentVariable("RMM_TEST_PROJECT_TEMPLATE")

@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
+
+[assembly: InternalsVisibleTo("RevitModelMcp.Addin.Tests")]
 
 namespace RevitModelMcp.Control;
 
@@ -15,9 +18,13 @@ internal static class DocumentActions
         new(Identity);
 
     internal static ActionResultData Execute(UIApplication application, string command, ActionJobContract action)
+        => Execute(application, command, action, null);
+
+    internal static ActionResultData Execute(UIApplication application, string command, ActionJobContract action,
+        Func<UIApplication, string, Document>? activateNewDocument)
     {
         if (command == "open-document") return Open(application, action);
-        if (command == "new-document") return New(application, action);
+        if (command == "new-document") return New(application, action, activateNewDocument);
         var document = ActionCommandExecutor.ResolveDocument(application, action.Document);
         if (document.IsModifiable) throw new InvalidOperationException("The document has an open transaction.");
         return command switch
@@ -413,7 +420,8 @@ internal static class DocumentActions
         return new ActionResultData { Title = document.Title, ClosedViews = closed, RefusedViews = refused, Changed = closed.Count > 0 };
     }
 
-    private static ActionResultData New(UIApplication application, ActionJobContract action)
+    private static ActionResultData New(UIApplication application, ActionJobContract action,
+        Func<UIApplication, string, Document>? activateNewDocument)
     {
         if (action.SaveAs is not null && File.Exists(action.SaveAs)) throw new IOException("save_as target exists.");
         var before = application.Application.Documents.Cast<Document>().ToList();
@@ -446,7 +454,9 @@ internal static class DocumentActions
             if (action.Activate)
             {
                 activationAttempted = true;
-                var active = application.OpenAndActivateDocument(path!).Document;
+                var active = activateNewDocument is null
+                    ? application.OpenAndActivateDocument(path!).Document
+                    : activateNewDocument(application, path!);
                 if (!active.Equals(created))
                 {
                     owned.Add(active);
@@ -483,13 +493,11 @@ internal static class DocumentActions
                 // Activation can open a document before throwing.
                 if (activationAttempted && path is not null)
                 {
-                    foreach (var candidate in application.Application.Documents.Cast<Document>())
-                    {
-                        if (!before.Contains(candidate, Identity) && !owned.Contains(candidate, Identity) &&
-                            !closures.Any(closure => closure.Identity == $"{candidate.Title} [{candidate.GetHashCode():X}]") &&
-                            DocumentPathValidator.SamePath(candidate.PathName, path))
-                            owned.Add(candidate);
-                    }
+                    foreach (var candidate in OwnedDocumentCleanup.FindUntrackedActivationDocuments(
+                        application.Application.Documents.Cast<Document>(), before, owned, Identity, closures,
+                        candidate => $"{candidate.Title} [{candidate.GetHashCode():X}]",
+                        candidate => DocumentPathValidator.SamePath(candidate.PathName, path)))
+                        owned.Add(candidate);
                 }
                 foreach (var retained in owned)
                 {
