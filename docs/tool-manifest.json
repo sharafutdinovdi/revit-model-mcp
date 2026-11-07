@@ -807,7 +807,7 @@
     },
     {
       "name": "revit_save_tool",
-      "description": "Compile C# and schema without execution, then save a revision after the token handshake. Returns full source, hash and confirm_token. Uses a two-step AI app token handshake.",
+      "description": "Compile C#/schema without execution; confirm to save. Returns full source, hash and token. Uses a two-step AI app token handshake.",
       "toolset": "code",
       "access": "modifying",
       "annotations": {
@@ -869,7 +869,7 @@
     },
     {
       "name": "revit_run_tool",
-      "description": "Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. transaction=group permits script-owned transactions and edit scopes in one Undo group. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit. Uses a two-step AI app token handshake.",
+      "description": "Run saved C#. First run per session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. transaction=group allows script-owned transactions and edit scopes in one Undo group. Uses execute_code gates; store runs need machine ExecuteCode=confirm, even read/dry_run. Timeouts may follow commit. Uses a two-step AI app token handshake.",
       "toolset": "code",
       "access": "modifying",
       "annotations": {
@@ -1594,7 +1594,7 @@
     },
     {
       "name": "revit_batch_start",
-      "description": "Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory).",
+      "description": "Start a persistent, read-only run over local, UNC or RSN models. process_id selects the launcher Revit process. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory).",
       "toolset": "batch",
       "access": "modifying",
       "annotations": {

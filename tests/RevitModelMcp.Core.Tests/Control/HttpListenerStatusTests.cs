@@ -5,6 +5,35 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class HttpListenerStatusTests
 {
     [Test]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    [Arguments(true, false)]
+    [Arguments(true, true)]
+    public async Task RibbonAvailabilityIncludesEveryUsableTransport(bool pipeListening, bool fileEnabled)
+    {
+        foreach (var http in new[] { HttpListenerStatus.DisabledBySettings(), HttpListenerStatus.Started(), HttpListenerStatus.ConfigError("IOException") })
+        {
+            var status = ChannelRibbonStatus.Derive(pipeListening, http, fileEnabled);
+            await Assert.That(status.IsAvailable).IsEqualTo(pipeListening || fileEnabled || http.State == HttpListenerStatus.Listening);
+            await Assert.That(status.Pipe).IsEqualTo(pipeListening ? "listening" : "failed");
+            await Assert.That(status.Http).IsEqualTo(http.State);
+            await Assert.That(status.File).IsEqualTo(fileEnabled ? "listening" : "failed");
+            await Assert.That(status.Description).IsEqualTo($"Pipe: {status.Pipe}. HTTP: {http.State}. File channel and discovery: {status.File}.");
+        }
+    }
+
+    [Test]
+    public async Task RibbonStatusTracksProbeFailureAndFileRecovery()
+    {
+        var started = ChannelRibbonStatus.Derive(false, HttpListenerStatus.Started(), false);
+        await Assert.That(started.IsAvailable).IsTrue();
+        var failed = ChannelRibbonStatus.Derive(false, HttpListenerStatus.FromSelfProbe(503, null), false);
+        await Assert.That(failed.IsAvailable).IsFalse();
+        var recovered = ChannelRibbonStatus.Derive(false, HttpListenerStatus.FromSelfProbe(503, null), true);
+        await Assert.That(recovered.IsAvailable).IsTrue();
+    }
+
+    [Test]
     public async Task DisabledBySettings_ReportsReason()
     {
         var status = HttpListenerStatus.DisabledBySettings();

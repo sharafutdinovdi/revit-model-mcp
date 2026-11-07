@@ -82,6 +82,7 @@ internal static class ActionCommandExecutor
         var viewOpened = false;
         var failures = new ActionFailures();
         Document? document = null;
+        var responder = ReadCommandReader.ReadResponder(application);
         ActionResultData? data = null;
         ChangeCapture? changes = null;
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
@@ -103,8 +104,20 @@ internal static class ActionCommandExecutor
             {
                 var documentAction = job.Action ?? throw new ArgumentException("Missing document arguments.");
                 documentAction.Document ??= job.TargetDocument;
+                if (job.Command is not ("open-document" or "new-document"))
+                    responder = ReadCommandReader.ReadResponder(application,
+                        ResolveDocument(application, documentAction.Document));
+                CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command, responder, job.CorrelationId)
+                    .Write(CommandResponse<string>.PartialResult(job.Command, "accepted", "Command accepted and running.", stopwatch.ElapsedMilliseconds));
                 if (job.Command == "open-document") openAttempted = true;
                 var documentResult = DocumentActions.Execute(application, job.Command, documentAction);
+                if (job.Command is "open-document" or "new-document")
+                {
+                    var opened = application.Application.Documents.Cast<Document>()
+                        .Where(candidate => candidate.Title == documentResult.Title && candidate.PathName == documentResult.Path)
+                        .ToList();
+                    if (opened.Count == 1) responder = ReadCommandReader.ReadResponder(application, opened[0]);
+                }
                 RevitModelMcp.Application.RefreshDocumentList();
                 documentResult.Summary = BuildDocumentSummary(job.Command, documentAction, documentResult);
                 response = CommandResponse<ActionResultData>.Ok(job.Command, documentResult, stopwatch.ElapsedMilliseconds);
@@ -113,20 +126,23 @@ internal static class ActionCommandExecutor
                 response.ActiveView = application.ActiveUIDocument?.ActiveView?.Name ?? string.Empty;
                 if (documentResult.NeedsConfirmation != true)
                     ActivityRecorder.RecordAction(job, null, documentResult, response, null);
+                responder.ActiveDocument = ReadCommandReader.ReadResponder(application).ActiveDocument;
                 CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
-                    ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+                    responder, job.CorrelationId).Write(response);
                 return;
             }
             if (job.Command == "run-tool") MyTools.PrepareRun(job.Action!);
             document = job.Command is "execute-code" or "run-tool" && job.TargetDocument is null
                 ? application.ActiveUIDocument?.Document
                 : ResolveDocument(application, job.TargetDocument);
+            responder = ReadCommandReader.ReadResponder(application, document);
+            CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command, responder, job.CorrelationId)
+                .Write(CommandResponse<string>.PartialResult(job.Command, "accepted", "Command accepted and running.", stopwatch.ElapsedMilliseconds));
             if (document is not null && !(job.Command == "execute-code" && job.Action?.TransactionMode == "none"))
                 changes = ChangeCapture.Start(application.Application, document);
             var activeUiDocument = application.ActiveUIDocument;
             var uiDocument = document is not null && activeUiDocument is not null
-                             && activeUiDocument.Document.Title == document.Title
-                             && activeUiDocument.Document.PathName == document.PathName
+                             && activeUiDocument.Document.Equals(document)
                 ? activeUiDocument : null;
             var action = job.Action ?? throw new ArgumentException("Missing action arguments.");
             if (job.Command is "export" or "export-nwc") action.ConfirmOverwrites = true;
@@ -146,9 +162,8 @@ internal static class ActionCommandExecutor
                 if (data is null)
                 {
                     var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
-                        ReadCommandReader.ReadResponder(application), job.CorrelationId);
+                        responder, job.CorrelationId);
                     var delivery = ResponseDelivery.Current;
-                    var responder = ReadCommandReader.ReadResponder(application);
                     void PublishDialog(BatchDialogRecord dialog)
                     {
                         var progress = CommandResponse<CallDialogProgress>.PartialResult(job.Command,
@@ -224,8 +239,9 @@ internal static class ActionCommandExecutor
         else if (changes is not null && UndoRestorePolicy.ShouldRestore(true, false, false, null, true))
             // A confirmation preview rolls its transactions back, so the previous undo entry stays on top.
             UndoTracker.Restore(changes.UndoStateAtStart);
+        responder.ActiveDocument = ReadCommandReader.ReadResponder(application).ActiveDocument;
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
-            ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+            responder, job.CorrelationId).Write(response);
     }
 
     internal static int DismissOpenWarnings(FailuresProcessingEventArgs arguments, ICollection<string>? descriptions = null)
@@ -649,7 +665,8 @@ internal static class ActionCommandExecutor
             var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
             ActionJobParser.ValidateFamilyMode(action, document.IsFamilyDocument);
             var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
-                ReadCommandReader.ReadResponder(application), job.CorrelationId);
+                ReadCommandReader.ReadResponder(application, document), job.CorrelationId);
+            output.Write(CommandResponse<string>.PartialResult(job.Command, "accepted", "Command accepted and running.", stopwatch.ElapsedMilliseconds));
             var failures = new ActionFailures();
             result = FamilyEditor.Execute(document, action, failures, application, job.ClientName);
             var failed = !result.Committed && result.FailedFamily is not null;
@@ -669,7 +686,7 @@ internal static class ActionCommandExecutor
             response.Error = exception.Message;
             response.DialogsSuppressed = dialogsSuppressed;
             CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
-                ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
+                ReadCommandReader.ReadResponder(application, document), job.CorrelationId).Write(response);
             PluginLog.Error($"Family command failed. Command='{job.Command}'.", exception);
         }
         finally
@@ -983,13 +1000,14 @@ internal static class ActionCommandExecutor
                    ?? throw new InvalidOperationException("No active Revit document.");
 
         var candidates = application.Application.Documents.Cast<Document>()
-            .Where(document => JobTargetMatcher.MatchesDocument(document.Title, document.PathName, reference))
+            .Where(document => JobTargetMatcher.MatchesDocument(
+                document.Title, document.PathName, reference, ReadCommandReader.DocumentId(document)))
             .ToList();
         return candidates.Count switch
         {
             0 => throw new InvalidOperationException($"The addressed document '{reference}' is not open."),
             1 => candidates[0],
-            _ => throw new InvalidOperationException($"The document reference '{reference}' is ambiguous ({candidates.Count} open documents match); use a more specific substring.")
+            _ => throw new InvalidOperationException($"The document reference '{reference}' is ambiguous ({candidates.Count} open documents match); use a session documentId or full path.")
         };
     }
 

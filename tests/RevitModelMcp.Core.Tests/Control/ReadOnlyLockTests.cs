@@ -383,6 +383,62 @@ public sealed class ReadOnlyLockTests : IDisposable
         await Assert.That(json).Contains("\"setAtUtc\":null");
     }
 
+    [Test]
+    public async Task DirectoryInitializationFailureKeepsWritesRefusedAfterDirectoryRecovery()
+    {
+        Directory.CreateDirectory(_folder);
+        var obstruction = Path.Combine(_folder, "blocked");
+        File.WriteAllText(obstruction, "");
+        using var service = new ReadOnlyLock(Path.Combine(obstruction, "read-only"), () => false);
+        await Assert.That(service.InitializationError).Contains("IOException");
+        File.Delete(obstruction);
+        Directory.CreateDirectory(obstruction);
+        await AssertInitializationFailure(service);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task WatcherInitializationFailureKeepsWritesRefused(bool accessDenied)
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false, (_, _) => accessDenied
+            ? throw new UnauthorizedAccessException("confidential path")
+            : throw new IOException("confidential path"));
+        await Assert.That(service.InitializationError).Contains(accessDenied ? "UnauthorizedAccessException" : "IOException");
+        await Assert.That(service.InitializationError).DoesNotContain("confidential path");
+        await AssertInitializationFailure(service);
+    }
+
+    [Test]
+    public async Task WatcherActivationFailureKeepsWritesRefused()
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false, (directory, filter) =>
+        {
+            var watcher = new FileSystemWatcher(directory, filter);
+            watcher.Dispose();
+            return watcher;
+        });
+        await Assert.That(service.InitializationError).IsNotNull();
+        await AssertInitializationFailure(service);
+    }
+
+    private static async Task AssertInitializationFailure(ReadOnlyLock service)
+    {
+        service.Refresh();
+        await Assert.That(service.IsLocked).IsTrue();
+        await Assert.That(service.Source).IsEqualTo("unavailable");
+        await Assert.That(service.State.Refusal).Contains("restart Revit");
+        foreach (var enabled in new[] { true, false })
+            await Assert.That(() => service.Set(enabled, "ribbon")).Throws<InvalidOperationException>();
+        var tokens = new DocumentConfirmationTokens();
+        await Assert.That(() => service.SetFromChat(true, null, tokens, "user", "machine")).Throws<InvalidOperationException>();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+        await Assert.That(preview.NeedsConfirmation).IsTrue();
+        await Assert.That(preview.ConfirmToken).IsNotNull();
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine")).Throws<InvalidOperationException>();
+        await Assert.That(service.IsLocked).IsTrue();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_folder)) Directory.Delete(_folder, true);

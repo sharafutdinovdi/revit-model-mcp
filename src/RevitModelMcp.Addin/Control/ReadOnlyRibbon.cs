@@ -36,7 +36,7 @@ internal sealed class ReadOnlyRibbon : ICommand, IDisposable
 
     public event EventHandler? CanExecuteChanged { add { } remove { } }
 
-    public bool CanExecute(object? parameter) => ActionCommandExecutor.ReadOnlyLock.Source != "policy";
+    public bool CanExecute(object? parameter) => ActionCommandExecutor.ReadOnlyLock.Source is not ("policy" or "unavailable");
 
     public void Execute(object? parameter)
     {
@@ -61,8 +61,9 @@ internal sealed class ReadOnlyRibbon : ICommand, IDisposable
     private void Update(ReadOnlyLockState state)
     {
         _button.IsChecked = state.IsLocked;
-        _button.IsEnabled = state.Source != "policy";
-        var shortText = state.Source == "policy" ? "Read-only is enforced by workstation policy."
+        _button.IsEnabled = state.Source is not ("policy" or "unavailable");
+        var shortText = state.Source == "unavailable" ? state.Refusal
+            : state.Source == "policy" ? "Read-only is enforced by workstation policy."
             : state.IsLocked ? "Read-only is on. Click to allow changes." : "Read-only is off. Click to block changes.";
         var suffix = PaneTheme.IsDark ? "-dark" : string.Empty;
         _button.ToolTip = new RibbonToolTip

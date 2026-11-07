@@ -11,6 +11,7 @@ using Nice3point.Revit.Extensions;
 using Nice3point.Revit.Toolkit;
 using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
+using RevitModelMcp.Capture;
 using RevitModelMcp.Connect;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
@@ -51,6 +52,8 @@ public sealed class Application : ExternalApplication
     private PushButton? _connectButton;
     private PushButton? _repairButton;
     private string? _fileChannelWarning;
+    private HttpListenerStatus _httpStatus = HttpListenerStatus.DisabledBySettings();
+    private readonly System.Windows.Threading.Dispatcher _ribbonDispatcher = System.Windows.Threading.Dispatcher.CurrentDispatcher;
     private ControlChannel _controlChannel = null!;
     private ControlExternalEventHandler? _eventHandler;
     private Autodesk.Revit.UI.ExternalEvent? _externalEvent;
@@ -63,6 +66,7 @@ public sealed class Application : ExternalApplication
     private volatile IReadOnlyList<InstanceDocument> _documents = Array.Empty<InstanceDocument>();
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private static Application? _instance;
+    internal static string InstanceId => _instance?._instanceId ?? string.Empty;
 
     public override void OnStartup()
     {
@@ -173,7 +177,15 @@ public sealed class Application : ExternalApplication
                 _httpChannel = new HttpChannel(_controlChannel, RequestExecution,
                     Application.ControlledApplication.VersionNumber, httpSettings);
                 _httpChannel.UpdateDocument(_activeDocument?.Title);
-                _httpChannel.StatusChanged += status => _instanceHeartbeat?.UpdateHttpStatus(status);
+                _httpChannel.StatusChanged += status =>
+                {
+                    _httpStatus = status;
+                    _instanceHeartbeat?.UpdateHttpStatus(status);
+                    _ribbonDispatcher.BeginInvoke(new Action(() =>
+                    {
+                        if (_instance == this) UpdateChannelRibbon();
+                    }));
+                };
                 _httpChannel.Start();
                 _instanceHeartbeat?.UpdateHttpPort(_httpChannel.BoundPort);
                 // The channel pushes its own later status changes, including the self-probe result.
@@ -185,7 +197,12 @@ public sealed class Application : ExternalApplication
                 PluginLog.Warn($"HTTP configuration failed. Check settings.json and its permissions. Type='{exception.GetType().Name}'.");
             }
         }
-        if (!channelOwnsStatus) _instanceHeartbeat?.UpdateHttpStatus(httpStatus);
+        if (!channelOwnsStatus)
+        {
+            _httpStatus = httpStatus;
+            _instanceHeartbeat?.UpdateHttpStatus(httpStatus);
+        }
+        UpdateChannelRibbon();
         ActivityPaneAutoShow.Configure(showActivityPaneOnAction);
         _controlChannel.ConfigureTabActivity(httpSettings?.TabActivityHighlight ?? true);
 #if !STORE_CHANNEL
@@ -313,6 +330,11 @@ public sealed class Application : ExternalApplication
         ConfigureRibbonButton((RibbonButton)items[2], "Support", RibbonText.SupportToolTip, RibbonText.SupportDescription, HelpLinks.Support);
         PaneTheme.Changed += RefreshRibbonImages;
         _readOnlyRibbon = new ReadOnlyRibbon();
+        if (ActionCommandExecutor.ReadOnlyLock.InitializationError is string lockError)
+        {
+            PluginLog.Warn(lockError);
+            ActivityRecorder.RecordSystemNotice(lockError, failed: true);
+        }
         UpdateChannelRibbon();
         RibbonBranding.ApplyPanelBackground();
         RibbonBranding.ApplyTabIcon();
@@ -322,10 +344,12 @@ public sealed class Application : ExternalApplication
     {
         if (_repairButton is not null) _repairButton.Enabled = Output.ChannelDirectory.AclRepairAvailable;
         if (_connectButton is null) return;
-        _connectButton.ItemText = _controlChannel.FileChannelEnabled ? ConnectText.RibbonButton : "AI connection off";
-        _connectButton.ToolTip = _controlChannel.FileChannelEnabled ? RibbonText.ConnectToolTip
-            : "AI connection is off because of folder permissions. Use Repair channel permissions in the Model MCP menu.";
-        _connectButton.LongDescription = _controlChannel.FileChannelEnabled ? RibbonText.ConnectDescription : _fileChannelWarning;
+        var status = ChannelRibbonStatus.Derive(_pipeChannel?.PipeName is not null, _httpStatus, _controlChannel.FileChannelEnabled);
+        _connectButton.ItemText = status.IsAvailable ? ConnectText.RibbonButton : "AI connection off";
+        _connectButton.ToolTip = status.Description;
+        _connectButton.LongDescription = status.Description + " " + RibbonText.ConnectDescription +
+            (_controlChannel.FileChannelEnabled ? string.Empty : " " + _fileChannelWarning +
+                " Use Repair channel permissions in the Model MCP menu. File discovery is unavailable; configure a working transport explicitly.");
     }
 
     internal static bool RetryFileChannel()
@@ -441,6 +465,7 @@ public sealed class Application : ExternalApplication
 
     private IReadOnlyList<InstanceDocument> ReadDocuments(Document? closing)
     {
+        ReadCommandReader.PruneDocumentIds();
         var documents = new List<InstanceDocument>();
         var application = RevitContext.UiApplication?.Application;
         if (application is null) return documents;
@@ -450,6 +475,7 @@ public sealed class Application : ExternalApplication
             documents.Add(new InstanceDocument
             {
                 Title = document.Title,
+                DocumentId = ReadCommandReader.DocumentId(document),
                 Path = document.PathName ?? string.Empty,
                 IsActive = _activeDocument is not null && document.Equals(_activeDocument),
                 IsFamilyDocument = document.IsFamilyDocument

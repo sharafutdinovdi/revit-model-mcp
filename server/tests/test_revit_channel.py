@@ -41,7 +41,6 @@ from revit_model_mcp.revit_channel import (
     select_instance,
 )
 from revit_model_mcp.ssh_host import (
-    ACTIVATION_DELAY_SECONDS,
     POLL_INTERVAL_SECONDS,
     RELAY_CONNECTION_LIMIT,
     RELAY_WINDOW_SECONDS,
@@ -818,7 +817,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(pickup.taken)
         self.assertEqual(pickup.activation_attempts, 1)
         scripts = [call.args[0] for call in host._run.await_args_list]
-        activation_index = int(ACTIVATION_DELAY_SECONDS / POLL_INTERVAL_SECONDS)
+        activation_index = 10
         self.assertEqual(sum("schtasks.exe" in script for script in scripts), 1)
         self.assertTrue(all("schtasks.exe" not in script for script in scripts[:activation_index]))
         self.assertIn("schtasks.exe", scripts[activation_index])
@@ -827,7 +826,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             scripts[activation_index].index("schtasks.exe"),
         )
         self.assertTrue(all("job_test.json" in script for script in scripts))
-        self.assertEqual(len(scripts), 7)
+        self.assertEqual(len(scripts), 11)
         self.assertIn("Revit window will be restored", " ".join(logs.output))
 
     async def test_trigger_polling_retries_one_broken_poll(self) -> None:

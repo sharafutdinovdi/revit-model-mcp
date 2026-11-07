@@ -395,6 +395,61 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
+    [Arguments("doc:first", "doc:first", true)]
+    [Arguments("doc:first", "doc:second", false)]
+    [Arguments("doc:first", null, false)]
+    public async Task DocumentSessionIdentity_IsExact(string reference, string? identity, bool expected)
+    {
+        await Assert.That(JobTargetMatcher.MatchesDocument("Same", "", reference, identity)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task FullDocumentPath_DistinguishesSameNameDocuments()
+    {
+        await Assert.That(JobTargetMatcher.MatchesDocument("Same", @"C:\One\Same.rvt", @"C:\One\Same.rvt")).IsTrue();
+        await Assert.That(JobTargetMatcher.MatchesDocument("Same", @"C:\Two\Same.rvt", @"C:\One\Same.rvt")).IsFalse();
+    }
+
+    [Test]
+    [Arguments("document-info")]
+    [Arguments("view-elements")]
+    [Arguments("move")]
+    [Arguments("jobs")]
+    public async Task SessionDocumentTarget_PassesDispatchGuardForBackgroundDocument(string command)
+    {
+        var job = ControlJobParser.Parse(
+            $$"""{"command":"{{command}}","targetDocument":"doc:background","targetProcessId":42}""");
+        (string? Title, string? Path, string? DocumentId)[] documents =
+        [
+            ("Same", "", "doc:active"),
+            ("Same", "", "doc:background")
+        ];
+
+        await Assert.That(JobTargetMatcher.CanDispatch(job, 42, documents)).IsTrue();
+        await Assert.That(JobTargetMatcher.CanDispatch(job, 43, documents)).IsFalse();
+        await Assert.That(JobTargetMatcher.CanDispatch(job, 42, documents.Take(1))).IsFalse();
+    }
+
+    [Test]
+    public async Task UnpinnedSessionDocumentRead_PassesBothPickupAndDispatchMatchers()
+    {
+        var job = ControlJobParser.Parse(
+            """{"command":"document-info","targetDocument":"doc:background"}""");
+        await Assert.That(JobTargetMatcher.Matches(job, "Same", "", 42, "doc:background")).IsTrue();
+        await Assert.That(JobTargetMatcher.Matches(job, "Same", "", 42, "doc:active")).IsFalse();
+        await Assert.That(JobTargetMatcher.CanDispatch(job, 42,
+            new[] { ((string?)"Same", (string?)"", (string?)"doc:background") })).IsTrue();
+    }
+
+    [Test]
+    public async Task UnaddressedJob_DispatchesWithoutAnOpenDocument()
+    {
+        var job = ControlJobParser.Parse("""{"command":"jobs","targetProcessId":42}""");
+        await Assert.That(JobTargetMatcher.CanDispatch(job, 42, [])).IsTrue();
+        await Assert.That(JobTargetMatcher.CanDispatch(job, 43, [])).IsFalse();
+    }
+
+    [Test]
     [Arguments(42, true)]
     [Arguments(43, false)]
     public async Task JobTargetMatcher_PinnedProcess_IgnoresActiveDocument(int processId, bool expected)

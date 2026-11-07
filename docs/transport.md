@@ -13,6 +13,33 @@ For a remote client, run the whole server on the workstation over SSH stdio; see
 HTTP connects directly to the add-in and requires no SSH server or remote file transfer.
 The MCP client still communicates with the Python server over stdio.
 
+### SSH file-channel reuse and polling
+
+Each call discovers live processes and fresh heartbeats before selecting its target.
+After a successful ping and identity recheck, the server remembers the verified
+process ID, OS process start time (when available), heartbeat startup identity,
+instance ID and file-channel version. A warm call skips the extra ping and
+rediscovery, not target selection or heartbeat validation. Changed identities,
+missing processes and heartbeats older than 60 seconds discard that verification.
+Job publication still checks the heartbeat, and responses still require the
+matching correlation and responder process ID. Fetching a retained job does not
+require a ping and does not establish a verified session.
+
+Pickup and result polling start immediately, then wait 0.5, 1, 2, 4, 8 and at most
+10 seconds between remote commands. Each wait and command timeout is bounded by
+the remaining overall deadline. Short jobs avoid the former initial 10-second
+wait; long jobs retain the 10-second cap to limit SSH traffic. Without SSH
+multiplexing, the existing connection-start quota can add delay. Transient
+connection failures are retried within the same deadline without resubmitting
+the job.
+
+The fake SSH regression records 12 remote commands for a cold document-info call
+and 6 for a warm call with immediate pickup and completion. This is a command
+count, not a workstation latency measurement. For live verification, record
+elapsed times and remote-command counts for repeated cold and warm calls and
+report median and p95 separately. During a long job, interrupt and restore SSH,
+then recover its retained result by job ID without submitting the action again.
+
 ## Transport errors
 
 Unavailable SSH, named pipe, and HTTP transports return a normal MCP tool result with `success:false`, `command`, `errorCode:"transport_unavailable"`, and `retryable:true`.
@@ -530,12 +557,19 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 Response temporary files also remain in the selected instance directory.
 
 The server resolves a target before publishing any job.
-With several running Revit processes, pass `document` (a unique title or file name) or `process_id` to choose one.
-A `document` must match exactly one active document by case-insensitive title or file-name substring.
-Zero or multiple matches fail before publication.
-Actions retain their open-document resolution inside the selected process.
-After pickup, a directed read resolves the target among open documents and can read an inactive document.
-If the target closed, the error names the target and active documents and suggests passing `document` or calling `revit_activate_document`.
+With several running Revit processes, pass `document` or `process_id` to choose one.
+`document` accepts the session `documentId` advertised in instance discovery, an exact full path, or a case-insensitive title or file-name substring.
+Session IDs start with `doc:` and distinguish same-name unsaved documents; obtain a new ID after closing and reopening a document or restarting Revit.
+When both selectors are supplied, the document must belong to that process. Neither selector overrides the other.
+Zero or multiple matching processes fail before publication. Actions and directed reads refuse ambiguous open-document references inside the selected process.
+A directed read can target an inactive document.
+Response `responder` fields identify the actual process, Revit version and resolved target document; `documentId:null` and empty target name/path explicitly indicate no resolved target.
+`responder.activeDocument` describes the separate active UI document.
+Running and timeout receipts preserve the resolved responder snapshot, including the target document ID and separate active UI document.
+Before execution publishes a snapshot, running receipts use the selected process's discovery identity; an empty queued responder does not replace known identity fields.
+Long-running responses include `processId` and polling instructions with `process_id`. Subsequent `revit_jobs` calls remain bound to the original process generation during the server lifetime; a changed process generation or conflicting selector fails closed.
+Persisted results carrying `instanceId` are also checked against the selected process generation after a server restart.
+`revit_batch_start(process_id=...)` selects the launcher explicitly and never substitutes another process if that launcher is absent.
 
 A fresh heartbeat and an existing process are pre-checks.
 For v2 the server performs a bounded ping handshake with a fresh `correlationId` in the selected directory.
