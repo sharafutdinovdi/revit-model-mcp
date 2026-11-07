@@ -8,6 +8,8 @@
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <IsTestProject Condition="'$(RunRevitTests)' != 'true'">false</IsTestProject>
     <Configurations>Debug.R22;Debug.R23;Debug.R24;Debug.R25;Debug.R26;Debug.R27;Release.R22;Release.R23;Release.R24;Release.R25;Release.R26;Release.R27</Configurations>
+    <!-- The console host must also load the installed Revit API before Revit starts. -->
+    <RuntimeFrameworkVersion Condition="'$(RevitTestRuntimeVersion)' != ''">$(RevitTestRuntimeVersion)</RuntimeFrameworkVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(RevitVersion)' == '2027'">

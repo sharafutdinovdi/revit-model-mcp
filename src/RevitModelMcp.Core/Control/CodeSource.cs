@@ -148,68 +148,135 @@ public static class CodeResultLimiter
         }
     }
 
-    public static object? Limit(object? value, Func<object, object?> convertSpecial)
+    public static CodeResult Limit(object? value, Func<object, object?> convertSpecial)
     {
-        var itemCount = 0;
-        return Visit(value, convertSpecial, 0, ref itemCount);
+        var fullValue = Normalize(value, convertSpecial, [], 0);
+        var fullJson = ToJson(fullValue);
+        var reasons = new HashSet<string>();
+        var retained = 0;
+        var total = CountEntries(fullValue);
+        var inline = Visit(fullValue, 0, ref retained, reasons);
+        if (total == 0)
+        {
+            total = 1;
+            retained = 1;
+        }
+        if (Encoding.UTF8.GetByteCount(ToJson(inline)) > 262144)
+        {
+            reasons.Add("inlineSize");
+            inline = null;
+            retained = 0;
+        }
+        return new CodeResult
+        {
+            Value = inline,
+            Truncated = reasons.Count > 0,
+            RetainedCount = retained,
+            OmittedCount = total - retained,
+            Reasons = reasons.OrderBy(reason => reason, StringComparer.Ordinal).ToList(),
+            FullJson = reasons.Count > 0 ? fullJson : null
+        };
     }
 
-    private static object? Visit(object? value, Func<object, object?> convertSpecial, int depth, ref int itemCount)
+    private static object? Normalize(object? value, Func<object, object?> convertSpecial, List<object> ancestors, int depth)
     {
-        if (value is null) return null;
-        if (value is string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal)
+        if (value is null or string or bool or byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal)
             return value;
-        if (depth >= 6) return value.ToString();
-        var converted = convertSpecial(value);
-        if (!ReferenceEquals(converted, value))
-            return Visit(converted, convertSpecial, depth + 1, ref itemCount);
-        if (value is IDictionary dictionary)
+        if (depth >= 128 || ancestors.Any(ancestor => ReferenceEquals(ancestor, value)))
+            throw new InvalidOperationException("Result serialization does not support cycles or nesting of 128 levels.");
+        ancestors.Add(value);
+        try
+        {
+            var converted = convertSpecial(value);
+            if (!ReferenceEquals(converted, value))
+                return Normalize(converted, convertSpecial, ancestors, depth + 1);
+            if (value is IDictionary dictionary)
+            {
+                var result = new Dictionary<string, object?>();
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    var key = FormatKey(entry.Key);
+                    if (result.ContainsKey(key))
+                        throw new InvalidOperationException("Result dictionary keys collide after string conversion.");
+                    result.Add(key, Normalize(entry.Value, convertSpecial, ancestors, depth + 1));
+                }
+                return result;
+            }
+            if (value is IEnumerable sequence)
+            {
+                var result = new List<object?>();
+                foreach (var item in sequence) result.Add(Normalize(item, convertSpecial, ancestors, depth + 1));
+                return result;
+            }
+            var type = value.GetType();
+            if (type.IsClass && type.Assembly.GetName().Name is not ("RevitAPI" or "RevitAPIUI") &&
+                !(type.Namespace?.StartsWith("Autodesk.Revit.", StringComparison.Ordinal) ?? false) &&
+                !(type.Namespace?.StartsWith("System.", StringComparison.Ordinal) ?? false) &&
+                type.Namespace != "System")
+            {
+                var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                    .Where(property => property.GetMethod?.IsPublic == true && property.GetIndexParameters().Length == 0);
+                var result = new Dictionary<string, object?>();
+                foreach (var property in properties)
+                    result.Add(property.Name, Normalize(property.GetValue(value), convertSpecial, ancestors, depth + 1));
+                if (result.Count > 0) return result;
+            }
+            return value.ToString();
+        }
+        finally
+        {
+            ancestors.RemoveAt(ancestors.Count - 1);
+        }
+    }
+
+    private static int CountEntries(object? value) => value switch
+    {
+        Dictionary<string, object?> dictionary => dictionary.Sum(entry => 1 + CountEntries(entry.Value)),
+        List<object?> sequence => sequence.Sum(item => 1 + CountEntries(item)),
+        _ => 0
+    };
+
+    private static object? Visit(object? value, int depth, ref int retained, HashSet<string> reasons)
+    {
+        if (value is not Dictionary<string, object?> && value is not List<object?>) return value;
+        if (depth >= 6 && CountEntries(value) > 0)
+        {
+            reasons.Add("depth");
+            return null;
+        }
+        if (value is Dictionary<string, object?> dictionary)
         {
             var result = new Dictionary<string, object?>();
-            foreach (DictionaryEntry entry in dictionary)
+            foreach (var entry in dictionary)
             {
-                if (itemCount++ >= 5000) break;
-                result[FormatKey(entry.Key)] = Visit(entry.Value, convertSpecial, depth + 1, ref itemCount);
+                if (retained >= 5000) { reasons.Add("itemBudget"); break; }
+                retained++;
+                result.Add(entry.Key, Visit(entry.Value, depth + 1, ref retained, reasons));
             }
             return result;
         }
-        if (value is IEnumerable sequence)
+        var items = new List<object?>();
+        foreach (var item in (List<object?>)value!)
         {
-            var result = new List<object?>();
-            foreach (var item in sequence)
-            {
-                if (itemCount++ >= 5000) break;
-                result.Add(Visit(item, convertSpecial, depth + 1, ref itemCount));
-            }
-            return result;
+            if (retained >= 5000) { reasons.Add("itemBudget"); break; }
+            retained++;
+            items.Add(Visit(item, depth + 1, ref retained, reasons));
         }
-        var type = value.GetType();
-        if (type.IsClass && type.Assembly.GetName().Name is not ("RevitAPI" or "RevitAPIUI") &&
-            !(type.Namespace?.StartsWith("Autodesk.Revit.", StringComparison.Ordinal) ?? false) &&
-            !(type.Namespace?.StartsWith("System.", StringComparison.Ordinal) ?? false) &&
-            type.Namespace != "System")
-        {
-            var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-                .Where(property => property.GetMethod?.IsPublic == true && property.GetIndexParameters().Length == 0);
-            var result = new Dictionary<string, object?>();
-            foreach (var property in properties)
-            {
-                if (itemCount++ >= 5000) break;
-                try
-                {
-                    result[property.Name] = Visit(property.GetValue(value), convertSpecial, depth + 1, ref itemCount);
-                }
-                catch (TargetInvocationException)
-                {
-                    result.Remove(property.Name);
-                }
-            }
-            if (result.Count > 0) return result;
-        }
-        return value.ToString();
+        return items;
     }
 
     private static string FormatKey(object? key) => key is IFormattable formattable
         ? formattable.ToString(null, CultureInfo.InvariantCulture) ?? "null"
         : key?.ToString() ?? "null";
+}
+
+[DataContract]
+public sealed record CodeResult
+{
+    [IgnoreDataMember] public object? Value { get; init; }
+    [IgnoreDataMember] public string? FullJson { get; init; }
+    [DataMember(Name = "truncated")] public bool Truncated { get; init; }
+    [DataMember(Name = "retainedCount")] public int RetainedCount { get; init; }
+    [DataMember(Name = "omittedCount")] public int OmittedCount { get; init; }
+    [DataMember(Name = "reasons")] public List<string> Reasons { get; init; } = [];
 }

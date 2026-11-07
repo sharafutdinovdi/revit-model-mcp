@@ -17,66 +17,70 @@ internal static class ModelSnapshotReader
         var source = SnapshotSourceResolution.Resolve(document.PathName, document.IsDetached,
             batchPath, batchSavedInYear, batchUpgradedInMemory);
         var diagnostics = new SkippedReadDiagnostics();
-        var result = new ModelSnapshotData
-        {
-            CollectedAtUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
-            Source = { Path = source.Path, Kind = source.Kind, SavedInYear = source.SavedInYear,
-                UpgradedInMemory = source.UpgradedInMemory ?? false,
-                RuntimeYear = ParseYear(document.Application.VersionNumber) },
-            Passport = { Title = document.Title, IsWorkshared = document.IsWorkshared }
-        };
-        try
-        {
-            ReadSource(document, source, result, diagnostics);
-            result.Passport.Worksets = ReadCommandReader.ReadUserWorksets(document).Select(workset => new ModelSnapshotWorkset
-            {
-                Name = workset.Name,
-                Owner = Try("workset owner", () => workset.Owner, diagnostics),
-                IsOpen = workset.IsOpen
-            }).ToList();
-            if (result.Passport.Worksets.Any(workset => !workset.IsOpen))
-                diagnostics.Add("closed user worksets", new InvalidOperationException(
-                    "Element, family instance, warning attribution, and parameter-fill results may be incomplete."));
-        }
-        catch (Exception exception) { diagnostics.Add("worksets", exception); }
-
         var previous = SkippedReadDiagnostics.Current;
         SkippedReadDiagnostics.Current = diagnostics;
         try
         {
+            var result = new ModelSnapshotData
+            {
+                CollectedAtUtc = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
+                Source = { Path = source.Path, Kind = source.Kind, SavedInYear = source.SavedInYear,
+                    UpgradedInMemory = source.UpgradedInMemory ?? false,
+                    RuntimeYear = ParseYear(document.Application.VersionNumber) },
+                Passport = { Title = document.Title, IsWorkshared = document.IsWorkshared }
+            };
+            try
+            {
+                ReadSource(document, source, result, diagnostics);
+                result.Passport.Worksets = ReadCommandReader.ReadUserWorksets(document).Select(workset => new ModelSnapshotWorkset
+                {
+                    Name = workset.Name,
+                    Owner = Try("workset owner", () => workset.Owner, diagnostics),
+                    IsOpen = workset.IsOpen
+                }).ToList();
+                if (result.Passport.Worksets.Any(workset => !workset.IsOpen))
+                    diagnostics.Add("closed user worksets", new InvalidOperationException(
+                        "Element, family instance, warning attribution, and parameter-fill results may be incomplete."));
+            }
+            catch (Exception exception) { diagnostics.Add("worksets", exception); }
+
             var counts = ModelHealthReader.ReadCounts(document, ["elements", "views", "sheets", "linksRvt"]);
             foreach (var key in new[] { "elements", "views", "sheets" })
                 result.Passport.Counts[key] = counts.GetValueOrDefault(key);
             result.Passport.Counts["links"] = counts.GetValueOrDefault("linksRvt");
-        }
-        finally { SkippedReadDiagnostics.Current = previous; }
 
-        var warnings = Try("warnings", document.GetWarnings, diagnostics);
-        if (warnings is not null)
-            result.Warnings = Try("warning groups", () => ModelWarningReader.ReadSnapshot(warnings), diagnostics) ?? new();
-        result.Families = Try("families", () => ReadFamilies(document, warnings, diagnostics), diagnostics) ?? new();
-        result.Passport.Counts["families"] = result.Families.Total;
-        result.Passport.Counts["familyTypes"] = result.Families.Items.Sum(family => family.TypeCount);
-        foreach (var rule in rules)
-        {
-            var fill = Try($"parameter fill {rule.Category}/{rule.Parameter}", () => ParameterFillReader.Read(document,
-                new ControlJobContract { Categories = [rule.Category], Parameters = [rule.Parameter], IncludeTypes = true, SampleLimit = 20 }), diagnostics);
-            if (fill is null) continue;
-            var item = fill.Parameters[0];
-            result.ParameterFill.Rows.Add(new ModelSnapshotParameterRow
+            var warnings = Try("warnings", document.GetWarnings, diagnostics);
+            if (warnings is not null)
+                result.Warnings = Try("warning groups", () => ModelWarningReader.ReadSnapshot(warnings), diagnostics) ?? new();
+            result.Families = Try("families", () => ReadFamilies(document, warnings, diagnostics), diagnostics) ?? new();
+            result.Passport.Counts["families"] = result.Families.Total;
+            result.Passport.Counts["familyTypes"] = result.Families.Items.Sum(family => family.TypeCount);
+            foreach (var rule in rules)
             {
-                Category = rule.Category,
-                Parameter = rule.Parameter,
-                Total = item.Elements,
-                Filled = item.Filled,
-                Empty = item.Empty,
-                Missing = item.Missing,
-                SampleEmptyIds = item.EmptySampleIds
-            });
+                var fill = Try($"parameter fill {rule.Category}/{rule.Parameter}", () => ParameterFillReader.Read(document,
+                    new ControlJobContract { Categories = [rule.Category], Parameters = [rule.Parameter], IncludeTypes = true, SampleLimit = 20 }), diagnostics);
+                if (fill is null) continue;
+                var item = fill.Parameters[0];
+                result.ParameterFill.Rows.Add(new ModelSnapshotParameterRow
+                {
+                    Category = rule.Category,
+                    Parameter = rule.Parameter,
+                    Total = item.Elements,
+                    Filled = item.Filled,
+                    Empty = item.Empty,
+                    Missing = item.Missing,
+                    SampleEmptyIds = item.EmptySampleIds
+                });
+            }
+            result.Skipped = diagnostics.Items;
+            result.SkippedCount = diagnostics.Count;
+            return result;
         }
-        result.Skipped = diagnostics.Items;
-        result.SkippedCount = diagnostics.Count;
-        return result;
+        finally
+        {
+            SkippedReadDiagnostics.Current = previous;
+            previous?.Merge(diagnostics);
+        }
     }
 
     private static void ReadSource(Document document, SnapshotSourceResolution source,

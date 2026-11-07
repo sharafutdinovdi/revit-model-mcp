@@ -16,6 +16,8 @@ internal static class SharedCoordinatesReader
         var locations = document.ProjectLocations.Cast<ProjectLocation>().Select(site => site.Name)
             .OrderBy(name => name, StringComparer.Ordinal).ToList();
         using var links = new FilteredElementCollector(document).OfClass(typeof(RevitLinkInstance));
+        SkippedReadDiagnostics.Current?.AddOmitted("shared-coordinates project locations", locations.Count, listLimit);
+        SkippedReadDiagnostics.Current?.AddOmitted("shared-coordinates link instances", links.GetElementCount(), listLimit);
         return new SharedCoordinatesData
         {
             ActiveProjectLocation = location.Name,
