@@ -20,11 +20,57 @@ class ReadSource(Protocol):
 
 
 class LiveReadSource:
-    def __init__(self, document=None, timeout_seconds=60):
+    def __init__(self, document=None, timeout_seconds=60, *, identity=None):
         self.document = document
         self.timeout_seconds = timeout_seconds
+        self.identity = None
+        self.process_id = None
+        if identity is not None:
+            self.validate_identity(identity)
+
+    def validate_identity(self, response):
+        responder = response.get("responder")
+        if not isinstance(responder, dict):
+            raise NotAssessed("Live audit response has no confirmed document identity.")
+        identity = tuple(
+            responder.get(key) for key in ("processId", "documentName", "documentPath")
+        )
+        process_id, name, path = identity
+        if (
+            type(process_id) is not int
+            or process_id <= 0
+            or not isinstance(name, str)
+            or not name
+            or not isinstance(path, str)
+        ):
+            raise NotAssessed("Live audit response has no confirmed document identity.")
+        if self.identity is None:
+            self.identity = identity
+            self.process_id = process_id
+            self.document = path or name
+        elif identity != self.identity:
+            raise NotAssessed("Live audit response document identity changed.")
 
     async def read(self, tool_name, arguments):
+        from revit_model_mcp import server
+
+        process_token = server._addressed_process_id.set(
+            self.process_id or server._addressed_process_id.get()
+        )
+        validator_token = server._audit_response_validator.set(self.validate_identity)
+        try:
+            response = await self._read(tool_name, arguments)
+            if tool_name == "revit_list_warnings" and isinstance(response.get("data"), dict):
+                response = {
+                    **response,
+                    "data": {**response["data"], "total": response["data"].get("totalWarnings")},
+                }
+            return response
+        finally:
+            server._audit_response_validator.reset(validator_token)
+            server._addressed_process_id.reset(process_token)
+
+    async def _read(self, tool_name, arguments):
         from revit_model_mcp import server
         from revit_model_mcp.revit_channel import Job
 
@@ -250,6 +296,8 @@ class Evaluator:
             if measured is None:
                 raise NotAssessed(f"Metric is unavailable: {metric}")
         elif kind == "count" and check.get("metric") == "warnings_total":
+            if rule.get("scope"):
+                raise NotAssessed("Warning totals cannot honor an element scope.")
             data = await self.read("revit_list_warnings")
             measured = data["total"]
             population = measured
