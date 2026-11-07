@@ -8,11 +8,24 @@ $ErrorActionPreference = 'Stop'
 if (Get-CimInstance Win32_Process -Filter "Name='Revit.exe'") {
     throw 'A Revit process is already running. Close it before starting this isolated test run.'
 }
-if (!$Model) { $Model = 'C:\Projects\rmm-test\2027\Snowdon Towers Sample Architectural.rvt' }
+if (!$Model) { $Model = "C:\Projects\rmm-test\$Year\Snowdon Towers Sample Architectural.rvt" }
 if (!(Test-Path -LiteralPath $Model -PathType Leaf)) { throw "Test model not found: $Model" }
 $repository = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $repository 'tests\RevitModelMcp.Addin.Tests\RevitModelMcp.Addin.Tests.csproj'
 $configuration = 'Release.R' + ($Year - 2000)
+$runtimeArguments = @()
+if ($Year -ge 2025) {
+    $runtimeConfig = Join-Path $env:ProgramFiles "Autodesk\Revit $Year\RevitAPI.runtimeconfig.json"
+    if (!(Test-Path -LiteralPath $runtimeConfig -PathType Leaf)) {
+        throw "Installed Revit runtime configuration not found: $runtimeConfig"
+    }
+    $revitRuntime = Get-Content -Raw -LiteralPath $runtimeConfig | ConvertFrom-Json
+    $framework = @($revitRuntime.runtimeOptions.frameworks) |
+        Where-Object { $_.name -eq 'Microsoft.NETCore.App' } | Select-Object -First 1
+    if (!$framework.version) { throw "No Microsoft.NETCore.App runtime specified in $runtimeConfig" }
+    $runtimeArguments = @("-p:RevitTestRuntimeVersion=$($framework.version)")
+    Write-Host "Running Revit $Year tests with .NET $($framework.version)."
+}
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $previousModel = $env:RMM_TEST_MODEL
 try {
@@ -20,13 +33,14 @@ try {
     if (Test-Path -LiteralPath $report) { Remove-Item -LiteralPath $report }
     $env:RMM_TEST_MODEL = (Resolve-Path -LiteralPath $Model).Path
     & dotnet run --project $project -c $configuration -p:RunRevitTests=true `
-        -p:DeployAddin=false -p:PublishAddin=false -p:IsRepackable=false -p:LaunchRevit=false `
+        -p:DeployAddin=false -p:PublishAddin=false -p:IsRepackable=false -p:LaunchRevit=false @runtimeArguments `
         -- --report-trx --report-trx-filename "addin-$Year.trx" --results-directory $OutputDirectory
-    if ($LASTEXITCODE -ne 0) { throw "Revit $Year tests failed (exit $LASTEXITCODE). See $OutputDirectory." }
+    $testExitCode = $LASTEXITCODE
     if (!(Test-Path $report)) { throw "No TRX report was written: $report" }
     [xml]$trx = Get-Content -Raw $report
     $counters = $trx.TestRun.ResultSummary.Counters
     $counters | Format-List
+    if ($testExitCode -ne 0) { throw "Revit $Year tests failed (exit $testExitCode). See $report." }
     if ([int]$counters.passed -lt 15 -or [int]$counters.failed -ne 0) {
         throw 'At least 15 passing tests and no failures are required; skipped tests do not satisfy the gate.'
     }
