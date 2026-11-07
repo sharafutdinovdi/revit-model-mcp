@@ -37,7 +37,13 @@ from revit_model_mcp.revit_channel import (
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
-from revit_model_mcp.toolsets import ENVIRONMENT_VARIABLE, TOOLSETS, apply_toolsets, parse_toolsets
+from revit_model_mcp.toolsets import (
+    ENVIRONMENT_VARIABLE,
+    PRESETS,
+    TOOLSETS,
+    apply_toolsets,
+    parse_toolsets,
+)
 
 if CHANNEL != "store":
     from revit_model_mcp.updates import check_for_updates, update_status
@@ -346,6 +352,12 @@ mcp = RevitMCPServer(
         "confirmation token first and perform nothing until a second call with identical arguments "
         "carries it; dry_run needs no token. With several Revit instances running, document or "
         "process_id selects one. REVIT_MCP_TOOLSETS limits which tools are listed. "
+        "Recommended task selections: preset:audit for reading and auditing models, preset:edit "
+        "for editing existing elements, preset:families for family audit/load/place/edit, "
+        "preset:sheets for views/schedules/sheets/export, and preset:batch for batch collection "
+        "and processing. Set REVIT_MCP_TOOLSETS or --toolsets to the preset and restart the "
+        "server connection to switch; combine presets and toolsets with commas, or use all "
+        "for unrestricted discovery. Hidden tools require switching before they can be called. "
         "The workstation read-only lock disables actions without hiding them. "
         "revit_set_read_only and the Model MCP ribbon switch it. Unlocking from chat requires "
         "a two-step AI app token handshake. The token does not prove human approval. Every read "
@@ -1603,7 +1615,8 @@ def main() -> None:
         default=os.environ.get(ENVIRONMENT_VARIABLE),
         help=(
             "Comma-separated toolsets whose tools are listed: all (default), "
-            f"{', '.join(TOOLSETS)}. core is always included; overrides {ENVIRONMENT_VARIABLE}."
+            f"{', '.join(TOOLSETS)}, {', '.join(PRESETS)}. "
+            f"core is always included; overrides {ENVIRONMENT_VARIABLE}."
         ),
     )
     parser.add_argument(

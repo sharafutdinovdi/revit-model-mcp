@@ -18,7 +18,24 @@ Toolsets limit visibility only. They are not a permission: read-only mode, confi
 
 Session tools `revit_activate_view`, `revit_activate_document`, `revit_select`, `revit_show`, `revit_isolate` (temporary view state) and `revit_close_views` do not change the model. Their MCP annotations are `readOnlyHint=true` and `destructiveHint=false`. Model-changing tools retain their action annotations. These hints describe model access; workstation locks and policy checks still apply.
 
-The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (22 tools, about 6,564 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+The default is `all`; existing setups retain every tool.
+Task presets expand to the toolsets below, with `core` always included.
+The server discovery instructions recommend a preset for each task.
+Set `REVIT_MCP_TOOLSETS=preset:audit` in the client's server environment, or pass `--toolsets preset:audit`, then restart the server connection.
+Switching requires a restart; a hidden tool cannot be called in the current connection.
+Comma-separated selections combine by union, for example `preset:families,views-sheets`; `all` restores full discovery.
+Presets limit discovery, not permissions: even `preset:audit` includes document lifecycle actions.
+
+| Preset | Included toolsets besides `core` | Supported task |
+| --- | --- | --- |
+| `preset:audit` | `read,documents` | Open or select models, inspect elements, parameters and warnings, collect snapshots, then close. |
+| `preset:edit` | `read,actions,documents,views-sheets` | Inspect and select existing elements, change parameters, transform or delete elements, inspect views, then save or sync and close. |
+| `preset:families` | `read,family,documents,code` | Create or open documents, inspect family types, audit, load, place and edit families, use API lookup and C# for family changes, then save and close. |
+| `preset:sheets` | `read,views-sheets,documents,export` | Inspect views and title blocks, create views, schedules and sheets, place views, export, then save and close. |
+| `preset:batch` | `read,batch,documents,code,export` | Start, monitor, cancel and fetch collection runs, build reports, or process models with C# steps, exports and saves. |
+
+Tasks outside a preset's documented scope require another preset, additional toolsets, or `all`.
+For example, creating model geometry requires `cad-mep`; editing elements is not a geometry-creation preset.
 
 | Toolset | Tools |
 | --- | --- |
@@ -36,7 +53,11 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 
 ### Tool list size
 
-`cd server && uv run python ../build/tool_size.py` measures the `tools/list` payload (compact JSON of every tool, bytes; tokens are bytes divided by 4, an estimate).
+`cd server && uv run python ../build/tool_size.py` measures the schema baseline: the sum of compact UTF-8 JSON byte lengths of individual tools serialized with `model_dump(mode="json", by_alias=True, exclude_none=True)`, using `json.dumps(separators=(",", ":"), ensure_ascii=False)`.
+This baseline excludes the list wrapper and separators between tools.
+The full result uses `ListToolsResult(tools=selected).model_dump_json(by_alias=True, exclude_none=True).encode("utf-8")`; it includes the result wrapper, list separators and the serializer's Unicode escaping.
+Neither representation includes a JSON-RPC envelope, server instructions or client-specific framing.
+Token estimates use `floor(schema baseline bytes / 4)`, not a tokenizer count.
 Tool and parameter descriptions state plain behavior. The confirmation procedure, addressing rules and long-job handling live in the server instructions and the `revit://guides/coordinator` resource, not in each description.
 
 | Toolset | Tools | Bytes | About tokens |
@@ -55,7 +76,22 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `all` (default) | 89 | 107,778 | 26,944 |
 | `core,read` | 22 | 26,259 | 6,564 |
 
-These measurements use the default tool schemas. Optional server arguments can increase the payload.
+### Preset and full-result costs
+
+| Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
+| --- | --- | --- | --- | --- |
+| `all` | 89 | 107,778 | 26,944 | 107,935 |
+| `core,read` | 22 | 26,259 | 6,564 | 26,349 |
+| `preset:audit` | 28 | 31,069 | 7,767 | 31,165 |
+| `preset:edit` | 59 | 67,937 | 16,984 | 68,064 |
+| `preset:families` | 40 | 45,912 | 11,478 | 46,020 |
+| `preset:sheets` | 54 | 64,060 | 16,015 | 64,182 |
+| `preset:batch` | 46 | 52,392 | 13,098 | 52,506 |
+
+`cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
+The schema-size test permits no drift; schema changes require updated measured values.
+These measurements use the default tool schemas.
+Optional server arguments can increase the payload.
 
 MEP routing, graphic overrides, view and sheet creation, element tagging, schedule creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 `revit_place_views_on_sheet` accepts a sheet element ID (integer or numeric string), sheet number, or sheet name; an unmatched reference returns candidate sheets.
