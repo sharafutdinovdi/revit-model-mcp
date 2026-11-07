@@ -23,6 +23,13 @@ public sealed class ScriptContext
     private readonly List<string> _log = [];
     [ThreadStatic] internal static ScriptContext? Current;
     private readonly List<IDisposable> _scopes = [];
+    internal Action<Document>? EnsureDocumentGroup { get; set; }
+
+    public static Document TrackDocument(Document document)
+    {
+        Current?.EnsureDocumentGroup?.Invoke(document);
+        return document;
+    }
 
     public static T TrackScope<T>(T scope) where T : IDisposable
     {
@@ -126,7 +133,7 @@ internal static class CodeExecution
                 [CSharpSyntaxTree.ParseText(source, CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest))],
                 references, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary,
                     optimizationLevel: OptimizationLevel.Release));
-            if (action.TransactionMode == "group")
+            if (action.TransactionMode is "auto" or "group")
             {
                 var tree = compilation.SyntaxTrees.Single();
                 var rewritten = new ScopeTrackingRewriter(compilation.GetSemanticModel(tree)).Visit(tree.GetRoot())!;
@@ -182,13 +189,55 @@ internal static class CodeExecution
         var context = new ScriptContext(application, uiDocument, document) { Args = action.Args };
         TransactionGroup? group = null;
         Transaction? transaction = null;
-        var changedElementCount = 0;
+        var receipts = new Dictionary<Document, CodeDocumentReceipt>();
+        var additionalGroups = new Dictionary<Document, TransactionGroup>();
+        CodeDocumentReceipt Receipt(Document touched)
+        {
+            if (!receipts.TryGetValue(touched, out var receipt))
+            {
+                receipt = new CodeDocumentReceipt { Document = touched.Title };
+                receipts.Add(touched, receipt);
+            }
+            return receipt;
+        }
+        context.EnsureDocumentGroup = touched =>
+        {
+            if (touched.Equals(document) || additionalGroups.ContainsKey(touched)) return;
+            var additionalGroup = new TransactionGroup(touched, "MCP action");
+            try
+            {
+                if (additionalGroup.Start() != TransactionStatus.Started)
+                    throw new InvalidOperationException("Could not protect an additional document with a transaction group.");
+                additionalGroups.Add(touched, additionalGroup);
+                Receipt(touched);
+            }
+            catch
+            {
+                additionalGroup.Dispose();
+                throw;
+            }
+        };
         void CountChanges(object? sender, Autodesk.Revit.DB.Events.DocumentChangedEventArgs arguments)
         {
             if (arguments.Operation != Autodesk.Revit.DB.Events.UndoOperation.TransactionCommitted) return;
-            if (document is null || !document.Equals(arguments.GetDocument())) return;
-            changedElementCount += arguments.GetAddedElementIds().Count + arguments.GetModifiedElementIds().Count
-                + arguments.GetDeletedElementIds().Count;
+            var receipt = Receipt(arguments.GetDocument());
+            receipt.Added += arguments.GetAddedElementIds().Count;
+            receipt.Modified += arguments.GetModifiedElementIds().Count;
+            receipt.Deleted += arguments.GetDeletedElementIds().Count;
+        }
+        void RollBackGroup(Document touched, TransactionGroup ownedGroup)
+        {
+            var receipt = Receipt(touched);
+            try
+            {
+                if (ownedGroup.IsValidObject && ownedGroup.GetStatus() == TransactionStatus.Started
+                    && ownedGroup.RollBack() == TransactionStatus.RolledBack)
+                    receipt.Outcome = "rolledBack";
+            }
+            catch (Exception rollbackException)
+            {
+                receipt.Warning = "Rollback failed: " + rollbackException.Message;
+            }
         }
         var counting = action.TransactionMode is "auto" or "group";
         if (counting) application.Application.DocumentChanged += CountChanges;
@@ -205,6 +254,7 @@ internal static class CodeExecution
                 group = new TransactionGroup(document, "MCP action");
                 if (group.Start() != TransactionStatus.Started)
                     throw new InvalidOperationException("Could not start the action transaction group.");
+                Receipt(document);
             }
             if (action.TransactionMode == "auto")
             {
@@ -231,7 +281,7 @@ internal static class CodeExecution
             object? returned;
             try
             {
-                ScriptContext.Current = action.TransactionMode == "group" ? context : null;
+                ScriptContext.Current = counting ? context : null;
                 returned = method.Invoke(null, [context]);
             }
             catch (TargetInvocationException exception) when (exception.InnerException is not null)
@@ -240,7 +290,7 @@ internal static class CodeExecution
                 throw;
             }
             if (context.CloseOpenScopes() || action.TransactionMode == "group" && document!.IsModifiable)
-                throw new InvalidOperationException("The script left a transaction or edit scope open. The run was rolled back.");
+                throw new InvalidOperationException("The script left a transaction or edit scope open. Inspect documentReceipts for rollback outcomes.");
             result.ReturnValue = CodeResultLimiter.Limit(returned, ConvertSpecial);
             result.Log = context.Lines.ToList();
             if (group is not null)
@@ -252,16 +302,19 @@ internal static class CodeExecution
                     if (group.RollBack() != TransactionStatus.RolledBack)
                         throw new InvalidOperationException("Could not roll back the action transaction group.");
                     result.RolledBack = true;
+                    Receipt(document!).Outcome = "rolledBack";
                 }
                 else
                 {
                     if (transaction is not null && transaction.Commit() != TransactionStatus.Committed)
                         throw new InvalidOperationException(failures.Message ?? "The action transaction was rolled back.");
-                    if (changedElementCount == 0)
+                    var targetReceipt = Receipt(document!);
+                    if (targetReceipt.Added + targetReceipt.Modified + targetReceipt.Deleted == 0)
                     {
                         if (group.RollBack() != TransactionStatus.RolledBack)
                             throw new InvalidOperationException("Could not roll back the empty action transaction group.");
                         result.RolledBack = true;
+                        Receipt(document!).Outcome = "rolledBack";
                         result.Committed = false;
                         result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
                         {
@@ -280,16 +333,47 @@ internal static class CodeExecution
                             throw new InvalidOperationException("Could not assimilate the action transaction group.");
                         result.UndoName = undoName;
                         result.Committed = true;
+                        Receipt(document!).Outcome = "committed";
                     }
+                }
+            }
+            foreach (var additional in additionalGroups)
+            {
+                if (action.DryRun || action.ToolMode == "read" && action.ToolName is not null)
+                {
+                    RollBackGroup(additional.Key, additional.Value);
+                }
+                else
+                {
+                    additional.Value.SetName(action.ToolName is null
+                        ? ActionSummaryBuilder.BuildGroupName(clientName, "Execute code") : "Model MCP: " + action.ToolName);
+                    if (additional.Value.Assimilate() != TransactionStatus.Committed)
+                        throw new InvalidOperationException("Could not assimilate an additional document transaction group.");
+                    Receipt(additional.Key).Outcome = "committed";
                 }
             }
         }
         catch (Exception exception)
         {
-            context.CloseOpenScopes();
-            if (transaction?.GetStatus() == TransactionStatus.Started) transaction.RollBack();
-            if (group?.GetStatus() == TransactionStatus.Started) group.RollBack();
-            result.RolledBack = action.TransactionMode is "auto" or "group";
+            try
+            {
+                context.CloseOpenScopes();
+            }
+            catch (Exception cleanupException)
+            {
+                result.Warning = "Scope cleanup failed: " + cleanupException.Message;
+            }
+            try
+            {
+                if (transaction?.GetStatus() == TransactionStatus.Started) transaction.RollBack();
+            }
+            catch (Exception rollbackException)
+            {
+                Receipt(document!).Warning = "Transaction rollback failed: " + rollbackException.Message;
+            }
+            foreach (var additional in additionalGroups.Reverse())
+                RollBackGroup(additional.Key, additional.Value);
+            if (group is not null) RollBackGroup(document!, group);
             result.CodeError = exception.GetType().Name + ": " + exception.Message;
             result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
             {
@@ -307,6 +391,7 @@ internal static class CodeExecution
         {
             ScriptContext.Current = null;
             if (counting) application.Application.DocumentChanged -= CountChanges;
+            foreach (var additional in additionalGroups.Values.Reverse()) additional.Dispose();
             transaction?.Dispose();
             group?.Dispose();
 #if !NETFRAMEWORK
@@ -314,12 +399,47 @@ internal static class CodeExecution
 #endif
             result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         }
+        if (receipts.Count > 0)
+        {
+            foreach (var receipt in receipts.Values.Where(receipt => receipt.Outcome == "unknown"))
+                receipt.Warning ??= "No owned transaction group confirmed rollback or commit. Already committed changes outside the protected documents cannot be rolled back.";
+            result.DocumentReceipts = receipts.Values.ToList();
+            CodeDocumentReceipt.ApplyOutcome(result, result.DocumentReceipts);
+        }
         if (action.ToolName is not null) result.Summary = $"{action.ToolName}: {result.Summary}";
         return result;
     }
 
     private sealed class ScopeTrackingRewriter(SemanticModel model) : CSharpSyntaxRewriter
     {
+        public override SyntaxNode? VisitImplicitObjectCreationExpression(ImplicitObjectCreationExpressionSyntax node)
+        {
+            var visited = (ImplicitObjectCreationExpressionSyntax)base.VisitImplicitObjectCreationExpression(node)!;
+            if (!IsScope(model.GetTypeInfo(node).Type) || node.ArgumentList.Arguments.Count == 0
+                || model.GetTypeInfo(node.ArgumentList.Arguments[0].Expression).Type?.ToDisplayString() != "Autodesk.Revit.DB.Document")
+                return visited;
+            var first = visited.ArgumentList.Arguments[0];
+            var tracked = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.ParseExpression("global::RevitModelMcp.Control.ScriptContext.TrackDocument"),
+                SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(first.Expression))));
+            return visited.WithArgumentList(visited.ArgumentList.WithArguments(
+                visited.ArgumentList.Arguments.Replace(first, first.WithExpression(tracked))));
+        }
+
+        public override SyntaxNode? VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
+        {
+            var visited = (ObjectCreationExpressionSyntax)base.VisitObjectCreationExpression(node)!;
+            if (!IsScope(model.GetTypeInfo(node).Type) || node.ArgumentList is not { Arguments.Count: > 0 } arguments
+                || model.GetTypeInfo(arguments.Arguments[0].Expression).Type?.ToDisplayString() != "Autodesk.Revit.DB.Document")
+                return visited;
+            var first = visited.ArgumentList!.Arguments[0];
+            var tracked = SyntaxFactory.InvocationExpression(
+                SyntaxFactory.ParseExpression("global::RevitModelMcp.Control.ScriptContext.TrackDocument"),
+                SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(first.Expression))));
+            return visited.WithArgumentList(visited.ArgumentList.WithArguments(
+                visited.ArgumentList.Arguments.Replace(first, first.WithExpression(tracked))));
+        }
+
         public override SyntaxNode? VisitInvocationExpression(InvocationExpressionSyntax node)
         {
             var visited = (InvocationExpressionSyntax)base.VisitInvocationExpression(node)!;
