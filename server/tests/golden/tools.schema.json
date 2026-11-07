@@ -5493,6 +5493,18 @@
         "pattern": "^[a-z][a-z0-9_]{2,47}$",
         "type": "string"
       },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "timeout_seconds": {
         "default": 600,
         "maximum": 3600,
@@ -5619,6 +5631,18 @@
       "parameters": {
         "additionalProperties": true,
         "type": "object"
+      },
+      "process_id": {
+        "anyOf": [
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "tested_revit_years": {
         "anyOf": [
