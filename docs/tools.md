@@ -307,6 +307,13 @@ See [Model audit](model-audit.md) for rule examples, packs, evidence limits, sta
 
 For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.
 
+## Execute C# code
+
+`revit_execute_code` supports family editing and reloading with `transaction="group"`.
+The default `auto` mode keeps an outer transaction open; Revit refuses `EditFamily` and the family-document `LoadFamily` overloads when their target is modifiable.
+Reloading an edited family into its source project requires `LoadFamily(Document, IFamilyLoadOptions)`; the overload without conflict options rejects that workflow.
+See the [execution contract](actions.md#execute-c-code) for confirmation, per-document receipts, rollback and document ownership.
+
 ## My tools
 
 [My tools](my-tools.md) stores parameterized C# procedures on the Revit workstation.

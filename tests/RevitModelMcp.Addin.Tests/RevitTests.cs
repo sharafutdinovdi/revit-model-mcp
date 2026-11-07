@@ -366,39 +366,62 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
-    public async Task CodeDryRun_EditFamilyLoadFamilyLeavesNoLoadedFamilyOrOpenDocumentAsync()
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task CodeGroup_EditFamilyLoadFamilyUsesConflictOptionsAndHonorsDryRunAsync(bool dryRun)
     {
         var familyName = "CrossDocumentRollback" + Guid.NewGuid().ToString("N");
         var initialDocuments = Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet();
         var initialFamilies = new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount();
-        var result = ExecuteCode(new ActionJobContract
+        try
         {
-            TransactionMode = "group",
-            DryRun = true,
-            Args = new Dictionary<string, object> { ["name"] = familyName },
-            Code = """
-                var family = new FilteredElementCollector(ctx.Document).OfClass(typeof(Family)).Cast<Family>()
-                    .First(item => item.IsEditable && !item.IsInPlace);
-                var edited = ctx.Document.EditFamily(family);
-                using (var transaction = new Transaction(edited, "Rename edited family"))
-                {
-                    transaction.Start();
-                    edited.OwnerFamily.Name = (string)ctx.Args["name"];
-                    transaction.Commit();
-                }
-                var loaded = edited.LoadFamily(ctx.Document);
-                return loaded.Name;
-                """
-        });
-        await Assert.That(result.CodeError).IsNull();
-        await Assert.That(result.ReturnValue).IsEqualTo(familyName);
-        await Assert.That(new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount()).IsEqualTo(initialFamilies);
-        await Assert.That(new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
-            .Any(family => family.Name == familyName)).IsFalse();
-        await Assert.That(Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet()
-            .SetEquals(initialDocuments)).IsTrue();
-        await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "rolledBack")).IsTrue();
-        await Assert.That(result.RolledBack).IsTrue();
+            var result = ExecuteCode(new ActionJobContract
+            {
+                TransactionMode = "group",
+                DryRun = dryRun,
+                Args = new Dictionary<string, object> { ["name"] = familyName },
+                Code = """
+                    var family = new FilteredElementCollector(ctx.Document).OfClass(typeof(Family)).Cast<Family>()
+                        .First(item => item.IsEditable && !item.IsInPlace);
+                    var edited = ctx.Document.EditFamily(family);
+                    using (var transaction = new Transaction(edited, "Rename edited family"))
+                    {
+                        transaction.Start();
+                        edited.OwnerFamily.Name = (string)ctx.Args["name"];
+                        transaction.Commit();
+                    }
+                    var loaded = edited.LoadFamily(ctx.Document, new Nice3point.Revit.Toolkit.Options.FamilyLoadOptions());
+                    return loaded.Name;
+                    """
+            });
+            await Assert.That(result.CodeError).IsNull();
+            await Assert.That(result.ReturnValue).IsEqualTo(familyName);
+            var loadedFamilyExists = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+                .Any(family => family.Name == familyName);
+            if (dryRun)
+            {
+                await Assert.That(new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount()).IsEqualTo(initialFamilies);
+                await Assert.That(loadedFamilyExists).IsFalse();
+                await Assert.That(Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet()
+                    .SetEquals(initialDocuments)).IsTrue();
+                await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "rolledBack")).IsTrue();
+                await Assert.That(result.RolledBack).IsTrue();
+            }
+            else
+            {
+                await Assert.That(loadedFamilyExists).IsTrue();
+                await Assert.That(result.DocumentReceipts!.Single(receipt => receipt.DocumentKey == Model.GetHashCode().ToString("X8"))
+                    .Outcome).IsEqualTo("committed");
+                await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "leftOpen")).IsTrue();
+                await Assert.That(result.Committed).IsTrue();
+            }
+        }
+        finally
+        {
+            foreach (var opened in Application.Documents.Cast<Document>()
+                         .Where(document => !document.IsLinked && !initialDocuments.Contains(document.GetHashCode())).ToList())
+                opened.Close(false);
+        }
     }
 
     [Test]

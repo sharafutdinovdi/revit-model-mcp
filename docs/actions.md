@@ -139,6 +139,9 @@ Missing XML and type load failures appear in `skipped` and `skippedCount`.
 `revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. Both supported transaction modes require a target document.
 
 The default `auto` mode owns one Revit transaction inside a group. Scripts in this mode must not open transactions.
+`EditFamily` and the family-document `LoadFamily` overloads require an unmodifiable target document.
+Scripts that edit and reload families into the target project must use `transaction="group"` rather than `auto`, which keeps an outer transaction open.
+Reloading an `EditFamily` copy into its source project requires the `LoadFamily(Document, IFamilyLoadOptions)` overload; the overload without options rejects family conflicts.
 The `group` mode starts a `TransactionGroup` without an outer Transaction.
 Scripts can open and commit Transactions, SubTransactions, and edit scopes such as `StairsEditScope`.
 Every script-owned scope must finish before the script returns.
