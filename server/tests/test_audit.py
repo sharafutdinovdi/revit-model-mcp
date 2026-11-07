@@ -32,6 +32,7 @@ MODEL = {
     "path": None,
     "versionGuid": "family-a",
 }
+RESPONDER = {"processId": 123, "documentName": "Tower", "documentPath": "Tower.rvt"}
 
 
 def run(awaitable):
@@ -61,7 +62,7 @@ def file(rules=None, **values):
 
 
 def read(data, **extra):
-    return {"success": True, "data": data, **extra}
+    return {"success": True, "data": data, "responder": dict(RESPONDER), **extra}
 
 
 def evaluate(r, responses):
@@ -808,9 +809,11 @@ def test_live_adapter_and_audit_addressing(tmp_path, monkeypatch):
             )
         )
     assert result["findings"][0]["status"] == "failed"
-    for call in channel.execute.call_args_list:
-        assert call.args[0].payload["targetDocument"] == "Tower"
+    calls = channel.execute.call_args_list
+    assert calls[0].args[0].payload["targetDocument"] == "Tower"
+    for call in calls:
         assert call.args[0].payload["targetProcessId"] == 123
+    assert calls[1].args[0].payload["targetDocument"] == "Tower.rvt"
     channel.execute.reset_mock()
     with patch.object(server, "channel", channel), pytest.raises(Exception):
         run(server.revit_model_audit(rules_inline=file([rule("unknown")])))
@@ -921,3 +924,144 @@ def test_inherited_fill_threshold_is_validated_after_merge():
                 extends=["iso19650-information"],
             )
         )
+
+
+@pytest.mark.parametrize("scope", [{"level": "L1"}, {"categories": [{"names": ["Walls"]}]}])
+def test_scoped_warning_count_is_not_assessed(scope):
+    r = {**rule("count", metric="warnings_total"), "scope": scope}
+    f, source = evaluate(r, {"revit_list_warnings": read({"total": 0})})
+    assert f["status"] == "not_assessed"
+    assert "scope" in f["reason"]
+    assert f["measured"] is None
+    source.read.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "check,threshold",
+    [
+        ({"type": "count"}, {"max_percent": 10}),
+        ({"type": "count", "metric": "warnings_total"}, {"min_percent": 10}),
+        ({"type": "coordinates", "metric": "link_offset_mm"}, {"max_percent": 10}),
+        ({"type": "coordinates", "metric": "link_offset_mm"}, {"min_percent": 10}),
+    ],
+)
+def test_threshold_units_rejected_before_live_read(check, threshold):
+    r = {**rule(), "check": check, "threshold": threshold}
+    channel = AsyncMock()
+    with (
+        patch.object(server, "channel", channel),
+        pytest.raises(Exception, match="Incompatible threshold unit"),
+    ):
+        run(server.revit_model_audit(rules_inline=file([r]), save=False))
+    channel.execute.assert_not_awaited()
+
+
+def test_inherited_threshold_units_are_validated():
+    with pytest.raises(ValueError, match="Incompatible threshold unit"):
+        load_rules(
+            inline=file(
+                [{"id": "COORD-offset", "threshold": {"max_percent": 10}}],
+                extends=["coordination"],
+            )
+        )
+
+
+def test_live_warning_count_normalizes_total_warnings():
+    channel = AsyncMock()
+    channel.execute.return_value = read({"totalWarnings": 7, "groups": []})
+    with patch.object(server, "channel", channel):
+        f = run(
+            Evaluator(LiveReadSource(identity=read({}))).evaluate(
+                [{**rule("count", metric="warnings_total"), "threshold": {"max_count": 6}}]
+            )
+        )[0]
+    assert (f["status"], f["measured"]) == ("failed", 7)
+    payload = channel.execute.call_args.args[0].payload
+    assert payload["targetDocument"] == RESPONDER["documentPath"]
+    assert payload["targetProcessId"] == RESPONDER["processId"]
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("documentName", "Other"),
+        ("documentPath", r"C:\Other\Tower.rvt"),
+        ("processId", 456),
+        ("documentName", None),
+    ],
+)
+@pytest.mark.parametrize("redact", ["0", "1"])
+def test_live_reads_reject_changed_identity_before_redaction(field, value, redact, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", redact)
+    channel = AsyncMock()
+    initial = {**RESPONDER, "documentPath": MODEL["centralPath"]}
+    changed = {**initial, field: value}
+    channel.execute.side_effect = [
+        read({"counts": {"warnings": 0, "elements": 10}}, responder=initial),
+        read({"totalWarnings": 0}, responder=changed),
+    ]
+    rules = [rule("model_health", metric="warnings_total"), rule("count", metric="warnings_total")]
+    source = LiveReadSource(identity=read({}, responder=initial))
+    with patch.object(server, "channel", channel):
+        findings = run(Evaluator(source).evaluate(rules))
+    assert findings[0]["status"] == "passed"
+    assert findings[1]["status"] == "not_assessed"
+    assert "identity" in findings[1]["reason"]
+    assert findings[1]["measured"] is None
+    for call in channel.execute.call_args_list:
+        assert call.args[0].payload["targetDocument"] == MODEL["centralPath"]
+        assert call.args[0].payload["targetProcessId"] == 123
+    assert server._audit_response_validator.get() is None
+    assert server._addressed_process_id.get() is None
+
+
+def test_live_audit_requires_initial_document_identity():
+    channel = AsyncMock()
+    channel.execute.return_value = read(
+        {"schemaVersion": 1, "passport": {"title": "Tower"}, "source": {}}, responder={}
+    )
+    with (
+        patch.object(server, "channel", channel),
+        pytest.raises(Exception, match="confirmed document identity"),
+    ):
+        run(server.revit_model_audit(rules_inline=file(), save=False))
+    assert channel.execute.await_count == 1
+
+
+def test_percentage_threshold_with_explicit_population_conversion():
+    r = {
+        **rule("model_health", metric="unloaded_links"),
+        "threshold": {"max_percent": 40},
+    }
+    loaded = load_rules(inline=file([r]))
+    f, _ = evaluate(
+        loaded["rules"][0],
+        {"revit_links_status": read({"summary": {"rvt": 4, "rvtLoaded": 2}})},
+    )
+    assert (f["status"], f["measured"]) == ("failed", 50)
+
+
+def test_live_audit_pins_implicit_document_before_reading_findings():
+    snapshot = {
+        "schemaVersion": 1,
+        "passport": {"title": "Tower", "versionGuid": "family-a"},
+        "source": {"path": "Tower.rvt"},
+    }
+    channel = AsyncMock()
+    channel.execute.side_effect = [
+        read(snapshot),
+        read({"totalWarnings": 0}, responder={**RESPONDER, "documentName": "Other"}),
+    ]
+    with patch.object(server, "channel", channel):
+        result = run(
+            server.revit_model_audit(
+                rules_inline=file([rule("count", metric="warnings_total")]),
+                compare_with="none",
+                save=False,
+            )
+        )
+    assert result["findings"][0]["status"] == "not_assessed"
+    initial, subsequent = [call.args[0].payload for call in channel.execute.call_args_list]
+    assert "targetDocument" not in initial
+    assert subsequent["targetDocument"] == "Tower.rvt"
+    assert subsequent["targetProcessId"] == 123

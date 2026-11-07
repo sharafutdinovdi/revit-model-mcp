@@ -229,6 +229,9 @@ ProcessId = Annotated[
 _addressed_process_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "addressed_process_id", default=None
 )
+_audit_response_validator: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "audit_response_validator", default=None
+)
 
 
 class ParameterRule(BaseModel):
@@ -538,6 +541,8 @@ async def _execute(
             job.for_document(document).for_process(_addressed_process_id.get()),
             timeout_seconds,
         )
+        if validator := _audit_response_validator.get():
+            validator(result)
         if job.command == "ping":
             result["serverVersion"] = package_version()
             if CHANNEL != "store":
@@ -1327,7 +1332,7 @@ async def revit_model_audit(
     """Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes."""
     from jsonschema import ValidationError
 
-    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource
+    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
     from revit_model_mcp.audit.result import build_result, model_identity
     from revit_model_mcp.audit.rules import load_rules
 
@@ -1336,10 +1341,8 @@ async def revit_model_audit(
         for command in ("revit_model_audit", "model-snapshot"):
             if (blocked := policy_refusal(command)) is not None:
                 raise ToolError(blocked)
-        source = LiveReadSource(document, timeout_seconds)
-        evaluator = Evaluator(source)
         # Snapshot passport is the existing reader with full model and version identity.
-        # Keep raw paths only long enough to hash the history key; result paths are redacted.
+        # Raw paths address pinned reads and history keys; result paths are redacted.
         identity = await asyncio.wait_for(
             channel.execute(
                 Job("model-snapshot", {"command": "model-snapshot", "parameterRules": []})
@@ -1351,9 +1354,11 @@ async def revit_model_audit(
         )
         if not isinstance(identity.get("data"), dict):
             raise ValueError("Model identity is unavailable; audit history cannot be addressed.")
+        source = LiveReadSource(document, timeout_seconds, identity=identity)
+        evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
         return build_result(model_identity(identity["data"]), loaded, findings, compare_with, save)
-    except (OSError, ValueError, TypeError, ValidationError, TimeoutError) as error:
+    except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 
 
