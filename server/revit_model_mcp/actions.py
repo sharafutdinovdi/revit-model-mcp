@@ -701,10 +701,15 @@ async def _send_action(
     document: str | None = None,
     process_id: int | None = None,
     timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
+    confirmation_processes: dict[str, int] | None = None,
     **payload,
 ) -> dict[str, Any]:
     try:
         instances = await host_provider().list_revit_instances()
+        if command in {"list-tools", "get-tool", "delete-tool"} and instances:
+            process_id = min(int(instance["processId"]) for instance in instances)
+            if command == "delete-tool" and confirmation_processes is not None:
+                process_id = confirmation_processes.get(payload.get("confirmToken"), process_id)
         if command == "set-read-only" and process_id is None and instances:
             process_id = min(int(instance["processId"]) for instance in instances)
         selected = (
@@ -729,10 +734,20 @@ async def _send_action(
             "targetProcessId": selected["processId"],
         },
     )
-    return redact_model_paths(await execute(job, timeout_seconds, None))
+    result = redact_model_paths(await execute(job, timeout_seconds, None))
+    if command == "delete-tool" and confirmation_processes is not None:
+        data = result.get("data")
+        token = data.get("confirmToken") if isinstance(data, dict) else None
+        if isinstance(token, str):
+            confirmation_processes[token] = selected["processId"]
+            if len(confirmation_processes) > 100:
+                confirmation_processes.pop(next(iter(confirmation_processes)))
+    return result
 
 
 def register_actions(mcp, execute, host_provider) -> None:
+    confirmation_processes: dict[str, int] = {}
+
     async def send(
         command: str,
         *,
@@ -754,6 +769,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             document=document,
             process_id=process_id,
             timeout_seconds=timeout_seconds,
+            confirmation_processes=confirmation_processes,
             **payload,
         )
 
@@ -1079,6 +1095,8 @@ def register_actions(mcp, execute, host_provider) -> None:
             document=document,
         )
 
+    # Catalog reads and deletion use the shared Windows-user store. Saving still
+    # targets a Revit version for compilation; running targets its model/session.
     @action
     async def revit_save_tool(
         name: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{2,47}$")],
@@ -1089,8 +1107,9 @@ def register_actions(mcp, execute, host_provider) -> None:
         tested_revit_years: list[Annotated[int, Field(strict=True, ge=2022, le=2027)]]
         | None = None,
         confirm_token: str | None = None,
+        process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Compile C# and schema without execution, then save a revision after the token handshake. Returns full source, hash and confirm_token."""
+        """Compile C#/schema without execution; confirm to save. Returns full source, hash and token."""
         if len(code.encode("utf-8")) > 262144:
             raise ToolError("source exceeds 256 KB UTF-8.")
         return await send(
@@ -1102,6 +1121,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             toolMode=mode,
             toolYears=tested_revit_years or [],
             confirmToken=confirm_token,
+            process_id=process_id,
         )
 
     @action
@@ -1127,8 +1147,9 @@ def register_actions(mcp, execute, host_provider) -> None:
             str | None, Field(validation_alias=AliasChoices("document", "targetDocument"))
         ] = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
+        process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Run saved C#. First run per Revit session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. transaction=group permits script-owned transactions and edit scopes in one Undo group. Uses execute_code gates; store runs require machine ExecuteCode=confirm, including read mode and dry runs. Timeouts may follow commit."""
+        """Run saved C#. First run per session needs confirm_token, even read/dry_run. Action commits need a token. Read/dry_run roll back. transaction=group allows script-owned transactions and edit scopes in one Undo group. Uses execute_code gates; store runs need machine ExecuteCode=confirm, even read/dry_run. Timeouts may follow commit."""
         return await send(
             "run-tool",
             name=name,
@@ -1138,6 +1159,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             confirmToken=confirm_token,
             document=document,
             timeout_seconds=timeout_seconds,
+            process_id=process_id,
         )
 
     @action
