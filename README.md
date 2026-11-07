@@ -17,7 +17,8 @@ Read-only mode is one switch away.
 
 On Windows, paste this prompt into Claude Code, Codex, Cursor, or another agent:
 `Install Model MCP for Revit from https://github.com/sharafutdinovdi/revit-model-mcp. Follow docs/agent-install.md exactly.`
-The [agent install guide](docs/agent-install.md) uses one release command with no checkout, Python, SDK, or administrator rights.
+The [agent install guide](docs/agent-install.md) uses the published MSI and client registration, with no checkout or .NET SDK.
+The one-command installer arrives with the next release; the current release does not contain `install.ps1`.
 
 ## Quick start
 
