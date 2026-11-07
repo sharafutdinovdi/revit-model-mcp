@@ -120,7 +120,9 @@ def test_fallback_publication_conflict(tmp_path, publication, destination_kind, 
         assert target.read_bytes() == b"original"
     else:
         assert target.is_symlink()
-        assert target.readlink() == original
+        assert os.path.normcase(os.path.realpath(target)) == os.path.normcase(
+            os.path.realpath(original)
+        )
         if destination_kind == "symlink":
             assert original.read_bytes() == b"original"
         else:
