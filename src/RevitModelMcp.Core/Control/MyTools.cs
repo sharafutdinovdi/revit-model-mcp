@@ -54,6 +54,11 @@ internal sealed record ToolDefinition
 
 public static class ToolArguments
 {
+    public static string ExecutionBinding(ActionJobContract action) =>
+        DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
+        $":dry_run={action.DryRun}" +
+        (action.ToolName is null ? "" : $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}");
+
     private static XElement Parse(string json)
     {
         if (Encoding.UTF8.GetByteCount(json) > 65536) throw new ArgumentException("parameters or args exceed 64 KB.");
