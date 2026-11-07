@@ -1271,7 +1271,8 @@ async def test_execute_returns_retryable_transport_failure(transport, monkeypatc
     assert result["retryable"] is True
     assert result["success"] is False
     assert result["command"] == "ping"
-    assert "The call did not run. Retry when the workstation or tunnel is back." in result["error"]
+    assert "Check the workstation or tunnel connection." in result["error"]
+    assert "The call did not run" not in result["error"]
     assert "Private" not in result["error"]
 
 

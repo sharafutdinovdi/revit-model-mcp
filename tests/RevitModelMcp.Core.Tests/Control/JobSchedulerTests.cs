@@ -8,6 +8,92 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class JobSchedulerTests
 {
     [Test]
+    public async Task DuplicateActionReturnsOriginalStateAndReceiptWithoutQueueing()
+    {
+        var scheduler = new JobScheduler();
+        var jobId = NewId();
+        scheduler.Submit(jobId, "first", "First", "delete", "{}");
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "delete", "{}").Job!.Position).IsEqualTo(1);
+        scheduler.TakeNext();
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "delete", "{}").Job!.State).IsEqualTo(JobState.Running);
+        const string receipt = """{"success":true,"data":{"changedElementIds":[42]},"responder":{"processId":12}}""";
+        scheduler.Complete(jobId, receipt, true);
+        var duplicate = scheduler.Submit(jobId, "first", "First", "delete", "{}");
+        await Assert.That(duplicate.Job!.Result).IsEqualTo(receipt);
+        await Assert.That(scheduler.TakeNext()).IsNull();
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "delete", "{\"ids\":[2]}").Error).IsEqualTo("payload_mismatch");
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "move", "{}").Error).IsEqualTo("payload_mismatch");
+    }
+
+    [Test]
+    public async Task JournalRecoversReceiptAndRejectsChangedPayloadAfterRestart()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "first", "First", "delete", "{}");
+            scheduler.TakeNext();
+            const string receipt = """{"success":true,"data":{"changedElementIds":[42]},"responder":{"processId":12}}""";
+            scheduler.Complete(jobId, receipt, true);
+            var restored = new JobScheduler(resultDirectory: directory);
+            await Assert.That(restored.Status(jobId)!.Result).IsEqualTo(receipt);
+            await Assert.That(restored.Submit(jobId, "first", "First", "delete", "{}").Job!.Result).IsEqualTo(receipt);
+            await Assert.That(restored.Submit(jobId, "first", "First", "delete", "{\"ids\":[2]}").Error).IsEqualTo("payload_mismatch");
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task UnfinishedJournalNeverRequeuesAfterRestart()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "first", "First", "delete", "{}");
+            scheduler.TakeNext();
+            var restored = new JobScheduler(resultDirectory: directory);
+            var duplicate = restored.Submit(jobId, "first", "First", "delete", "{}");
+            await Assert.That(duplicate.Job!.State).IsEqualTo(JobState.Abandoned);
+            await Assert.That(duplicate.Job.Result).Contains("outcome unknown");
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task ExpiredJournalRefusesResubmissionAfterRestart()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "first", "First", "delete", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(jobId, "{\"success\":true}", true);
+            var restored = new JobScheduler(clock: () => DateTimeOffset.UtcNow.AddHours(25), resultDirectory: directory);
+            await Assert.That(restored.Status(jobId)).IsNull();
+            await Assert.That(restored.Submit(jobId, "first", "First", "delete", "{}").Error).IsEqualTo("expired");
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
     public async Task ProgressChangesStoredResultWithoutChangingRunningState()
     {
         var scheduler = new JobScheduler();

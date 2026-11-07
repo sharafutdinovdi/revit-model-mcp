@@ -61,6 +61,16 @@ internal sealed class ControlChannel
             var jobId = string.IsNullOrWhiteSpace(job.JobId) ? Guid.NewGuid().ToString("N") : job.JobId!;
             var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload);
             if (submitted.Job is null) return submitted;
+            if (_httpCompletions.TryGetValue(jobId, out var existing))
+            {
+                completion = existing.Task;
+                return submitted;
+            }
+            if (submitted.Job.State is JobState.Done or JobState.Failed or JobState.Cancelled or JobState.Abandoned)
+            {
+                completion = Task.FromResult(submitted.Job.Result!);
+                return submitted;
+            }
             var source = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _httpCompletions.Add(jobId, source);
             completion = source.Task;
@@ -121,7 +131,7 @@ internal sealed class ControlChannel
                 var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content);
                 if (submitted.Job is null)
                 {
-                    if (submitted.Error is "queue_full" or "invalid_job_id" or "persist_failed")
+                    if (submitted.Error is not null)
                     {
                         var message = JobScheduler.SubmissionMessage(submitted.Error);
                         var response = CommandResponse<object>.Fail(parsed.Command, message ?? submitted.Error, 0, parsed.CorrelationId);
@@ -135,6 +145,12 @@ internal sealed class ControlChannel
                         CommandResponseJsonFile.Write(responsePath, response);
                     }
                     PluginLog.Warn($"File job rejected. Error='{submitted.Error}'.");
+                }
+                if (submitted.Job is { State: JobState.Done or JobState.Failed or JobState.Cancelled or JobState.Abandoned, Result: not null } completed)
+                {
+                    var responsePath = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
+                        DateTime.Now, parsed.Command, parsed.CorrelationId);
+                    CommandResponseJsonFile.WriteContent(responsePath, completed.Result);
                 }
                 try { File.Delete(claimedPath); }
                 catch (IOException) { PluginLog.Warn("Claimed job file could not be removed."); }

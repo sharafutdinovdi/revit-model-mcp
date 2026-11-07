@@ -8,6 +8,7 @@ import hmac
 import http.client
 import json
 import os
+import socket
 import tempfile
 import urllib.error
 import urllib.parse
@@ -26,6 +27,7 @@ from revit_model_mcp.revit_channel import (
     ResponseTimeoutError,
     ResultExpiredError,
     RevitChannelError,
+    SubmissionRefusedError,
     TransportUnavailableError,
     matches_document,
     select_instance,
@@ -366,6 +368,8 @@ class HttpHost:
                     if error.code == 403 and method == "POST" and _is_job_submission_path(path)
                     else HttpUnavailableError
                     if error.code == 503
+                    else SubmissionRefusedError
+                    if method == "POST" and _is_job_submission_path(path)
                     else RevitChannelError
                 )
                 raise error_type(
@@ -387,10 +391,15 @@ class HttpHost:
                         "A submitted job may still execute; "
                         "inspect the model before retrying an action."
                     ) from None
-                raise HttpUnavailableError(
+                unavailable = HttpUnavailableError(
                     f"Revit endpoint not reachable at {self.host}: is Revit running with the add-in, "
                     "and is the port reachable from this machine?"
                     " If the add-in log says HTTP is disabled or failed, revit_ping over the local transport shows the reason in httpListener."
-                ) from None
+                )
+                reason = getattr(error, "reason", error)
+                unavailable.before_send = isinstance(
+                    reason, (ConnectionRefusedError, socket.gaierror)
+                )
+                raise unavailable from None
 
         return await asyncio.to_thread(send)

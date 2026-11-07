@@ -106,6 +106,9 @@ def endpoint():
                 return self.reply(401, {"error": "unauthorized"})
             if route.path == "/jobs" and state.get("drop_once"):
                 state["drop_once"] = False
+                if state.get("accept_before_drop"):
+                    state["payload"] = json.loads(body)
+                    state["executions"] = state.get("executions", 0) + 1
                 self.close_connection = True
                 return
             if state["status"] == 302:
@@ -958,3 +961,32 @@ $env:CLAUDE_CONFIG_DIR = Join-Path $env:USERPROFILE 'custom-config'
 if ((Get-ClaudeCodeConfigPath) -ne (Join-Path $env:CLAUDE_CONFIG_DIR '.claude.json')) { throw 'Claude config override ignored' }
 """
     )
+
+
+@pytest.mark.parametrize("phase", ["before_acceptance", "after_acceptance", "after_commit"])
+def test_action_disconnect_recovers_only_original_request(endpoint, phase):
+    host, state = endpoint
+    state["drop_once"] = True
+    if phase == "before_acceptance":
+        state["poll_status"] = 404
+    else:
+        state["accept_before_drop"] = True
+        state["forever"] = phase == "after_acceptance"
+        state["polls"] = 1
+    request_id = "c" * 32
+    result = asyncio.run(
+        RevitChannel(host).execute(
+            Job("select", {"command": "select", "jobId": request_id, "elementIds": [42]})
+        )
+    )
+    if phase == "after_commit":
+        assert result["success"] is True
+        assert result["data"] == "pong"
+    else:
+        assert result["errorCode"] == "outcome_unknown"
+        assert result["jobId"] == request_id
+        assert result["retryable"] is False
+        assert "did not run" not in result["error"]
+    assert state.get("executions", 0) == (0 if phase == "before_acceptance" else 1)
+    assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
+    assert any(path == "/jobs/" + request_id for _, path, _ in state["requests"])
