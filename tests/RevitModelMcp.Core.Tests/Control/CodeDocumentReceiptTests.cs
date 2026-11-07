@@ -173,4 +173,31 @@ public sealed class CodeDocumentReceiptTests
         await Assert.That(json).Contains("\"documentKey\":\"00000002\"");
         await Assert.That(json).Contains("\"openedByCall\":true");
     }
+
+    [Test]
+    [Arguments("auto", false, false, false, true)]
+    [Arguments("auto", false, false, true, false)]
+    [Arguments("auto", true, false, false, false)]
+    [Arguments("auto", true, false, true, false)]
+    [Arguments("auto", false, true, false, false)]
+    [Arguments("auto", false, true, true, false)]
+    [Arguments("auto", true, true, false, false)]
+    [Arguments("auto", true, true, true, false)]
+    [Arguments("group", false, false, false, true)]
+    [Arguments("group", false, false, true, false)]
+    [Arguments("group", true, false, false, false)]
+    [Arguments("group", true, false, true, false)]
+    [Arguments("group", false, true, false, false)]
+    [Arguments("group", false, true, true, false)]
+    [Arguments("group", true, true, false, false)]
+    [Arguments("group", true, true, true, false)]
+    [Arguments("none", false, false, false, false)]
+    [Arguments("none", false, false, true, false)]
+    [Arguments("none", true, true, false, false)]
+    public async Task ProtectionPlan_RefusesUnprotectedWritableDocumentsOnlyInManagedModes(
+        string mode, bool isLinked, bool isReadOnly, bool protectionStarted, bool expected)
+    {
+        await Assert.That(CodeDocumentReceipt.RefusesUnprotectedDocument(mode, isLinked, isReadOnly, protectionStarted))
+            .IsEqualTo(expected);
+    }
 }

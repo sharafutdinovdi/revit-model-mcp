@@ -150,15 +150,16 @@ Confirmation tokens, machine ExecuteCode policy, the workstation read-only lock,
 
 `auto` and `group` start a transaction group in every open, writable, non-linked document without an open transaction.
 Protection covers changes made through helpers, reflection and family loading, not only transactions declared in submitted source.
+If any writable, non-linked document cannot accept a transaction group, both modes refuse before running the script, including dry runs.
+The error lists the blocked documents and reasons; the open edit or transaction must finish, or the document must close, before retrying.
+Linked and read-only documents do not block execution.
 Dry runs, read-mode tools and script failures roll back every owned group where possible.
 Successful runs assimilate each changed document into one named undo entry and roll back empty groups.
 Revit has no cross-document atomic commit; a failure during assimilation can leave previously committed documents changed.
 
 `documentReceipts` identifies each document by title and a session-local `documentKey`, with observed added, modified and deleted element counts, outcome and any undo name or warning.
 Counts accumulate transaction commit notifications; repeated edits can count the same element more than once.
-Unchanged documents whose group cannot start have outcome `unchanged`.
-If an existing document cannot accept a transaction group and changes during the call, its outcome is `unknown`; committed changes in that document cannot be rolled back by the runner.
-An open transaction that prevents protection also leaves the outcome unknown, even without a commit notification.
+Documents untouched by a refused call or excluded from protection have outcome `unchanged`.
 An unknown or mixed outcome never reports aggregate commit or rollback success and never claims that nothing changed.
 Empty sibling groups do not invalidate a confirmed commit in a changed document.
 

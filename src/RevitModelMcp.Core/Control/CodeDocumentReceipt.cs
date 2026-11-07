@@ -19,6 +19,9 @@ public sealed record CodeDocumentReceipt
     public static bool ShouldProtect(bool isLinked, bool isReadOnly, bool isModifiable) =>
         !isLinked && !isReadOnly && !isModifiable;
 
+    public static bool RefusesUnprotectedDocument(string transactionMode, bool isLinked, bool isReadOnly, bool protectionStarted) =>
+        transactionMode is "auto" or "group" && !isLinked && !isReadOnly && !protectionStarted;
+
     public static string GroupOutcome(bool rollbackRequested, bool completionConfirmed, bool hasChanges) =>
         !completionConfirmed ? "unknown" : rollbackRequested || !hasChanges ? "rolledBack" : "committed";
 

@@ -428,6 +428,52 @@ public sealed class RevitTests : RevitApiUiTest
         await Assert.That(result.RolledBack).IsTrue();
     }
 
+    [Test]
+    [Arguments("auto", true)]
+    [Arguments("auto", false)]
+    [Arguments("group", true)]
+    [Arguments("group", false)]
+    public async Task CodeExecution_RefusesBeforeRunningWhenAnotherDocumentHasAnOpenTransactionAsync(string mode, bool dryRun)
+    {
+        using var other = Application.NewProjectDocument(UnitSystem.Metric);
+        try
+        {
+            using var callerTransaction = new Transaction(other, "Caller-owned transaction");
+            callerTransaction.Start();
+            other.ProjectInformation.Number = "Caller-owned change";
+            try
+            {
+                var result = ExecuteCode(new ActionJobContract
+                {
+                    TransactionMode = mode,
+                    DryRun = dryRun,
+                    Args = new Dictionary<string, object> { ["other"] = other.GetHashCode() },
+                    Code = """
+                        ctx.Log("Script ran");
+                        var other = ctx.Application.Documents.Cast<Document>().Single(document => document.GetHashCode() == (int)ctx.Args["other"]);
+                        other.ProjectInformation.Number = "Unexpected script change";
+                        return null;
+                        """
+                });
+                await Assert.That(result.CodeError!).Contains("The script did not run");
+                await Assert.That(result.CodeError!).Contains(other.Title);
+                await Assert.That(result.CodeError!).Contains("open transaction or edit mode");
+                await Assert.That(result.CodeError!).Contains("Finish the open edit or transaction");
+                await Assert.That(result.Log!.Count).IsEqualTo(0);
+                await Assert.That(other.ProjectInformation.Number).IsEqualTo("Caller-owned change");
+                await Assert.That(callerTransaction.GetStatus()).IsEqualTo(TransactionStatus.Started);
+            }
+            finally
+            {
+                callerTransaction.RollBack();
+            }
+        }
+        finally
+        {
+            other.Close(false);
+        }
+    }
+
     private ActionResultData ExecuteCode(ActionJobContract action)
     {
         var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);

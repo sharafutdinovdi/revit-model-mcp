@@ -261,14 +261,19 @@ internal static class CodeExecution
             if (counting)
             {
                 if (document is null) throw new InvalidOperationException("No active Revit document.");
+                var blockedDocuments = new List<string>();
                 foreach (var candidate in initialDocuments.OrderByDescending(candidate => candidate.Equals(document)))
                 {
                     if (candidate.IsLinked) continue;
                     var receipt = Receipt(candidate);
                     if (!CodeDocumentReceipt.ShouldProtect(candidate.IsLinked, candidate.IsReadOnly, candidate.IsModifiable))
                     {
-                        if (candidate.IsModifiable) receipt.Outcome = "unknown";
-                        receipt.Warning = "The document cannot accept a transaction group in its current state.";
+                        receipt.Warning = candidate.IsModifiable
+                            ? "The document has an open transaction or edit mode."
+                            : "The document is read-only.";
+                        if (CodeDocumentReceipt.RefusesUnprotectedDocument(action.TransactionMode,
+                                candidate.IsLinked, candidate.IsReadOnly, false))
+                            blockedDocuments.Add($"{receipt.Document} [{receipt.DocumentKey}]: {receipt.Warning}");
                         continue;
                     }
                     var ownedGroup = new TransactionGroup(candidate, undoName);
@@ -281,9 +286,16 @@ internal static class CodeExecution
                     catch (Exception protectionException)
                     {
                         receipt.Warning = "Transaction group protection unavailable: " + protectionException.Message;
+                        if (CodeDocumentReceipt.RefusesUnprotectedDocument(action.TransactionMode,
+                                candidate.IsLinked, candidate.IsReadOnly, false))
+                            blockedDocuments.Add($"{receipt.Document} [{receipt.DocumentKey}]: {receipt.Warning}");
                         ownedGroup.Dispose();
                     }
                 }
+                if (blockedDocuments.Count > 0)
+                    throw new InvalidOperationException("The script did not run because document protection is unavailable: "
+                        + string.Join("; ", blockedDocuments)
+                        + ". Finish the open edit or transaction in each listed document, or close it, before running managed code.");
             }
             if (action.TransactionMode == "auto")
             {
