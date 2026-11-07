@@ -3630,6 +3630,20 @@ def test_channel_refusal_checks_log_file_process(name, quoted):
 
 
 class ActionJournalRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_attempt_marker_distinguishes_new_and_repeated_request(self):
+        for existing_id, expected in ((None, "initial"), ("a" * 32, "retry")):
+            with self.subTest(attempt=expected):
+                remote = FakeRemoteHost()
+                remote.wait_for_new_response = AsyncMock(
+                    side_effect=SshUnavailableError("Lost reply.")
+                )
+                remote.fetch_job = AsyncMock(side_effect=RevitChannelError("No result."))
+                payload = {"command": "delete"}
+                if existing_id is not None:
+                    payload["jobId"] = existing_id
+                await RevitChannel(remote).execute(Job("delete", payload), 1)
+                self.assertEqual(json.loads(remote.written_content)["attempt"], expected)
+
     async def test_disconnect_before_send_remains_retryable(self):
         from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
 

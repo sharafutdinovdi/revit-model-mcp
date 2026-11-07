@@ -1282,6 +1282,7 @@ def test_addressed_action_channel_preserves_target_and_response(payload, documen
     assert len(sent.pop("jobId")) == 32
     assert len(sent.pop("clientId")) == 32
     assert sent.pop("clientName") == "unknown"
+    assert sent.pop("attempt") == "initial"
     assert host.wait_for_new_response.await_args.args[3] == correlation_id
     assert sent == {
         **payload,

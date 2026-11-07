@@ -929,6 +929,7 @@ class RevitChannel:
                 **job.payload,
                 "correlationId": correlation_id,
                 "jobId": job_id,
+                "attempt": "retry" if job.payload.get("jobId") else "initial",
                 "clientId": CLIENT_ID,
                 "clientName": _client_name.get(),
             },

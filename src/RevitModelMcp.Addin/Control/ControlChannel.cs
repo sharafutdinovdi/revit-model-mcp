@@ -59,7 +59,7 @@ internal sealed class ControlChannel
         {
             if (_stopped) return new(null, "shutting_down", 0);
             var jobId = string.IsNullOrWhiteSpace(job.JobId) ? Guid.NewGuid().ToString("N") : job.JobId!;
-            var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload);
+            var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload, job.Retry);
             if (submitted.Job is null) return submitted;
             if (_httpCompletions.TryGetValue(jobId, out var existing))
             {
@@ -128,7 +128,7 @@ internal sealed class ControlChannel
                     continue;
                 }
                 var jobId = string.IsNullOrWhiteSpace(parsed.JobId) ? Guid.NewGuid().ToString("N") : parsed.JobId!;
-                var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content);
+                var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content, parsed.Retry);
                 if (submitted.Job is null)
                 {
                     if (submitted.Error is not null)

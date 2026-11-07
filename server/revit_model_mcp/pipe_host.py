@@ -559,6 +559,7 @@ class PipeJobHost:
                 raise RevitChannelError(
                     f"Action outcome unknown; query revit_jobs with jobId {job_id}."
                 )
+            payload["attempt"] = "retry"
             reply = await self._connection.request({"type": "submit", "job": payload})
         if reply.get("type") == "error":
             self._connection.forget(job_id)
