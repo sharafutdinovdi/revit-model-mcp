@@ -67,6 +67,26 @@ An unchanged registration creates no backup.
 `-DryRun -Json` returns the plan without network access or changes.
 `-Version 2.0.0` selects an exact release instead of `latest`; it must contain `install.ps1` and the SingleUser MSI.
 
+### Task tool selection
+
+The default connection exposes all tools.
+Set the server environment variable `REVIT_MCP_TOOLSETS` in the client's MCP configuration to a [task preset](tools.md#toolsets), for example:
+
+```json
+{
+  "env": {
+    "REVIT_MCP_TOOLSETS": "preset:families"
+  }
+}
+```
+
+Merge this property into the existing server entry and retain its executable, arguments and other environment settings.
+The server also accepts `--toolsets preset:families`; this argument overrides the environment variable.
+Discovery instructions recommend `preset:audit` for reading and auditing, `preset:edit` for existing-element changes, `preset:families` for family work, `preset:sheets` for sheets and exports, and `preset:batch` for collection and processing.
+Restart the server connection after changing the selection.
+Comma-separated presets and toolsets combine; `all` restores every tool.
+Hidden tools require a new selection before use.
+
 ## Result and human steps
 
 `-Json` writes exactly one JSON object to stdout.
