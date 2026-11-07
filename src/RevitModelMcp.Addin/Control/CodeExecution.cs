@@ -457,7 +457,9 @@ internal static class CodeExecution
                 && result.RolledBack == true)
                 result.Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
                 {
-                    Command = "execute-code", DocumentTitle = documentTitle, NoChanges = true
+                    Command = "execute-code",
+                    DocumentTitle = documentTitle,
+                    NoChanges = true
                 });
         }
         if (action.ToolName is not null) result.Summary = $"{action.ToolName}: {result.Summary}";

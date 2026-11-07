@@ -310,7 +310,10 @@ public sealed class RevitTests : RevitApiUiTest
                 DryRun = dryRun,
                 Args = new Dictionary<string, object>
                 {
-                    ["other"] = other.GetHashCode(), ["marker"] = marker, ["mode"] = mode, ["fail"] = fail
+                    ["other"] = other.GetHashCode(),
+                    ["marker"] = marker,
+                    ["mode"] = mode,
+                    ["fail"] = fail
                 },
                 Code = """
                     var other = ctx.Application.Documents.Cast<Document>().Single(document => document.GetHashCode() == (int)ctx.Args["other"]);
