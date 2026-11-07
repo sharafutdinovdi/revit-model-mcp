@@ -1,5 +1,6 @@
-import builtins
+import ctypes
 import errno
+import os
 import re
 from unittest.mock import MagicMock
 
@@ -34,54 +35,87 @@ def test_writer_failure(tmp_path):
 
     with pytest.raises(RuntimeError, match="write failed"):
         write_new_file(target, fail)
-    assert not target.exists()
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("link_errno", [errno.EXDEV, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP])
-def test_unsupported_link_fallback(tmp_path, monkeypatch, link_errno):
-    target = tmp_path / "capture.png"
+@pytest.fixture(params=["win32", "linux", "darwin"])
+def publication(request, monkeypatch):
+    platform = request.param
+    real_rename = os.rename
+    state = {"before_publish": lambda target: None, "errno": None}
 
-    def unsupported_link(source, destination):
-        assert target.exists() is False or target.read_bytes() == b"original"
-        assert source != destination
-        raise OSError(link_errno, "Hard links unsupported")
+    def publish(source, target):
+        source, target = os.fsdecode(source), os.fsdecode(target)
+        state["before_publish"](target)
+        if os.path.lexists(target):
+            raise FileExistsError(errno.EEXIST, "Destination exists", target)
+        if state["errno"] is not None:
+            raise OSError(state["errno"], "Publication unavailable")
+        real_rename(source, target)
 
+    def native_publish(*arguments):
+        if platform == "linux":
+            assert arguments[0] == arguments[2] == -100
+            assert arguments[4] == 1
+            source, target = arguments[1], arguments[3]
+        else:
+            assert arguments[2] == 4
+            source, target = arguments[:2]
+        try:
+            publish(source, target)
+        except OSError as error:
+            ctypes.set_errno(error.errno)
+            return -1
+        return 0
+
+    def unsupported_link(source, target):
+        raise OSError(state.get("link_errno", errno.EXDEV), "Hard links unsupported")
+
+    library = MagicMock()
+    native = MagicMock(side_effect=native_publish)
+    library.renameat2 = native
+    library.renamex_np = native
+    monkeypatch.setattr(atomic_write.sys, "platform", platform)
     monkeypatch.setattr(atomic_write.os, "link", unsupported_link)
+    monkeypatch.setattr(atomic_write.os, "rename", publish)
+    monkeypatch.setattr(atomic_write.ctypes, "CDLL", MagicMock(return_value=library))
+    state["platform"] = platform
+    state["native"] = native
+    return state
+
+
+@pytest.mark.parametrize("link_errno", [errno.EXDEV, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP])
+def test_unsupported_link_fallback(tmp_path, publication, link_errno):
+    target = tmp_path / "capture.png"
+    publication["link_errno"] = link_errno
     write_new_file(target, lambda output: output.write(b"content"))
     assert target.read_bytes() == b"content"
     assert list(tmp_path.iterdir()) == [target]
-    target.write_bytes(b"original")
-    with pytest.raises(ValueError, match="Local file already exists"):
-        write_new_file(target, lambda output: output.write(b"replacement"))
-    assert target.read_bytes() == b"original"
-    assert list(tmp_path.iterdir()) == [target]
+    if publication["platform"] != "win32":
+        assert publication["native"].restype is ctypes.c_int
+        assert publication["native"].argtypes[-1] is ctypes.c_uint
 
 
-@pytest.mark.parametrize("link_errno", [errno.EXDEV, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP])
 @pytest.mark.parametrize("destination_kind", ["file", "symlink", "dangling_symlink"])
-def test_fallback_publication_conflict(tmp_path, monkeypatch, link_errno, destination_kind):
+@pytest.mark.parametrize("concurrent", [False, True])
+def test_fallback_publication_conflict(tmp_path, publication, destination_kind, concurrent):
     target = tmp_path / "capture.png"
     original = tmp_path / "original.png"
     if destination_kind == "symlink":
         original.write_bytes(b"original")
 
-    def unsupported_link(source, destination):
-        raise OSError(link_errno, "Hard links unsupported")
+    def create_destination(path):
+        if destination_kind == "file":
+            target.write_bytes(b"original")
+        else:
+            target.symlink_to(original)
 
-    def concurrent_open(path, mode):
-        if path == target:
-            if destination_kind == "file":
-                target.write_bytes(b"original")
-            else:
-                target.symlink_to(original)
-        return builtins.open(path, mode)
-
-    monkeypatch.setattr(atomic_write.os, "link", unsupported_link)
-    monkeypatch.setattr(atomic_write, "open", concurrent_open, raising=False)
+    if concurrent:
+        publication["before_publish"] = create_destination
+    else:
+        create_destination(target)
     with pytest.raises(ValueError, match=re.escape(f"Local file already exists: {target}")):
         write_new_file(target, lambda output: output.write(b"replacement"))
-
     if destination_kind == "file":
         assert target.read_bytes() == b"original"
     else:
@@ -95,88 +129,62 @@ def test_fallback_publication_conflict(tmp_path, monkeypatch, link_errno, destin
     assert set(tmp_path.iterdir()) == expected
 
 
-def test_fallback_creation_failure_cleans_temporary(tmp_path, monkeypatch):
+@pytest.mark.parametrize("failure_errno", [errno.EINVAL, errno.ENOTSUP, errno.ENOSYS, errno.EACCES])
+def test_fallback_publication_failure(tmp_path, publication, failure_errno):
     target = tmp_path / "capture.png"
-
-    def unsupported_link(source, destination):
-        raise OSError(errno.EXDEV, "Hard links unsupported")
-
-    def denied_open(path, mode):
-        raise PermissionError("Creation denied")
-
-    monkeypatch.setattr(atomic_write.os, "link", unsupported_link)
-    monkeypatch.setattr(atomic_write, "open", denied_open, raising=False)
-    with pytest.raises(PermissionError, match="Creation denied"):
+    publication["errno"] = failure_errno
+    with pytest.raises(OSError) as caught:
         write_new_file(target, lambda output: output.write(b"content"))
+    assert caught.value.errno == failure_errno
+    if publication["platform"] != "win32":
+        assert "Atomic no-replace publication failed" in str(caught.value)
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("failure_stage", ["read", "copy", "flush", "fsync"])
-def test_fallback_write_failure_cleans_destination(tmp_path, monkeypatch, failure_stage):
+@pytest.mark.parametrize("platform", ["linux", "darwin", "unknown"])
+def test_fallback_missing_primitive(tmp_path, monkeypatch, platform):
     target = tmp_path / "capture.png"
-    real_fsync = atomic_write.os.fsync
 
     def unsupported_link(source, destination):
         raise OSError(errno.EXDEV, "Hard links unsupported")
+
+    monkeypatch.setattr(atomic_write.os, "link", unsupported_link)
+    monkeypatch.setattr(atomic_write.sys, "platform", platform)
+    monkeypatch.setattr(atomic_write.ctypes, "CDLL", lambda *args, **kwargs: object())
+    with pytest.raises(OSError, match="Atomic no-replace publication is unavailable") as caught:
+        write_new_file(target, lambda output: output.write(b"content"))
+    assert caught.value.errno == errno.ENOTSUP
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("failure_stage", ["write", "flush", "fsync"])
+def test_staging_failure_never_publishes(tmp_path, monkeypatch, publication, failure_stage):
+    target = tmp_path / "capture.png"
+    real_fdopen = os.fdopen
+    publish = MagicMock()
+    monkeypatch.setattr(atomic_write, "_rename_new_file", publish)
 
     def fail(*args, **kwargs):
-        raise OSError("Publication failed")
+        raise OSError("Staging failed")
 
-    def failing_open(path, mode):
-        if failure_stage == "read" and mode == "rb":
-            fail()
-        stream = builtins.open(path, mode)
-        if failure_stage == "flush" and mode == "xb":
-            wrapped = MagicMock(wraps=stream)
-            wrapped.__enter__.return_value = wrapped
-            wrapped.__exit__.side_effect = stream.__exit__
-            wrapped.flush.side_effect = fail
-            return wrapped
-        return stream
+    def failing_fdopen(*args, **kwargs):
+        stream = real_fdopen(*args, **kwargs)
+        wrapped = MagicMock(wraps=stream)
+        wrapped.__enter__.return_value = wrapped
+        wrapped.__exit__.side_effect = stream.__exit__
+        wrapped.flush.side_effect = fail
+        return wrapped
 
-    def failing_copy(source, output):
+    def write(output):
         output.write(b"partial")
-        fail()
-
-    def failing_fsync(descriptor):
-        if target.exists():
+        if failure_stage == "write":
             fail()
-        real_fsync(descriptor)
 
-    monkeypatch.setattr(atomic_write.os, "link", unsupported_link)
-    monkeypatch.setattr(atomic_write, "open", failing_open, raising=False)
-    if failure_stage == "copy":
-        monkeypatch.setattr(atomic_write.shutil, "copyfileobj", failing_copy)
-    if failure_stage == "fsync":
-        monkeypatch.setattr(atomic_write.os, "fsync", failing_fsync)
-    with pytest.raises(OSError, match="Publication failed"):
-        write_new_file(target, lambda output: output.write(b"content"))
+    if failure_stage == "flush":
+        monkeypatch.setattr(atomic_write.os, "fdopen", failing_fdopen)
+    elif failure_stage == "fsync":
+        monkeypatch.setattr(atomic_write.os, "fsync", fail)
+    with pytest.raises(OSError, match="Staging failed"):
+        write_new_file(target, write)
+    publish.assert_not_called()
     assert list(tmp_path.iterdir()) == []
-
-
-@pytest.mark.parametrize("replacement_kind", ["file", "symlink", "missing"])
-def test_fallback_failure_preserves_concurrent_replacement(tmp_path, monkeypatch, replacement_kind):
-    target = tmp_path / "capture.png"
-
-    def unsupported_link(source, destination):
-        raise OSError(errno.EXDEV, "Hard links unsupported")
-
-    def failing_copy(source, output):
-        output.write(b"partial")
-        target.unlink()
-        if replacement_kind == "file":
-            target.write_bytes(b"replacement")
-        elif replacement_kind == "symlink":
-            target.symlink_to(source.name)
-        raise OSError("Publication failed")
-
-    monkeypatch.setattr(atomic_write.os, "link", unsupported_link)
-    monkeypatch.setattr(atomic_write.shutil, "copyfileobj", failing_copy)
-    with pytest.raises(OSError, match="Publication failed"):
-        write_new_file(target, lambda output: output.write(b"content"))
-    if replacement_kind == "file":
-        assert target.read_bytes() == b"replacement"
-    elif replacement_kind == "symlink":
-        assert target.is_symlink()
-    expected = [] if replacement_kind == "missing" else [target]
-    assert list(tmp_path.iterdir()) == expected
