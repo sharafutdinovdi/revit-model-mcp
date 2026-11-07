@@ -148,7 +148,41 @@ Successful changes are assimilated into the same single named undo entry as `aut
 Confirmation tokens, machine ExecuteCode policy, the workstation read-only lock, activity entries, and summaries apply to both modes.
 `revit_run_tool(transaction="group")` uses the same runner; read-mode saved tools always roll back.
 
-A successful call that changes the model creates one undo entry named `MCP (<client>): Execute code`. A script that changes nothing is rolled back: the result has `committed: false` and `rolledBack: true`, and no undo entry or `undoName`. `dry_run=true` runs the code and rolls back the group. Runtime errors also roll it back. The `none` mode, which lets a script own transactions and open or close documents without a guaranteed undo, is refused by default. A call with `transaction="none"` fails with a message that says so. I plan a separate workstation policy that can allow it; there is no setting for it today. Every call except `dry_run` first returns `needsConfirmation`, a `confirmationText` with the SHA-256 prefix, length, transaction mode and target document, and a `confirmToken`, and does not run the code. Retry with identical arguments plus `confirm_token` after the user agrees. The token is bound to the code hash, the transaction mode and the target document. The response includes `returnValue`, up to 2,000 `log` lines, elapsed time, summary and any undo name or warning. Return values have a depth limit of 6 and at most 5,000 collection items. Revit elements, IDs and XYZ points get compact JSON forms. Plain classes and anonymous types return public readable properties as JSON objects. Other Revit API objects use `ToString()`. Numbers use invariant culture. Compile and runtime failures have summaries starting with `Code failed to compile` and `Code failed`, respectively.
+`auto` and `group` start a transaction group in every open, writable, non-linked document without an open transaction.
+Protection covers changes made through helpers, reflection and family loading, not only transactions declared in submitted source.
+If any writable, non-linked document cannot accept a transaction group, both modes refuse before running the script, including dry runs.
+The error lists the blocked documents and reasons; the open edit or transaction must finish, or the document must close, before retrying.
+Linked and read-only documents do not block execution.
+Dry runs, read-mode tools and script failures roll back every owned group where possible.
+Successful runs assimilate each changed document into one named undo entry and roll back empty groups.
+Revit has no cross-document atomic commit; a failure during assimilation can leave previously committed documents changed.
+
+`documentReceipts` identifies each document by title and a session-local `documentKey`, with observed added, modified and deleted element counts, outcome and any undo name or warning.
+Counts accumulate transaction commit notifications; repeated edits can count the same element more than once.
+Documents untouched by a refused call or excluded from protection have outcome `unchanged`.
+An unknown or mixed outcome never reports aggregate commit or rollback success and never claims that nothing changed.
+Empty sibling groups do not invalidate a confirmed commit in a changed document.
+
+Documents opened or created during execution have `openedByCall: true`.
+Dry runs, read-mode tools and failures close those documents without saving; a failed close has outcome `unknown`.
+Successful calls leave their lifecycle under script ownership and report `leftOpen` or `closed`.
+A document already closed by the script cannot be confirmed rolled back.
+Files explicitly saved or written by a script are not reverted.
+
+A successful call that changes only the target model creates one undo entry named `MCP (<client>): Execute code`.
+A script that changes nothing is rolled back: the result has `committed: false` and `rolledBack: true`, and no undo entry or `undoName`.
+`dry_run=true` and runtime failures roll back owned groups; per-document receipts identify any changes outside those groups.
+The `none` mode is refused by default.
+Every call except `dry_run` first returns `needsConfirmation`, a `confirmationText` with the SHA-256 prefix, length, transaction mode and target document, and a `confirmToken`, and does not run the code.
+Retry with identical arguments plus `confirm_token` after the user agrees.
+The token is bound to the code hash, the transaction mode and the target document.
+The response includes `returnValue`, up to 2,000 `log` lines, elapsed time, summary and any undo name or warning.
+Return values have a depth limit of 6 and at most 5,000 collection items.
+Revit elements, IDs and XYZ points get compact JSON forms.
+Plain classes and anonymous types return public readable properties as JSON objects.
+Other Revit API objects use `ToString()`.
+Numbers use invariant culture.
+Compile and runtime failures have summaries starting with `Code failed to compile` and `Code failed`, respectively, unless an unknown or mixed document outcome requires a warning summary.
 
 ### Native stair sketch example
 
