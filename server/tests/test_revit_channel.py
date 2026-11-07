@@ -724,9 +724,16 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         process = FakeSshProcess(None, hang=True)
         host = SshPowerShellHost()
 
-        with patch(
-            "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
-            new=AsyncMock(return_value=process),
+        # Keep quota reservation inside the deadline; only the running command times out.
+        with (
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.get_running_loop",
+                return_value=SimpleNamespace(time=lambda: 0.0),
+            ),
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=process),
+            ),
         ):
             with self.assertRaises(RemoteCommandTimeoutError) as raised:
                 await host._run("Start-Sleep 60", timeout_seconds=0.001)
