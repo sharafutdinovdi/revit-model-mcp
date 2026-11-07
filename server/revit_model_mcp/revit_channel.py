@@ -36,6 +36,18 @@ _client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
 )
 
 
+def _dialog_wait_message(dialog: dict[str, Any]) -> str:
+    detail = (
+        " / ".join(
+            value
+            for key in ("dialogId", "message")
+            if isinstance(value := dialog.get(key), str) and value
+        )
+        or "unknown"
+    )
+    return f"waiting for dialog {detail}"
+
+
 class ProgressReporter:
     """Request-scoped, best-effort MCP progress delivery."""
 
@@ -81,12 +93,17 @@ class ProgressReporter:
         data = response.get("data")
         data = data if isinstance(data, dict) else {}
         state = response.get("state", data.get("state"))
+        dialog = response.get("dialog", data.get("dialog"))
+        if state == "waiting_dialog" and isinstance(dialog, dict):
+            state = _dialog_wait_message(dialog)
         if state and state != self.state:
             messages = {
                 "queued": f"Queued in Revit (position {response.get('position', data.get('position', 1))})",
                 "waiting_revit": "Waiting for the Revit API context",
                 "running": "Running in Revit",
             }
+            if isinstance(state, str) and state.startswith("waiting for dialog "):
+                messages[state] = state
             if state in messages:
                 await self.update(0, None, messages[state])
                 self.state = state
@@ -296,12 +313,22 @@ def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str
     )
     if progress is not None and models:
         progress["models"] = models
+    waiting = {}
+    source = response or {}
+    if isinstance(data, dict) and data.get("state") == "waiting_dialog":
+        source = data
+    if source.get("state") == "waiting_dialog":
+        waiting = {"state": "waiting_dialog", "dialog": source.get("dialog")}
+    dialog = waiting.get("dialog")
+    waiting_message = _dialog_wait_message(dialog) + ". " if isinstance(dialog, dict) else ""
     return {
+        **waiting,
         "status": "running",
         "jobId": job_id,
         "progress": progress,
         "partial": models,
-        "message": "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
+        "message": waiting_message
+        + "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
     }
 
 
@@ -1149,7 +1176,7 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
     data = data if isinstance(data, dict) else {}
     state = response.get("state", data.get("state"))
     if state is not None:
-        return state in {"queued", "waiting_revit", "running"}
+        return state in {"queued", "waiting_revit", "running", "waiting_dialog"}
     if isinstance(response.get("progress", data.get("progress")), dict):
         return True
     if response.get("error") == "Pending":

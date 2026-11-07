@@ -1772,6 +1772,8 @@ public sealed class SkippedByReason
 [KnownType(typeof(SkippedByReason))]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "failures", EmitDefaultValue = false)] public List<RevitModelMcp.Core.Batch.CallFailureRecord>? Failures { get; set; }
+    [DataMember(Name = "dialogs", EmitDefaultValue = false)] public List<RevitModelMcp.Core.Batch.BatchDialogRecord>? Dialogs { get; set; }
     [DataMember(Name = "tool", EmitDefaultValue = false)] internal ToolDefinition? Tool { get; set; }
     [DataMember(Name = "invalid", EmitDefaultValue = false)] internal List<InvalidTool>? Invalid { get; set; }
     [DataMember(Name = "tools", EmitDefaultValue = false)] internal List<ToolDefinition>? Tools { get; set; }
