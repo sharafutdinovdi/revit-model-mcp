@@ -144,11 +144,9 @@ internal sealed class ControlChannel
 
     private static bool MatchesFileTarget(ControlJobParseResult job, UIApplication? application)
     {
+        if (application is not null) return MatchesCurrentInstance(application, job);
         if (job.TargetProcessId is int target) return target == Process.GetCurrentProcess().Id;
-        if (job.TargetDocument is null) return true;
-        if (application is null) return false;
-        var document = application.ActiveUIDocument?.Document;
-        return JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, job.TargetDocument);
+        return job.TargetDocument is null;
     }
 
     public void Tick(UIApplication application)
@@ -264,7 +262,8 @@ internal sealed class ControlChannel
             var document = parsed.TargetDocument is null
                 ? application.ActiveUIDocument?.Document
                 : application.Application.Documents.Cast<Autodesk.Revit.DB.Document>().FirstOrDefault(candidate =>
-                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument));
+                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument,
+                        ReadCommandReader.DocumentId(candidate)));
             if (document is null) return;
             var pointer = IntPtr.Zero;
             try
@@ -349,17 +348,12 @@ internal sealed class ControlChannel
             return;
         }
         var document = application.ActiveUIDocument?.Document;
-        if (!ActionJobParser.IsAction(parsed.Command) && parsed.TargetDocument is not null &&
-            !JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, parsed.TargetDocument))
+        if (!MatchesCurrentInstance(application, parsed))
         {
-            if (!application.Application.Documents.Cast<Autodesk.Revit.DB.Document>().Any(candidate =>
-                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument)))
-            {
-                TryWriteError(application, parsed.Command,
-                    $"Target document '{parsed.TargetDocument}' is not open; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
-                    startedAt, parsed.CorrelationId);
-                return;
-            }
+            TryWriteError(application, parsed.Command,
+                $"Target process or document '{parsed.TargetDocument}' is not open in this Revit instance; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
+                startedAt, parsed.CorrelationId);
+            return;
         }
         if (parsed.Kind == ControlJobKind.Jobs)
         {
@@ -467,8 +461,12 @@ internal sealed class ControlChannel
 
     private static bool MatchesCurrentInstance(UIApplication application, ControlJobParseResult job)
     {
-        var document = application.ActiveUIDocument?.Document;
-        return JobTargetMatcher.Matches(job, document?.Title, document?.PathName, Process.GetCurrentProcess().Id);
+        if (job.TargetDocument is null)
+            return JobTargetMatcher.Matches(job, null, null, Process.GetCurrentProcess().Id);
+        return JobTargetMatcher.CanDispatch(job, Process.GetCurrentProcess().Id,
+            application.Application.Documents.Cast<Autodesk.Revit.DB.Document>()
+                .Select(document => ((string?)document.Title, (string?)document.PathName,
+                    (string?)ReadCommandReader.DocumentId(document))));
     }
 
     internal static string StateName(JobState state) => state switch

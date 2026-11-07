@@ -36,7 +36,7 @@ internal sealed class ViewElementsSession : IControlSession
         _output = CommandResponseFileWriter.Create(
             startedAt.LocalDateTime,
             job.Command,
-            ReadCommandReader.ReadResponder(application),
+            ReadCommandReader.ReadResponder(application, _document),
             job.CorrelationId);
         _data = new ViewElementsData
         {

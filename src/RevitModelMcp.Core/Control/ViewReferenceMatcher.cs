@@ -44,7 +44,8 @@ public static class JobTargetMatcher
         ControlJobParseResult job,
         string? documentTitle,
         string? documentPath,
-        int processId)
+        int processId,
+        string? documentId = null)
     {
         if (job.TargetProcessId.HasValue && job.TargetProcessId.Value != processId)
         {
@@ -61,7 +62,18 @@ public static class JobTargetMatcher
             return true;
         }
 
-        return MatchesDocument(documentTitle, documentPath, job.TargetDocument);
+        return MatchesDocument(documentTitle, documentPath, job.TargetDocument, documentId);
+    }
+
+    public static bool CanDispatch(
+        ControlJobParseResult job,
+        int processId,
+        IEnumerable<(string? Title, string? Path, string? DocumentId)> documents)
+    {
+        if (job.TargetProcessId.HasValue && job.TargetProcessId.Value != processId) return false;
+        if (job.TargetDocument is null) return true;
+        return documents.Any(document =>
+            MatchesDocument(document.Title, document.Path, job.TargetDocument, document.DocumentId));
     }
 
     public static bool MatchesDocument(string? title, string? path, string reference, string? documentId = null)
@@ -79,9 +91,10 @@ public static class JobTargetMatcher
         ControlJobParseResult job,
         string? documentTitle,
         string? documentPath,
-        int processId)
+        int processId,
+        string? documentId = null)
     {
-        if (!Matches(job, documentTitle, documentPath, processId))
+        if (!Matches(job, documentTitle, documentPath, processId, documentId))
         {
             return false;
         }
