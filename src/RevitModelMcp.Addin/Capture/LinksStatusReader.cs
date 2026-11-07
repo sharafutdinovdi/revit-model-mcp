@@ -71,6 +71,9 @@ internal static class LinksStatusReader
             result.Summary.Images++;
             if (result.Images.Count < listLimit) result.Images.Add(item);
         }
+        SkippedReadDiagnostics.Current?.AddOmitted("links-status RVT links", result.Summary.Rvt, result.RvtLinks.Count);
+        SkippedReadDiagnostics.Current?.AddOmitted("links-status CAD links", result.Summary.Cad, result.CadLinks.Count);
+        SkippedReadDiagnostics.Current?.AddOmitted("links-status images", result.Summary.Images, result.Images.Count);
         return result;
     }
 
