@@ -11,7 +11,9 @@ public sealed record ReadOnlyLockState
     [DataMember(Name = "setBy")] public string? LockedBy { get; init; }
     [DataMember(Name = "setAtUtc")] public string? LockedAtUtc { get; init; }
 
-    public string Refusal => Source == "policy"
+    public string Refusal => Source == "unavailable"
+        ? "Workstation locking is unavailable. Changes are refused. Check local application data permissions and restart Revit."
+        : Source == "policy"
         ? "Read-only is enforced by workstation policy; ask your administrator."
         : $"Read-only is on for this Windows user (set from {LockedBy} at {LockedAtUtc}). Turn it off with the Model MCP ribbon button or by asking the assistant.";
 }
@@ -21,28 +23,45 @@ public sealed class ReadOnlyLock : IDisposable
     private readonly string _path;
     private readonly Func<bool> _policyLocked;
     private readonly object _syncRoot = new();
-    private readonly FileSystemWatcher _watcher;
-    private readonly Timer _timer;
+    private readonly FileSystemWatcher? _watcher;
+    private readonly Timer? _timer;
     private ReadOnlyLockState _state = new();
 
     public ReadOnlyLock(string path, Func<bool> policyLocked)
+        : this(path, policyLocked, (directory, filter) => new FileSystemWatcher(directory, filter))
+    {
+    }
+
+    internal ReadOnlyLock(string path, Func<bool> policyLocked, Func<string, string, FileSystemWatcher> createWatcher)
     {
         _path = path;
         _policyLocked = policyLocked;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        _watcher = new FileSystemWatcher(Path.GetDirectoryName(path)!, Path.GetFileName(path))
+        try
         {
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime
-        };
-        _watcher.Changed += OnFileChanged;
-        _watcher.Created += OnFileChanged;
-        _watcher.Deleted += OnFileChanged;
-        _watcher.Renamed += OnFileChanged;
-        _watcher.Error += (_, _) => Refresh();
-        _watcher.EnableRaisingEvents = true;
-        Refresh();
-        _timer = new Timer(_ => Refresh(), null, 500, 500);
+            var directory = Path.GetDirectoryName(path)!;
+            Directory.CreateDirectory(directory);
+            _watcher = createWatcher(directory, Path.GetFileName(path));
+            _watcher.NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.CreationTime;
+            _watcher.Changed += OnFileChanged;
+            _watcher.Created += OnFileChanged;
+            _watcher.Deleted += OnFileChanged;
+            _watcher.Renamed += OnFileChanged;
+            _watcher.Error += (_, _) => Refresh();
+            _watcher.EnableRaisingEvents = true;
+            Refresh();
+            _timer = new Timer(_ => Refresh(), null, 500, 500);
+        }
+        catch (Exception exception)
+        {
+            InitializationError = $"Workstation lock initialization failed ({exception.GetType().Name}). " +
+                                  "Changes are refused. Check local application data permissions and restart Revit.";
+            _watcher?.Dispose();
+            _timer?.Dispose();
+            Refresh();
+        }
     }
+
+    public string? InitializationError { get; }
 
     public event Action<ReadOnlyLockState>? Changed;
 
@@ -55,6 +74,7 @@ public sealed class ReadOnlyLock : IDisposable
     public void Set(bool enabled, string setBy)
     {
         if (setBy is not ("ribbon" or "chat")) throw new ArgumentException("Expected ribbon or chat.", nameof(setBy));
+        if (InitializationError is not null) throw new InvalidOperationException(State.Refusal);
         lock (_syncRoot)
         {
             if (_policyLocked()) throw new InvalidOperationException(new ReadOnlyLockState { Source = "policy" }.Refusal);
@@ -95,7 +115,7 @@ public sealed class ReadOnlyLock : IDisposable
         ReadOnlyLockState current;
         lock (_syncRoot)
         {
-            current = ReadState();
+            current = InitializationError is null ? ReadState() : new ReadOnlyLockState { IsLocked = true, Source = "unavailable" };
             if (current == _state) return;
             _state = current;
         }
@@ -128,7 +148,7 @@ public sealed class ReadOnlyLock : IDisposable
 
     public void Dispose()
     {
-        _timer.Dispose();
-        _watcher.Dispose();
+        _timer?.Dispose();
+        _watcher?.Dispose();
     }
 }
