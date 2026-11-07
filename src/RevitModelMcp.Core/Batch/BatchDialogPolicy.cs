@@ -1,3 +1,4 @@
+using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Xml;
 using System.Xml.Linq;
@@ -86,4 +87,33 @@ public static class BatchDialogPolicy
         dialogId is not null && runtimeType is not null &&
         (allowlist ?? SafeChoices).TryGetValue((dialogId, runtimeType), out var choice)
             ? new(true, choice, false) : new(false, null, true);
+}
+
+[DataContract]
+public sealed record CallFailureRecord
+{
+    [DataMember(Name = "severity")] public string Severity { get; init; } = string.Empty;
+    [DataMember(Name = "text")] public string Text { get; init; } = string.Empty;
+    [DataMember(Name = "failureDefinitionId")] public string FailureDefinitionId { get; init; } = string.Empty;
+    [DataMember(Name = "elementIds")] public List<long> ElementIds { get; init; } = [];
+}
+
+public static class CallFailurePolicy
+{
+    public static bool MustRollBack(IEnumerable<CallFailureRecord> failures) =>
+        failures.Any(failure => failure.Severity != "Warning");
+}
+
+public sealed class ScopedCallHandlers : IDisposable
+{
+    private Action? _unsubscribe;
+
+    public ScopedCallHandlers(Action subscribe, Action unsubscribe)
+    {
+        if (subscribe is null) throw new ArgumentNullException(nameof(subscribe));
+        _unsubscribe = unsubscribe ?? throw new ArgumentNullException(nameof(unsubscribe));
+        subscribe();
+    }
+
+    public void Dispose() => Interlocked.Exchange(ref _unsubscribe, null)?.Invoke();
 }

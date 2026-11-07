@@ -1,10 +1,13 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
+
+[assembly: InternalsVisibleTo("RevitModelMcp.Addin.Tests")]
 
 namespace RevitModelMcp.Control;
 
@@ -15,9 +18,13 @@ internal static class DocumentActions
         new(Identity);
 
     internal static ActionResultData Execute(UIApplication application, string command, ActionJobContract action)
+        => Execute(application, command, action, null);
+
+    internal static ActionResultData Execute(UIApplication application, string command, ActionJobContract action,
+        Func<UIApplication, string, Document>? activateNewDocument)
     {
         if (command == "open-document") return Open(application, action);
-        if (command == "new-document") return New(application, action);
+        if (command == "new-document") return New(application, action, activateNewDocument);
         var document = ActionCommandExecutor.ResolveDocument(application, action.Document);
         if (document.IsModifiable) throw new InvalidOperationException("The document has an open transaction.");
         return command switch
@@ -262,7 +269,12 @@ internal static class DocumentActions
         _batchDocument = null;
         Opened.Remove(document);
         if (!document.Close(false)) throw new InvalidOperationException("Revit did not close the batch document.");
-        return new ActionResultData { Title = title, Path = path, Saved = false };
+        return new ActionResultData
+        {
+            Title = title,
+            Path = path,
+            Saved = false
+        };
     }
 
     private static (WorksetConfiguration Configuration, List<string> Unmatched) WorksetConfiguration(ModelPath path, string selection, List<string>? names)
@@ -279,7 +291,13 @@ internal static class DocumentActions
     private static ActionResultData Activate(UIApplication application, Document document)
     {
         if (document.Equals(application.ActiveUIDocument?.Document))
-            return new ActionResultData { Title = document.Title, Path = document.PathName, Active = true, Changed = false };
+            return new ActionResultData
+            {
+                Title = document.Title,
+                Path = document.PathName,
+                Active = true,
+                Changed = false
+            };
         var path = document.PathName;
         var title = document.Title;
         if (string.IsNullOrWhiteSpace(path))
@@ -316,7 +334,13 @@ internal static class DocumentActions
             }
             throw new InvalidOperationException("Revit opened another copy instead of activating the requested document.");
         }
-        return new ActionResultData { Title = title, Path = path, Active = true, Changed = true };
+        return new ActionResultData
+        {
+            Title = title,
+            Path = path,
+            Active = true,
+            Changed = true
+        };
     }
 
     private static ActionResultData ActivateView(UIApplication application, Document document, ActionJobContract action)
@@ -343,7 +367,11 @@ internal static class DocumentActions
             Title = document.Title,
             Path = document.PathName,
             Active = true,
-            View = new RevitModelMcp.Core.Models.NwcViewResult { Name = view.Name, Id = RevitValueReader.GetId(view.Id) },
+            View = new RevitModelMcp.Core.Models.NwcViewResult
+            {
+                Name = view.Name,
+                Id = RevitValueReader.GetId(view.Id)
+            },
             ViewOpened = !wasOpen,
             Changed = !wasActive
         };
@@ -410,10 +438,17 @@ internal static class DocumentActions
                 refused.Add(name);
             }
         }
-        return new ActionResultData { Title = document.Title, ClosedViews = closed, RefusedViews = refused, Changed = closed.Count > 0 };
+        return new ActionResultData
+        {
+            Title = document.Title,
+            ClosedViews = closed,
+            RefusedViews = refused,
+            Changed = closed.Count > 0
+        };
     }
 
-    private static ActionResultData New(UIApplication application, ActionJobContract action)
+    private static ActionResultData New(UIApplication application, ActionJobContract action,
+        Func<UIApplication, string, Document>? activateNewDocument)
     {
         if (action.SaveAs is not null && File.Exists(action.SaveAs)) throw new IOException("save_as target exists.");
         var before = application.Application.Documents.Cast<Document>().ToList();
@@ -421,34 +456,91 @@ internal static class DocumentActions
         var created = action.Kind == "family" ? application.Application.NewFamilyDocument(template) :
             application.Application.NewProjectDocument(template);
         var path = action.SaveAs;
-        if (path is not null || action.Activate)
+        var owned = new List<Document> { created };
+        var closures = new List<DocumentClosureResult>();
+        var activationAttempted = false;
+        Exception? failure = null;
+        ActionResultData? result = null;
+        try
         {
-            if (path is null)
+            if (path is not null || action.Activate)
             {
-                var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "new");
-                Directory.CreateDirectory(directory);
-                var name = action.NewDocumentName ?? $"{(action.Kind == "family" ? "Family" : "Project")} {DateTime.Now:yyyyMMdd-HHmmss}";
-                var extension = action.Kind == "family" ? ".rfa" : ".rvt";
-                path = Path.Combine(directory, name + extension);
-                for (var suffix = 2; File.Exists(path); suffix++)
-                    path = Path.Combine(directory, $"{name} {suffix}{extension}");
+                if (path is null)
+                {
+                    var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "new");
+                    Directory.CreateDirectory(directory);
+                    var name = action.NewDocumentName ?? $"{(action.Kind == "family" ? "Family" : "Project")} {DateTime.Now:yyyyMMdd-HHmmss}";
+                    var extension = action.Kind == "family" ? ".rfa" : ".rvt";
+                    path = Path.Combine(directory, name + extension);
+                    for (var suffix = 2; File.Exists(path); suffix++)
+                        path = Path.Combine(directory, $"{name} {suffix}{extension}");
+                }
+                created.SaveAs(path);
             }
-            created.SaveAs(path);
+            var document = created;
+            if (action.Activate)
+            {
+                activationAttempted = true;
+                var active = activateNewDocument is null
+                    ? application.OpenAndActivateDocument(path!).Document
+                    : activateNewDocument(application, path!);
+                if (!active.Equals(created))
+                {
+                    owned.Add(active);
+                    owned.Remove(created);
+                    var closure = OwnedDocumentCleanup.Close(created, before, Identity,
+                        $"{created.Title} [{created.GetHashCode():X}]", background => background.Close(false));
+                    if (closure is not null)
+                    {
+                        closures.Add(closure);
+                        if (!closure.Closed) throw new InvalidOperationException("Revit did not close the new document's background copy.");
+                    }
+                }
+                document = active;
+            }
+            var after = application.Application.Documents.Cast<Document>().ToList();
+            if (!DocumentIdentityMatcher.AllPresent(before, after, Identity) ||
+                path is not null && after.Count(item => DocumentPathValidator.SamePath(item.PathName, path)) != 1 ||
+                action.Activate && !document.Equals(application.ActiveUIDocument?.Document))
+                throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
+            result = new ActionResultData
+            {
+                Title = document.Title,
+                Path = document.PathName,
+                Active = action.Activate,
+                Saved = path is not null,
+                Warning = closures.Count > 0 ? string.Join(" ", closures) : null
+            };
         }
-        var document = created;
-        if (action.Activate)
+        catch (Exception exception)
         {
-            var active = application.OpenAndActivateDocument(path!).Document;
-            if (!active.Equals(created) && !created.Close(false))
-                throw new InvalidOperationException($"Revit did not close the new document's background copy. Open documents: {OpenDocumentNames(application)}.");
-            document = active;
+            failure = exception;
         }
-        var after = application.Application.Documents.Cast<Document>().ToList();
-        if (!DocumentIdentityMatcher.AllPresent(before, after, Identity) ||
-            path is not null && after.Count(item => DocumentPathValidator.SamePath(item.PathName, path)) != 1 ||
-            action.Activate && !document.Equals(application.ActiveUIDocument?.Document))
-            throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
-        return new ActionResultData { Title = document.Title, Path = document.PathName, Active = action.Activate, Saved = path is not null };
+        finally
+        {
+            if (failure is not null)
+            {
+                // Activation can open a document before throwing.
+                if (activationAttempted && path is not null)
+                {
+                    foreach (var candidate in OwnedDocumentCleanup.FindUntrackedActivationDocuments(
+                        application.Application.Documents.Cast<Document>(), before, owned, Identity, closures,
+                        candidate => $"{candidate.Title} [{candidate.GetHashCode():X}]",
+                        candidate => DocumentPathValidator.SamePath(candidate.PathName, path)))
+                        owned.Add(candidate);
+                }
+                foreach (var retained in owned)
+                {
+                    if (!retained.IsValidObject) continue;
+                    var closure = OwnedDocumentCleanup.Close(retained, before, Identity,
+                        $"{retained.Title} [{retained.GetHashCode():X}]", pending => pending.Close(false));
+                    if (closure is not null) closures.Add(closure);
+                }
+            }
+        }
+        if (failure is not null)
+            throw new InvalidOperationException($"{failure.Message} {string.Join(" ", closures)}".Trim(), failure);
+        return result!;
     }
 
     private static string OpenDocumentNames(UIApplication application) =>
@@ -480,7 +572,12 @@ internal static class DocumentActions
         Opened.Remove(document);
         if (!document.Close(action.Save))
             throw new InvalidOperationException($"Revit did not close '{title}'.");
-        return new ActionResultData { Title = title, Path = path, Saved = action.Save };
+        return new ActionResultData
+        {
+            Title = title,
+            Path = path,
+            Saved = action.Save
+        };
     }
 
     private static ActionResultData Save(UIApplication application, Document document, ActionJobContract action,
@@ -531,12 +628,21 @@ internal static class DocumentActions
         }
         else
         {
-            var options = new SaveAsOptions { OverwriteExistingFile = action.Overwrite, Compact = action.Compact };
+            var options = new SaveAsOptions
+            {
+                OverwriteExistingFile = action.Overwrite,
+                Compact = action.Compact
+            };
             if (document.IsWorkshared && document.IsDetached)
                 options.SetWorksharingOptions(new WorksharingSaveAsOptions { SaveAsCentral = true });
             document.SaveAs(action.SaveAs, options);
         }
-        return new ActionResultData { Title = document.Title, Path = document.PathName, Saved = true };
+        return new ActionResultData
+        {
+            Title = document.Title,
+            Path = document.PathName,
+            Saved = true
+        };
     }
 
     private static ActionResultData Sync(Document document, ActionJobContract action)
@@ -564,7 +670,12 @@ internal static class DocumentActions
         try { document.SynchronizeWithCentral(transactionOptions, syncOptions); }
         catch (Autodesk.Revit.Exceptions.CentralModelContentionException)
         { throw new InvalidOperationException("The central model is locked."); }
-        return new ActionResultData { Title = document.Title, CentralPath = central, Saved = true };
+        return new ActionResultData
+        {
+            Title = document.Title,
+            CentralPath = central,
+            Saved = true
+        };
     }
 
     private static RelinquishOptions RelinquishOptions(string selection, Dictionary<string, bool>? values)

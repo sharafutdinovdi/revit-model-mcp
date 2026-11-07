@@ -13,6 +13,33 @@ For a remote client, run the whole server on the workstation over SSH stdio; see
 HTTP connects directly to the add-in and requires no SSH server or remote file transfer.
 The MCP client still communicates with the Python server over stdio.
 
+### SSH file-channel reuse and polling
+
+Each call discovers live processes and fresh heartbeats before selecting its target.
+After a successful ping and identity recheck, the server remembers the verified
+process ID, OS process start time (when available), heartbeat startup identity,
+instance ID and file-channel version. A warm call skips the extra ping and
+rediscovery, not target selection or heartbeat validation. Changed identities,
+missing processes and heartbeats older than 60 seconds discard that verification.
+Job publication still checks the heartbeat, and responses still require the
+matching correlation and responder process ID. Fetching a retained job does not
+require a ping and does not establish a verified session.
+
+Pickup and result polling start immediately, then wait 0.5, 1, 2, 4, 8 and at most
+10 seconds between remote commands. Each wait and command timeout is bounded by
+the remaining overall deadline. Short jobs avoid the former initial 10-second
+wait; long jobs retain the 10-second cap to limit SSH traffic. Without SSH
+multiplexing, the existing connection-start quota can add delay. Transient
+connection failures are retried within the same deadline without resubmitting
+the job.
+
+The fake SSH regression records 12 remote commands for a cold document-info call
+and 6 for a warm call with immediate pickup and completion. This is a command
+count, not a workstation latency measurement. For live verification, record
+elapsed times and remote-command counts for repeated cold and warm calls and
+report median and p95 separately. During a long job, interrupt and restore SSH,
+then recover its retained result by job ID without submitting the action again.
+
 ## Transport errors
 
 Unavailable SSH, named pipe, and HTTP transports return a normal MCP tool result with `success:false`, `command`, `errorCode:"transport_unavailable"`, and `retryable:true`.

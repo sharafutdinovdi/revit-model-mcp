@@ -18,7 +18,24 @@ Toolsets limit visibility only. They are not a permission: read-only mode, confi
 
 Session tools `revit_activate_view`, `revit_activate_document`, `revit_select`, `revit_show`, `revit_isolate` (temporary view state) and `revit_close_views` do not change the model. Their MCP annotations are `readOnlyHint=true` and `destructiveHint=false`. Model-changing tools retain their action annotations. These hints describe model access; workstation locks and policy checks still apply.
 
-The default is `all`, so existing setups see the same tools. Clients with a small tool budget, or that warn about many tools, should set `REVIT_MCP_TOOLSETS=core,read` (22 tools, about 6,564 tokens) and add `actions`, `views-sheets` or others when needed. The prompts and the coordinator guide name read tools; the batch prompt needs `batch`.
+The default is `all`; existing setups retain every tool.
+Task presets expand to the toolsets below, with `core` always included.
+The server discovery instructions recommend a preset for each task.
+Set `REVIT_MCP_TOOLSETS=preset:audit` in the client's server environment, or pass `--toolsets preset:audit`, then restart the server connection.
+Switching requires a restart; a hidden tool cannot be called in the current connection.
+Comma-separated selections combine by union, for example `preset:families,views-sheets`; `all` restores full discovery.
+Presets limit discovery, not permissions: even `preset:audit` includes document lifecycle actions.
+
+| Preset | Included toolsets besides `core` | Supported task |
+| --- | --- | --- |
+| `preset:audit` | `read,documents` | Open or select models, inspect elements, parameters and warnings, collect snapshots, then close. |
+| `preset:edit` | `read,actions,documents,views-sheets` | Inspect and select existing elements, change parameters, transform or delete elements, inspect views, then save or sync and close. |
+| `preset:families` | `read,family,documents,code` | Create or open documents, inspect family types, audit, load, place and edit families, use API lookup and C# for family changes, then save and close. |
+| `preset:sheets` | `read,views-sheets,documents,export` | Inspect views and title blocks, create views, schedules and sheets, place views, export, then save and close. |
+| `preset:batch` | `read,batch,documents,code,export` | Start, monitor, cancel and fetch collection runs, build reports, or process models with C# steps, exports and saves. |
+
+Tasks outside a preset's documented scope require another preset, additional toolsets, or `all`.
+For example, creating model geometry requires `cad-mep`; editing elements is not a geometry-creation preset.
 
 | Toolset | Tools |
 | --- | --- |
@@ -36,26 +53,45 @@ The default is `all`, so existing setups see the same tools. Clients with a smal
 
 ### Tool list size
 
-`cd server && uv run python ../build/tool_size.py` measures the `tools/list` payload (compact JSON of every tool, bytes; tokens are bytes divided by 4, an estimate).
+`cd server && uv run python ../build/tool_size.py` measures the schema baseline: the sum of compact UTF-8 JSON byte lengths of individual tools serialized with `model_dump(mode="json", by_alias=True, exclude_none=True)`, using `json.dumps(separators=(",", ":"), ensure_ascii=False)`.
+This baseline excludes the list wrapper and separators between tools.
+The full result uses `ListToolsResult(tools=selected).model_dump_json(by_alias=True, exclude_none=True).encode("utf-8")`; it includes the result wrapper, list separators and the serializer's Unicode escaping.
+Neither representation includes a JSON-RPC envelope, server instructions or client-specific framing.
+Token estimates use `floor(schema baseline bytes / 4)`, not a tokenizer count.
 Tool and parameter descriptions state plain behavior. The confirmation procedure, addressing rules and long-job handling live in the server instructions and the `revit://guides/coordinator` resource, not in each description.
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 9 | 7,389 | 1,847 |
-| `read` | 13 | 18,870 | 4,717 |
+| `core` | 9 | 7,319 | 1,829 |
+| `read` | 13 | 18,688 | 4,672 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,810 | 1,202 |
-| `views-sheets` | 22 | 25,765 | 6,441 |
-| `family` | 5 | 8,788 | 2,197 |
-| `links` | 3 | 4,067 | 1,016 |
+| `views-sheets` | 22 | 25,653 | 6,413 |
+| `family` | 5 | 8,774 | 2,193 |
+| `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,663 | 1,415 |
-| `export` | 4 | 7,226 | 1,806 |
-| `batch` | 7 | 8,042 | 2,010 |
-| `code` | 7 | 6,055 | 1,513 |
-| `all` (default) | 89 | 107,778 | 26,944 |
-| `core,read` | 22 | 26,259 | 6,564 |
+| `export` | 4 | 7,198 | 1,799 |
+| `batch` | 7 | 8,164 | 2,041 |
+| `code` | 7 | 6,165 | 1,541 |
+| `all` (default) | 89 | 107,590 | 26,897 |
+| `core,read` | 22 | 26,007 | 6,501 |
 
-These measurements use the default tool schemas. Optional server arguments can increase the payload.
+### Preset and full-result costs
+
+| Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
+| --- | --- | --- | --- | --- |
+| `all` | 89 | 107,590 | 26,897 | 107,747 |
+| `core,read` | 22 | 26,007 | 6,501 | 26,097 |
+| `preset:audit` | 28 | 30,817 | 7,704 | 30,913 |
+| `preset:edit` | 59 | 67,573 | 16,893 | 67,700 |
+| `preset:families` | 40 | 45,756 | 11,439 | 45,864 |
+| `preset:sheets` | 54 | 63,668 | 15,917 | 63,790 |
+| `preset:batch` | 46 | 52,344 | 13,086 | 52,458 |
+
+`cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
+The schema-size test permits no drift; schema changes require updated measured values.
+These measurements use the default tool schemas.
+Optional server arguments can increase the payload.
 
 MEP routing, graphic overrides, view and sheet creation, element tagging, schedule creation, CAD linking and wall construction actions are listed in [Action tools](actions.md).
 `revit_place_views_on_sheet` accepts a sheet element ID (integer or numeric string), sheet number, or sheet name; an unmatched reference returns candidate sheets.
@@ -296,6 +332,21 @@ A timed-out action is a tool error, not a result: the action may have changed th
 The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` and `revit_batch_cancel`. The last two start and stop Revit processes, so they are refused in read-only mode like any action; `revit_batch_status` and `revit_batch_fetch` stay available.
 
 
+## Code execution results
+
+`revit_execute_code` and `revit_run_tool` expose `data.resultCompleteness` with `truncated`, `retainedCount`, `omittedCount`, and `reasons`.
+The inline result retains at most 5,000 entries, six container levels, and 262,144 UTF-8 JSON bytes.
+Reasons are `itemBudget`, `depth`, and `inlineSize`; several reasons can apply.
+Counts cover dictionary properties and sequence entries across all nesting levels; a scalar or empty container counts as one value.
+An oversized inline value is replaced with null.
+A truncated result has `partial:true` and a top-level `skipped` receipt.
+`data.resultArtifact.path` names a UTF-8 JSON file on the MCP server computer containing the full supported result, with configured path redaction.
+The artifact reference includes `format:"json"` and `complete:true`.
+Artifact-write failures retain the partial result and add a skipped receipt with `complete:false` and an error instead of a retrieval path.
+Serialization supports primitives, dictionaries, sequences, public properties of plain objects, and the execution context's special conversions.
+Other values use their string representation.
+Cycles, nesting of 128 levels, colliding dictionary keys after string conversion, enumeration failures, and failing property getters fail execution explicitly; no complete artifact is claimed.
+
 ## Model audits
 
 | Tool | Purpose |
@@ -306,6 +357,22 @@ The same rule covers `revit_undo_last`, `revit_cancel_job`, `revit_batch_start` 
 See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html` or `both`).
 
 For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.
+
+## Execute code
+
+`revit_execute_code` applies the same failure policy to `auto`, `group`, and permitted script-owned (`none`) transactions.
+Warnings are deleted during failure processing and returned in `data.failures` with `severity`, `text`, `failureDefinitionId`, and `elementIds`.
+Errors cause a silent transaction rollback and retain their texts in the failed response and `data.failures`.
+In `none` mode, earlier script commits remain committed when a later transaction fails.
+
+Modal dialogs remain unanswered unless an exact dialog ID and runtime type pair has an allowlisted result.
+The built-in allowlist is empty.
+`data.dialogs` records dialog IDs, messages, available buttons, and decisions.
+Button capture depends on the visible native controls; a dialog that closes before capture may have no buttons recorded.
+While a dialog blocks execution, progress and persisted job responses report `waiting_dialog` with the dialog record.
+Progress text reads `waiting for dialog <id> / <text>`.
+The usual timeout warning still applies: a waiting call may already have committed changes.
+Failure and dialog handlers are removed when execution ends, including exceptional exits.
 
 ## My tools
 

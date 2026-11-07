@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using Autodesk.Revit.DB;
@@ -10,6 +11,7 @@ using Nice3point.Revit.Extensions;
 using RevitModelMcp.Activity;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
+using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
@@ -85,7 +87,7 @@ internal static class ActionCommandExecutor
         ChangeCapture? changes = null;
         void SuppressDialog(object? sender, DialogBoxShowingEventArgs arguments)
         {
-            SuppressTaskDialog(arguments, dialogsSuppressed);
+            if (job.Command is not ("execute-code" or "run-tool")) SuppressTaskDialog(arguments, dialogsSuppressed);
         }
         void SuppressOpenWarnings(object? sender, FailuresProcessingEventArgs arguments)
         {
@@ -146,19 +148,40 @@ internal static class ActionCommandExecutor
             if (job.Command is "export" or "export-nwc") action.ConfirmOverwrites = true;
             if (job.Command is "execute-code" or "run-tool")
             {
-                if (job.Command == "run-tool"
+                if (action.ConfirmToken is not null || (job.Command == "run-tool"
                     ? MyTools.Session.RequiresConfirmation(action.ToolName!, action.ToolRevision!, action.ToolMode, action.DryRun)
-                    : !action.DryRun)
+                    : !action.DryRun))
                     data = ConfirmationStore.Gate(job.Command,
                         document is null ? "none" : DocumentConfirmationBinding.Identity(document.PathName, document.Title),
-                        DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
-                        (job.Command == "run-tool" ? $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}" : ""), "", action.ConfirmToken,
+                        ToolArguments.ExecutionBinding(action), "", action.ConfirmToken,
                         action.ToolConfirmationText ?? $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(action.Code!)[..12]}, {action.Code!.Length} characters, transaction {action.TransactionMode}) on '{document?.Title ?? "no document"}'. The code has full Revit API access and the user's file and network rights. Review it before confirming.",
                         action.ToolName is null ? "Needs confirmation to run C# code." : $"Needs confirmation to run {action.ToolName} ({action.ToolRevision}).",
                         "The confirmation state changed. Repeat the call without confirm_token to get a new one.");
                 if (job.Command == "run-tool" && data is null)
                     MyTools.Session.Confirm(action.ToolName!, action.ToolRevision!);
-                data ??= CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
+                if (data is null)
+                {
+                    var output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+                        responder, job.CorrelationId);
+                    var delivery = ResponseDelivery.Current;
+                    void PublishDialog(BatchDialogRecord dialog)
+                    {
+                        var progress = CommandResponse<CallDialogProgress>.PartialResult(job.Command,
+                            new CallDialogProgress { Dialog = dialog },
+                            $"waiting for dialog {dialog.DialogId} / {dialog.Message}", stopwatch.ElapsedMilliseconds);
+                        if (delivery is null) output.Write(progress);
+                        else
+                        {
+                            progress.CorrelationId = job.CorrelationId;
+                            progress.Responder = responder;
+                            delivery(Core.Serialization.CommandResponseJsonSerializer.Serialize(progress));
+                        }
+                    }
+                    using var dialogs = new CallDialogs(application, PublishDialog);
+                    data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
+                    dialogs.Finish();
+                    data.Dialogs = dialogs.Records.Count > 0 ? dialogs.Records.ToList() : null;
+                }
             }
             else if (job.Command == "batch")
                 data = BatchActionExecutor.Execute(document!, uiDocument, action, failures, job.ClientName);
@@ -674,11 +697,117 @@ internal static class ActionCommandExecutor
         ActivityRecorder.RecordFamilyEdit(job, document, result, response!, changes);
     }
 
+    [DataContract]
+    private sealed class CallDialogProgress
+    {
+        [DataMember(Name = "state")] public string State { get; init; } = "waiting_dialog";
+        [DataMember(Name = "dialog")] public required BatchDialogRecord Dialog { get; init; }
+    }
+
+    private sealed class CallDialogs : IDisposable
+    {
+        [ThreadStatic] private static CallDialogs? _current;
+        private readonly Action<BatchDialogRecord> _publish;
+        private readonly CallDialogs? _previous;
+        private readonly CancellationTokenSource _captureCancellation = new();
+        private readonly List<Task> _captures = [];
+        private readonly ScopedCallHandlers _handlers;
+        private readonly List<BatchDialogRecord> _records = [];
+        private bool _finished;
+        private readonly object _sync = new();
+        public IReadOnlyList<BatchDialogRecord> Records { get { lock (_sync) return _records.ToList(); } }
+
+        public CallDialogs(UIApplication application, Action<BatchDialogRecord> publish)
+        {
+            _publish = publish;
+            _previous = _current;
+            _current = this;
+            _handlers = new ScopedCallHandlers(() => application.DialogBoxShowing += OnDialog,
+                () => application.DialogBoxShowing -= OnDialog);
+        }
+
+        private void OnDialog(object? sender, DialogBoxShowingEventArgs arguments)
+        {
+            if (_current != this) return;
+            var record = new BatchDialogRecord
+            {
+                DialogId = arguments.DialogId ?? string.Empty,
+                Type = arguments.GetType().Name,
+                Message = BatchDialogText.Cap(arguments switch
+                {
+                    TaskDialogShowingEventArgs task => task.Message,
+                    MessageBoxShowingEventArgs box => box.Message,
+                    _ => null
+                }),
+                Decision = "unknown",
+                ModelPath = string.Empty,
+                Phase = "execute",
+                TimeUtc = DateTimeOffset.UtcNow.ToString("O")
+            };
+            var decision = BatchDialogPolicy.Decide(record.DialogId, record.Type);
+            if (decision.Allowed && decision.OverrideResult is int result && arguments.OverrideResult(result))
+            {
+                lock (_sync) _records.Add(record with { Decision = "allowed", Result = result });
+                return;
+            }
+            int index;
+            lock (_sync)
+            {
+                index = _records.Count;
+                _records.Add(record);
+            }
+            _publish(record);
+            var threadId = NativeDialogReader.CurrentThreadId;
+            var existing = NativeDialogReader.VisibleWindows(threadId);
+            _captures.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    for (var attempt = 0; attempt < 50; attempt++)
+                    {
+                        _captureCancellation.Token.ThrowIfCancellationRequested();
+                        var window = NativeDialogReader.FindNewWindow(threadId, existing);
+                        if (window != IntPtr.Zero)
+                        {
+                            var (message, buttons) = BatchDialogText.Parse(NativeDialogReader.Read(window));
+                            var captured = record with { Message = message ?? record.Message, Buttons = buttons.ToList() };
+                            lock (_sync) _records[index] = captured;
+                            _publish(captured);
+                            return;
+                        }
+                        await Task.Delay(100, _captureCancellation.Token);
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception exception)
+                {
+                    PluginLog.Info($"Dialog capture failed: {exception.GetType().Name}.");
+                }
+            }));
+        }
+
+        public void Finish()
+        {
+            if (_finished) return;
+            _finished = true;
+            _handlers.Dispose();
+            _current = _previous;
+            _captureCancellation.Cancel();
+            Task.WhenAll(_captures).GetAwaiter().GetResult();
+        }
+
+        public void Dispose()
+        {
+            Finish();
+            _captureCancellation.Dispose();
+        }
+    }
+
     private static void SuppressTaskDialog(DialogBoxShowingEventArgs arguments, List<string> dialogsSuppressed)
     {
-        if (arguments is not TaskDialogShowingEventArgs dialog) return;
-        if (dialog.OverrideResult((int)TaskDialogResult.Ok) || dialog.OverrideResult((int)TaskDialogResult.Yes))
-            dialogsSuppressed.Add(dialog.Message);
+        var decision = BatchDialogPolicy.Decide(arguments.DialogId, arguments.GetType().Name);
+        if (decision.Allowed && decision.OverrideResult is int result && arguments.OverrideResult(result))
+            dialogsSuppressed.Add(arguments is TaskDialogShowingEventArgs dialog ? dialog.Message : arguments.DialogId);
     }
 
     private static ActionResultData ExportFiles(Document document, ActionJobContract action)
@@ -1426,6 +1555,41 @@ internal static class ActionCommandExecutor
     {
         public List<string> WarningsDismissed { get; } = [];
         public string? Message { get; private set; }
+        public List<CallFailureRecord> Records { get; } = [];
+
+        public void ProcessCallFailures(FailuresProcessingEventArgs arguments)
+        {
+            var accessor = arguments.GetFailuresAccessor();
+            var errors = new List<string>();
+            foreach (var failure in accessor.GetFailureMessages())
+            {
+                var severity = failure.GetSeverity();
+                if (severity == FailureSeverity.None) continue;
+                var description = failure.GetDescriptionText();
+                var record = new CallFailureRecord
+                {
+                    Severity = severity.ToString(),
+                    FailureDefinitionId = failure.GetFailureDefinitionId().Guid.ToString(),
+                    Text = description,
+                    ElementIds = failure.GetFailingElementIds().Select(RevitValueReader.GetId).ToList()
+                };
+                Records.Add(record);
+                if (!CallFailurePolicy.MustRollBack([record]))
+                {
+                    WarningsDismissed.Add(description);
+                    accessor.DeleteWarning(failure);
+                }
+                else errors.Add(description);
+            }
+            if (errors.Count == 0)
+            {
+                arguments.SetProcessingResult(FailureProcessingResult.Continue);
+                return;
+            }
+            Message = RepeatedMessages.Join(new[] { Message }.Where(text => text is not null).Cast<string>().Concat(errors));
+            accessor.SetFailureHandlingOptions(accessor.GetFailureHandlingOptions().SetClearAfterRollback(true));
+            arguments.SetProcessingResult(FailureProcessingResult.ProceedWithRollBack);
+        }
 
         public FailureProcessingResult PreprocessFailures(FailuresAccessor failuresAccessor)
         {

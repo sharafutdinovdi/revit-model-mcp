@@ -2,6 +2,7 @@ using System.Runtime.Serialization.Json;
 using System.Text;
 using RevitModelMcp.BatchSupervisor;
 using RevitModelMcp.Core.Batch;
+using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -242,6 +243,84 @@ public sealed class BatchDialogPolicyTests
             await Assert.That(json.RootElement.GetProperty("data").GetProperty("dialogs")[0].GetProperty("dialogId").GetString()).IsEqualTo("x");
             if (!success) await Assert.That(json.RootElement.GetProperty("message").GetString()).IsEqualTo(reason);
         }
+    }
+
+    [Test]
+    [Arguments("Warning", false)]
+    [Arguments("Error", true)]
+    [Arguments("DocumentCorruption", true)]
+    public async Task CallFailures_RollBackEveryNonWarning(string severity, bool expected)
+    {
+        await Assert.That(CallFailurePolicy.MustRollBack([new CallFailureRecord { Severity = severity }]))
+            .IsEqualTo(expected);
+        await Assert.That(CallFailurePolicy.MustRollBack([])).IsFalse();
+    }
+
+    [Test]
+    public async Task CodeResponse_PreservesFailuresDialogsAndReturnValueOnSuccessAndFailure()
+    {
+        foreach (var success in new[] { true, false })
+        {
+            var data = new ActionResultData
+            {
+                ReturnValue = 42,
+                Failures = [new CallFailureRecord
+                {
+                    Severity = success ? "Warning" : "Error",
+                    Text = "Constraint failure.",
+                    FailureDefinitionId = "failure-id",
+                    ElementIds = [12, 34]
+                }],
+                Dialogs = [new BatchDialogRecord
+                {
+                    DialogId = "Review", Type = "TaskDialogShowingEventArgs", Message = "Review changes.",
+                    Buttons = [new BatchDialogButton { Caption = "Cancel", Result = 2 }],
+                    Decision = "unknown", ModelPath = "", Phase = "execute", TimeUtc = "2026-11-07T00:00:00Z"
+                }]
+            };
+            var response = success
+                ? CommandResponse<ActionResultData>.Ok("execute-code", data, 1)
+                : CommandResponse<ActionResultData>.Fail("execute-code", "Constraint failure.", 1);
+            response.Data = data;
+            using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+            var result = json.RootElement.GetProperty("data");
+            await Assert.That(result.GetProperty("returnValue").GetInt32()).IsEqualTo(42);
+            var failure = result.GetProperty("failures")[0];
+            await Assert.That(failure.GetProperty("text").GetString()).IsEqualTo("Constraint failure.");
+            await Assert.That(failure.GetProperty("severity").GetString()).IsEqualTo(success ? "Warning" : "Error");
+            await Assert.That(failure.GetProperty("failureDefinitionId").GetString()).IsEqualTo("failure-id");
+            await Assert.That(failure.GetProperty("elementIds")[1].GetInt64()).IsEqualTo(34);
+            var dialog = result.GetProperty("dialogs")[0];
+            await Assert.That(dialog.GetProperty("dialogId").GetString()).IsEqualTo("Review");
+            await Assert.That(dialog.GetProperty("message").GetString()).IsEqualTo("Review changes.");
+            await Assert.That(dialog.GetProperty("buttons")[0].GetProperty("result").GetInt32()).IsEqualTo(2);
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ScopedHandlers_DetachAfterNestedExceptionOrCancellation(bool cancelled)
+    {
+        var subscriptions = 0;
+        var removals = 0;
+        ScopedCallHandlers Subscribe() => new(() => subscriptions++, () => { subscriptions--; removals++; });
+        using (var outer = Subscribe())
+        {
+            try
+            {
+                using var inner = Subscribe();
+                await Assert.That(subscriptions).IsEqualTo(2);
+                if (cancelled) throw new OperationCanceledException();
+                throw new InvalidOperationException();
+            }
+            catch (Exception exception) when (exception is OperationCanceledException or InvalidOperationException) { }
+            await Assert.That(subscriptions).IsEqualTo(1);
+            outer.Dispose();
+            outer.Dispose();
+        }
+        await Assert.That(subscriptions).IsEqualTo(0);
+        await Assert.That(removals).IsEqualTo(2);
     }
 
     private static string WriteAllowlist(string json)

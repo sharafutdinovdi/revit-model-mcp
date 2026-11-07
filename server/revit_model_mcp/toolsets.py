@@ -122,6 +122,14 @@ TOOLSETS: dict[str, tuple[str, ...]] = {
     ),
 }
 
+PRESETS: dict[str, tuple[str, ...]] = {
+    "preset:audit": ("read", "documents"),
+    "preset:edit": ("read", "actions", "documents", "views-sheets"),
+    "preset:families": ("read", "family", "documents", "code"),
+    "preset:sheets": ("read", "views-sheets", "documents", "export"),
+    "preset:batch": ("read", "batch", "documents", "code", "export"),
+}
+
 ALL = "all"
 ALWAYS_ON = "core"
 ENVIRONMENT_VARIABLE = "REVIT_MCP_TOOLSETS"
@@ -132,12 +140,14 @@ def parse_toolsets(value: str | None) -> list[str]:
     names = [name.strip().lower() for name in (value or ALL).split(",") if name.strip()]
     if not names or ALL in names:
         return []
-    unknown = [name for name in names if name not in TOOLSETS]
+    unknown = [name for name in names if name not in TOOLSETS and name not in PRESETS]
     if unknown:
         raise ValueError(
-            f"Unknown toolset {', '.join(unknown)}. Valid toolsets: {ALL}, {', '.join(TOOLSETS)}."
+            f"Unknown toolset {', '.join(unknown)}. "
+            f"Valid toolsets: {ALL}, {', '.join(TOOLSETS)}, {', '.join(PRESETS)}."
         )
-    return list(dict.fromkeys([ALWAYS_ON, *names]))
+    expanded = [group for name in names for group in PRESETS.get(name, (name,))]
+    return list(dict.fromkeys([ALWAYS_ON, *expanded]))
 
 
 def select_tools(value: str | None) -> set[str]:
