@@ -75,3 +75,33 @@ def save_batch_artifact(result: dict[str, object], output_dir: str) -> str:
     except OSError as error:
         raise ValueError(f"Cannot save batch artifact: {error}") from error
     return str(target)
+
+
+def complete_code_result(result: dict[str, object]) -> None:
+    data = result.get("data")
+    if not isinstance(data, dict):
+        return
+    completeness = data.get("resultCompleteness")
+    if not isinstance(completeness, dict) or not completeness.get("truncated"):
+        return
+    result["partial"] = True
+    skipped = result.setdefault("skipped", [])
+    receipt = next((item for item in skipped if item.get("what") == "returnValue"), None)
+    if receipt is None:
+        receipt = {"what": "returnValue", "reason": "Inline result truncated."}
+        skipped.append(receipt)
+        result["skippedCount"] = result.get("skippedCount", 0) + 1
+    receipt.update(completeness)
+    encoded = data.pop("resultArtifact", None)
+    try:
+        if not isinstance(encoded, str):
+            raise ValueError("Full result artifact is missing.")
+        content = json.loads(base64.b64decode(encoded, validate=True))
+        content = json.dumps(redact_model_paths(content), ensure_ascii=False).encode("utf-8")
+        target = Path(tempfile.mkdtemp(prefix="revit-code-result-")) / "result.json"
+        write_new_file(target, lambda output: output.write(content))
+        data["resultArtifact"] = {"path": str(target), "format": "json", "complete": True}
+    except (ValueError, OSError) as error:
+        data["resultArtifact"] = {"complete": False, "error": str(error)}
+        skipped.append({"what": "resultArtifact", "reason": str(error)})
+        result["skippedCount"] += 1

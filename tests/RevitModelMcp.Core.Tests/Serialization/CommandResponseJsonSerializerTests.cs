@@ -224,7 +224,7 @@ public sealed class CommandResponseJsonSerializerTests
             {
                 ["count"] = 3,
                 ["items"] = new[] { "a", "b" }
-            }, value => value),
+            }, value => value).Value,
             Log = ["ready"],
             Diagnostics = [new CodeDiagnostic { Line = 2, Column = 4, Id = "CS1002", Message = "; expected" }],
             Summary = "Executed code in Model.rvt."
@@ -233,6 +233,25 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(json.Contains("\"returnValue\"")).IsTrue();
         await Assert.That(json.Contains("\"count\":3")).IsTrue();
         await Assert.That(json.Contains("\"line\":2")).IsTrue();
+    }
+
+    [Test]
+    [Arguments("execute-code")]
+    [Arguments("run-tool")]
+    public async Task ExecuteCode_TruncationMarksEnvelopePartial(string command)
+    {
+        var limited = CodeResultLimiter.Limit(Enumerable.Range(0, 6000), value => value);
+        var response = CommandResponse<ActionResultData>.Ok(command, new ActionResultData
+        {
+            ReturnValue = limited.Value,
+            ResultCompleteness = limited
+        }, 5);
+        using var json = System.Text.Json.JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+        await Assert.That(json.RootElement.GetProperty("data").GetProperty("resultCompleteness")
+            .GetProperty("omittedCount").GetInt32()).IsEqualTo(1000);
+        await Assert.That(json.RootElement.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("returnValue");
     }
 
     [Test]
