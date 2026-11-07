@@ -27,10 +27,19 @@ def write_new_file(target: Path, write: Callable[[BinaryIO], None]) -> None:
                 output = open(target, "xb")
             except FileExistsError as conflict:
                 raise ValueError(f"Local file already exists: {target}") from conflict
-            with output, open(temporary, "rb") as source:
-                shutil.copyfileobj(source, output)
-                output.flush()
-                os.fsync(output.fileno())
+            identity = os.fstat(output.fileno())
+            try:
+                with output, open(temporary, "rb") as source:
+                    shutil.copyfileobj(source, output)
+                    output.flush()
+                    os.fsync(output.fileno())
+            except BaseException:
+                try:
+                    if os.path.samestat(identity, target.lstat()):
+                        target.unlink()
+                except FileNotFoundError:
+                    pass
+                raise
     finally:
         try:
             os.unlink(temporary)
