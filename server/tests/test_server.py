@@ -911,6 +911,60 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["data"]["rvtLinks"][0]["error"], "Could not read A.rvt")
 
+    async def test_nested_read_diagnostics_merge_without_double_counting(self) -> None:
+        nested = {"what": "closed user worksets", "reason": "Coverage is incomplete."}
+        outer = {"what": "reader", "reason": "Unavailable."}
+        response = {
+            "command": "model-snapshot",
+            "success": True,
+            "partial": False,
+            "data": {"skipped": [nested], "skippedCount": 125},
+            "skipped": [nested, outer],
+            "skippedCount": 126,
+        }
+        with patch.object(revit_server.channel, "execute", AsyncMock(return_value=response)):
+            result = await revit_server.revit_model_snapshot()
+        self.assertEqual(result["skipped"], [nested, outer])
+        self.assertEqual(result["skippedCount"], 126)
+        self.assertTrue(result["partial"])
+        self.assertEqual(result["data"]["skipped"], [nested])
+
+    async def test_family_omissions_reach_envelope(self) -> None:
+        response = {
+            "command": "family-audit",
+            "success": True,
+            "data": {
+                "families": [
+                    {"name": "Unsupported", "status": "skipped", "reason": "In place."},
+                    {"name": "Broken", "status": "failed", "reason": "Cannot inspect."},
+                ],
+                "skipped": [],
+                "skippedCount": 0,
+            },
+            "skipped": [{"what": "family Broken audit", "reason": "Cannot inspect."}],
+            "skippedCount": 1,
+        }
+        with patch.object(revit_server.channel, "execute", AsyncMock(return_value=response)):
+            result = await revit_server._execute(Job("family-audit", {}), 60, None)
+        self.assertEqual(result["skippedCount"], 2)
+        self.assertTrue(result["partial"])
+        self.assertIn(
+            {"what": "family Unsupported audit", "reason": "In place."}, result["skipped"]
+        )
+
+    async def test_nested_diagnostics_keep_bounded_sample_and_full_count(self) -> None:
+        details = [{"what": f"scope {index}", "reason": "Unavailable."} for index in range(110)]
+        response = {
+            "command": "model-snapshot",
+            "success": True,
+            "data": {"skipped": details, "skippedCount": 125},
+        }
+        with patch.object(revit_server.channel, "execute", AsyncMock(return_value=response)):
+            result = await revit_server.revit_model_snapshot()
+        self.assertEqual(len(result["skipped"]), 100)
+        self.assertEqual(result["skippedCount"], 125)
+        self.assertTrue(result["partial"])
+
     async def test_complete_read_adds_empty_diagnostics(self) -> None:
         with patch.object(
             revit_server.channel,

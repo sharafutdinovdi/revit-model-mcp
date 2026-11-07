@@ -529,6 +529,53 @@ def batch_audit(
     )
 
 
+def _merge_read_diagnostics(result: dict[str, Any]) -> None:
+    skipped: list[dict[str, Any]] = []
+    unlisted = 0
+
+    def merge(value: Any) -> None:
+        nonlocal unlisted
+        if not isinstance(value, dict):
+            return
+        details = value.get("skipped", [])
+        if isinstance(details, list):
+            details = [item for item in details if isinstance(item, dict)]
+            for item in details:
+                if item not in skipped:
+                    skipped.append(item)
+            count = value.get("skippedCount", len(details))
+            if isinstance(count, int):
+                unlisted = max(unlisted, count - len(details))
+
+    data = result.get("data")
+    merge(data)
+    if result.get("command") == "family-audit" and isinstance(data, dict):
+        for family in data.get("families", []):
+            if family.get("status") in {"skipped", "failed"}:
+                merge(
+                    {
+                        "skipped": [
+                            {
+                                "what": f"family {family['name']} audit",
+                                "reason": family.get("reason") or "Family inspection was omitted.",
+                            }
+                        ]
+                    }
+                )
+    envelope = result.get("skipped", [])
+    if isinstance(envelope, list):
+        for item in envelope:
+            if isinstance(item, dict) and item not in skipped:
+                skipped.append(item)
+    count = result.get("skippedCount", 0)
+    if isinstance(count, int):
+        unlisted = max(unlisted, count - len(skipped))
+    result["skipped"] = skipped[:100]
+    result["skippedCount"] = len(skipped) + unlisted
+    if result["skippedCount"]:
+        result["partial"] = True
+
+
 async def _execute(
     job: Job,
     timeout_seconds: int,
@@ -547,8 +594,7 @@ async def _execute(
             result["serverVersion"] = package_version()
             if CHANNEL != "store":
                 result.update(update_status(package_version()))
-        result.setdefault("skipped", [])
-        result.setdefault("skippedCount", 0)
+        _merge_read_diagnostics(result)
         return redact_model_paths(result)
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(job.command, str(error)))
