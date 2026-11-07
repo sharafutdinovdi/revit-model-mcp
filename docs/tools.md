@@ -62,31 +62,31 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 9 | 7,389 | 1,847 |
-| `read` | 13 | 18,870 | 4,717 |
+| `core` | 9 | 7,319 | 1,829 |
+| `read` | 13 | 18,688 | 4,672 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,810 | 1,202 |
-| `views-sheets` | 22 | 25,765 | 6,441 |
-| `family` | 5 | 8,788 | 2,197 |
-| `links` | 3 | 4,067 | 1,016 |
+| `views-sheets` | 22 | 25,653 | 6,413 |
+| `family` | 5 | 8,774 | 2,193 |
+| `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,663 | 1,415 |
-| `export` | 4 | 7,226 | 1,806 |
-| `batch` | 7 | 8,042 | 2,010 |
-| `code` | 7 | 6,055 | 1,513 |
-| `all` (default) | 89 | 107,778 | 26,944 |
-| `core,read` | 22 | 26,259 | 6,564 |
+| `export` | 4 | 7,198 | 1,799 |
+| `batch` | 7 | 8,164 | 2,041 |
+| `code` | 7 | 6,165 | 1,541 |
+| `all` (default) | 89 | 107,590 | 26,897 |
+| `core,read` | 22 | 26,007 | 6,501 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,778 | 26,944 | 107,935 |
-| `core,read` | 22 | 26,259 | 6,564 | 26,349 |
-| `preset:audit` | 28 | 31,069 | 7,767 | 31,165 |
-| `preset:edit` | 59 | 67,937 | 16,984 | 68,064 |
-| `preset:families` | 40 | 45,912 | 11,478 | 46,020 |
-| `preset:sheets` | 54 | 64,060 | 16,015 | 64,182 |
-| `preset:batch` | 46 | 52,392 | 13,098 | 52,506 |
+| `all` | 89 | 107,590 | 26,897 | 107,747 |
+| `core,read` | 22 | 26,007 | 6,501 | 26,097 |
+| `preset:audit` | 28 | 30,817 | 7,704 | 30,913 |
+| `preset:edit` | 59 | 67,573 | 16,893 | 67,700 |
+| `preset:families` | 40 | 45,756 | 11,439 | 45,864 |
+| `preset:sheets` | 54 | 63,668 | 15,917 | 63,790 |
+| `preset:batch` | 46 | 52,344 | 13,086 | 52,458 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.

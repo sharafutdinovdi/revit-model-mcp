@@ -29,7 +29,7 @@ from revit_model_mcp.revit_channel import (
     RevitChannelError,
     TransportUnavailableError,
     refused_response,
-    resolve_instance,
+    select_instance,
 )
 from revit_model_mcp.ssh_host import RemoteCommandError, SshPowerShellHost
 
@@ -199,8 +199,9 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
         parameter_rules: list[dict[str, str]] | None = None,
         years: list[int] | None = None,
         open_timeout_minutes: int | None = None,
+        process_id: int | None = None,
     ) -> dict[str, Any]:
-        """Start a persistent, read-only run over local, UNC or RSN models. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."""
+        """Start a persistent, read-only run over local, UNC or RSN models. process_id selects the launcher Revit process. open_timeout_minutes is the per-model open deadline (default 30, 45 when upgrading in memory)."""
         if (gate := policy_gate("revit_batch_start", label="batch-start")) is not None:
             return gate
         if (paths is None) == (folder is None):
@@ -226,10 +227,17 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             )
             selected_paths = _paths(discovered)
             instances = await _responsive_instances(host)
-            if not instances and isinstance(host, SshPowerShellHost) and not host.local:
+            if (
+                not instances
+                and process_id is None
+                and isinstance(host, SshPowerShellHost)
+                and not host.local
+            ):
                 await file_host.batch_activate_interactive()
                 instances = await _wait_for_responsive_instance(host)
-            selected = resolve_instance(instances, None)
+            selected = select_instance(
+                instances, Job("batch-supervisor-start", {}).for_process(process_id)
+            )
             run_id = uuid.uuid4().hex
             state = {
                 "runId": run_id,
@@ -260,7 +268,12 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                 return redact_model_paths(with_error_code({**result, "command": "batch-start"}))
             if result.get("success") is not True:
                 raise ToolError("Supervisor launch failed.")
-            return {"runId": run_id, "acceptedModels": len(selected_paths)}
+            return {
+                "runId": run_id,
+                "acceptedModels": len(selected_paths),
+                "responder": result.get("responder"),
+                "processId": selected["processId"],
+            }
         except ReadOnlyRefusedError as error:
             return refused_response("batch-start", error)
         except TransportUnavailableError as error:

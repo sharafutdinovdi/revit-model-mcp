@@ -648,6 +648,17 @@
         ],
         "default": null
       },
+      "process_id": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "recursive": {
         "default": false,
         "type": "boolean"
