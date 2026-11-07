@@ -1401,7 +1401,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result["errorCode"], "outcome_unknown")
         self.assertFalse(result["retryable"])
-        self.assertIn("query revit_jobs", result["error"])
+        self.assertIn(f"call revit_jobs with job_id {result['jobId']}", result["error"])
         self.assertIn(
             "The action may have executed. Inspect the model before retrying.",
             result["warnings"][0],
@@ -3630,6 +3630,97 @@ def test_channel_refusal_checks_log_file_process(name, quoted):
 
 
 class ActionJournalRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_request_records_have_bounded_retention_without_payload(self):
+        from revit_model_mcp import revit_channel
+
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            for index in range(105):
+                record = directory / f"old-{index:03}.json"
+                record.write_text("{}")
+                os.utime(record, (time.time() - index, time.time() - index))
+            expired = directory / "expired.json"
+            expired.write_text("{}")
+            os.utime(expired, (time.time() - 90000, time.time() - 90000))
+            request_id = "c" * 32
+            with patch.object(revit_channel, "_request_journal_directory", return_value=directory):
+                path = revit_channel._persist_request_id(
+                    Job("delete", {"jobId": request_id, "elementIds": [42]}), {"processId": 12}
+                )
+            self.assertEqual(len(list(directory.glob("*.json"))), 100)
+            self.assertFalse(expired.exists())
+            self.assertFalse((directory / "old-104.json").exists())
+            saved = json.loads(path.read_text())
+            self.assertEqual(saved["jobId"], request_id)
+            self.assertEqual(saved["processId"], 12)
+            self.assertNotIn("elementIds", saved)
+
+    async def test_request_id_is_durable_before_send_and_survives_cancellation(self):
+        from revit_model_mcp import revit_channel
+
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            remote = FakeRemoteHost()
+
+            async def disconnect(name, content, command):
+                payload = json.loads(content)
+                record = json.loads((directory / (payload["jobId"] + ".json")).read_text())
+                self.assertEqual(record["jobId"], payload["jobId"])
+                self.assertEqual(record["command"], "delete")
+                self.assertEqual(record["targetDocument"], "Model A")
+                raise asyncio.CancelledError
+
+            remote.prepare_job = AsyncMock(side_effect=disconnect)
+            with patch.object(revit_channel, "_request_journal_directory", return_value=directory):
+                with self.assertRaises(asyncio.CancelledError):
+                    await RevitChannel(remote).execute(
+                        Job("delete", {"command": "delete", "targetDocument": "Model A"}), 1
+                    )
+            records = list(directory.glob("*.json"))
+            self.assertEqual(len(records), 1)
+            self.assertRegex(json.loads(records[0].read_text())["jobId"], "^[0-9a-f]{32}$")
+
+    async def test_transport_errors_include_persisted_request_id(self):
+        from revit_model_mcp import revit_channel
+        from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
+
+        for before_send in (True, False):
+            with self.subTest(before_send=before_send), tempfile.TemporaryDirectory() as root:
+                remote = FakeRemoteHost()
+                remote.prepare_error = (
+                    RemoteCommandNotStartedError("Not sent.")
+                    if before_send
+                    else SshUnavailableError("Reply lost.")
+                )
+                remote.fetch_job = AsyncMock(side_effect=RevitChannelError("Unknown."))
+                with patch.object(
+                    revit_channel, "_request_journal_directory", return_value=Path(root)
+                ):
+                    if before_send:
+                        with self.assertRaises(TransportUnavailableError) as captured:
+                            await RevitChannel(remote).execute(
+                                Job("delete", {"command": "delete"}), 1
+                            )
+                        message = str(captured.exception)
+                    else:
+                        result = await RevitChannel(remote).execute(
+                            Job("delete", {"command": "delete"}), 1
+                        )
+                        message = result["error"]
+                request_id = json.loads(next(Path(root).glob("*.json")).read_text())["jobId"]
+                self.assertIn(f"Request id {request_id}".lower(), message.lower())
+                self.assertIn(f"call revit_jobs with job_id {request_id}", message)
+
+    async def test_persistence_failure_never_sends_action(self):
+        from revit_model_mcp import revit_channel
+
+        remote = FakeRemoteHost()
+        remote.prepare_job = AsyncMock()
+        with patch.object(revit_channel, "_persist_request_id", side_effect=OSError("Disk full.")):
+            with self.assertRaisesRegex(RevitChannelError, "the action was not sent"):
+                await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        remote.prepare_job.assert_not_awaited()
+
     async def test_attempt_marker_distinguishes_new_and_repeated_request(self):
         for existing_id, expected in ((None, "initial"), ("a" * 32, "retry")):
             with self.subTest(attempt=expected):

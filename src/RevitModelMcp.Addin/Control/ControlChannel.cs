@@ -59,7 +59,7 @@ internal sealed class ControlChannel
         {
             if (_stopped) return new(null, "shutting_down", 0);
             var jobId = string.IsNullOrWhiteSpace(job.JobId) ? Guid.NewGuid().ToString("N") : job.JobId!;
-            var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload, job.Retry);
+            var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload, job.Retry, job.TargetDocument);
             if (submitted.Job is null) return submitted;
             if (_httpCompletions.TryGetValue(jobId, out var existing))
             {
@@ -128,7 +128,7 @@ internal sealed class ControlChannel
                     continue;
                 }
                 var jobId = string.IsNullOrWhiteSpace(parsed.JobId) ? Guid.NewGuid().ToString("N") : parsed.JobId!;
-                var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content, parsed.Retry);
+                var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content, parsed.Retry, parsed.TargetDocument);
                 if (submitted.Job is null)
                 {
                     if (submitted.Error is not null)
@@ -401,13 +401,15 @@ internal sealed class ControlChannel
         {
             var data = new JobListData
             {
-                Jobs = _scheduler.ActiveJobs().Select(job => new JobSummary
+                Jobs = _scheduler.RecentJobs().Select(job => new JobSummary
                 {
                     JobId = job.JobId,
                     ClientName = job.ClientName,
                     Command = job.Command,
                     State = StateName(job.State),
                     Position = job.Position,
+                    TargetDocument = job.TargetDocument,
+                    FinishedUtc = job.CompletedUtc?.ToString("O"),
                     AgeMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds)
                 }).ToList()
             };

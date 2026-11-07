@@ -766,7 +766,7 @@ def test_ambiguous_submission_error_preserves_action_id_and_never_resubmits(endp
     assert result["errorCode"] == "outcome_unknown"
     assert result["jobId"] == state["payload"]["jobId"]
     assert result["retryable"] is False
-    assert "query revit_jobs" in result["error"]
+    assert f"call revit_jobs with job_id {result['jobId']}" in result["error"]
     assert "Inspect" in result["error"]
     assert state["executions"] == 1
     assert any(

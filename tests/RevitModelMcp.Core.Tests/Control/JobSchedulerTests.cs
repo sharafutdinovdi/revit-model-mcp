@@ -8,6 +8,93 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class JobSchedulerTests
 {
     [Test]
+    public async Task RecentJobsIncludesJournalWithUnknownOutcomeWithoutReexecuting()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "client", "Client", "delete", "{}", targetDocument: "Model A");
+            File.Delete(Path.Combine(directory, $"{jobId}.json"));
+            var restarted = new JobScheduler(resultDirectory: directory);
+            var recent = restarted.RecentJobs();
+            await Assert.That(recent.Single().JobId).IsEqualTo(jobId);
+            await Assert.That(recent.Single().State).IsEqualTo(JobState.Abandoned);
+            await Assert.That(recent.Single().TargetDocument).IsEqualTo("Model A");
+            await Assert.That(recent.Single().CompletedUtc).IsNull();
+            await Assert.That(restarted.Submit(jobId, "client", "Client", "delete", "{}", retry: true).Job!.Result).Contains("outcome unknown");
+            await Assert.That(restarted.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task RecentJobsRestoresCompletedActionsWithDocumentAndFinishedTime()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var now = new DateTimeOffset(2026, 11, 7, 12, 0, 0, TimeSpan.Zero);
+            var scheduler = new JobScheduler(() => now, resultDirectory: directory);
+            var firstId = NewId();
+            var secondId = NewId();
+            scheduler.Submit(firstId, "client", "Client", "delete", "{}", targetDocument: "Model A");
+            scheduler.TakeNext();
+            scheduler.Complete(firstId, """{"success":true}""", true);
+            File.SetLastWriteTimeUtc(Path.Combine(directory, $"{firstId}.json"), now.UtcDateTime);
+            now += TimeSpan.FromMinutes(1);
+            scheduler.Submit(secondId, "client", "Client", "move", "{}", targetDocument: "Model B");
+            scheduler.TakeNext();
+            scheduler.Complete(secondId, """{"success":false}""", false);
+            File.SetLastWriteTimeUtc(Path.Combine(directory, $"{secondId}.json"), now.UtcDateTime);
+            var restarted = new JobScheduler(() => now, resultDirectory: directory);
+            var recent = restarted.RecentJobs();
+            await Assert.That(recent.Count).IsEqualTo(2);
+            await Assert.That(recent[0].JobId).IsEqualTo(secondId);
+            await Assert.That(recent[0].Command).IsEqualTo("move");
+            await Assert.That(recent[0].TargetDocument).IsEqualTo("Model B");
+            await Assert.That(recent[0].State).IsEqualTo(JobState.Failed);
+            await Assert.That(recent[0].CompletedUtc).IsEqualTo(now);
+            await Assert.That(recent[1].JobId).IsEqualTo(firstId);
+            await Assert.That(recent[1].State).IsEqualTo(JobState.Done);
+            await Assert.That(restarted.TakeNext()).IsNull();
+            now += TimeSpan.FromHours(25);
+            await Assert.That(restarted.RecentJobs().Count).IsEqualTo(0);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task RecentJobsIsBoundedAndIncludesActiveJobsNewestFirst()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var scheduler = new JobScheduler(() => now);
+        for (var index = 0; index < 105; index++)
+        {
+            var jobId = NewId();
+            scheduler.Submit(jobId, "client", "Client", "delete", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(jobId, """{"success":true}""", true);
+            now += TimeSpan.FromSeconds(1);
+        }
+        var pendingId = NewId();
+        scheduler.Submit(pendingId, "client", "Client", "delete", "{}");
+        var recent = scheduler.RecentJobs();
+        await Assert.That(recent.Count).IsEqualTo(100);
+        await Assert.That(recent[0].JobId).IsEqualTo(pendingId);
+        await Assert.That(recent[0].State).IsEqualTo(JobState.Queued);
+        await Assert.That(recent[0].CompletedUtc).IsNull();
+        await Assert.That(recent.Skip(1).All(job => job.State == JobState.Done)).IsTrue();
+    }
+
+    [Test]
     public async Task DuplicateActionReturnsOriginalStateAndReceiptWithoutQueueing()
     {
         var scheduler = new JobScheduler();

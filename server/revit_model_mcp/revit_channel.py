@@ -8,8 +8,12 @@ import json
 import logging
 import os
 import re
+import sys
+import time
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
@@ -35,6 +39,47 @@ CLIENT_ID = uuid.uuid4().hex
 _client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
     "revit_client_name", default="unknown"
 )
+
+
+def _request_journal_directory() -> Path:
+    if sys.platform == "win32":
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Caches"
+    else:
+        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return root / "revit-model-mcp" / "requests"
+
+
+def _persist_request_id(job: Job, instance: dict[str, Any]) -> Path:
+    directory = _request_journal_directory()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    cutoff = time.time() - 24 * 60 * 60
+    records = []
+    for record in directory.glob("*.json"):
+        try:
+            records.append((record.stat().st_mtime, record))
+        except FileNotFoundError:
+            continue
+    for index, (modified, record) in enumerate(sorted(records, reverse=True)):
+        if index >= 99 or modified < cutoff:
+            record.unlink(missing_ok=True)
+    path = directory / f"{uuid.UUID(job.payload['jobId']).hex}.json"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(
+            {
+                "jobId": job.payload["jobId"],
+                "command": job.command,
+                "targetDocument": job.payload.get("targetDocument"),
+                "processId": instance.get("processId"),
+                "submittedUtc": datetime.now(timezone.utc).isoformat(),
+            },
+            stream,
+        )
+        stream.flush()
+        os.fsync(stream.fileno())
+    return path
 
 
 class ProgressReporter:
@@ -942,6 +987,14 @@ class RevitChannel:
         result: dict[str, Any] | None = None
         failure: BaseException | None = None
 
+        if job.command in ACTION_COMMANDS:
+            try:
+                _persist_request_id(job, instance)
+            except OSError as error:
+                raise RevitChannelError(
+                    f"Request id {job_id} was not persisted; the action was not sent: {error}"
+                ) from error
+
         try:
             known_responses = await self.remote.prepare_job(
                 temporary_name, job.to_json(), job.command
@@ -1141,12 +1194,16 @@ class RevitChannel:
                 "success": False,
                 "command": job.command,
                 "errorCode": OUTCOME_UNKNOWN,
-                "error": f"Action outcome unknown; query revit_jobs with jobId {job_id}. Inspect the original result before submitting another action.",
+                "error": f"Action outcome unknown, request id {job_id}: call revit_jobs with job_id {job_id}. Inspect the model before resubmitting.",
                 "jobId": job_id,
                 "retryable": False,
                 "warnings": [str(failure)],
             }
         if failure is not None:
+            if job.command in ACTION_COMMANDS and isinstance(failure, TransportUnavailableError):
+                failure.args = (
+                    f"{failure.args[0]} Request id {job_id}: call revit_jobs with job_id {job_id}.",
+                )
             raise failure
         if result is None:
             raise RevitChannelError("Channel completed without a response.")

@@ -28,7 +28,9 @@ public sealed record ScheduledJob(
     DateTimeOffset SubmittedUtc,
     JobState State,
     string? Result,
-    int Position);
+    int Position,
+    string? TargetDocument = null,
+    DateTimeOffset? CompletedUtc = null);
 
 public sealed record JobSubmission(ScheduledJob? Job, string? Error, int RetryAfterMs);
 
@@ -78,7 +80,7 @@ public sealed class JobScheduler
         get { lock (_sync) return _rotation.Count > 0; }
     }
 
-    public JobSubmission Submit(string jobId, string clientId, string clientName, string command, string payload, bool retry = false)
+    public JobSubmission Submit(string jobId, string clientId, string clientName, string command, string payload, bool retry = false, string? targetDocument = null)
     {
         if (string.IsNullOrWhiteSpace(jobId)) throw new ArgumentException("Job id is required.", nameof(jobId));
         if (string.IsNullOrWhiteSpace(clientId)) throw new ArgumentException("Client id is required.", nameof(clientId));
@@ -102,7 +104,7 @@ public sealed class JobScheduler
             _clients.TryGetValue(clientId, out var queue);
             if (queue is not null && queue.Count >= 16) return new(null, "queue_full", 1000);
             var entry = new Entry(jobId, clientId, string.IsNullOrWhiteSpace(clientName) ? "unknown" : clientName,
-                command, payload, _clock());
+                command, payload, _clock()) { TargetDocument = targetDocument };
             if (ActionJobParser.IsAction(command))
             {
                 var accepted = CommandResponse<string>.PartialResult(command, "accepted", "Command accepted and running.", 0);
@@ -111,7 +113,7 @@ public sealed class JobScheduler
                 {
                     if (persisted)
                         _writeResult(Path.Combine(_resultDirectory!, $"{jobId}.journal"),
-                            command + "\n" + entry.Fingerprint);
+                            command + "\n" + entry.Fingerprint + "\n" + Convert.ToBase64String(Encoding.UTF8.GetBytes(targetDocument ?? "")));
                     StoreResult(entry, CommandResponseJsonSerializer.Serialize(accepted));
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -259,6 +261,27 @@ public sealed class JobScheduler
         }
     }
 
+    public IReadOnlyList<ScheduledJob> RecentJobs()
+    {
+        lock (_sync)
+        {
+            EvictExpired();
+            if (_resultDirectory is not null && Directory.Exists(_resultDirectory))
+            {
+                foreach (var journalPath in Directory.EnumerateFiles(_resultDirectory, "*.journal")
+                             .OrderByDescending(path =>
+                             {
+                                 var resultPath = Path.ChangeExtension(path, ".json");
+                                 return File.GetLastWriteTimeUtc(File.Exists(resultPath) ? resultPath : path);
+                             }).Take(100))
+                    Restore(Path.GetFileNameWithoutExtension(journalPath));
+            }
+            return _jobs.Values.Where(entry => ActionJobParser.IsAction(entry.Command) ||
+                    entry.State is JobState.Queued or JobState.WaitingRevit or JobState.Running)
+                .OrderByDescending(entry => entry.CompletedUtc ?? entry.SubmittedUtc).Take(100).Select(Snapshot).ToArray();
+        }
+    }
+
     private ScheduledJob Snapshot(Entry entry)
     {
         var position = 0;
@@ -275,7 +298,8 @@ public sealed class JobScheduler
         }
     Found:
         return new(entry.JobId, entry.ClientId, entry.ClientName, entry.Command, entry.Payload,
-            entry.SubmittedUtc, entry.State, entry.Result, position);
+            entry.SubmittedUtc, entry.State, entry.Result, position, entry.TargetDocument,
+            entry.State == JobState.Abandoned ? null : entry.CompletedUtc);
     }
 
     public void SetBudget(int maxStoredResponses, long maxStoredBytes)
@@ -402,14 +426,16 @@ public sealed class JobScheduler
         var journalPath = Path.Combine(_resultDirectory, $"{jobId}.journal");
         if (!File.Exists(journalPath)) return;
         var metadata = File.ReadAllLines(journalPath);
-        if (metadata.Length != 2) throw new IOException("Invalid request journal.");
+        if (metadata.Length is not (2 or 3)) throw new IOException("Invalid request journal.");
         var resultPath = Path.Combine(_resultDirectory, $"{jobId}.json");
-        if (!File.Exists(resultPath) || File.GetLastWriteTimeUtc(resultPath) < _clock().UtcDateTime.AddHours(-24))
+        var hasResult = File.Exists(resultPath);
+        var storedUtc = File.GetLastWriteTimeUtc(hasResult ? resultPath : journalPath);
+        if (storedUtc < _clock().UtcDateTime.AddHours(-24))
         {
             _expired.Set(jobId, true);
             return;
         }
-        var result = File.ReadAllText(resultPath);
+        var result = hasResult ? File.ReadAllText(resultPath) : "";
         var finished = ResultEnvelope.TryReadFlags(result, out var success, out var partial) && !partial;
         if (!finished)
         {
@@ -421,9 +447,11 @@ public sealed class JobScheduler
         var entry = new Entry(jobId, "recovered", "unknown", metadata[0], "{}", new DateTimeOffset(File.GetLastWriteTimeUtc(journalPath), TimeSpan.Zero))
         {
             Fingerprint = metadata[1],
+            TargetDocument = metadata.Length == 3 && metadata[2].Length > 0
+                ? Encoding.UTF8.GetString(Convert.FromBase64String(metadata[2])) : null,
             Result = result,
             State = finished ? success ? JobState.Done : JobState.Failed : JobState.Abandoned,
-            CompletedUtc = new DateTimeOffset(File.GetLastWriteTimeUtc(resultPath), TimeSpan.Zero)
+            CompletedUtc = new DateTimeOffset(storedUtc, TimeSpan.Zero)
         };
         _jobs.Add(jobId, entry);
     }
@@ -448,6 +476,7 @@ public sealed class JobScheduler
         public string ClientName { get; } = clientName;
         public string Command { get; } = command;
         public string Payload { get; } = payload;
+        public string? TargetDocument { get; init; }
         public string Fingerprint { get; init; } = JobScheduler.Fingerprint(payload);
         public DateTimeOffset SubmittedUtc { get; } = submittedUtc;
         public DateTimeOffset? CompletedUtc { get; set; }

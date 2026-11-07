@@ -216,6 +216,18 @@ After journal removal and an add-in restart, the ID is unknown; clients must not
 The limits above can evict a result earlier.
 Over HTTP, an unavailable result returns status 410 with `"error":"expired"` while its eviction remains in the bounded in-memory cache; otherwise status 404 means the ID is unknown, including after journal expiry and restart.
 
+`revit_jobs` without `job_id` returns at most 100 recent entries, newest first by completion or submission time.
+The list includes retained completed actions from the request journal, including after an add-in restart, and active jobs.
+Each entry contains `jobId`, `command`, `targetDocument`, `state` and `finishedUtc`; pending jobs and abandoned jobs with an unknown outcome have no finished time.
+`targetDocument` is the requested document filter, or null for an unaddressed request or a journal written before document metadata was recorded.
+Before sending an action, the Python server writes and flushes a client-side request record containing its ID, command, document filter, selected process ID and submission time.
+No action payload is stored in this record.
+The records are in `revit-model-mcp/requests` under `%LOCALAPPDATA%` on Windows, `~/Library/Caches` on macOS, or `$XDG_CACHE_HOME` (default `~/.cache`) on Linux.
+The next action removes records older than 24 hours and retains at most 100 records.
+A persistence failure prevents submission.
+If a reply is lost, a returned transport error includes the original request ID and `call revit_jobs with job_id <id>`.
+If the client process is killed before it can return an error, the record remains on the client computer; `revit_jobs` without an ID also lists the retained action on the selected workstation instance.
+
 ### Settings reference
 
 `%LOCALAPPDATA%\RevitModelMcp\settings.json` accepts these keys.
