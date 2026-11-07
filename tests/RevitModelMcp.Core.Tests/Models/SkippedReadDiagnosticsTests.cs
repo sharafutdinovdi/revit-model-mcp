@@ -64,7 +64,9 @@ public sealed class SkippedReadDiagnosticsTests
         {
             Families = Enumerable.Range(0, 125).Select(index => new FamilyAuditFamily
             {
-                Name = $"Family {index}", Status = "skipped", Reason = "Unsupported."
+                Name = $"Family {index}",
+                Status = "skipped",
+                Reason = "Unsupported."
             }).ToList()
         };
         var response = CommandResponse<FamilyAuditData>.Ok("family-audit", data, 1);
@@ -86,7 +88,9 @@ public sealed class SkippedReadDiagnosticsTests
             diagnostics.Add($"family Family {index} audit", new InvalidOperationException("Unavailable."));
             data.Families.Add(new FamilyAuditFamily
             {
-                Name = $"Family {index}", Status = "failed", Reason = "Unavailable."
+                Name = $"Family {index}",
+                Status = "failed",
+                Reason = "Unavailable."
             });
         }
         SkippedReadDiagnostics.Current = diagnostics;
