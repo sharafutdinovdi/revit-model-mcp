@@ -557,6 +557,7 @@ def test_pipe_forwards_intermediate_progress_and_resolves_only_terminal():
         }
         reader.feed_data((json.dumps(intermediate) + "\n").encode())
         await asyncio.sleep(0)
+        await asyncio.sleep(0)
         assert not future.done()
         reporter.observe.assert_awaited_once_with(intermediate)
         terminal = {"type": "job", "jobId": "job", "state": "done", "result": {"success": True}}

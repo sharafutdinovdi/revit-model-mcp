@@ -41,6 +41,18 @@ _client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
 )
 
 
+def _dialog_wait_message(dialog: dict[str, Any]) -> str:
+    detail = (
+        " / ".join(
+            value
+            for key in ("dialogId", "message")
+            if isinstance(value := dialog.get(key), str) and value
+        )
+        or "unknown"
+    )
+    return f"waiting for dialog {detail}"
+
+
 def _request_journal_directory() -> Path:
     if sys.platform == "win32":
         root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
@@ -83,7 +95,10 @@ def _persist_request_id(job: Job, instance: dict[str, Any]) -> Path:
 
 
 class ProgressReporter:
-    """Request-scoped, best-effort MCP progress delivery."""
+    """Monotonic request progress with one sender and one latest-value slot.
+
+    Notification callbacks never run on the result delivery path.
+    """
 
     def __init__(self, ctx: Context | None = None):
         self.ctx = ctx
@@ -96,30 +111,42 @@ class ProgressReporter:
         self.started: float | None = None
         self.last_tick = 0.0
         self.partial: str | None = None
+        self._pending: tuple[float, float | None, str] | None = None
+        self._sender: asyncio.Task[None] | None = None
 
     async def update(self, progress: float, total: float | None, message: str):
         async with self._lock:
             if self.ctx is None or self.finished:
                 return
-            await self._send(progress, total, message)
+            final = message in {"Done", "Still running, poll revit_jobs"}
+            self.progress = max(self.progress, progress)
+            if total is not None or self.total is not None:
+                self.total = max(self.total or 0, total or 0, self.progress)
+            if final:
+                self.progress = self.total = max(self.progress, self.total or 1)
+            self.finished = final
+            self._pending = (self.progress, self.total, message)
+            if self._sender is None or self._sender.done():
+                self._sender = asyncio.create_task(self._send())
 
-    async def _send(self, progress: float, total: float | None, message: str):
-        now = asyncio.get_running_loop().time()
-        final = message in {"Done", "Still running, poll revit_jobs"}
-        if not final and now - self.last_sent < 0.5:
-            await asyncio.sleep(0.5 - (now - self.last_sent))
+    async def _send(self):
         from revit_model_mcp.actions import redact_model_paths
 
-        self.last_sent = asyncio.get_running_loop().time()
-        self.total = total
-        self.progress = progress
-        self.finished = final
-        try:
-            await self.ctx.report_progress(
-                progress, total, redact_model_paths({"message": message})["message"]
-            )
-        except Exception:
-            LOGGER.warning("Could not send MCP progress notification.")
+        while self._pending is not None:
+            delay = 0.5 - (asyncio.get_running_loop().time() - self.last_sent)
+            if not self.finished and delay > 0:
+                await asyncio.sleep(delay)
+            progress, total, message = self._pending
+            self._pending = None
+            self.last_sent = asyncio.get_running_loop().time()
+            try:
+                await self.ctx.report_progress(
+                    progress, total, redact_model_paths({"message": message})["message"]
+                )
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                LOGGER.warning("Could not send MCP progress notification.")
 
     async def observe(self, response: dict[str, Any]):
         if self.ctx is None or self.finished:
@@ -127,12 +154,17 @@ class ProgressReporter:
         data = response.get("data")
         data = data if isinstance(data, dict) else {}
         state = response.get("state", data.get("state"))
+        dialog = response.get("dialog", data.get("dialog"))
+        if state == "waiting_dialog" and isinstance(dialog, dict):
+            state = _dialog_wait_message(dialog)
         if state and state != self.state:
             messages = {
                 "queued": f"Queued in Revit (position {response.get('position', data.get('position', 1))})",
                 "waiting_revit": "Waiting for the Revit API context",
                 "running": "Running in Revit",
             }
+            if isinstance(state, str) and state.startswith("waiting for dialog "):
+                messages[state] = state
             if state in messages:
                 await self.update(0, None, messages[state])
                 self.state = state
@@ -175,12 +207,12 @@ class ProgressReporter:
             if self.ctx is None or self.finished:
                 return
             now = asyncio.get_running_loop().time()
-            if self.started is not None and now - self.last_tick >= 2:
-                self.last_tick = now
-                progress = self.progress if self.total is not None else self.progress + 1
-                await self._send(
-                    progress, self.total, f"Running in Revit, {int(now - self.started)} s"
-                )
+            if self.started is None or now - self.last_tick < 2:
+                return
+            self.last_tick = now
+            progress = self.progress if self.total is not None else self.progress + 1
+            total = self.total
+        await self.update(progress, total, f"Running in Revit, {int(now - self.started)} s")
 
     async def wait(self, awaitable):
         if self.ctx is None:
@@ -342,12 +374,22 @@ def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str
     )
     if progress is not None and models:
         progress["models"] = models
+    waiting = {}
+    source = response or {}
+    if isinstance(data, dict) and data.get("state") == "waiting_dialog":
+        source = data
+    if source.get("state") == "waiting_dialog":
+        waiting = {"state": "waiting_dialog", "dialog": source.get("dialog")}
+    dialog = waiting.get("dialog")
+    waiting_message = _dialog_wait_message(dialog) + ". " if isinstance(dialog, dict) else ""
     return {
+        **waiting,
         "status": "running",
         "jobId": job_id,
         "progress": progress,
         "partial": models,
-        "message": "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
+        "message": waiting_message
+        + "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
     }
 
 
@@ -865,7 +907,7 @@ class RevitChannel:
                     else configured_pickup_timeout_seconds(),
                 )
             )
-            total = reporter.total or 1
+            total = max(reporter.progress, reporter.total or 1)
             await reporter.update(
                 total,
                 total,
@@ -1236,7 +1278,7 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
     data = data if isinstance(data, dict) else {}
     state = response.get("state", data.get("state"))
     if state is not None:
-        return state in {"queued", "waiting_revit", "running"}
+        return state in {"queued", "waiting_revit", "running", "waiting_dialog"}
     if isinstance(response.get("progress", data.get("progress")), dict):
         return True
     if response.get("error") == "Pending":

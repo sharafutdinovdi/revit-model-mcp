@@ -162,6 +162,8 @@ class PipeConnection:
         self._replies: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._jobs: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._progress_callbacks: dict[str, Callable[[dict[str, Any]], Awaitable[None]]] = {}
+        self._progress_pending: dict[str, dict[str, Any]] = {}
+        self._progress_tasks: dict[str, asyncio.Task[None]] = {}
         self.closed = False
         self.hello: dict[str, Any] = {}
         self._task = asyncio.create_task(self._read_loop())
@@ -212,6 +214,31 @@ class PipeConnection:
     def forget(self, job_id: str) -> None:
         self._jobs.pop(job_id, None)
         self._progress_callbacks.pop(job_id, None)
+        self._progress_pending.pop(job_id, None)
+        task = self._progress_tasks.pop(job_id, None)
+        if task is not None:
+            task.cancel()
+
+    def _notify_progress(self, job_id: str, message: dict[str, Any]) -> None:
+        if job_id not in self._progress_callbacks:
+            return
+        self._progress_pending[job_id] = message
+        task = self._progress_tasks.get(job_id)
+        if task is None or task.done():
+            self._progress_tasks[job_id] = asyncio.create_task(self._send_progress(job_id))
+
+    async def _send_progress(self, job_id: str) -> None:
+        while job_id in self._progress_pending:
+            message = self._progress_pending.pop(job_id)
+            callback = self._progress_callbacks.get(job_id)
+            if callback is None:
+                return
+            try:
+                await callback(message)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                LOGGER.warning("Could not forward Revit pipe progress notification.")
 
     async def aclose(self) -> None:
         self._task.cancel()
@@ -233,9 +260,7 @@ class PipeConnection:
                     continue
                 if message.get("type") == "job":
                     job_id = str(message.get("jobId"))
-                    callback = self._progress_callbacks.get(job_id)
-                    if callback is not None:
-                        await callback(message)
+                    self._notify_progress(job_id, message)
                     future = self._jobs.get(job_id)
                     if (
                         future is not None
@@ -247,9 +272,7 @@ class PipeConnection:
                         future.set_result(message)
                     continue
                 if message.get("type") == "submitted":
-                    callback = self._progress_callbacks.get(str(message.get("jobId")))
-                    if callback is not None:
-                        await callback(message)
+                    self._notify_progress(str(message.get("jobId")), message)
                 future = self._replies.get(str(message.get("id")))
                 if future is not None and not future.done():
                     future.set_result(message)
@@ -271,6 +294,10 @@ class PipeConnection:
                 future.exception()
         self._jobs.clear()
         self._progress_callbacks.clear()
+        self._progress_pending.clear()
+        for task in self._progress_tasks.values():
+            task.cancel()
+        self._progress_tasks.clear()
         self._writer.close()
 
 

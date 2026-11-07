@@ -2323,13 +2323,25 @@ def test_set_read_only_uses_one_instance_for_the_shared_workstation_lock():
             "save-tool",
         ),
         ("revit_run_tool", {"name": "my_tool", "args": {"count": 2}}, "run-tool"),
-        ("revit_delete_tool", {"name": "my_tool"}, "delete-tool"),
     ],
 )
-def test_my_tools_confirmation_round_trip(tool, arguments, command):
+@pytest.mark.parametrize(
+    "selectors",
+    [{}, {"document": "Depot"}, {"process_id": 84}, {"targetDocument": "Depot", "processId": 84}],
+)
+def test_my_tools_confirmation_round_trip(tool, arguments, command, selectors):
     import asyncio
 
-    server, execute, _ = action_server()
+    if tool == "revit_save_tool" and selectors:
+        selectors = {"processId": 84} if "processId" in selectors else {"process_id": 84}
+
+    server, execute, host = action_server()
+    host.list_revit_instances.return_value = (
+        [{"processId": 42, "documentTitle": "Tower"}, {"processId": 84, "documentTitle": "Depot"}]
+        if selectors
+        else [{"processId": 42}]
+    )
+    arguments = {**arguments, **selectors}
     execute.side_effect = [
         {
             "success": True,
@@ -2347,12 +2359,116 @@ def test_my_tools_confirmation_round_trip(tool, arguments, command):
     assert execute.await_args.args[0].command == command
     preview = execute.await_args.args[0].payload.copy()
     assert preview["confirmToken"] is None
+    assert preview["targetProcessId"] == (84 if selectors else 42)
+    if "document" in selectors or "targetDocument" in selectors:
+        assert preview["targetDocument"] == "Depot"
     asyncio.run(server.call_tool(tool, {**arguments, "confirm_token": "review-token"}))
     confirmed = execute.await_args.args[0].payload.copy()
     assert confirmed.pop("confirmToken") == "review-token"
     preview.pop("confirmToken")
     assert confirmed == preview
     assert execute.await_count == 2
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("revit_list_tools", {}),
+        ("revit_get_tool", {"name": "my_tool"}),
+        ("revit_delete_tool", {"name": "my_tool"}),
+    ],
+)
+def test_my_tools_catalog_routes_without_model_target(tool, arguments):
+    import asyncio
+
+    server, execute, host = action_server()
+    host.list_revit_instances.return_value = [{"processId": 84}, {"processId": 42}]
+    result = asyncio.run(server.call_tool(tool, arguments))
+    assert result.structured_content["success"] is True
+    assert execute.await_args.args[0].payload["targetProcessId"] == 42
+    assert "targetDocument" not in execute.await_args.args[0].payload
+
+
+@pytest.mark.parametrize("issuing_process_available", [True, False])
+def test_delete_tool_confirmation_stays_on_issuing_process(issuing_process_available):
+    import asyncio
+
+    server, execute, host = action_server()
+    host.list_revit_instances.return_value = [{"processId": 84}, {"processId": 42}]
+    execute.return_value = {
+        "success": True,
+        "data": {"needsConfirmation": True, "confirmToken": "delete-token"},
+    }
+    first = asyncio.run(server.call_tool("revit_delete_tool", {"name": "my_tool"}))
+    assert first.structured_content["data"]["confirmToken"] == "delete-token"
+    preview = execute.await_args.args[0].payload.copy()
+    assert preview["command"] == "delete-tool"
+    assert preview["targetProcessId"] == 42
+    assert preview.pop("confirmToken") is None
+    host.list_revit_instances.return_value = [
+        {"processId": 21},
+        *([{"processId": 42}] if issuing_process_available else []),
+        {"processId": 84},
+    ]
+    execute.reset_mock()
+    execute.return_value = {"success": True, "data": {"summary": "Deleted saved tool my_tool."}}
+    confirmation = server.call_tool(
+        "revit_delete_tool", {"name": "my_tool", "confirm_token": "delete-token"}
+    )
+    if not issuing_process_available:
+        with pytest.raises(ToolError, match="selected Revit process is absent"):
+            asyncio.run(confirmation)
+        execute.assert_not_awaited()
+        return
+    result = asyncio.run(confirmation)
+    assert result.structured_content["success"] is True
+    confirmed = execute.await_args.args[0].payload.copy()
+    assert confirmed.pop("confirmToken") == "delete-token"
+    assert confirmed == preview
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        (
+            "revit_save_tool",
+            {
+                "name": "my_tool",
+                "description": "Count",
+                "parameters": {"type": "object"},
+                "code": "return 1;",
+            },
+        ),
+        ("revit_run_tool", {"name": "my_tool", "args": {}}),
+    ],
+)
+@pytest.mark.parametrize("selector", [{"document": "Depot"}, {"process_id": 84}])
+def test_my_tools_route_to_selected_instance(tool, arguments, selector):
+    import asyncio
+
+    if tool == "revit_save_tool":
+        selector = {"process_id": 84}
+
+    server, execute, host = action_server()
+    host.list_revit_instances.return_value = [
+        {"processId": 42, "documentTitle": "Tower"},
+        {"processId": 84, "documentTitle": "Depot"},
+    ]
+    with pytest.raises(ToolError, match="document|process_id"):
+        asyncio.run(server.call_tool(tool, arguments))
+    execute.assert_not_awaited()
+    result = asyncio.run(server.call_tool(tool, {**arguments, **selector}))
+    assert result.structured_content["success"] is True
+    assert execute.await_args.args[0].payload["targetProcessId"] == 84
+    execute.reset_mock()
+    with pytest.raises(ToolError):
+        asyncio.run(server.call_tool(tool, {**arguments, "process_id": 0}))
+    if tool == "revit_run_tool":
+        with pytest.raises(ToolError, match="Document 'Tower' is not open in Revit process 84"):
+            asyncio.run(
+                server.call_tool(tool, {**arguments, "document": "Tower", "process_id": 84})
+            )
+    execute.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -2414,6 +2530,18 @@ def test_my_tools_read_only_and_discovery_annotations():
         asyncio.run(server.call_tool("revit_get_tool", {"name": "my_tool"}))
     assert execute.await_count == 2
     tools = {tool.name: tool for tool in asyncio.run(server.list_tools())}
+    for name in ["revit_save_tool", "revit_run_tool"]:
+        properties = tools[name].input_schema["properties"]
+        assert "process_id" in properties
+        assert properties["process_id"]["default"] is None
+        assert properties["process_id"]["anyOf"] == [
+            {"exclusiveMinimum": 0, "type": "integer"},
+            {"type": "null"},
+        ]
+    assert "document" in tools["revit_run_tool"].input_schema["properties"]
+    assert "document" not in tools["revit_save_tool"].input_schema["properties"]
+    for name in ["revit_list_tools", "revit_get_tool", "revit_delete_tool"]:
+        assert not {"document", "process_id"} & tools[name].input_schema["properties"].keys()
     for name in ["revit_list_tools", "revit_get_tool"]:
         assert tools[name].annotations.read_only_hint is True
         assert tools[name].annotations.destructive_hint is False

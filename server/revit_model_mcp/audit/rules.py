@@ -88,6 +88,14 @@ def load_rules(path=None, inline=None):
             ],
         }
     )
+    for rule in resolved:
+        threshold = rule.get("threshold")
+        if threshold is None:
+            continue
+        kind = rule["check"]["type"]
+        unit = next(iter(threshold))
+        if kind in ("count", "coordinates", "worksets") and unit != "max_count":
+            raise ValueError(f"Incompatible threshold unit {unit} for {kind}: {rule['id']}")
     digest = hashlib.sha256(
         json.dumps({"source": value, "rules": resolved}, sort_keys=True).encode()
     ).hexdigest()

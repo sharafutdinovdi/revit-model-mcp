@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using RevitModelMcp.Core.Control;
 
 namespace RevitModelMcp.Core.Models;
 
@@ -74,17 +75,28 @@ public sealed class FamilyEditData
     [DataMember(Name = "families")] public List<FamilyEditFamily> Families { get; set; } = [];
     [DataMember(Name = "summary", EmitDefaultValue = false)] public string? Summary { get; set; }
     [DataMember(Name = "undoName", EmitDefaultValue = false)] public string? UndoName { get; set; }
+
+    public bool HasRetainedDocument => Families.Any(family => family.Closure is { Closed: false });
 }
 
 [DataContract]
 public sealed class FamilyEditFamily
 {
+    [DataMember(Name = "closure", EmitDefaultValue = false)] public DocumentClosureResult? Closure { get; set; }
     [DataMember(Name = "name")] public string Name { get; set; } = string.Empty;
     [DataMember(Name = "status")] public string Status { get; set; } = string.Empty;
     [DataMember(Name = "reason", EmitDefaultValue = false)] public string? Reason { get; set; }
     [DataMember(Name = "loaded")] public bool Loaded { get; set; }
     [DataMember(Name = "rolledBack", EmitDefaultValue = false)] public bool RolledBack { get; set; }
     [DataMember(Name = "operations")] public List<FamilyOperationResult> Operations { get; set; } = [];
+
+    public void ApplyClosure(DocumentClosureResult? closure)
+    {
+        Closure = closure;
+        if (closure is not { Closed: false }) return;
+        Status = "failed";
+        Reason = $"{Reason} {closure}".Trim();
+    }
 }
 
 [DataContract]

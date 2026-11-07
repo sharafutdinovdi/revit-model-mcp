@@ -554,6 +554,28 @@ jobs:
           else
             gh release create "$RELEASE_TAG" artifacts/release/* --verify-tag --notes-file install-notes.md --generate-notes "${options[@]}"
           fi
+      - name: Verify published install downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          bases=("https://github.com/$GH_REPO/releases/download/$RELEASE_TAG")
+          latest_tag="$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')"
+          if [[ "$latest_tag" == "$RELEASE_TAG" ]]; then
+            bases+=("https://github.com/$GH_REPO/releases/latest/download")
+          fi
+          for base in "${bases[@]}"; do
+            download_dir="$(mktemp -d)"
+            for asset in install.ps1 "RevitModelMcp-$version-SingleUser.msi" SHA256SUMS.txt; do
+              curl --fail --silent --show-error --location "$base/$asset" --output "$download_dir/$asset"
+            done
+            cmp artifacts/release/SHA256SUMS.txt "$download_dir/SHA256SUMS.txt"
+            (cd "$download_dir" && sha256sum --check --ignore-missing SHA256SUMS.txt)
+            rm -r "$download_dir"
+          done
 
 
   # PyPI pending publisher:

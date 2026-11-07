@@ -76,10 +76,13 @@ public sealed class CommandResponse<T>
     [OnSerializing]
     private void AddJobMetadata(StreamingContext context)
     {
-        if (SkippedReadDiagnostics.Current is { } diagnostics)
+        if (SkippedReadDiagnostics.Current is not null || Skipped is not null ||
+            Data is ModelSnapshotData or FamilyAuditData or ApiLookupResult)
         {
+            var diagnostics = SkippedReadDiagnostics.ForResponse(Data, Skipped, SkippedCount ?? 0);
             Skipped = diagnostics.Items;
             SkippedCount = diagnostics.Count;
+            Partial |= diagnostics.Count > 0;
         }
         var metadata = JobResponseMetadata.Current;
         if (metadata is null || JobId is not null) return;

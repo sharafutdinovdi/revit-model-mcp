@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
@@ -107,6 +108,172 @@ public sealed class ReadOnlyLockTests : IDisposable
     }
 
     [Test]
+    public async Task ReplacementAfterTokenValidationSurvivesUnlock()
+    {
+        using var writer = new ReadOnlyLock(LockPath, () => false);
+        using var service = new ReadOnlyLock(LockPath, () => false, () => writer.Set(true, "ribbon"));
+        var tokens = new DocumentConfirmationTokens();
+        service.Set(true, "chat");
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
+            .Throws<InvalidOperationException>().WithMessage("The read-only lock changed. Repeat the call without confirm_token.");
+        await Assert.That(writer.IsLocked).IsTrue();
+        await Assert.That(writer.LockedBy).IsEqualTo("ribbon");
+        var replacement = File.ReadAllText(LockPath);
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
+            .Throws<InvalidOperationException>();
+        await Assert.That(File.ReadAllText(LockPath)).IsEqualTo(replacement);
+    }
+
+    [Test]
+    public async Task ReplacementWithIdenticalMetadataInvalidatesConfirmation()
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false);
+        var timestamp = DateTimeOffset.UtcNow.ToString("O");
+        File.WriteAllLines(LockPath, ["ribbon", timestamp, Guid.NewGuid().ToString("N")]);
+        var tokens = new DocumentConfirmationTokens();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+        File.WriteAllLines(LockPath, ["ribbon", timestamp, Guid.NewGuid().ToString("N")]);
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
+            .Throws<InvalidOperationException>();
+        await Assert.That(service.IsLocked).IsTrue();
+        await Assert.That(service.LockedBy).IsEqualTo("ribbon");
+    }
+
+    [Test]
+    public async Task PolicyEnabledAfterValidationPreventsUnlock()
+    {
+        var policy = false;
+        using var service = new ReadOnlyLock(LockPath, () => policy, () => policy = true);
+        service.Set(true, "ribbon");
+        var tokens = new DocumentConfirmationTokens();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
+            .Throws<InvalidOperationException>().WithMessage("Read-only is enforced by workstation policy; ask your administrator.");
+        await Assert.That(service.Source).IsEqualTo("policy");
+        policy = false;
+        await Assert.That(service.IsLocked).IsTrue();
+    }
+
+    [Test]
+    public async Task LegacyMetadataCanBeUnlocked()
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false);
+        File.WriteAllLines(LockPath, ["ribbon", DateTimeOffset.UtcNow.ToString("O")]);
+        var tokens = new DocumentConfirmationTokens();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+        service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine");
+        await Assert.That(service.IsLocked).IsFalse();
+    }
+
+    [Test]
+    public async Task WritesWaitForGuardAcrossProcesses()
+    {
+        const string childPathVariable = "MODEL_MCP_LOCK_TEST_PATH";
+        var childPath = Environment.GetEnvironmentVariable(childPathVariable);
+        if (childPath is not null)
+        {
+            using var writer = new ReadOnlyLock(childPath, () => false);
+            File.WriteAllText(childPath + ".ready", "");
+            writer.Set(true, "ribbon");
+            return;
+        }
+
+        Directory.CreateDirectory(_folder);
+        var start = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(ReadOnlyLockTests).Assembly.Location);
+        start.ArgumentList.Add("--treenode-filter");
+        start.ArgumentList.Add("/*/*/ReadOnlyLockTests/WritesWaitForGuardAcrossProcesses");
+        start.Environment[childPathVariable] = LockPath;
+        using var guard = new FileStream(LockPath + ".guard", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        using var process = Process.Start(start)!;
+        var standardOutput = process.StandardOutput.ReadToEndAsync();
+        var standardError = process.StandardError.ReadToEndAsync();
+        try
+        {
+            var deadline = Stopwatch.StartNew();
+            while (!File.Exists(LockPath + ".ready") && !process.HasExited && deadline.Elapsed < TimeSpan.FromSeconds(30))
+                await Task.Delay(20);
+            await Assert.That(File.Exists(LockPath + ".ready")).IsTrue();
+            await Task.Delay(200);
+            await Assert.That(process.HasExited).IsFalse();
+            await Assert.That(File.Exists(LockPath)).IsFalse();
+            guard.Dispose();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await process.WaitForExitAsync(timeout.Token);
+            var output = await standardOutput + await standardError;
+            await Assert.That(process.ExitCode).IsEqualTo(0).Because(output);
+            using var service = new ReadOnlyLock(LockPath, () => false);
+            await Assert.That(service.IsLocked).IsTrue();
+            await Assert.That(service.LockedBy).IsEqualTo("ribbon");
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill(true);
+        }
+    }
+
+    [Test]
+    public async Task ReplacementAfterValidationSurvivesUnlockAcrossProcesses()
+    {
+        const string childPathVariable = "MODEL_MCP_UNLOCK_REPLACEMENT_TEST_PATH";
+        var childPath = Environment.GetEnvironmentVariable(childPathVariable);
+        if (childPath is not null)
+        {
+            using var writer = new ReadOnlyLock(childPath, () => false);
+            writer.Set(true, "ribbon");
+            return;
+        }
+
+        var start = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(ReadOnlyLockTests).Assembly.Location);
+        start.ArgumentList.Add("--treenode-filter");
+        start.ArgumentList.Add("/*/*/ReadOnlyLockTests/ReplacementAfterValidationSurvivesUnlockAcrossProcesses");
+        start.Environment[childPathVariable] = LockPath;
+        using var process = new Process { StartInfo = start };
+        Task<string>? standardOutput = null;
+        Task<string>? standardError = null;
+        string? replacement = null;
+        using var service = new ReadOnlyLock(LockPath, () => false, () =>
+        {
+            process.Start();
+            standardOutput = process.StandardOutput.ReadToEndAsync();
+            standardError = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(30000))
+            {
+                process.Kill(true);
+                process.WaitForExit();
+                throw new TimeoutException("The replacement writer did not exit.");
+            }
+            replacement = File.ReadAllText(LockPath);
+        });
+        service.Set(true, "chat");
+        var original = File.ReadAllText(LockPath);
+        var tokens = new DocumentConfirmationTokens();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
+            .Throws<InvalidOperationException>().WithMessage("The read-only lock changed. Repeat the call without confirm_token.");
+        var output = await standardOutput! + await standardError!;
+        await Assert.That(process.ExitCode).IsEqualTo(0).Because(output);
+        await Assert.That(replacement).IsNotEqualTo(original);
+        await Assert.That(File.ReadAllText(LockPath)).IsEqualTo(replacement);
+        await Assert.That(service.IsLocked).IsTrue();
+        await Assert.That(service.LockedBy).IsEqualTo("ribbon");
+    }
+
+    [Test]
     public async Task PingSerializesLockFields()
     {
         using var service = new ReadOnlyLock(LockPath, () => false);
@@ -129,6 +296,62 @@ public sealed class ReadOnlyLockTests : IDisposable
         await Assert.That(json).Contains("\"enabled\":false");
         await Assert.That(json).Contains("\"setBy\":null");
         await Assert.That(json).Contains("\"setAtUtc\":null");
+    }
+
+    [Test]
+    public async Task DirectoryInitializationFailureKeepsWritesRefusedAfterDirectoryRecovery()
+    {
+        Directory.CreateDirectory(_folder);
+        var obstruction = Path.Combine(_folder, "blocked");
+        File.WriteAllText(obstruction, "");
+        using var service = new ReadOnlyLock(Path.Combine(obstruction, "read-only"), () => false);
+        await Assert.That(service.InitializationError).Contains("IOException");
+        File.Delete(obstruction);
+        Directory.CreateDirectory(obstruction);
+        await AssertInitializationFailure(service);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task WatcherInitializationFailureKeepsWritesRefused(bool accessDenied)
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false, (_, _) => accessDenied
+            ? throw new UnauthorizedAccessException("confidential path")
+            : throw new IOException("confidential path"));
+        await Assert.That(service.InitializationError).Contains(accessDenied ? "UnauthorizedAccessException" : "IOException");
+        await Assert.That(service.InitializationError).DoesNotContain("confidential path");
+        await AssertInitializationFailure(service);
+    }
+
+    [Test]
+    public async Task WatcherActivationFailureKeepsWritesRefused()
+    {
+        using var service = new ReadOnlyLock(LockPath, () => false, (directory, filter) =>
+        {
+            var watcher = new FileSystemWatcher(directory, filter);
+            watcher.Dispose();
+            return watcher;
+        });
+        await Assert.That(service.InitializationError).IsNotNull();
+        await AssertInitializationFailure(service);
+    }
+
+    private static async Task AssertInitializationFailure(ReadOnlyLock service)
+    {
+        service.Refresh();
+        await Assert.That(service.IsLocked).IsTrue();
+        await Assert.That(service.Source).IsEqualTo("unavailable");
+        await Assert.That(service.State.Refusal).Contains("restart Revit");
+        foreach (var enabled in new[] { true, false })
+            await Assert.That(() => service.Set(enabled, "ribbon")).Throws<InvalidOperationException>();
+        var tokens = new DocumentConfirmationTokens();
+        await Assert.That(() => service.SetFromChat(true, null, tokens, "user", "machine")).Throws<InvalidOperationException>();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+        await Assert.That(preview.NeedsConfirmation).IsTrue();
+        await Assert.That(preview.ConfirmToken).IsNotNull();
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine")).Throws<InvalidOperationException>();
+        await Assert.That(service.IsLocked).IsTrue();
     }
 
     public void Dispose()

@@ -43,3 +43,15 @@ public sealed class HttpListenerStatus
         _ => new(Failed, $"The self-probe returned HTTP {statusCode}.")
     };
 }
+
+public sealed record ChannelRibbonStatus(string Pipe, string Http, string File)
+{
+    public bool IsAvailable => Pipe == HttpListenerStatus.Listening || Http == HttpListenerStatus.Listening ||
+                               File == HttpListenerStatus.Listening;
+
+    public string Description => $"Pipe: {Pipe}. HTTP: {Http}. File channel and discovery: {File}.";
+
+    public static ChannelRibbonStatus Derive(bool pipeListening, HttpListenerStatus http, bool fileEnabled) =>
+        new(pipeListening ? HttpListenerStatus.Listening : HttpListenerStatus.Failed, http.State,
+            fileEnabled ? HttpListenerStatus.Listening : HttpListenerStatus.Failed);
+}

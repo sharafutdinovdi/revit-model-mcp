@@ -24,6 +24,12 @@ The AI app is expected to show the action to you; Model MCP does not show its ow
 The server tests run the same comparison, so a PR that changes a tool without regenerating the manifest fails CI.
 Tool names and descriptions are identical to `bundle/manifest.json`.
 
+Saved-tool catalog reads and deletion use the shared Windows-user store without a model target.
+With several Revit processes, these operations use the lowest discovered process ID.
+Deletion confirmation remains bound to the process that issued the token, even if another process appears before confirmation.
+Saving accepts `process_id` to select the Revit version used for compilation.
+Running accepts `document` and `process_id` for its model and session.
+
 ## Top-level fields
 
 | Field | Value |
