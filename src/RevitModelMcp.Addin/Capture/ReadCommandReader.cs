@@ -11,13 +11,46 @@ namespace RevitModelMcp.Capture;
 
 internal static class ReadCommandReader
 {
-    public static ResponderInfo ReadResponder(UIApplication application)
+    private static readonly Dictionary<Document, string> DocumentIds =
+        new(new DocumentIdentityComparer<Document>((first, second) => first.Equals(second)));
+
+    internal static string DocumentId(Document document)
     {
-        var document = application.ActiveUIDocument?.Document;
+        if (DocumentIds.TryGetValue(document, out var identity)) return identity;
+        identity = "doc:" + Guid.NewGuid().ToString("N");
+        DocumentIds.Add(document, identity);
+        return identity;
+    }
+
+    internal static void PruneDocumentIds()
+    {
+        List<Document>? closed = null;
+        foreach (var document in DocumentIds.Keys)
+        {
+            if (document.IsValidObject) continue;
+            (closed ??= []).Add(document);
+        }
+        if (closed is null) return;
+        foreach (var document in closed) DocumentIds.Remove(document);
+    }
+
+    public static ResponderInfo ReadResponder(UIApplication application, Document? document = null)
+    {
+        var active = application.ActiveUIDocument?.Document;
         return new ResponderInfo
         {
             DocumentName = document?.Title ?? string.Empty,
             DocumentPath = document?.PathName ?? string.Empty,
+            DocumentId = document is null ? null : DocumentId(document),
+            ActiveDocument = active is null ? null : new InstanceDocument
+            {
+                Title = active.Title,
+                Path = active.PathName,
+                DocumentId = DocumentId(active),
+                IsActive = true,
+                IsFamilyDocument = active.IsFamilyDocument
+            },
+            InstanceId = RevitModelMcp.Application.InstanceId,
             ProcessId = Process.GetCurrentProcess().Id,
             RevitVersion = application.Application?.VersionNumber ?? string.Empty
         };

@@ -57,6 +57,8 @@ internal static class ReadCommandExecutor
                 var reference = job.CoordinatorJob.TargetDocument;
                 var target = ActionCommandExecutor.ResolveDocument(application,
                     string.IsNullOrWhiteSpace(reference) ? null : reference!.Trim());
+                output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+                    ReadCommandReader.ReadResponder(application, target), job.CorrelationId);
                 var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
                 ActionJobParser.ValidateFamilyMode(action, target.IsFamilyDocument);
                 var audit = FamilyAuditReader.Read(application, target, action.Families, action.Detail,
@@ -88,6 +90,8 @@ internal static class ReadCommandExecutor
                 return;
             }
             var document = ActionCommandExecutor.ResolveDocument(application, job.TargetDocument);
+            output = CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
+                ReadCommandReader.ReadResponder(application, document), job.CorrelationId);
             if (job.Command == "compare-link-datums")
             {
                 WriteSuccess(output, job.Command, LinkDatumReader.Read(document, job.Action!.DatumOptions!), stopwatch);

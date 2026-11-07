@@ -16,6 +16,15 @@ public sealed class ResponderInfo
 
     [DataMember(Name = "revitVersion")]
     public string RevitVersion { get; set; } = string.Empty;
+
+    [DataMember(Name = "documentId")]
+    public string? DocumentId { get; set; }
+
+    [DataMember(Name = "activeDocument")]
+    public InstanceDocument? ActiveDocument { get; set; }
+
+    [DataMember(Name = "instanceId")]
+    public string InstanceId { get; set; } = string.Empty;
 }
 
 [DataContract]

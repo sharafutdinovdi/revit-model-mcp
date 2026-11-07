@@ -11,6 +11,7 @@ using Nice3point.Revit.Extensions;
 using Nice3point.Revit.Toolkit;
 using Nice3point.Revit.Toolkit.External;
 using RevitModelMcp.Activity;
+using RevitModelMcp.Capture;
 using RevitModelMcp.Connect;
 using RevitModelMcp.Control;
 using RevitModelMcp.Core.Control;
@@ -63,6 +64,7 @@ public sealed class Application : ExternalApplication
     private volatile IReadOnlyList<InstanceDocument> _documents = Array.Empty<InstanceDocument>();
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private static Application? _instance;
+    internal static string InstanceId => _instance?._instanceId ?? string.Empty;
 
     public override void OnStartup()
     {
@@ -441,6 +443,7 @@ public sealed class Application : ExternalApplication
 
     private IReadOnlyList<InstanceDocument> ReadDocuments(Document? closing)
     {
+        ReadCommandReader.PruneDocumentIds();
         var documents = new List<InstanceDocument>();
         var application = RevitContext.UiApplication?.Application;
         if (application is null) return documents;
@@ -450,6 +453,7 @@ public sealed class Application : ExternalApplication
             documents.Add(new InstanceDocument
             {
                 Title = document.Title,
+                DocumentId = ReadCommandReader.DocumentId(document),
                 Path = document.PathName ?? string.Empty,
                 IsActive = _activeDocument is not null && document.Equals(_activeDocument),
                 IsFamilyDocument = document.IsFamilyDocument

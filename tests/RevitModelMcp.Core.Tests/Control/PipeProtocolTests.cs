@@ -39,6 +39,20 @@ public sealed class PipeProtocolTests
 
     [Test]
     [Arguments(null)]
+    [Arguments("doc:stable")]
+    public async Task HelloPreservesOptionalDocumentIdentity(string? documentId)
+    {
+        var hello = new PipeMessage
+        {
+            Type = "hello",
+            Documents = [new InstanceDocument { Title = "Same", DocumentId = documentId }]
+        };
+        var parsed = PipeProtocol.Parse(PipeProtocol.Serialize(hello));
+        await Assert.That(parsed.Documents![0].DocumentId).IsEqualTo(documentId);
+    }
+
+    [Test]
+    [Arguments(null)]
     [Arguments("{\"steps\":{\"completed\":1,\"total\":3,\"current\":\"move\"}}")]
     public async Task JobProgressRoundTrips(string? progress)
     {
