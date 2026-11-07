@@ -104,7 +104,10 @@ public sealed class JobScheduler
             _clients.TryGetValue(clientId, out var queue);
             if (queue is not null && queue.Count >= 16) return new(null, "queue_full", 1000);
             var entry = new Entry(jobId, clientId, string.IsNullOrWhiteSpace(clientName) ? "unknown" : clientName,
-                command, payload, _clock()) { TargetDocument = targetDocument };
+                command, payload, _clock())
+            {
+                TargetDocument = targetDocument
+            };
             if (ActionJobParser.IsAction(command))
             {
                 var accepted = CommandResponse<string>.PartialResult(command, "accepted", "Command accepted and running.", 0);
