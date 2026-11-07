@@ -2,6 +2,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
@@ -253,7 +254,11 @@ internal static class CodeExecution
             if (failures.Message is not null) throw new InvalidOperationException(failures.Message);
             if (context.CloseOpenScopes() || action.TransactionMode == "group" && document!.IsModifiable)
                 throw new InvalidOperationException("The script left a transaction or edit scope open. The run was rolled back.");
-            result.ReturnValue = CodeResultLimiter.Limit(returned, ConvertSpecial);
+            var limited = CodeResultLimiter.Limit(returned, ConvertSpecial);
+            result.ReturnValue = limited.Value;
+            result.ResultCompleteness = limited;
+            if (limited.FullJson is not null)
+                result.ResultArtifact = Convert.ToBase64String(Encoding.UTF8.GetBytes(limited.FullJson));
             result.Log = context.Lines.ToList();
             if (group is not null)
             {
