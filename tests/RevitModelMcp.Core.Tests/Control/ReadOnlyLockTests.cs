@@ -220,6 +220,60 @@ public sealed class ReadOnlyLockTests : IDisposable
     }
 
     [Test]
+    public async Task ReplacementAfterValidationSurvivesUnlockAcrossProcesses()
+    {
+        const string childPathVariable = "MODEL_MCP_UNLOCK_REPLACEMENT_TEST_PATH";
+        var childPath = Environment.GetEnvironmentVariable(childPathVariable);
+        if (childPath is not null)
+        {
+            using var writer = new ReadOnlyLock(childPath, () => false);
+            writer.Set(true, "ribbon");
+            return;
+        }
+
+        var start = new ProcessStartInfo("dotnet")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        start.ArgumentList.Add(typeof(ReadOnlyLockTests).Assembly.Location);
+        start.ArgumentList.Add("--treenode-filter");
+        start.ArgumentList.Add("/*/*/ReadOnlyLockTests/ReplacementAfterValidationSurvivesUnlockAcrossProcesses");
+        start.Environment[childPathVariable] = LockPath;
+        using var process = new Process { StartInfo = start };
+        Task<string>? standardOutput = null;
+        Task<string>? standardError = null;
+        string? replacement = null;
+        using var service = new ReadOnlyLock(LockPath, () => false, () =>
+        {
+            process.Start();
+            standardOutput = process.StandardOutput.ReadToEndAsync();
+            standardError = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(30000))
+            {
+                process.Kill(true);
+                process.WaitForExit();
+                throw new TimeoutException("The replacement writer did not exit.");
+            }
+            replacement = File.ReadAllText(LockPath);
+        });
+        service.Set(true, "chat");
+        var original = File.ReadAllText(LockPath);
+        var tokens = new DocumentConfirmationTokens();
+        var preview = service.SetFromChat(false, null, tokens, "user", "machine");
+
+        await Assert.That(() => service.SetFromChat(false, preview.ConfirmToken, tokens, "user", "machine"))
+            .Throws<InvalidOperationException>().WithMessage("The read-only lock changed. Repeat the call without confirm_token.");
+        var output = await standardOutput! + await standardError!;
+        await Assert.That(process.ExitCode).IsEqualTo(0).Because(output);
+        await Assert.That(replacement).IsNotEqualTo(original);
+        await Assert.That(File.ReadAllText(LockPath)).IsEqualTo(replacement);
+        await Assert.That(service.IsLocked).IsTrue();
+        await Assert.That(service.LockedBy).IsEqualTo("ribbon");
+    }
+
+    [Test]
     public async Task PingSerializesLockFields()
     {
         using var service = new ReadOnlyLock(LockPath, () => false);
