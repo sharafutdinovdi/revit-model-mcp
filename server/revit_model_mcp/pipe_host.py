@@ -20,6 +20,7 @@ from typing import Any
 
 from revit_model_mcp.policy import POLICY_REFUSAL_PREFIX
 from revit_model_mcp.revit_channel import (
+    ACTION_COMMANDS,
     CHANNEL_DIRECTORY,
     CLIENT_ID,
     Job,
@@ -29,6 +30,7 @@ from revit_model_mcp.revit_channel import (
     RemoteHost,
     ResponseParseError,
     RevitChannelError,
+    SubmissionRefusedError,
     TransportUnavailableError,
     current_progress_reporter,
     matches_document,
@@ -47,7 +49,7 @@ ERROR_PIPE_BUSY = 231
 SECURITY_SQOS_PRESENT = 0x00100000
 SECURITY_IDENTIFICATION = 0x00010000
 FILE_FLAG_OVERLAPPED = 0x40000000
-FINISHED_STATES = frozenset({"done", "failed", "cancelled"})
+FINISHED_STATES = frozenset({"done", "failed", "cancelled", "abandoned"})
 
 StreamPair = tuple[asyncio.StreamReader, asyncio.StreamWriter]
 Connector = Callable[[int], Awaitable[StreamPair]]
@@ -175,7 +177,9 @@ class PipeConnection:
         if len(line) > REQUEST_LIMIT_BYTES + 1:
             raise RevitChannelError("The request exceeds the 1 MiB pipe message limit.")
         if self.closed:
-            raise PipeDisconnectedError("The Revit pipe connection is closed.")
+            error = PipeDisconnectedError("The Revit pipe connection is closed.")
+            error.before_send = True
+            raise error
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._replies[request_id] = future
         try:
@@ -299,7 +303,7 @@ def _refusal_error(reply: dict[str, Any]) -> RevitChannelError:
         )
     if reply.get("error") == "read_only":
         return ReadOnlyRefusedError(reply.get("message") or _error_text(reply))
-    return RevitChannelError(_error_text(reply))
+    return SubmissionRefusedError(_error_text(reply))
 
 
 def _error_text(reply: dict[str, Any]) -> str:
@@ -531,12 +535,11 @@ class PipeJobHost:
         self._future = self._connection.watch(job_id)
         try:
             reply = await self._connection.request({"type": "submit", "job": payload})
-        except PipeDisconnectedError:
-            # The connection may have died before the write ever reached Revit (safe to
-            # resubmit), or after Revit already queued the job but before the "submitted"
-            # reply came back (resubmitting would fail with duplicate_job_id and would wrongly
-            # report a job that is actually running). Reconnect and ask `status` first so a
-            # job Revit already accepted is resumed instead of rejected or run twice.
+        except PipeDisconnectedError as error:
+            if error.before_send and command in ACTION_COMMANDS:
+                self._connection.forget(job_id)
+                raise
+            # A lost reply may follow acceptance. Query the original id before another submission.
             self._connection = await self._parent.connection(self._instance)
             self._future = self._connection.watch(job_id)
             status_reply = await self._connection.request({"type": "status", "jobId": job_id})
@@ -551,7 +554,12 @@ class PipeJobHost:
                         raise ResponseParseError("The finished pipe job has no JSON result.")
                     self._result = json.dumps(result, ensure_ascii=False)
                 return set()
-            # Not found: the original submit never reached Revit; resubmitting is safe.
+            # A missing status cannot prove that an action never executed.
+            if command in ACTION_COMMANDS:
+                raise RevitChannelError(
+                    f"Action outcome unknown; query revit_jobs with jobId {job_id}."
+                )
+            payload["attempt"] = "retry"
             reply = await self._connection.request({"type": "submit", "job": payload})
         if reply.get("type") == "error":
             self._connection.forget(job_id)

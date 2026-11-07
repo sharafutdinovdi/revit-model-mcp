@@ -203,8 +203,18 @@ The limits apply to results of every transport, because all transports share one
 Two different stores hold results, so two different times apply.
 The scheduler keeps completed read results in memory for ten minutes after completion; they also disappear when Revit exits.
 Action results stay in memory for 24 hours and are also written to `jobs/<jobId>.json` in the instance directory, so `revit_jobs` can fetch them after an MCP server restart.
+Request journals (`jobs/<jobId>.journal`) and cancellation markers expire with action results.
+The same cleanup pass removes expired files left by earlier add-in sessions; a journal without a result expires 24 hours after its last write.
+Active actions are not expired.
+New submissions carry `attempt: "initial"`; resending the same request ID carries `attempt: "retry"`.
+The attempt marker is excluded from the request fingerprint.
+An omitted marker means `initial` for compatibility with older servers.
+An initial submission with an unknown ID is accepted; a retry with a known ID returns its recorded state or outcome.
+A retry with an unknown or expired ID fails with `outcome_unknown` and the message `Action outcome unknown (journal expired or missing), check the model before resubmitting.`
+It does not execute the action.
+After journal removal and an add-in restart, the ID is unknown; clients must not label a repeated request as initial.
 The limits above can evict a result earlier.
-Over HTTP, a result that is no longer available returns status 410 with `"error":"expired"`; status 404 means the ID was never known.
+Over HTTP, an unavailable result returns status 410 with `"error":"expired"` while its eviction remains in the bounded in-memory cache; otherwise status 404 means the ID is unknown, including after journal expiry and restart.
 
 ### Settings reference
 
@@ -340,6 +350,10 @@ It is final: do not poll it again, and inspect the model before resubmitting an 
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
+For a submission, the Python client treats only HTTP 400, 401, 403, 408, 413, 429 and 503 as pre-acceptance refusals.
+HTTP 500 and other unrecognized submission statuses do not establish whether an action executed.
+The client attempts to fetch the original job; without a recorded outcome it returns `outcome_unknown`, the original job ID and model-inspection advice.
+It does not resubmit the action.
 
 Direct HTTP `POST /jobs` validates a supplied `jobId` for action commands, whose results are persisted: the ID must be a 32-character hexadecimal GUID without dashes.
 An invalid value returns HTTP 400 with `error:invalid_job_id` and `message:"jobId must be a 32-character hexadecimal GUID without dashes."`.

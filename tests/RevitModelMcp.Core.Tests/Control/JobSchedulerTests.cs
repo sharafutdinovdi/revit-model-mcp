@@ -8,6 +8,175 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class JobSchedulerTests
 {
     [Test]
+    public async Task DuplicateActionReturnsOriginalStateAndReceiptWithoutQueueing()
+    {
+        var scheduler = new JobScheduler();
+        var jobId = NewId();
+        scheduler.Submit(jobId, "first", "First", "delete", "{}");
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "delete", "{}").Job!.Position).IsEqualTo(1);
+        scheduler.TakeNext();
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "delete", "{}").Job!.State).IsEqualTo(JobState.Running);
+        const string receipt = """{"success":true,"data":{"changedElementIds":[42]},"responder":{"processId":12}}""";
+        scheduler.Complete(jobId, receipt, true);
+        var duplicate = scheduler.Submit(jobId, "first", "First", "delete", "{}");
+        await Assert.That(duplicate.Job!.Result).IsEqualTo(receipt);
+        await Assert.That(scheduler.TakeNext()).IsNull();
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "delete", "{\"ids\":[2]}").Error).IsEqualTo("payload_mismatch");
+        await Assert.That(scheduler.Submit(jobId, "first", "First", "move", "{}").Error).IsEqualTo("payload_mismatch");
+    }
+
+    [Test]
+    public async Task JournalRecoversReceiptAndRejectsChangedPayloadAfterRestart()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "first", "First", "delete", "{}");
+            scheduler.TakeNext();
+            const string receipt = """{"success":true,"data":{"changedElementIds":[42]},"responder":{"processId":12}}""";
+            scheduler.Complete(jobId, receipt, true);
+            var restored = new JobScheduler(resultDirectory: directory);
+            await Assert.That(restored.Status(jobId)!.Result).IsEqualTo(receipt);
+            await Assert.That(restored.Submit(jobId, "first", "First", "delete", "{}").Job!.Result).IsEqualTo(receipt);
+            await Assert.That(restored.Submit(jobId, "first", "First", "delete", "{\"ids\":[2]}").Error).IsEqualTo("payload_mismatch");
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task UnfinishedJournalNeverRequeuesAfterRestart()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "first", "First", "delete", "{}");
+            scheduler.TakeNext();
+            var restored = new JobScheduler(resultDirectory: directory);
+            var duplicate = restored.Submit(jobId, "first", "First", "delete", "{}");
+            await Assert.That(duplicate.Job!.State).IsEqualTo(JobState.Abandoned);
+            await Assert.That(duplicate.Job.Result).Contains("outcome unknown");
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task ExpiredJournalRefusesResubmissionAfterRestart()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "first", "First", "delete", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(jobId, "{\"success\":true}", true);
+            var restored = new JobScheduler(clock: () => DateTimeOffset.UtcNow.AddHours(25), resultDirectory: directory);
+            await Assert.That(restored.Status(jobId)).IsNull();
+            await Assert.That(restored.Submit(jobId, "first", "First", "delete", "{}").Error).IsEqualTo("expired");
+            await Assert.That(restored.TakeNext()).IsNull();
+            await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.journal"))).IsFalse();
+            await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.json"))).IsFalse();
+            var restarted = new JobScheduler(resultDirectory: directory);
+            await Assert.That(restarted.Submit(jobId, "first", "First", "delete", "{}", retry: true).Error).IsEqualTo("outcome_unknown");
+            await Assert.That(restarted.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task RetryReturnsKnownReceiptButNeverQueuesUnknownAction()
+    {
+        var scheduler = new JobScheduler();
+        var jobId = NewId();
+        await Assert.That(scheduler.Submit(jobId, "client", "Client", "delete", """{"attempt":"initial"}""").Error).IsNull();
+        scheduler.TakeNext();
+        scheduler.Complete(jobId, """{"success":true}""", true);
+        var retry = scheduler.Submit(jobId, "client", "Client", "delete", """{"attempt":"retry"}""", retry: true);
+        await Assert.That(retry.Job!.State).IsEqualTo(JobState.Done);
+        await Assert.That(scheduler.Submit(NewId(), "client", "Client", "delete", "{}", retry: true).Error).IsEqualTo("outcome_unknown");
+        await Assert.That(scheduler.TakeNext()).IsNull();
+        await Assert.That(ControlJobParser.Parse("""{"command":"delete","attempt":"retry"}""").Retry).IsTrue();
+        await Assert.That(ControlJobParser.Parse("""{"command":"delete"}""").Retry).IsFalse();
+    }
+
+    [Test]
+    public async Task CleanupRemovesUnloadedAndOrphanedJournals()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var completedId = NewId();
+            var orphanedId = NewId();
+            var recentId = NewId();
+            foreach (var jobId in new[] { completedId, orphanedId, recentId })
+            {
+                File.WriteAllText(Path.Combine(directory, $"{jobId}.journal"), "delete\nfingerprint");
+                File.SetLastWriteTimeUtc(Path.Combine(directory, $"{jobId}.journal"), now.UtcDateTime.AddHours(-25));
+                File.WriteAllText(Path.Combine(directory, $"{jobId}.cancel"), "");
+            }
+            File.WriteAllText(Path.Combine(directory, $"{completedId}.json"), """{"success":true}""");
+            File.SetLastWriteTimeUtc(Path.Combine(directory, $"{completedId}.json"), now.UtcDateTime.AddHours(-25));
+            File.WriteAllText(Path.Combine(directory, $"{recentId}.json"), """{"success":true}""");
+            var scheduler = new JobScheduler(() => now, resultDirectory: directory);
+            scheduler.ActiveJobs();
+            foreach (var jobId in new[] { completedId, orphanedId })
+                foreach (var extension in new[] { "json", "cancel", "journal" })
+                    await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.{extension}"))).IsFalse();
+            await Assert.That(File.Exists(Path.Combine(directory, $"{recentId}.journal"))).IsTrue();
+            await Assert.That(scheduler.Submit(completedId, "client", "Client", "delete", "{}", retry: true).Error).IsEqualTo("outcome_unknown");
+            await Assert.That(scheduler.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task BudgetRemovalDeletesJournalAndCancellationFile()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "client", "Client", "delete", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(jobId, """{"success":true}""", true);
+            File.WriteAllText(Path.Combine(directory, $"{jobId}.cancel"), "");
+            var secondId = NewId();
+            scheduler.Submit(secondId, "client", "Client", "delete", "{}");
+            scheduler.TakeNext();
+            scheduler.Complete(secondId, """{"success":true}""", true);
+            scheduler.SetBudget(1, long.MaxValue);
+            foreach (var extension in new[] { "json", "cancel", "journal" })
+                await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.{extension}"))).IsFalse();
+            await Assert.That(scheduler.Submit(jobId, "client", "Client", "delete", "{}", retry: true).Error).IsEqualTo("outcome_unknown");
+            await Assert.That(scheduler.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
     public async Task ProgressChangesStoredResultWithoutChangingRunningState()
     {
         var scheduler = new JobScheduler();
@@ -82,7 +251,11 @@ public sealed class JobSchedulerTests
             var actionId = NewId();
             scheduler.Submit(actionId, "client", "Client", "batch", "{}");
             scheduler.TakeNext();
-            var result = new ActionResultData { Steps = [], Committed = false };
+            var result = new ActionResultData
+            {
+                Steps = [],
+                Committed = false
+            };
             result.PublishBatchProgress(50, "set-parameter", _ => { });
             writes = 0;
             persistenceTicks = 0;
@@ -97,7 +270,12 @@ public sealed class JobSchedulerTests
                     Success = true,
                     Data = new ActionResultData
                     {
-                        Values = [new ParameterChange { Id = 42, OldValue = "", NewValue = "benchmark" }]
+                        Values = [new ParameterChange
+                        {
+                            Id = 42,
+                            OldValue = "",
+                            NewValue = "benchmark"
+                        }]
                     }
                 });
                 now += TimeSpan.FromMilliseconds(2);
@@ -230,6 +408,7 @@ public sealed class JobSchedulerTests
             now += TimeSpan.FromHours(1) + TimeSpan.FromTicks(1);
             await Assert.That(scheduler.Status(jobId)).IsNull();
             await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.json"))).IsFalse();
+            await Assert.That(File.Exists(Path.Combine(directory, $"{jobId}.journal"))).IsFalse();
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
@@ -276,7 +455,11 @@ public sealed class JobSchedulerTests
     public async Task ResponseIncludesClientAndQueueMetadata()
     {
         JobResponseMetadata.Current = new JobResponseMetadata(
-            new ClientIdentity { Name = "codex", Id = "client-1" }, "job-1", 42);
+            new ClientIdentity
+            {
+                Name = "codex",
+                Id = "client-1"
+            }, "job-1", 42);
         try
         {
             var json = CommandResponseJsonSerializer.Serialize(CommandResponse<string>.Ok("ping", "pong", 1));

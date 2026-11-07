@@ -16,6 +16,7 @@ from mcp.server.mcpserver import Context
 
 from revit_model_mcp import CHANNEL
 from revit_model_mcp.errors import (
+    OUTCOME_UNKNOWN,
     POLICY_BLOCKED,
     READ_ONLY,
     READ_ONLY_MESSAGE,
@@ -330,17 +331,22 @@ def refused_response(command: str, error: ReadOnlyRefusedError) -> dict[str, Any
     )
 
 
+class SubmissionRefusedError(RevitChannelError):
+    before_send = True
+
+
 class ResultExpiredError(RevitChannelError):
     pass
 
 
 class TransportUnavailableError(RevitChannelError):
+    before_send = False
     transport = "transport"
 
     def __str__(self) -> str:
         return (
             f"Revit is not reachable over {self.transport}: {super().__str__().rstrip('.')}. "
-            "The call did not run. Retry when the workstation or tunnel is back."
+            "Check the workstation or tunnel connection."
         )
 
 
@@ -915,14 +921,15 @@ class RevitChannel:
         )
         loop = asyncio.get_running_loop()
         tool_deadline = loop.time() + budget if background else None
-        correlation_id = uuid.uuid4().hex
-        job_id = uuid.uuid4().hex
+        job_id = job.payload.get("jobId") or uuid.uuid4().hex
+        correlation_id = job.payload.get("correlationId") or job_id
         job = replace(
             job,
             payload={
                 **job.payload,
                 "correlationId": correlation_id,
                 "jobId": job_id,
+                "attempt": "retry" if job.payload.get("jobId") else "initial",
                 "clientId": CLIENT_ID,
                 "clientName": _client_name.get(),
             },
@@ -1116,6 +1123,29 @@ class RevitChannel:
                     f"Could not clean up channel temporary files: {cleanup_error}"
                 )
 
+        if (
+            failure is not None
+            and job.command in ACTION_COMMANDS
+            and not isinstance(
+                failure, (ReadOnlyRefusedError, ResultExpiredError, asyncio.CancelledError)
+            )
+            and not (not job_prepared and getattr(failure, "before_send", False))
+        ):
+            try:
+                recovered = await asyncio.wait_for(self.remote.fetch_job(job_id), 2)
+                if not _is_intermediate_response(recovered):
+                    return parse_response(json.dumps(recovered), job.command)
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "command": job.command,
+                "errorCode": OUTCOME_UNKNOWN,
+                "error": f"Action outcome unknown; query revit_jobs with jobId {job_id}. Inspect the original result before submitting another action.",
+                "jobId": job_id,
+                "retryable": False,
+                "warnings": [str(failure)],
+            }
         if failure is not None:
             raise failure
         if result is None:

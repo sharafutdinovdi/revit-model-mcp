@@ -1396,15 +1396,18 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
     async def test_undo_response_timeout_has_action_advice(self) -> None:
         remote = FakeRemoteHost()
         remote.response_name = None
-        with self.assertRaises(ResponseTimeoutError) as raised:
-            await RevitChannel(remote).execute(
-                Job("undo-last", {"command": "undo-last"}), timeout_seconds=9
-            )
+        result = await RevitChannel(remote).execute(
+            Job("undo-last", {"command": "undo-last"}), timeout_seconds=9
+        )
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertFalse(result["retryable"])
+        self.assertIn("query revit_jobs", result["error"])
         self.assertIn(
             "The action may have executed. Inspect the model before retrying.",
-            str(raised.exception),
+            result["warnings"][0],
         )
-        self.assertNotIn("increase timeout_seconds", str(raised.exception))
+        self.assertNotIn("increase timeout_seconds", str(result))
+        self.assertRegex(result["jobId"], "^[0-9a-f]{32}$")
 
     async def test_cancel_read_only_refusal_returns_normal_result(self) -> None:
         from unittest.mock import AsyncMock
@@ -2786,8 +2789,10 @@ def test_execute_code_below_budget_returns_running_job_when_persisted(persisted)
                 assert result["status"] == "running"
                 assert result["jobId"] == json.loads(host.written_content)["jobId"]
             else:
-                with pytest.raises(ResponseTimeoutError):
-                    await execute
+                result = await execute
+                assert result["errorCode"] == "outcome_unknown"
+                assert result["retryable"] is False
+                assert result["jobId"] == json.loads(host.written_content)["jobId"]
 
     asyncio.run(check())
 
@@ -3622,3 +3627,92 @@ def test_channel_refusal_checks_log_file_process(name, quoted):
         {"processId": 42, "processStartedUtc": "2026-11-02T08:00:00Z"},
     )
     assert bool(result) == quoted
+
+
+class ActionJournalRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_attempt_marker_distinguishes_new_and_repeated_request(self):
+        for existing_id, expected in ((None, "initial"), ("a" * 32, "retry")):
+            with self.subTest(attempt=expected):
+                remote = FakeRemoteHost()
+                remote.wait_for_new_response = AsyncMock(
+                    side_effect=SshUnavailableError("Lost reply.")
+                )
+                remote.fetch_job = AsyncMock(side_effect=RevitChannelError("No result."))
+                payload = {"command": "delete"}
+                if existing_id is not None:
+                    payload["jobId"] = existing_id
+                await RevitChannel(remote).execute(Job("delete", payload), 1)
+                self.assertEqual(json.loads(remote.written_content)["attempt"], expected)
+
+    async def test_disconnect_before_send_remains_retryable(self):
+        from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
+
+        remote = FakeRemoteHost()
+        remote.prepare_error = RemoteCommandNotStartedError("Nothing was sent.")
+        with self.assertRaises(TransportUnavailableError):
+            await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+
+    async def test_disconnect_after_acceptance_returns_original_id(self):
+        remote = FakeRemoteHost()
+        remote.prepare_error = SshUnavailableError("Connection lost after submission.")
+        remote.fetch_job = AsyncMock(side_effect=RevitChannelError("Connection lost."))
+        request_id = "a" * 32
+        result = await RevitChannel(remote).execute(
+            Job("delete", {"command": "delete", "jobId": request_id}), 1
+        )
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertEqual(result["jobId"], request_id)
+        self.assertFalse(result["retryable"])
+        remote.fetch_job.assert_awaited_once_with(request_id)
+
+    async def test_disconnect_after_commit_recovers_original_receipt(self):
+        remote = FakeRemoteHost()
+        remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))
+        receipt = {
+            "command": "delete",
+            "success": True,
+            "jobId": "b" * 32,
+            "data": {"changedElementIds": [42], "document": "Drawing"},
+            "responder": {"processId": 12},
+        }
+        remote.fetch_job = AsyncMock(return_value=receipt)
+        result = await RevitChannel(remote).execute(
+            Job("delete", {"command": "delete", "jobId": receipt["jobId"]}), 1
+        )
+        self.assertEqual(result["data"], receipt["data"])
+        self.assertEqual(result["responder"], receipt["responder"])
+        self.assertEqual(result["jobId"], receipt["jobId"])
+        self.assertEqual(len([event for event in remote.events if event == "prepare"]), 1)
+
+    async def test_disconnect_during_commit_never_reports_non_execution(self):
+        remote = FakeRemoteHost()
+        remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))
+        remote.fetch_job = AsyncMock(side_effect=RevitChannelError("No result."))
+        result = await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertRegex(result["jobId"], "^[0-9a-f]{32}$")
+        self.assertNotIn("did not run", result["error"])
+        self.assertFalse(result["retryable"])
+
+    async def test_changed_payload_refusal_does_not_return_original_receipt(self):
+        from revit_model_mcp.revit_channel import SubmissionRefusedError
+
+        remote = FakeRemoteHost()
+        remote.prepare_error = SubmissionRefusedError("This jobId belongs to a different request.")
+        remote.fetch_job = AsyncMock()
+        with self.assertRaisesRegex(SubmissionRefusedError, "different request"):
+            await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        remote.fetch_job.assert_not_awaited()
+
+    async def test_before_send_failure_during_poll_does_not_make_action_retryable(self):
+        from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
+
+        remote = FakeRemoteHost()
+        remote.wait_for_new_response = AsyncMock(
+            side_effect=RemoteCommandNotStartedError("Polling did not start.")
+        )
+        remote.fetch_job = AsyncMock(side_effect=RevitChannelError("Connection lost."))
+        result = await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertFalse(result["retryable"])
+        self.assertIn("Polling did not start", result["warnings"][0])

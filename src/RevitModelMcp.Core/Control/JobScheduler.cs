@@ -1,4 +1,8 @@
+using System.Runtime.Serialization.Json;
+using System.Security.Cryptography;
 using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Serialization;
 
@@ -62,6 +66,9 @@ public sealed class JobScheduler
     public static string? SubmissionMessage(string? error) => error switch
     {
         "invalid_job_id" => "jobId must be a 32-character hexadecimal GUID without dashes.",
+        "payload_mismatch" => "This jobId belongs to a different request.",
+        "expired" => "This jobId expired. Inspect the previous outcome before submitting a new request.",
+        "outcome_unknown" => "Action outcome unknown (journal expired or missing), check the model before resubmitting.",
         "persist_failed" => "The job could not be recorded; retry later.",
         _ => null
     };
@@ -71,7 +78,7 @@ public sealed class JobScheduler
         get { lock (_sync) return _rotation.Count > 0; }
     }
 
-    public JobSubmission Submit(string jobId, string clientId, string clientName, string command, string payload)
+    public JobSubmission Submit(string jobId, string clientId, string clientName, string command, string payload, bool retry = false)
     {
         if (string.IsNullOrWhiteSpace(jobId)) throw new ArgumentException("Job id is required.", nameof(jobId));
         if (string.IsNullOrWhiteSpace(clientId)) throw new ArgumentException("Client id is required.", nameof(clientId));
@@ -82,7 +89,16 @@ public sealed class JobScheduler
         lock (_sync)
         {
             EvictExpired();
-            if (_jobs.ContainsKey(jobId)) return new(null, "duplicate_job_id", 0);
+            Restore(jobId);
+            if (_jobs.TryGetValue(jobId, out var previous))
+            {
+                if (!ActionJobParser.IsAction(command)) return new(null, "duplicate_job_id", 0);
+                return previous.Command == command && previous.Fingerprint == Fingerprint(payload)
+                    ? new(Snapshot(previous), null, 0)
+                    : new(null, "payload_mismatch", 0);
+            }
+            if (ActionJobParser.IsAction(command) && retry) return new(null, "outcome_unknown", 0);
+            if (ActionJobParser.IsAction(command) && WasExpired(jobId)) return new(null, "expired", 0);
             _clients.TryGetValue(clientId, out var queue);
             if (queue is not null && queue.Count >= 16) return new(null, "queue_full", 1000);
             var entry = new Entry(jobId, clientId, string.IsNullOrWhiteSpace(clientName) ? "unknown" : clientName,
@@ -93,6 +109,9 @@ public sealed class JobScheduler
                 accepted.JobId = jobId;
                 try
                 {
+                    if (persisted)
+                        _writeResult(Path.Combine(_resultDirectory!, $"{jobId}.journal"),
+                            command + "\n" + entry.Fingerprint);
                     StoreResult(entry, CommandResponseJsonSerializer.Serialize(accepted));
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -225,6 +244,7 @@ public sealed class JobScheduler
         lock (_sync)
         {
             EvictExpired();
+            Restore(jobId);
             return _jobs.TryGetValue(jobId, out var entry) ? Snapshot(entry) : null;
         }
     }
@@ -298,6 +318,19 @@ public sealed class JobScheduler
         var cutoff = _clock() - _retention;
         foreach (var entry in _jobs.Values.Where(entry => entry.CompletedUtc < (ActionJobParser.IsAction(entry.Command) ? _clock() - TimeSpan.FromHours(24) : cutoff)).ToArray())
             Remove(entry);
+        if (_resultDirectory is not null && Directory.Exists(_resultDirectory))
+        {
+            foreach (var journalPath in Directory.EnumerateFiles(_resultDirectory, "*.journal"))
+            {
+                var jobId = Path.GetFileNameWithoutExtension(journalPath);
+                if (_jobs.ContainsKey(jobId) || !Guid.TryParseExact(jobId, "N", out _)) continue;
+                var resultPath = Path.Combine(_resultDirectory, $"{jobId}.json");
+                var lastWriteUtc = File.GetLastWriteTimeUtc(File.Exists(resultPath) ? resultPath : journalPath);
+                if (lastWriteUtc >= _clock().UtcDateTime.AddHours(-24)) continue;
+                _expired.Set(jobId, true);
+                RemoveFiles(jobId);
+            }
+        }
         var completed = _jobs.Values.Where(entry => entry.CompletedUtc is not null)
             .Select(entry => new StoredResponse(entry.JobId, entry.CompletedUtc!.Value,
                 entry.Result is null ? 0 : Encoding.UTF8.GetByteCount(entry.Result))).ToArray();
@@ -311,17 +344,22 @@ public sealed class JobScheduler
     {
         _jobs.Remove(entry.JobId);
         _expired.Set(entry.JobId, true);
-        if (_resultDirectory is null || !ActionJobParser.IsAction(entry.Command)) return;
-        if (!Guid.TryParseExact(entry.JobId, "N", out _)) return;
-        foreach (var extension in new[] { "json", "cancel" })
+        if (!ActionJobParser.IsAction(entry.Command)) return;
+        RemoveFiles(entry.JobId);
+    }
+
+    private void RemoveFiles(string jobId)
+    {
+        if (_resultDirectory is null || !Guid.TryParseExact(jobId, "N", out _)) return;
+        foreach (var extension in new[] { "json", "cancel", "journal" })
         {
             try
             {
-                File.Delete(Path.Combine(_resultDirectory, $"{entry.JobId}.{extension}"));
+                File.Delete(Path.Combine(_resultDirectory, $"{jobId}.{extension}"));
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                _log($"Job {entry.JobId} .{extension} file was not deleted: {ex.GetType().Name}.");
+                _log($"Job {jobId} .{extension} file was not deleted: {ex.GetType().Name}.");
             }
         }
     }
@@ -349,6 +387,47 @@ public sealed class JobScheduler
         }
     }
 
+    private static string Fingerprint(string payload)
+    {
+        using var hash = SHA256.Create();
+        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(payload), XmlDictionaryReaderQuotas.Max);
+        var request = XElement.Load(reader);
+        request.Element("attempt")?.Remove();
+        return Convert.ToBase64String(hash.ComputeHash(Encoding.UTF8.GetBytes(request.ToString(SaveOptions.DisableFormatting))));
+    }
+
+    private void Restore(string jobId)
+    {
+        if (_jobs.ContainsKey(jobId) || _resultDirectory is null || !Guid.TryParseExact(jobId, "N", out _)) return;
+        var journalPath = Path.Combine(_resultDirectory, $"{jobId}.journal");
+        if (!File.Exists(journalPath)) return;
+        var metadata = File.ReadAllLines(journalPath);
+        if (metadata.Length != 2) throw new IOException("Invalid request journal.");
+        var resultPath = Path.Combine(_resultDirectory, $"{jobId}.json");
+        if (!File.Exists(resultPath) || File.GetLastWriteTimeUtc(resultPath) < _clock().UtcDateTime.AddHours(-24))
+        {
+            _expired.Set(jobId, true);
+            return;
+        }
+        var result = File.ReadAllText(resultPath);
+        var finished = ResultEnvelope.TryReadFlags(result, out var success, out var partial) && !partial;
+        if (!finished)
+        {
+            var unknown = CommandResponse<string>.Fail(metadata[0],
+                "Action outcome unknown after restart. Inspect the affected document before submitting another action.", 0);
+            unknown.JobId = jobId;
+            result = CommandResponseJsonSerializer.Serialize(unknown);
+        }
+        var entry = new Entry(jobId, "recovered", "unknown", metadata[0], "{}", new DateTimeOffset(File.GetLastWriteTimeUtc(journalPath), TimeSpan.Zero))
+        {
+            Fingerprint = metadata[1],
+            Result = result,
+            State = finished ? success ? JobState.Done : JobState.Failed : JobState.Abandoned,
+            CompletedUtc = new DateTimeOffset(File.GetLastWriteTimeUtc(resultPath), TimeSpan.Zero)
+        };
+        _jobs.Add(jobId, entry);
+    }
+
     private void StoreResult(Entry entry, string result)
     {
         if (Environment.GetEnvironmentVariable("REVIT_MCP_REDACT_PATHS") == "1")
@@ -369,6 +448,7 @@ public sealed class JobScheduler
         public string ClientName { get; } = clientName;
         public string Command { get; } = command;
         public string Payload { get; } = payload;
+        public string Fingerprint { get; init; } = JobScheduler.Fingerprint(payload);
         public DateTimeOffset SubmittedUtc { get; } = submittedUtc;
         public DateTimeOffset? CompletedUtc { get; set; }
         public JobState State { get; set; } = JobState.Queued;
