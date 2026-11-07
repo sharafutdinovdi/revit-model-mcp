@@ -64,6 +64,9 @@ The `parameters` field in workstation responses contains JSON schema text.
 `revit_run_tool(name, args, dry_run, confirm_token)` validates arguments and verifies approval before compilation or execution.
 Action mode uses the same confirmation flow as `revit_execute_code`: a first real call runs nothing and returns a token, and a confirmed retry runs the identical revision and arguments.
 The first run of every name and revision hash in each Revit process requires a `confirm_token`, including read mode and dry runs.
+Execution tokens bind `dry_run` as well as the code, transaction mode, tool revision, approval, and arguments.
+A preview token cannot authorize a commit, and a commit token cannot authorize a preview.
+A supplied token is always checked and consumed, even after the first confirmed run.
 The confirmation shows the tool name, mode, short revision hash, saved timestamp, replaced revision hash when present, and validated arguments truncated to 300 characters.
 After a confirmed run, read mode and dry runs require no further token for that revision in that session.
 Action runs that commit changes still require confirmation for each call.

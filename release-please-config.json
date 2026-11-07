@@ -24,6 +24,11 @@
           "type": "json",
           "path": "server/server.json",
           "jsonpath": "$.packages[0].version"
+        },
+        {
+          "type": "toml",
+          "path": "server/uv.lock",
+          "jsonpath": "$.package[?(@.name=='revit-model-mcp')].version"
         }
       ],
       "changelog-sections": [

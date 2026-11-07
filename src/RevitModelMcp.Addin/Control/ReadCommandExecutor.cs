@@ -59,15 +59,20 @@ internal static class ReadCommandExecutor
                     string.IsNullOrWhiteSpace(reference) ? null : reference!.Trim());
                 var action = job.Action ?? throw new ArgumentException("Missing family arguments.");
                 ActionJobParser.ValidateFamilyMode(action, target.IsFamilyDocument);
+                var budgetStopped = false;
                 var audit = FamilyAuditReader.Read(application, target, action.Families, action.Detail,
-                    () => FastCommandBudget.ShouldStopBetweenFamilies(stopwatch.ElapsedMilliseconds,
+                    () => budgetStopped |= FastCommandBudget.ShouldStopBetweenFamilies(stopwatch.ElapsedMilliseconds,
                         ResponseDelivery.CancellationRequested?.Invoke() == true), out var partial);
+                if (budgetStopped)
+                    SkippedReadDiagnostics.Current?.Add("family-audit remaining families",
+                        new InvalidOperationException("Inspection stopped at the read budget or cancellation boundary."));
                 stopwatch.Stop();
                 const string partialMessage = "Family audit stopped before completion, reached its read budget, or was cancelled; results are partial.";
-                output.Write(partial
+                var auditResponse = partial
                     ? CommandResponse<FamilyAuditData>.PartialResult(job.Command, audit, partialMessage, stopwatch.ElapsedMilliseconds)
-                    : CommandResponse<FamilyAuditData>.Ok(job.Command, audit, stopwatch.ElapsedMilliseconds));
-                LogFinished(job.Command, partial ? "partial" : "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
+                    : CommandResponse<FamilyAuditData>.Ok(job.Command, audit, stopwatch.ElapsedMilliseconds);
+                output.Write(auditResponse);
+                LogFinished(job.Command, auditResponse.Partial ? "partial" : "success", stopwatch.ElapsedMilliseconds, output.FilePath, null);
                 return;
             }
             if (job.Kind == ControlJobKind.Documents)
@@ -97,7 +102,6 @@ internal static class ReadCommandExecutor
             {
                 case ControlJobKind.ModelSnapshot:
                     var snapshot = ModelSnapshotReader.Read(document, job.ParameterRules);
-                    SkippedReadDiagnostics.Current = new SkippedReadDiagnostics();
                     WriteSuccess(output, job.Command, snapshot, stopwatch);
                     break;
                 case ControlJobKind.ModelHealth:
@@ -132,6 +136,8 @@ internal static class ReadCommandExecutor
                                 elapsedMs));
                     if (views.Processed < views.Total)
                     {
+                        SkippedReadDiagnostics.Current?.Add("list-views remaining views",
+                            new InvalidOperationException($"The 60-second limit was reached; {views.Total - views.Processed} of {views.Total} views were not read."));
                         stopwatch.Stop();
                         output.Write(CommandResponse<ViewListData>.PartialResult(
                             job.Command,
@@ -214,6 +220,7 @@ internal static class ReadCommandExecutor
         catch (Exception exception)
         {
             stopwatch.Stop();
+            SkippedReadDiagnostics.Current?.Add($"{job.Command} read", exception);
             PluginLog.Error($"Job processing failed. Command='{job.Command}'.", exception);
             output.Write(CommandResponse<object>.Fail(
                 job.Command,
@@ -597,8 +604,9 @@ internal static class ReadCommandExecutor
                 : $"{message} The command took more than two seconds; elapsedMs reports the duration.";
         }
 
-        output.Write(CommandResponse<T>.Ok(command, data, stopwatch.ElapsedMilliseconds, message));
-        LogFinished(command, "success", stopwatch.ElapsedMilliseconds, output.FilePath, message);
+        var response = CommandResponse<T>.Ok(command, data, stopwatch.ElapsedMilliseconds, message);
+        output.Write(response);
+        LogFinished(command, response.Partial ? "partial" : "success", stopwatch.ElapsedMilliseconds, output.FilePath, message);
     }
 
     private static void WriteFailure<T>(
