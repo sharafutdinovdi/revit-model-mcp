@@ -126,7 +126,7 @@
           Condition="'$(IsRepackable)' == 'true' And '$(PublishAddin)' == 'true'">
     <Error Condition="'$(MinimumRevitApiAssemblyVersion)' == ''"
            Text="No minimum Revit API assembly version is configured for Revit $(RevitVersion)."/>
-    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release --no-restore -- rewrite &quot;$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))&quot; $(MinimumRevitApiAssemblyVersion)"/>
+    <Exec Command="dotnet run --project &quot;$(MSBuildProjectDirectory)/../../build/RevitApiReferencePin/RevitApiReferencePin.csproj&quot; --configuration Release -- rewrite &quot;$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))&quot; $(MinimumRevitApiAssemblyVersion)"/>
     <!-- MSI and ZIP packaging consume the build output. Keep its add-in identical to the published assembly. -->
     <Copy SourceFiles="$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', '$(TargetFileName)'))"
           DestinationFiles="$(TargetPath)"/>
