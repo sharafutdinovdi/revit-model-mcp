@@ -172,20 +172,31 @@ The solution lists the project under `tests` without a default build mapping; CI
 
 ```powershell
 .\build\run-addin-tests.ps1 -Year 2027
+.\build\run-addin-tests.ps1 -Year 2026
 .\build\run-addin-tests.ps1 -Year 2022 -Model 'C:\Projects\rmm-test\2022\rac_basic_sample_project.rvt'
 ```
 
-`-Model` defaults to `RMM_TEST_MODEL`, then `C:\Projects\rmm-test\2027\Snowdon Towers Sample Architectural.rvt`.
+`-Model` defaults to `RMM_TEST_MODEL`, then `C:\Projects\rmm-test\<year>\Snowdon Towers Sample Architectural.rvt`.
 Each test opens a private temporary copy and closes it without saving.
 Actions commit inside an outer transaction group that teardown rolls back.
 The tests compare summary text, the returned undo name, the distinct underlying action transaction name, and resulting model state.
 The fixture uses `RevitApiUiTest` because the add-in assembly and executor reference RevitAPIUI.
+The runner uses the supported `dotnet run --project ... -c Release.R<year>` launch mode.
+For Revit 2025 and later, the console test host uses the .NET runtime specified by the installed `RevitAPI.runtimeconfig.json`.
+Revit updates can change that runtime independently of the project's compile-time target framework.
+Direct project runs require `-p:RevitTestRuntimeVersion=<installed-runtime-version>` when the installed API requires a newer runtime.
 The tests check the returned undo name and commit events; native undo menu inspection remains a manual check.
-The runner refuses to start while any `Revit.exe` exists and requires at least 15 passing tests.
+The runner refuses to start while any `Revit.exe` exists and requires at least 15 passing tests with no failures; a run that executes no tests fails.
 TRX files default to `C:\Projects\rmm-test\out\tests\addin-<year>.trx`; `-OutputDirectory` overrides the directory.
 A missing model skips the tests when the executable runs directly; the script treats that condition as an error.
 PR validation records the workstation years, TRX counters, and any failures.
 See [manual test plan](docs/manual-test-plan.md#workstation-regression-and-release-smoke) and [validation evidence](docs/validation.md).
+
+The runner's isolated self-test requires PowerShell on Windows and does not launch Revit:
+
+```powershell
+.\build\test-run-addin-tests.ps1
+```
 
 ## Release ritual
 

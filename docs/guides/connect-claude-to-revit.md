@@ -1,5 +1,5 @@
 ---
-description: "Connect Claude Desktop or Claude Code to Revit 2022-2027 with one verified release command, first-start steps, and connection diagnostics."
+description: "Connect Claude Desktop or Claude Code to Revit 2022-2027 with a verified release MSI, first-start steps, and connection diagnostics."
 ---
 
 # Connect Claude to Revit
@@ -17,16 +17,15 @@ Revit 2022-2027 is supported; actions are enabled by default, with a shared read
     Install Model MCP for Revit from https://github.com/sharafutdinovdi/revit-model-mcp. Follow docs/agent-install.md exactly. Configure Claude Desktop only.
     ```
 
-3. Follow the [one-command installation](../agent-install.md#one-command-per-client) for `claude-desktop` or `claude-code`.
-   The script downloads the latest release, verifies the MSI checksum, installs the add-in and server, registers the selected client, and runs doctor.
+3. Follow [MSI download and verification](../agent-install.md#download-and-verify).
+   The MSI includes the add-in and server executable.
 4. Start Revit, choose **Always Load** for Model MCP at the first-start prompt, and open a model.
-5. Restart Claude completely and finish any returned `humanSteps`.
-6. Run [doctor](../agent-install.md#verify), then ask Claude: **What model is open in Revit?**
+5. Use **Model MCP > Model MCP > Connect AI app** to register Claude Desktop or obtain the Claude Code registration command, then restart Claude completely.
+6. Follow [connection verification](../agent-install.md#verify), then ask Claude: **What model is open in Revit?**
    A successful `revit_ping` establishes a live connection.
 
-Claude Code registration uses `claude mcp add` when the command exists.
-Otherwise the installer returns the command as a human step.
-Doctor can report installation success while Revit is still closed; that result is not a live connection.
+Claude Code registration uses the command provided by **Connect AI app**.
+The [one-command installer](../agent-install.md#next-release-one-command-installer) arrives with the next release.
 
 ## First review
 
