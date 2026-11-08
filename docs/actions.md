@@ -461,12 +461,18 @@ A per-step `dry_run:true` inside a real batch is accepted and previews only that
 Verification describes each step's immediate result; subsequent steps may change those elements again.
 Batches accept 1-50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
 
-`revit_show` chooses a non-template plan for the common element level, or an orthographic 3D view when no matching plan exists.
-Within the matching level, the active view takes priority, followed by an already open view and then a floor plan.
+`revit_show` ranks non-template floor plans for the common element level before existing orthographic 3D views.
+Plans whose crop excludes any requested element are skipped before visibility evaluation.
+Uncropped plans take priority, followed by the active plan and then an already open plan.
+Ceiling, structural and area plans are excluded.
+Each candidate must contain every requested element; incompatible phase or visibility settings cause the next candidate to be evaluated.
+When no plan qualifies, the default `{3D}` view takes priority over other eligible 3D views.
 Mixed or missing element levels require a 3D view.
-The chosen view must contain every requested element; incompatible crop, phase or visibility settings produce an error naming that view.
+Section boxes remain unchanged; 3D views whose section boxes exclude requested elements are skipped.
+If no existing view qualifies, the error suggests creating an uncropped view with `revit_create_view` and `kind="3d"`.
+Showing elements never creates a view or changes model settings.
 The handler activates the chosen view without an open transaction and frames the element bounds with `UIView.ZoomAndCenterRectangle`.
-It does not search other open views, call `ShowElements`, zoom to the entire model or wait for activation or repaint events.
+It does not call `ShowElements`, zoom to the entire model or wait for activation or repaint events.
 The response includes `activeView`, `viewOpened` and `data.elapsedMs` for view selection, activation, framing and optional selection.
 `viewOpened` reports whether the chosen view was previously closed.
 Native view activation and graphics generation remain synchronous Revit operations without a safe cancellation API.
