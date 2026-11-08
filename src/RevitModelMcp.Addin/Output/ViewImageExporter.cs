@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using Autodesk.Revit.DB;
 using RevitModelMcp.Capture;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Output;
@@ -22,38 +23,20 @@ internal static class ViewImageExporter
         var stamp = localTime.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture);
         var fileName = $"view_{stamp}_{id}.png";
         var targetPath = Path.Combine(directory, fileName);
-        if (File.Exists(targetPath))
-        {
-            throw new IOException($"The export file already exists: {fileName}.");
-        }
-
-        var prefix = Path.GetFileNameWithoutExtension(targetPath);
-        var existingFiles = Directory.GetFiles(directory, $"{prefix}*.png")
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         using var options = CreateOptions(view, targetPath, pixelSize, zoomToFit);
-        document.ExportImage(options);
-
-        // Revit appends the view name to the prefix; the output file is located after export.
-        var exportedPath = Directory.GetFiles(directory, $"{prefix}*.png")
-            .Where(path => !existingFiles.Contains(path))
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault()
-            ?? throw new IOException("Revit completed the export, but no PNG file was found.");
-        if (!string.Equals(exportedPath, targetPath, StringComparison.OrdinalIgnoreCase))
+        return ViewImageFiles.Export(targetPath, () => document.ExportImage(options), path =>
         {
-            File.Move(exportedPath, targetPath);
-        }
-
-        var (width, height) = ReadPngSize(targetPath);
-        return new ViewExportData
-        {
-            FileName = fileName,
-            Width = width,
-            Height = height,
-            SizeBytes = new FileInfo(targetPath).Length,
-            ViewName = view.Name,
-            ViewType = view.ViewType.ToString()
-        };
+            var (width, height) = ReadPngSize(path);
+            return new ViewExportData
+            {
+                FileName = fileName,
+                Width = width,
+                Height = height,
+                SizeBytes = new FileInfo(path).Length,
+                ViewName = view.Name,
+                ViewType = view.ViewType.ToString()
+            };
+        });
     }
 
     private static ImageExportOptions CreateOptions(
