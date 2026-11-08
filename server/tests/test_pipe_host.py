@@ -557,6 +557,7 @@ def test_pipe_forwards_intermediate_progress_and_resolves_only_terminal():
         }
         reader.feed_data((json.dumps(intermediate) + "\n").encode())
         await asyncio.sleep(0)
+        await asyncio.sleep(0)
         assert not future.done()
         reporter.observe.assert_awaited_once_with(intermediate)
         terminal = {"type": "job", "jobId": "job", "state": "done", "result": {"success": True}}
@@ -582,3 +583,26 @@ def test_lock_refusal_preserves_metadata_and_policy_source():
         result = refused_response("delete", error)
         assert result["error"] == message
         assert result["errorCode"] == code
+
+
+def test_action_pipe_disconnect_before_send_does_not_claim_acceptance():
+    async def scenario():
+        error = PipeDisconnectedError("Closed before submission.")
+        error.before_send = True
+        connection = MagicMock()
+        connection.request = AsyncMock(side_effect=error)
+        parent = MagicMock()
+        parent.connection = AsyncMock()
+        host = PipeJobHost(parent, {}, connection)
+        job_id = "d" * 32
+        try:
+            await host.prepare_job("request.tmp", json.dumps({"jobId": job_id}), "select")
+        except PipeDisconnectedError as failure:
+            assert failure.before_send is True
+        else:
+            raise AssertionError("The disconnected pipe accepted a request.")
+        parent.connection.assert_not_awaited()
+        connection.request.assert_awaited_once()
+        connection.forget.assert_called_once_with(job_id)
+
+    asyncio.run(scenario())

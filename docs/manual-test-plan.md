@@ -8,7 +8,7 @@ Full manual validation checklist. Goal: exercise **every tool** and **every inst
 
 Run when scheduled. Tick each `[ ]`. For every checked item record: **result** (pass/fail), **evidence** (journal line, screenshot, tool JSON, elapsed), and **notes**. File a GitHub issue for each fail with the repro.
 
-> Reference model for expected values: **Snowdon Towers Sample Architectural.rvt** (ships with Revit). Known values captured 2026-09-15 on Revit 2024.3 — use as the expected baseline where cited. If testing another model, capture its own baseline first with `revit_document_info` + `revit_aggregate_elements`.
+> Reference model for expected values: **Snowdon Towers Sample Architectural.rvt** (ships with Revit). Known values captured 2026-09-15 on Revit 2024.3: use as the expected baseline where cited. If testing another model, capture its own baseline first with `revit_document_info` + `revit_aggregate_elements`.
 
 ---
 
@@ -16,8 +16,8 @@ Run when scheduled. Tick each `[ ]`. For every checked item record: **result** (
 
 Ideally test on **two machines**:
 
-- **M1 — clean-ish Windows workstation**: fresh or minimally-used Windows, target Revit version installed, Claude Desktop installed and logged in. This is the "does a real user get it working from the installers" run.
-- **M2 — remote client (macOS/Linux)**: Claude Desktop / Claude Code on a Mac, reaching a Windows workstation's Revit over the remote (SSH tunnel) transport.
+- **M1: clean-ish Windows workstation**: fresh or minimally-used Windows, target Revit version installed, Claude Desktop installed and logged in. This is the "does a real user get it working from the installers" run.
+- **M2: remote client (macOS/Linux)**: Claude Desktop / Claude Code on a Mac, reaching a Windows workstation's Revit over the remote (SSH tunnel) transport.
 
 | Field | M1 | M2 |
 |---|---|---|
@@ -36,8 +36,8 @@ Record the exact release tag being tested (e.g. `v0.5.0`) and confirm all three 
 
 Do this with **Revit closed**. Repeat the whole section for each Revit year present (2022 / 2023 / 2024 / 2025 / 2026 / 2027).
 
-- [ ] **1.1 MSI — SingleUser**: run `RevitModelMcp-<ver>-SingleUser.msi`. Installer completes without error.
-- [ ] **1.2 MSI — MultiUser**: on a separate profile/machine, run `RevitModelMcp-<ver>-MultiUser.msi`. Completes; add-in visible for all users.
+- [ ] **1.1 MSI: SingleUser**: run `RevitModelMcp-<ver>-SingleUser.msi`. Installer completes without error.
+- [ ] **1.2 MSI: MultiUser**: on a separate profile/machine, run `RevitModelMcp-<ver>-MultiUser.msi`. Completes; add-in visible for all users.
 - [ ] **1.2a MSI scope conflict**: install SingleUser, then run MultiUser: it is refused with the "SingleUser ... already installed for this user" message. Uninstall SingleUser, install MultiUser, then run SingleUser: it is refused with the "MultiUser ... already installed on this computer" message. Uninstall each; no add-in files remain.
 - [ ] **1.3 Clone script**: `./install.ps1 -Source Release` from a clone. Completes.
 - [ ] **1.4 Manifest present**: `%APPDATA%\Autodesk\Revit\Addins\<year>\RevitModelMcp.addin` exists and points to a `RevitModelMcp.dll` that exists.
@@ -57,16 +57,16 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 ### 2.1 Local server via `uvx` (Windows workstation)
 - [ ] `uvx revit-model-mcp` resolves and installs the package from PyPI on first run (record package count + time).
 - [ ] Server starts and reports `serverInfo: { name: "Model MCP", version: "<ver>" }` on `initialize`.
-- [ ] `tools/list` returns **19 read tools** (enumerate — see §3).
+- [ ] `tools/list` returns **19 read tools** (enumerate, see §3).
 
 ### 2.2 Claude Code registration (`claude mcp add`)
 - [ ] `claude mcp add revit-model-mcp -s user -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uvx revit-model-mcp` writes to `~/.claude.json`.
 - [ ] `claude mcp list` shows `revit-model-mcp: ... ✓ Connected`.
-- [ ] `claude -p "what model is open in Revit?"` (headless) returns real model data (capture stdout to a file — headless output can be lost over a raw pipe).
+- [ ] `claude -p "what model is open in Revit?"` (headless) returns real model data (capture stdout to a file: headless output can be lost over a raw pipe).
 - [ ] **App local agent**: in Claude Desktop's Code surface with the **"Local"** chip, ask a Revit question → agent calls `mcp__revit-model-mcp__*` and answers with real data.
 
 ### 2.3 Claude Desktop `.mcpb` one-click install  ⚠️ **known-broken, re-verify**
-- [ ] Double-clicking `revit-model-mcp-<ver>.mcpb` on Windows opens it **in Claude Desktop** (file association). *2026-09-15: FAILED — Windows showed "choose an app", Claude not registered as the `.mcpb` handler. Confirm whether fixed / document the correct install entry point (Settings → Extensions/Connectors → install from file).*
+- [ ] Double-clicking `revit-model-mcp-<ver>.mcpb` on Windows opens it **in Claude Desktop** (file association). *2026-09-15: FAILED: Windows showed "choose an app", Claude not registered as the `.mcpb` handler. Confirm whether fixed / document the correct install entry point (Settings → Extensions/Connectors → install from file).*
 - [ ] Install via Claude Desktop **Settings → Extensions/Connectors → install `.mcpb`**; the config form sets `REVIT_MCP_HOST` (local/remote), redaction, actions, HTTP token without editing JSON.
 - [ ] After install the connector appears and its tools are usable **in a surface that can reach a local stdio server**.
 
@@ -80,7 +80,7 @@ Do this with **Revit closed**. Repeat the whole section for each Revit year pres
 
 ---
 
-## 3. Read tools — full coverage (19)
+## 3. Read tools: full coverage (19)
 
 Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggregate_elements` second, `revit_query_elements` only when rows are needed** (per server guidance). For each tool: record the JSON, confirm `success: true`, spot-check values.
 
@@ -89,7 +89,7 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 | 1 | `revit_ping` | "is Revit reachable?" | `pong`; responder documentName + revitVersion + processId | [ ] |
 | 2 | `revit_document_info` | "what model is open, its levels and rooms?" | file name; levels with elevation + roomCount; area schemes (Snowdon: Gross Building 14, Rentable 87); `isWorkshared` | [ ] |
 | 3 | `revit_model_health` | "give me a model health summary" | health metrics (warning count, etc.) return without error | [ ] |
-| 4 | `revit_links_status` | "list linked models and their status" | linked model list (empty is a valid result — confirm shape) | [ ] |
+| 4 | `revit_links_status` | "list linked models and their status" | linked model list (empty is a valid result, confirm shape) | [ ] |
 | 5 | `revit_shared_coordinates` | "what are the shared coordinates / survey point?" | survey/base point + coordinate system | [ ] |
 | 6 | `revit_parameter_fill_check` | "check parameter completeness" | fill/missing report for the requested parameters/category | [ ] |
 | 7 | `revit_list_catalog` | "list the element categories/types in the model" | catalog of categories and counts | [ ] |
@@ -97,7 +97,7 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 | 9 | `revit_query_elements` | "find the largest room: name, level, area" | rows with real values (Snowdon: Parking Garage, level Parking, 957.6 m²) | [ ] |
 | 10 | `revit_list_views` | "list the views" | views enumerated (browser has floor/ceiling/3D/elevation/section) | [ ] |
 | 11 | `revit_view_summary` | "summarize the active view / view X" | view type, scale, element count summary | [ ] |
-| 12 | `revit_export_view` | "export the {3D / a floor plan} view to an image" | image produced; `localPath` returned (visible even with redaction) — open it, confirm it renders | [ ] |
+| 12 | `revit_export_view` | "export the {3D / a floor plan} view to an image" | image produced; `localPath` returned (visible even with redaction): open it, confirm it renders | [ ] |
 | 13 | `revit_view_elements` | "what elements are in view X?" | element list for that view | [ ] |
 | 14 | `revit_element_details` | "details of element <id>" (use an id from #9) | full parameter details for that element | [ ] |
 | 15 | `revit_view_warnings` | "warnings in view X" | warnings scoped to the view | [ ] |
@@ -111,7 +111,7 @@ Model open on the workstation. Call **`revit_list_catalog` first, `revit_aggrega
 
 ---
 
-## 4. Action tools — gated writes (11)
+## 4. Action tools: gated writes (11)
 
 ### Family audit and edits
 
@@ -141,11 +141,11 @@ Actions run by default; the single workstation read-only lock (Read-only ribbon 
 - [ ] Export once with `parameters="all"` and once with `parameters="none"`. Verify element properties disappear in the second NWC.
 - [ ] Export to an existing file without `overwrite`. Verify the error and confirm the original file bytes are unchanged.
 
-- [ ] **4.0 Enumerate**: start the server and run `tools/list` — record the exact action tool names and count. Known action set from the demo recording (README "In action"): open a view, select element(s), isolate, place a family instance, move an element, and cleanup/undo. Fill the table with the real names.
+- [ ] **4.0 Enumerate**: start the server and run `tools/list`: record the exact action tool names and count. Known action set from the demo recording (README "In action"): open a view, select element(s), isolate, place a family instance, move an element, and cleanup/undo. Fill the table with the real names.
 
 | Action tool (fill from tools/list) | Test | Verify | Cleanup | [ ] |
 |---|---|---|---|---|
-| open view | open a specific view by name | view is active in Revit UI | — | [ ] |
+| open view | open a specific view by name | view is active in Revit UI | - | [ ] |
 | select element(s) | select the largest room / an element by id | selection highlighted in Revit | clear selection | [ ] |
 | isolate | isolate the selection in the view | temp isolate active | reset temporary hide/isolate | [ ] |
 | place family instance | place e.g. a chair at a point | instance exists at location | delete it | [ ] |
@@ -170,9 +170,9 @@ Actions run by default; the single workstation read-only lock (Read-only ribbon 
 
 ## 5. Transports
 
-- [ ] **5.1 Local** (`REVIT_MCP_HOST=local`) on the workstation — all of §3 passes.
-- [ ] **5.2 SSH tunnel** (remote client → workstation loopback) — `revit_ping` + a read tool pass from M2.
-- [ ] **5.3 HTTP** (loopback + bearer token) — `/health` (no token) responds; an authenticated read works. ⚠️ **Re-verify issue #44**: the HTTP listener (port 53110) not binding. Confirm fixed or still open.
+- [ ] **5.1 Local** (`REVIT_MCP_HOST=local`): all of §3 passes.
+- [ ] **5.2 SSH tunnel** (remote client → workstation loopback): `revit_ping` + a read tool pass from M2.
+- [ ] **5.3 HTTP** (loopback + bearer token): `/health` (no token) responds; an authenticated read works. ⚠️ **Re-verify issue #44**: the HTTP listener (port 53110) not binding. Confirm fixed or still open.
 - [ ] **5.3a HTTP health and tool call**: with HTTP enabled, `curl -i http://127.0.0.1:<port>/health` returns `200` and a JSON body whose `commands` is a non-empty list. Then run one tool (for example `revit_ping`) with `REVIT_MCP_HOST=http://127.0.0.1:<port>` and a valid `REVIT_MCP_TOKEN`; it succeeds instead of `Revit endpoint returned HTTP 500`.
 - [ ] **5.4 Concurrency / channel contention** ⚠️ **found 2026-09-15**: fire several tool calls in quick succession (as the agent does when reasoning). Earlier run showed *4 of 7* parallel calls failing (single file-channel "busy: trigger.txt exists"). Test rapid/parallel calls and record the failure rate; if the channel serializes poorly, file an issue.
 
@@ -187,19 +187,19 @@ Repeat the **§3 read smoke set** (at minimum: ping, document_info, list_catalog
 - [ ] 6.3 Revit 2024 (net48)
 - [ ] 6.4 Revit 2025 (net8)
 - [ ] 6.5 Revit 2026 (net8)
-- [ ] 6.6 Revit 2027 (net10) — if available
+- [ ] 6.6 Revit 2027 (net10), if available
 - [ ] 6.7 **Two instances open**: with 2+ Revit versions running, confirm the `document` parameter is required and correctly routes to the intended instance (`revit_ping` with/without `document`).
 
 ---
 
 ## 7. Client-surface matrix (which Claude surface actually works)
 
-Record pass/fail per surface — this is where the confusion was:
+Record pass/fail per surface: this is where the confusion was:
 
 | Surface | Reaches local stdio MCP? | Reaches remote MCP? | [ ] |
 |---|---|---|---|
-| Claude Desktop — **cloud chat** (Chat/Cowork) | expected **NO** (cloud) | via connector? | [ ] |
-| Claude Desktop — **local agent** (Code + "Local" chip) | expected **YES** | n/a | [ ] |
+| Claude Desktop: **cloud chat** (Chat/Cowork) | expected **NO** (cloud) | via connector? | [ ] |
+| Claude Desktop: **local agent** (Code + "Local" chip) | expected **YES** | n/a | [ ] |
 | Claude Code CLI (`claude -p`, `claude`) local | expected **YES** | n/a | [ ] |
 | Claude Desktop with **remote workstation** config (M2) | n/a | expected **YES** | [ ] |
 
@@ -213,10 +213,10 @@ Explicit re-tests for things that broke or surprised us:
 
 - [ ] **8.1** `.mcpb` file association / open-in-Claude (see §2.3).
 - [ ] **8.2** Local stdio MCP unavailable in the cloud chat (see §2.4).
-- [ ] **8.3** HTTP listener 53110 bind — issue #44 (see §5.3).
+- [ ] **8.3** HTTP listener 53110 bind: issue #44 (see §5.3).
 - [ ] **8.4** Channel contention on parallel tool calls (see §5.4).
 - [ ] **8.5** Add-in load: benign vs fatal `API_ERROR` (assembly version conflict) per version (see §1.7).
-- [ ] **8.6** `uvx`/`claude` not on the non-interactive shell PATH (use full paths) — a setup-doc note, not a product bug.
+- [ ] **8.6** `uvx`/`claude` not on the non-interactive shell PATH (use full paths): a setup-doc note, not a product bug.
 
 ---
 
@@ -243,13 +243,13 @@ Use disposable local and Revit Server test models. Check each operation in Revit
 - [ ] Run `revit_set_view_visibility` with `dry_run=true`; confirm before/after values and no persisted changes. Repeat on an assigned template without `template_mode` (expect rejection), then with each mode and inspect affected views.
 - [ ] Hide category types and named categories, and hide worksets with both glob and `regex:` masks. Confirm unmatched category suggestions and per-category failures.
 - [ ] Run `revit_remove_links` with `dry_run=true`, then on a disposable detached copy. Verify type and instance counts, untouched imported CAD by default, and the central-connected refusal and local-copy sync warning.
-- [ ] Repeat link inspection on Revit 2022–2023 and 2024+ to check the override fallback and `GetLinkOverrides` path.
+- [ ] Repeat link inspection on Revit 2022-2023 and 2024+ to check the override fallback and `GetLinkOverrides` path.
 
 ## 9. Reporting
 
-For the run, produce a short results table: environment, release tag, per-section pass/fail counts, and a list of filed issues. Optionally record a **clean demo video** — but arrange the UI first (see the preferences note): open a real 3D/model view in Revit (not just the project browser), size Claude and Revit panels so both are legible, then start the screen recording. Ask the owner to set the layout before recording.
+For the run, produce a short results table: environment, release tag, per-section pass/fail counts, and a list of filed issues. Optionally record a **clean demo video**, but arrange the UI first (see the preferences note): open a real 3D/model view in Revit (not just the project browser), size Claude and Revit panels so both are legible, then start the screen recording. Ask the owner to set the layout before recording.
 
-**Definition of done for the release:** §1–§7 all pass on at least Revit 2024 + 2026 (local) and one remote (M2) run; all §8 regressions either pass or have a tracked issue; the client-surface matrix (§7) is documented in the README/docs.
+**Definition of done for the release:** §1-§7 all pass on at least Revit 2024 + 2026 (local) and one remote (M2) run; all §8 regressions either pass or have a tracked issue; the client-surface matrix (§7) is documented in the README/docs.
 
 ## Workstation regression and release smoke
 

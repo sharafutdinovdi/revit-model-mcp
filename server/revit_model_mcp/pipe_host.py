@@ -20,6 +20,7 @@ from typing import Any
 
 from revit_model_mcp.policy import POLICY_REFUSAL_PREFIX
 from revit_model_mcp.revit_channel import (
+    ACTION_COMMANDS,
     CHANNEL_DIRECTORY,
     CLIENT_ID,
     Job,
@@ -29,6 +30,7 @@ from revit_model_mcp.revit_channel import (
     RemoteHost,
     ResponseParseError,
     RevitChannelError,
+    SubmissionRefusedError,
     TransportUnavailableError,
     current_progress_reporter,
     matches_document,
@@ -47,7 +49,7 @@ ERROR_PIPE_BUSY = 231
 SECURITY_SQOS_PRESENT = 0x00100000
 SECURITY_IDENTIFICATION = 0x00010000
 FILE_FLAG_OVERLAPPED = 0x40000000
-FINISHED_STATES = frozenset({"done", "failed", "cancelled"})
+FINISHED_STATES = frozenset({"done", "failed", "cancelled", "abandoned"})
 
 StreamPair = tuple[asyncio.StreamReader, asyncio.StreamWriter]
 Connector = Callable[[int], Awaitable[StreamPair]]
@@ -160,6 +162,8 @@ class PipeConnection:
         self._replies: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._jobs: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._progress_callbacks: dict[str, Callable[[dict[str, Any]], Awaitable[None]]] = {}
+        self._progress_pending: dict[str, dict[str, Any]] = {}
+        self._progress_tasks: dict[str, asyncio.Task[None]] = {}
         self.closed = False
         self.hello: dict[str, Any] = {}
         self._task = asyncio.create_task(self._read_loop())
@@ -175,7 +179,9 @@ class PipeConnection:
         if len(line) > REQUEST_LIMIT_BYTES + 1:
             raise RevitChannelError("The request exceeds the 1 MiB pipe message limit.")
         if self.closed:
-            raise PipeDisconnectedError("The Revit pipe connection is closed.")
+            error = PipeDisconnectedError("The Revit pipe connection is closed.")
+            error.before_send = True
+            raise error
         future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
         self._replies[request_id] = future
         try:
@@ -208,6 +214,31 @@ class PipeConnection:
     def forget(self, job_id: str) -> None:
         self._jobs.pop(job_id, None)
         self._progress_callbacks.pop(job_id, None)
+        self._progress_pending.pop(job_id, None)
+        task = self._progress_tasks.pop(job_id, None)
+        if task is not None:
+            task.cancel()
+
+    def _notify_progress(self, job_id: str, message: dict[str, Any]) -> None:
+        if job_id not in self._progress_callbacks:
+            return
+        self._progress_pending[job_id] = message
+        task = self._progress_tasks.get(job_id)
+        if task is None or task.done():
+            self._progress_tasks[job_id] = asyncio.create_task(self._send_progress(job_id))
+
+    async def _send_progress(self, job_id: str) -> None:
+        while job_id in self._progress_pending:
+            message = self._progress_pending.pop(job_id)
+            callback = self._progress_callbacks.get(job_id)
+            if callback is None:
+                return
+            try:
+                await callback(message)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                LOGGER.warning("Could not forward Revit pipe progress notification.")
 
     async def aclose(self) -> None:
         self._task.cancel()
@@ -229,9 +260,7 @@ class PipeConnection:
                     continue
                 if message.get("type") == "job":
                     job_id = str(message.get("jobId"))
-                    callback = self._progress_callbacks.get(job_id)
-                    if callback is not None:
-                        await callback(message)
+                    self._notify_progress(job_id, message)
                     future = self._jobs.get(job_id)
                     if (
                         future is not None
@@ -243,9 +272,7 @@ class PipeConnection:
                         future.set_result(message)
                     continue
                 if message.get("type") == "submitted":
-                    callback = self._progress_callbacks.get(str(message.get("jobId")))
-                    if callback is not None:
-                        await callback(message)
+                    self._notify_progress(str(message.get("jobId")), message)
                 future = self._replies.get(str(message.get("id")))
                 if future is not None and not future.done():
                     future.set_result(message)
@@ -267,6 +294,10 @@ class PipeConnection:
                 future.exception()
         self._jobs.clear()
         self._progress_callbacks.clear()
+        self._progress_pending.clear()
+        for task in self._progress_tasks.values():
+            task.cancel()
+        self._progress_tasks.clear()
         self._writer.close()
 
 
@@ -299,7 +330,7 @@ def _refusal_error(reply: dict[str, Any]) -> RevitChannelError:
         )
     if reply.get("error") == "read_only":
         return ReadOnlyRefusedError(reply.get("message") or _error_text(reply))
-    return RevitChannelError(_error_text(reply))
+    return SubmissionRefusedError(_error_text(reply))
 
 
 def _error_text(reply: dict[str, Any]) -> str:
@@ -531,12 +562,11 @@ class PipeJobHost:
         self._future = self._connection.watch(job_id)
         try:
             reply = await self._connection.request({"type": "submit", "job": payload})
-        except PipeDisconnectedError:
-            # The connection may have died before the write ever reached Revit (safe to
-            # resubmit), or after Revit already queued the job but before the "submitted"
-            # reply came back (resubmitting would fail with duplicate_job_id and would wrongly
-            # report a job that is actually running). Reconnect and ask `status` first so a
-            # job Revit already accepted is resumed instead of rejected or run twice.
+        except PipeDisconnectedError as error:
+            if error.before_send and command in ACTION_COMMANDS:
+                self._connection.forget(job_id)
+                raise
+            # A lost reply may follow acceptance. Query the original id before another submission.
             self._connection = await self._parent.connection(self._instance)
             self._future = self._connection.watch(job_id)
             status_reply = await self._connection.request({"type": "status", "jobId": job_id})
@@ -551,7 +581,12 @@ class PipeJobHost:
                         raise ResponseParseError("The finished pipe job has no JSON result.")
                     self._result = json.dumps(result, ensure_ascii=False)
                 return set()
-            # Not found: the original submit never reached Revit; resubmitting is safe.
+            # A missing status cannot prove that an action never executed.
+            if command in ACTION_COMMANDS:
+                raise RevitChannelError(
+                    f"Action outcome unknown; query revit_jobs with jobId {job_id}."
+                )
+            payload["attempt"] = "retry"
             reply = await self._connection.request({"type": "submit", "job": payload})
         if reply.get("type") == "error":
             self._connection.forget(job_id)

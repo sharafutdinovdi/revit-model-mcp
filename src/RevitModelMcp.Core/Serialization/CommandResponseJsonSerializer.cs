@@ -48,6 +48,21 @@ public static class CommandResponseJsonSerializer
         {
             throw new ArgumentNullException(nameof(response));
         }
+        if (response is CommandResponse<ActionResultData>
+            { Command: "execute-code" or "run-tool", Data.ResultCompleteness.Truncated: true } execution)
+        {
+            execution.Partial = true;
+            execution.Skipped ??= [];
+            if (!execution.Skipped.Any(item => item.What == "returnValue"))
+            {
+                execution.Skipped.Add(new SkippedRead
+                {
+                    What = "returnValue",
+                    Reason = "Inline result truncated: " + string.Join(", ", execution.Data!.ResultCompleteness!.Reasons)
+                });
+                execution.SkippedCount = (execution.SkippedCount ?? 0) + 1;
+            }
+        }
 
         using var stream = new MemoryStream();
         ResponseSerializer<T>.Instance.WriteObject(stream, response);

@@ -59,8 +59,18 @@ internal sealed class ControlChannel
         {
             if (_stopped) return new(null, "shutting_down", 0);
             var jobId = string.IsNullOrWhiteSpace(job.JobId) ? Guid.NewGuid().ToString("N") : job.JobId!;
-            var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload);
+            var submitted = _scheduler.Submit(jobId, job.ClientId, job.ClientName, job.Command, payload, job.Retry, job.TargetDocument);
             if (submitted.Job is null) return submitted;
+            if (_httpCompletions.TryGetValue(jobId, out var existing))
+            {
+                completion = existing.Task;
+                return submitted;
+            }
+            if (submitted.Job.State is JobState.Done or JobState.Failed or JobState.Cancelled or JobState.Abandoned)
+            {
+                completion = Task.FromResult(submitted.Job.Result!);
+                return submitted;
+            }
             var source = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             _httpCompletions.Add(jobId, source);
             completion = source.Task;
@@ -118,16 +128,20 @@ internal sealed class ControlChannel
                     continue;
                 }
                 var jobId = string.IsNullOrWhiteSpace(parsed.JobId) ? Guid.NewGuid().ToString("N") : parsed.JobId!;
-                var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content);
+                var submitted = _scheduler.Submit(jobId, parsed.ClientId, parsed.ClientName, parsed.Command, content, parsed.Retry, parsed.TargetDocument);
                 if (submitted.Job is null)
                 {
-                    if (submitted.Error is "queue_full" or "invalid_job_id" or "persist_failed")
+                    if (submitted.Error is not null)
                     {
                         var message = JobScheduler.SubmissionMessage(submitted.Error);
                         var response = CommandResponse<object>.Fail(parsed.Command, message ?? submitted.Error, 0, parsed.CorrelationId);
                         response.Error = submitted.Error;
                         response.RetryAfterMs = submitted.RetryAfterMs;
-                        response.Client = new ClientIdentity { Name = parsed.ClientName, Id = parsed.ClientId };
+                        response.Client = new ClientIdentity
+                        {
+                            Name = parsed.ClientName,
+                            Id = parsed.ClientId
+                        };
                         response.JobId = jobId;
                         response.Responder.ProcessId = Process.GetCurrentProcess().Id;
                         var responsePath = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
@@ -135,6 +149,12 @@ internal sealed class ControlChannel
                         CommandResponseJsonFile.Write(responsePath, response);
                     }
                     PluginLog.Warn($"File job rejected. Error='{submitted.Error}'.");
+                }
+                if (submitted.Job is { State: JobState.Done or JobState.Failed or JobState.Cancelled or JobState.Abandoned, Result: not null } completed)
+                {
+                    var responsePath = CommandResponseJsonFile.CreatePath(ChannelDirectory.OutputDirectory,
+                        DateTime.Now, parsed.Command, parsed.CorrelationId);
+                    CommandResponseJsonFile.WriteContent(responsePath, completed.Result);
                 }
                 try { File.Delete(claimedPath); }
                 catch (IOException) { PluginLog.Warn("Claimed job file could not be removed."); }
@@ -144,11 +164,9 @@ internal sealed class ControlChannel
 
     private static bool MatchesFileTarget(ControlJobParseResult job, UIApplication? application)
     {
+        if (application is not null) return MatchesCurrentInstance(application, job);
         if (job.TargetProcessId is int target) return target == Process.GetCurrentProcess().Id;
-        if (job.TargetDocument is null) return true;
-        if (application is null) return false;
-        var document = application.ActiveUIDocument?.Document;
-        return JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, job.TargetDocument);
+        return job.TargetDocument is null;
     }
 
     public void Tick(UIApplication application)
@@ -169,16 +187,22 @@ internal sealed class ControlChannel
             }
             if (_current is null || _currentJob is null) return;
             JobResponseMetadata.Current = new JobResponseMetadata(
-                new ClientIdentity { Name = _current.ClientName, Id = _current.ClientId },
+                new ClientIdentity
+                {
+                    Name = _current.ClientName,
+                    Id = _current.ClientId
+                },
                 _current.JobId,
                 _currentQueuedMs);
             var isHttp = HasHttpCompletion(_current.JobId);
             ResponseDelivery.Current = content =>
             {
+                var firstResponse = _httpResponse is null;
                 _httpResponse = content;
                 _responseDeliveredAt = DateTimeOffset.UtcNow;
                 _tabActivity.Progress(_current.JobId, content);
-                if (ActionJobParser.IsAction(_current.Command)) _scheduler.PublishProgress(_current.JobId, content);
+                if (ActionJobParser.IsAction(_current.Command))
+                    _scheduler.PublishProgress(_current.JobId, content, persist: firstResponse);
                 if (!isHttp)
                 {
                     if (_current.Command == "batch" && _fileProgressWrite.IsRunning &&
@@ -224,7 +248,11 @@ internal sealed class ControlChannel
                 var fallback = CommandResponse<object>.Fail(_current.Command,
                     "The command ended without a response.", 0, _currentJob?.CorrelationId);
                 fallback.Error = fallback.Message;
-                fallback.Client = new ClientIdentity { Name = _current.ClientName, Id = _current.ClientId };
+                fallback.Client = new ClientIdentity
+                {
+                    Name = _current.ClientName,
+                    Id = _current.ClientId
+                };
                 fallback.JobId = _current.JobId;
                 fallback.QueuedMs = _currentQueuedMs;
                 fallback.Responder.ProcessId = Process.GetCurrentProcess().Id;
@@ -264,7 +292,8 @@ internal sealed class ControlChannel
             var document = parsed.TargetDocument is null
                 ? application.ActiveUIDocument?.Document
                 : application.Application.Documents.Cast<Autodesk.Revit.DB.Document>().FirstOrDefault(candidate =>
-                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument));
+                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument,
+                        ReadCommandReader.DocumentId(candidate)));
             if (document is null) return;
             var pointer = IntPtr.Zero;
             try
@@ -311,8 +340,16 @@ internal sealed class ControlChannel
             return cancellation;
         var parsed = ControlJobParser.Parse(job.Payload);
         var response = CommandResponse<ActionResultData>.Fail(job.Command, "Job cancelled by its client.", 0, parsed.CorrelationId);
-        if (job.Command == "process-models") response.Data = new ActionResultData { Cancelled = true, Models = [] };
-        response.Client = new ClientIdentity { Name = job.ClientName, Id = job.ClientId };
+        if (job.Command == "process-models") response.Data = new ActionResultData
+        {
+            Cancelled = true,
+            Models = []
+        };
+        response.Client = new ClientIdentity
+        {
+            Name = job.ClientName,
+            Id = job.ClientId
+        };
         response.JobId = job.JobId;
         response.QueuedMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds);
         response.Responder.ProcessId = Process.GetCurrentProcess().Id;
@@ -349,29 +386,26 @@ internal sealed class ControlChannel
             return;
         }
         var document = application.ActiveUIDocument?.Document;
-        if (!ActionJobParser.IsAction(parsed.Command) && parsed.TargetDocument is not null &&
-            !JobTargetMatcher.MatchesDocument(document?.Title, document?.PathName, parsed.TargetDocument))
+        if (!MatchesCurrentInstance(application, parsed))
         {
-            if (!application.Application.Documents.Cast<Autodesk.Revit.DB.Document>().Any(candidate =>
-                    JobTargetMatcher.MatchesDocument(candidate.Title, candidate.PathName, parsed.TargetDocument)))
-            {
-                TryWriteError(application, parsed.Command,
-                    $"Target document '{parsed.TargetDocument}' is not open; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
-                    startedAt, parsed.CorrelationId);
-                return;
-            }
+            TryWriteError(application, parsed.Command,
+                $"Target process or document '{parsed.TargetDocument}' is not open in this Revit instance; the active document is '{document?.Title ?? "<none>"}'. Pass `document` or call revit_activate_document.",
+                startedAt, parsed.CorrelationId);
+            return;
         }
         if (parsed.Kind == ControlJobKind.Jobs)
         {
             var data = new JobListData
             {
-                Jobs = _scheduler.ActiveJobs().Select(job => new JobSummary
+                Jobs = _scheduler.RecentJobs().Select(job => new JobSummary
                 {
                     JobId = job.JobId,
                     ClientName = job.ClientName,
                     Command = job.Command,
                     State = StateName(job.State),
                     Position = job.Position,
+                    TargetDocument = job.TargetDocument,
+                    FinishedUtc = job.CompletedUtc?.ToString("O"),
                     AgeMs = Math.Max(0, (long)(DateTimeOffset.UtcNow - job.SubmittedUtc).TotalMilliseconds)
                 }).ToList()
             };
@@ -467,8 +501,12 @@ internal sealed class ControlChannel
 
     private static bool MatchesCurrentInstance(UIApplication application, ControlJobParseResult job)
     {
-        var document = application.ActiveUIDocument?.Document;
-        return JobTargetMatcher.Matches(job, document?.Title, document?.PathName, Process.GetCurrentProcess().Id);
+        if (job.TargetDocument is null)
+            return JobTargetMatcher.Matches(job, null, null, Process.GetCurrentProcess().Id);
+        return JobTargetMatcher.CanDispatch(job, Process.GetCurrentProcess().Id,
+            application.Application.Documents.Cast<Autodesk.Revit.DB.Document>()
+                .Select(document => ((string?)document.Title, (string?)document.PathName,
+                    (string?)ReadCommandReader.DocumentId(document))));
     }
 
     internal static string StateName(JobState state) => state switch

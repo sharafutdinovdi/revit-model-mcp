@@ -74,6 +74,9 @@ public sealed class InstanceDocument
 
     [DataMember(Name = "isFamilyDocument", Order = 4)]
     public bool IsFamilyDocument { get; set; }
+
+    [DataMember(Name = "documentId", Order = 5, EmitDefaultValue = false)]
+    public string? DocumentId { get; set; }
 }
 
 [DataContract]

@@ -1774,6 +1774,8 @@ public sealed class SkippedByReason
 [KnownType(typeof(SkippedByReason))]
 public sealed class ActionResultData
 {
+    [DataMember(Name = "failures", EmitDefaultValue = false)] public List<RevitModelMcp.Core.Batch.CallFailureRecord>? Failures { get; set; }
+    [DataMember(Name = "dialogs", EmitDefaultValue = false)] public List<RevitModelMcp.Core.Batch.BatchDialogRecord>? Dialogs { get; set; }
     [DataMember(Name = "tool", EmitDefaultValue = false)] internal ToolDefinition? Tool { get; set; }
     [DataMember(Name = "invalid", EmitDefaultValue = false)] internal List<InvalidTool>? Invalid { get; set; }
     [DataMember(Name = "tools", EmitDefaultValue = false)] internal List<ToolDefinition>? Tools { get; set; }
@@ -1787,6 +1789,8 @@ public sealed class ActionResultData
     [DataMember(Name = "skippedCount", EmitDefaultValue = false)] public int? SkippedCount { get; set; }
     [IgnoreDataMember] public string? CodeError { get; set; }
     [IgnoreDataMember] public object? ReturnValue { get; set; }
+    [DataMember(Name = "resultCompleteness", EmitDefaultValue = false)] public CodeResult? ResultCompleteness { get; set; }
+    [DataMember(Name = "resultArtifact", EmitDefaultValue = false)] public string? ResultArtifact { get; set; }
     [DataMember(Name = "log", EmitDefaultValue = false)] public List<string>? Log { get; set; }
     [DataMember(Name = "diagnostics", EmitDefaultValue = false)] public List<CodeDiagnostic>? Diagnostics { get; set; }
     [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }

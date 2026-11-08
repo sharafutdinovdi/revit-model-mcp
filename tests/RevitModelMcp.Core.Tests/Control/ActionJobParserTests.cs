@@ -456,18 +456,54 @@ public sealed class ActionJobParserTests
     [Test]
     public async Task ExecuteCode_ReturnLimiterCapsDepthAndItems()
     {
-        var items = CodeResultLimiter.Limit(Enumerable.Range(0, 6000).ToArray(), value => value) as List<object?>;
+        var items = CodeResultLimiter.Limit(Enumerable.Range(0, 6000).ToArray(), value => value);
         object nested = 7;
         for (var depth = 0; depth < 8; depth++) nested = new[] { nested };
         var limited = CodeResultLimiter.Limit(nested, value => value);
-        await Assert.That(items!.Count).IsEqualTo(5000);
-        await Assert.That(CodeResultLimiter.ToJson(limited).Contains("System.Object[]")).IsTrue();
+        await Assert.That(((List<object?>)items.Value!).Count).IsEqualTo(5000);
+        await Assert.That(items.Truncated).IsTrue();
+        await Assert.That(items.RetainedCount).IsEqualTo(5000);
+        await Assert.That(items.OmittedCount).IsEqualTo(1000);
+        await Assert.That(items.Reasons).Contains("itemBudget");
+        await Assert.That(items.FullJson).IsEqualTo(CodeResultLimiter.ToJson(Enumerable.Range(0, 6000).ToArray()));
+        await Assert.That(limited.RetainedCount).IsEqualTo(6);
+        await Assert.That(limited.OmittedCount).IsEqualTo(2);
+        await Assert.That(limited.Reasons).Contains("depth");
         await Assert.That(CodeResultLimiter.ToJson(new Dictionary<string, object?>
         {
             ["escaped"] = "a\"b\n",
             ["number"] = 1.5,
             ["finite"] = double.NaN
         })).IsEqualTo("{\"escaped\":\"a\\\"b\\n\",\"number\":1.5,\"finite\":null}");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterReportsInlineSizeAndPreservesFullString()
+    {
+        var value = new string('x', 262144);
+        var limited = CodeResultLimiter.Limit(value, item => item);
+        await Assert.That(limited.Truncated).IsTrue();
+        await Assert.That(limited.Value).IsNull();
+        await Assert.That(limited.RetainedCount).IsEqualTo(0);
+        await Assert.That(limited.OmittedCount).IsEqualTo(1);
+        await Assert.That(limited.Reasons).Contains("inlineSize");
+        await Assert.That(limited.FullJson).IsEqualTo("\"" + value + "\"");
+    }
+
+    [Test]
+    public async Task ExecuteCode_ReturnLimiterRejectsCyclesAndFailingGetters()
+    {
+        var cycle = new List<object>();
+        cycle.Add(cycle);
+        await Assert.That(() => CodeResultLimiter.Limit(cycle, value => value))
+            .Throws<InvalidOperationException>();
+        await Assert.That(() => CodeResultLimiter.Limit(new FailingCodeResult(), value => value))
+            .Throws<System.Reflection.TargetInvocationException>();
+    }
+
+    private sealed class FailingCodeResult
+    {
+        public string Value => throw new InvalidOperationException("Unavailable property.");
     }
 
     [Test]
@@ -479,15 +515,15 @@ public sealed class ActionJobParserTests
             CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ru-RU");
             var anonymous = CodeResultLimiter.Limit(new { Name = "Parking", mm = -5156.2 }, value => value);
             var plain = CodeResultLimiter.Limit(new PlainCodeResult { Name = "Parking", Millimeters = -5156.2 }, value => value);
-            await Assert.That(CodeResultLimiter.ToJson(anonymous))
+            await Assert.That(CodeResultLimiter.ToJson(anonymous.Value))
                 .IsEqualTo("{\"Name\":\"Parking\",\"mm\":-5156.2}");
-            await Assert.That(CodeResultLimiter.ToJson(plain))
+            await Assert.That(CodeResultLimiter.ToJson(plain.Value))
                 .IsEqualTo("{\"Name\":\"Parking\",\"Millimeters\":-5156.2}");
             await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
-                new Dictionary<double, object?> { [-5156.2] = 1.5 }, value => value)))
+                new Dictionary<double, object?> { [-5156.2] = 1.5 }, value => value).Value))
                 .IsEqualTo("{\"-5156.2\":1.5}");
             await Assert.That(CodeResultLimiter.ToJson(CodeResultLimiter.Limit(
-                new Uri("https://example.org/"), value => value)))
+                new Uri("https://example.org/"), value => value).Value))
                 .IsEqualTo("\"https://example.org/\"");
         }
         finally

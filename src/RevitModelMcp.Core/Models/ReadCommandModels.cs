@@ -76,10 +76,13 @@ public sealed class CommandResponse<T>
     [OnSerializing]
     private void AddJobMetadata(StreamingContext context)
     {
-        if (SkippedReadDiagnostics.Current is { } diagnostics)
+        if (SkippedReadDiagnostics.Current is not null || Skipped is not null ||
+            Data is ModelSnapshotData or FamilyAuditData or ApiLookupResult)
         {
+            var diagnostics = SkippedReadDiagnostics.ForResponse(Data, Skipped, SkippedCount ?? 0);
             Skipped = diagnostics.Items;
             SkippedCount = diagnostics.Count;
+            Partial |= diagnostics.Count > 0;
         }
         var metadata = JobResponseMetadata.Current;
         if (metadata is null || JobId is not null) return;
@@ -169,6 +172,8 @@ public sealed record JobSummary
     [DataMember(Name = "state")] public string State { get; init; } = string.Empty;
     [DataMember(Name = "position")] public int Position { get; init; }
     [DataMember(Name = "ageMs")] public long AgeMs { get; init; }
+    [DataMember(Name = "targetDocument")] public string? TargetDocument { get; init; }
+    [DataMember(Name = "finishedUtc")] public string? FinishedUtc { get; init; }
 }
 
 [DataContract]

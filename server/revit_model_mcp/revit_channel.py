@@ -8,14 +8,19 @@ import json
 import logging
 import os
 import re
+import sys
+import time
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
 from revit_model_mcp import CHANNEL
 from revit_model_mcp.errors import (
+    OUTCOME_UNKNOWN,
     POLICY_BLOCKED,
     READ_ONLY,
     READ_ONLY_MESSAGE,
@@ -36,8 +41,64 @@ _client_name: contextvars.ContextVar[str] = contextvars.ContextVar(
 )
 
 
+def _dialog_wait_message(dialog: dict[str, Any]) -> str:
+    detail = (
+        " / ".join(
+            value
+            for key in ("dialogId", "message")
+            if isinstance(value := dialog.get(key), str) and value
+        )
+        or "unknown"
+    )
+    return f"waiting for dialog {detail}"
+
+
+def _request_journal_directory() -> Path:
+    if sys.platform == "win32":
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    elif sys.platform == "darwin":
+        root = Path.home() / "Library" / "Caches"
+    else:
+        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return root / "revit-model-mcp" / "requests"
+
+
+def _persist_request_id(job: Job, instance: dict[str, Any]) -> Path:
+    directory = _request_journal_directory()
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    cutoff = time.time() - 24 * 60 * 60
+    records = []
+    for record in directory.glob("*.json"):
+        try:
+            records.append((record.stat().st_mtime, record))
+        except FileNotFoundError:
+            continue
+    for index, (modified, record) in enumerate(sorted(records, reverse=True)):
+        if index >= 99 or modified < cutoff:
+            record.unlink(missing_ok=True)
+    path = directory / f"{uuid.UUID(job.payload['jobId']).hex}.json"
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        json.dump(
+            {
+                "jobId": job.payload["jobId"],
+                "command": job.command,
+                "targetDocument": job.payload.get("targetDocument"),
+                "processId": instance.get("processId"),
+                "submittedUtc": datetime.now(timezone.utc).isoformat(),
+            },
+            stream,
+        )
+        stream.flush()
+        os.fsync(stream.fileno())
+    return path
+
+
 class ProgressReporter:
-    """Request-scoped, best-effort MCP progress delivery."""
+    """Monotonic request progress with one sender and one latest-value slot.
+
+    Notification callbacks never run on the result delivery path.
+    """
 
     def __init__(self, ctx: Context | None = None):
         self.ctx = ctx
@@ -50,30 +111,42 @@ class ProgressReporter:
         self.started: float | None = None
         self.last_tick = 0.0
         self.partial: str | None = None
+        self._pending: tuple[float, float | None, str] | None = None
+        self._sender: asyncio.Task[None] | None = None
 
     async def update(self, progress: float, total: float | None, message: str):
         async with self._lock:
             if self.ctx is None or self.finished:
                 return
-            await self._send(progress, total, message)
+            final = message in {"Done", "Still running, poll revit_jobs"}
+            self.progress = max(self.progress, progress)
+            if total is not None or self.total is not None:
+                self.total = max(self.total or 0, total or 0, self.progress)
+            if final:
+                self.progress = self.total = max(self.progress, self.total or 1)
+            self.finished = final
+            self._pending = (self.progress, self.total, message)
+            if self._sender is None or self._sender.done():
+                self._sender = asyncio.create_task(self._send())
 
-    async def _send(self, progress: float, total: float | None, message: str):
-        now = asyncio.get_running_loop().time()
-        final = message in {"Done", "Still running, poll revit_jobs"}
-        if not final and now - self.last_sent < 0.5:
-            await asyncio.sleep(0.5 - (now - self.last_sent))
+    async def _send(self):
         from revit_model_mcp.actions import redact_model_paths
 
-        self.last_sent = asyncio.get_running_loop().time()
-        self.total = total
-        self.progress = progress
-        self.finished = final
-        try:
-            await self.ctx.report_progress(
-                progress, total, redact_model_paths({"message": message})["message"]
-            )
-        except Exception:
-            LOGGER.warning("Could not send MCP progress notification.")
+        while self._pending is not None:
+            delay = 0.5 - (asyncio.get_running_loop().time() - self.last_sent)
+            if not self.finished and delay > 0:
+                await asyncio.sleep(delay)
+            progress, total, message = self._pending
+            self._pending = None
+            self.last_sent = asyncio.get_running_loop().time()
+            try:
+                await self.ctx.report_progress(
+                    progress, total, redact_model_paths({"message": message})["message"]
+                )
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                LOGGER.warning("Could not send MCP progress notification.")
 
     async def observe(self, response: dict[str, Any]):
         if self.ctx is None or self.finished:
@@ -81,12 +154,17 @@ class ProgressReporter:
         data = response.get("data")
         data = data if isinstance(data, dict) else {}
         state = response.get("state", data.get("state"))
+        dialog = response.get("dialog", data.get("dialog"))
+        if state == "waiting_dialog" and isinstance(dialog, dict):
+            state = _dialog_wait_message(dialog)
         if state and state != self.state:
             messages = {
                 "queued": f"Queued in Revit (position {response.get('position', data.get('position', 1))})",
                 "waiting_revit": "Waiting for the Revit API context",
                 "running": "Running in Revit",
             }
+            if isinstance(state, str) and state.startswith("waiting for dialog "):
+                messages[state] = state
             if state in messages:
                 await self.update(0, None, messages[state])
                 self.state = state
@@ -129,12 +207,12 @@ class ProgressReporter:
             if self.ctx is None or self.finished:
                 return
             now = asyncio.get_running_loop().time()
-            if self.started is not None and now - self.last_tick >= 2:
-                self.last_tick = now
-                progress = self.progress if self.total is not None else self.progress + 1
-                await self._send(
-                    progress, self.total, f"Running in Revit, {int(now - self.started)} s"
-                )
+            if self.started is None or now - self.last_tick < 2:
+                return
+            self.last_tick = now
+            progress = self.progress if self.total is not None else self.progress + 1
+            total = self.total
+        await self.update(progress, total, f"Running in Revit, {int(now - self.started)} s")
 
     async def wait(self, awaitable):
         if self.ctx is None:
@@ -276,7 +354,14 @@ def tool_budget_seconds() -> float:
     return value
 
 
-def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str, Any]:
+def running_job(
+    job_id: str,
+    response: dict[str, Any] | None = None,
+    process_id: int | None = None,
+    identity: dict[str, Any] | None = None,
+    target_document: str | None = None,
+    command: str | None = None,
+) -> dict[str, Any]:
     data = (response or {}).get("data")
     progress = (
         {key: data[key] for key in ("currentIndex", "total", "currentPath") if key in data}
@@ -296,13 +381,65 @@ def running_job(job_id: str, response: dict[str, Any] | None = None) -> dict[str
     )
     if progress is not None and models:
         progress["models"] = models
+    waiting = {}
+    source = response or {}
+    if isinstance(data, dict) and data.get("state") == "waiting_dialog":
+        source = data
+    if source.get("state") == "waiting_dialog":
+        waiting = {"state": "waiting_dialog", "dialog": source.get("dialog")}
+    dialog = waiting.get("dialog")
+    waiting_message = _dialog_wait_message(dialog) + ". " if isinstance(dialog, dict) else ""
+    identity = identity or {}
+    documents = [entry for entry in identity.get("documents", []) if isinstance(entry, dict)]
+    active_document = next((entry for entry in documents if entry.get("isActive")), None)
+    targets = (
+        [entry for entry in documents if matches_document({"documents": [entry]}, target_document)]
+        if target_document
+        else ([active_document] if active_document else [])
+    )
+    if command in {"process-models", "open-document", "new-document"}:
+        targets = []
+    target = targets[0] if len(targets) == 1 else {}
+    responder = {
+        "processId": process_id,
+        "revitVersion": identity.get("revitVersion"),
+        "instanceId": identity.get("instanceId"),
+        "documentId": target.get("documentId"),
+        "documentName": target.get("title", ""),
+        "documentPath": target.get("path", ""),
+        "activeDocument": active_document,
+    }
+    reported = (response or {}).get("responder")
+    if isinstance(reported, dict):
+        if reported.get("processId") and reported.get("instanceId"):
+            responder.update(reported)
+        else:
+            responder.update({key: value for key, value in reported.items() if value})
     return {
+        **waiting,
         "status": "running",
         "jobId": job_id,
         "progress": progress,
         "partial": models,
-        "message": "The action may already have changed the model. Poll revit_jobs with this jobId until it finishes; inspect the final result before retrying.",
+        **({"processId": process_id} if process_id is not None else {}),
+        "responder": responder,
+        "message": waiting_message
+        + "The action may already have changed the model. Poll revit_jobs with "
+        + f"job_id='{job_id}'"
+        + (f", process_id={process_id}" if process_id is not None else "")
+        + " until it finishes; inspect the final result before retrying.",
     }
+
+
+def validate_job_identity(response: dict[str, Any], identity: dict[str, Any]) -> None:
+    responder = response.get("responder")
+    if not isinstance(responder, dict):
+        return
+    for key in ("processId", "instanceId"):
+        if identity.get(key) and responder.get(key) and identity[key] != responder[key]:
+            raise RevitChannelError(
+                "The job response belongs to a different Revit process generation."
+            )
 
 
 class RevitChannelError(RuntimeError):
@@ -330,17 +467,22 @@ def refused_response(command: str, error: ReadOnlyRefusedError) -> dict[str, Any
     )
 
 
+class SubmissionRefusedError(RevitChannelError):
+    before_send = True
+
+
 class ResultExpiredError(RevitChannelError):
     pass
 
 
 class TransportUnavailableError(RevitChannelError):
+    before_send = False
     transport = "transport"
 
     def __str__(self) -> str:
         return (
             f"Revit is not reachable over {self.transport}: {super().__str__().rstrip('.')}. "
-            "The call did not run. Retry when the workstation or tunnel is back."
+            "Check the workstation or tunnel connection."
         )
 
 
@@ -642,15 +784,31 @@ def _unique_texts(values: list[str]) -> list[str]:
 def matches_document(instance: dict[str, Any], document: str) -> bool:
     needle = document.strip().casefold()
     filename = str(instance.get("documentPath", "")).replace("\\", "/").rsplit("/", 1)[-1]
-    candidates = [instance.get("documentTitle", instance.get("documentName", "")), filename]
+    candidates = [
+        instance.get("documentTitle", instance.get("documentName", "")),
+        filename,
+    ]
     documents = instance.get("documents")
+    if "/" in needle or "\\" in needle:
+        paths = [instance.get("documentPath", "")]
+        if isinstance(documents, list):
+            paths.extend(entry.get("path", "") for entry in documents if isinstance(entry, dict))
+        return any(
+            needle.replace("\\", "/") == str(path).replace("\\", "/").casefold() for path in paths
+        )
     if isinstance(documents, list):
         for entry in documents:
             if not isinstance(entry, dict):
                 continue
             entry_path = str(entry.get("path", "")).replace("\\", "/").rsplit("/", 1)[-1]
+            if needle.startswith("doc:"):
+                if needle == str(entry.get("documentId", "")).casefold():
+                    return True
+                continue
             candidates.extend([entry.get("title", ""), entry_path])
-    return any(needle in str(value).casefold() for value in candidates)
+    return not needle.startswith("doc:") and any(
+        needle in str(value).casefold() for value in candidates
+    )
 
 
 def _describe_instance(instance: dict[str, Any]) -> str:
@@ -796,6 +954,7 @@ class RevitChannel:
     def __init__(self, remote: RemoteHost) -> None:
         self.remote = remote
         self._lock = asyncio.Lock()
+        self._job_routes: dict[str, tuple[dict[str, Any], Job, float]] = {}
 
     async def execute(
         self,
@@ -814,7 +973,7 @@ class RevitChannel:
                     else configured_pickup_timeout_seconds(),
                 )
             )
-            total = reporter.total or 1
+            total = max(reporter.progress, reporter.total or 1)
             await reporter.update(
                 total,
                 total,
@@ -848,7 +1007,28 @@ class RevitChannel:
             wait_seconds = job.payload.get("waitSeconds", 40)
             if not isinstance(wait_seconds, (int, float)) or not 0 <= wait_seconds <= 50:
                 raise RevitChannelError("wait_seconds must be between 0 and 50.")
+            route = self._job_routes.get(job_id)
+            if route is not None:
+                identity, original_job, _ = route
+                requested_process = job.payload.get("targetProcessId")
+                if requested_process not in (None, identity.get("processId")):
+                    raise RevitChannelError("The job belongs to a different Revit process.")
+                requested_document = job.payload.get("targetDocument")
+                if requested_document and requested_document != original_job.payload.get(
+                    "targetDocument"
+                ):
+                    raise RevitChannelError("The job belongs to a different target document.")
+                job = job.for_process(identity.get("processId"))
             remote, job = await self.remote.select_job(job)
+            if route is not None:
+                current = getattr(remote, "instance_info", {})
+                if any(
+                    identity.get(key) != current.get(key)
+                    for key in ("processId", "instanceId", "startedUtc")
+                ):
+                    raise RevitChannelError(
+                        "The original Revit process generation is no longer available."
+                    )
             if job.payload.get("requestCancellation"):
                 from revit_model_mcp.ssh_host import RemoteCommandError
 
@@ -864,12 +1044,20 @@ class RevitChannel:
             deadline = asyncio.get_running_loop().time() + wait_seconds
             while True:
                 response = await remote.fetch_job(job_id)
+                validate_job_identity(response, getattr(remote, "instance_info", {}))
                 await current_progress_reporter().observe(response)
                 if not _is_intermediate_response(response):
                     return parse_response(json.dumps(response), response.get("command", ""))
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
-                    return running_job(job_id, response)
+                    return running_job(
+                        job_id,
+                        response,
+                        job.payload.get("targetProcessId"),
+                        getattr(remote, "instance_info", {}),
+                        (original_job if route is not None else job).payload.get("targetDocument"),
+                        original_job.command if route is not None else response.get("command"),
+                    )
                 await asyncio.sleep(min(0.25, remaining))
 
         async with self._lock:
@@ -878,9 +1066,9 @@ class RevitChannel:
             if not isinstance(instance, dict):
                 instance = {}
             check_addin_compatibility(job.command, instance)
-            result = await RevitChannel(remote)._execute_serial(
-                job, timeout_seconds, pickup_timeout_seconds
-            )
+            channel = RevitChannel(remote)
+            channel._job_routes = self._job_routes
+            result = await channel._execute_serial(job, timeout_seconds, pickup_timeout_seconds)
             if job.command == "ping":
                 result["addinVersion"] = instance["addinVersion"]
                 if isinstance(state := instance.get("httpState"), str):
@@ -915,14 +1103,20 @@ class RevitChannel:
         )
         loop = asyncio.get_running_loop()
         tool_deadline = loop.time() + budget if background else None
-        correlation_id = uuid.uuid4().hex
-        job_id = uuid.uuid4().hex
+        job_id = job.payload.get("jobId") or uuid.uuid4().hex
+        correlation_id = job.payload.get("correlationId") or job_id
+        now = loop.time()
+        for expired in [key for key, route in self._job_routes.items() if now - route[2] >= 86400]:
+            del self._job_routes[expired]
+        job = job.for_process(instance.get("processId"))
+        self._job_routes[job_id] = (dict(instance), job, now)
         job = replace(
             job,
             payload={
                 **job.payload,
                 "correlationId": correlation_id,
                 "jobId": job_id,
+                "attempt": "retry" if job.payload.get("jobId") else "initial",
                 "clientId": CLIENT_ID,
                 "clientName": _client_name.get(),
             },
@@ -933,7 +1127,16 @@ class RevitChannel:
         finish_attempted = False
         trigger_taken = False
         result: dict[str, Any] | None = None
+        latest_response: dict[str, Any] | None = None
         failure: BaseException | None = None
+
+        if job.command in ACTION_COMMANDS:
+            try:
+                _persist_request_id(job, instance)
+            except OSError as error:
+                raise RevitChannelError(
+                    f"Request id {job_id} was not persisted; the action was not sent: {error}"
+                ) from error
 
         try:
             known_responses = await self.remote.prepare_job(
@@ -949,7 +1152,13 @@ class RevitChannel:
                     min(budget, max(0, tool_deadline - loop.time())) if background else None,
                 )
             except TimeoutError:
-                return running_job(job_id)
+                return running_job(
+                    job_id,
+                    process_id=job.payload.get("targetProcessId"),
+                    identity=instance,
+                    target_document=job.payload.get("targetDocument"),
+                    command=job.command,
+                )
 
             if not getattr(self.remote, "reports_job_progress", False):
                 await current_progress_reporter().observe({"state": "waiting_revit"})
@@ -960,6 +1169,7 @@ class RevitChannel:
                     f"Job was not picked up within {pickup.elapsed_seconds:.1f} s; "
                     f"Revit activation attempts: {pickup.activation_attempts}; "
                     f"jobId={job_id}; job file {trigger_state}. The job was not deleted and may still execute later."
+                    + f" Poll revit_jobs with job_id='{job_id}', process_id={job.payload.get('targetProcessId')}."
                 )
 
             if not getattr(self.remote, "reports_job_progress", False):
@@ -1032,6 +1242,7 @@ class RevitChannel:
                         )
                     if not _is_intermediate_response(result):
                         break
+                    latest_response = result
                     result = None
                 left = remaining()
                 if left <= 0:
@@ -1057,10 +1268,25 @@ class RevitChannel:
                 except (ResultExpiredError, ReadOnlyRefusedError):
                     raise
                 except (RevitChannelError, TimeoutError):
-                    return running_job(job_id)
+                    return running_job(
+                        job_id,
+                        latest_response,
+                        job.payload.get("targetProcessId"),
+                        instance,
+                        job.payload.get("targetDocument"),
+                        command=job.command,
+                    )
                 await current_progress_reporter().observe(response)
+                validate_job_identity(response, instance)
                 if _is_intermediate_response(response):
-                    return running_job(job_id, response)
+                    return running_job(
+                        job_id,
+                        response,
+                        job.payload.get("targetProcessId"),
+                        instance,
+                        job.payload.get("targetDocument"),
+                        command=job.command,
+                    )
                 return parse_response(json.dumps(response), job.command)
 
             if result is None:
@@ -1071,6 +1297,7 @@ class RevitChannel:
                         if job.command in ACTION_COMMANDS
                         else "The job may still execute; find it with revit_jobs and increase timeout_seconds before retrying."
                     )
+                    + f" Poll revit_jobs with job_id='{job_id}', process_id={job.payload.get('targetProcessId')}."
                 )
 
             if job.command in ("export-view", "capture-elements") and result.get("success") is True:
@@ -1116,7 +1343,40 @@ class RevitChannel:
                     f"Could not clean up channel temporary files: {cleanup_error}"
                 )
 
+        if (
+            failure is not None
+            and job.command in ACTION_COMMANDS
+            and not isinstance(
+                failure, (ReadOnlyRefusedError, ResultExpiredError, asyncio.CancelledError)
+            )
+            and not (not job_prepared and getattr(failure, "before_send", False))
+        ):
+            try:
+                recovered = await asyncio.wait_for(self.remote.fetch_job(job_id), 2)
+                validate_job_identity(recovered, instance)
+                if not _is_intermediate_response(recovered):
+                    return parse_response(json.dumps(recovered), job.command)
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "command": job.command,
+                "errorCode": OUTCOME_UNKNOWN,
+                "error": f"Action outcome unknown, request id {job_id}: call revit_jobs with job_id {job_id}. Inspect the model before resubmitting.",
+                "jobId": job_id,
+                **(
+                    {"processId": job.payload["targetProcessId"]}
+                    if job.payload.get("targetProcessId") is not None
+                    else {}
+                ),
+                "retryable": False,
+                "warnings": [str(failure)],
+            }
         if failure is not None:
+            if job.command in ACTION_COMMANDS and isinstance(failure, TransportUnavailableError):
+                failure.args = (
+                    f"{failure.args[0]} Request id {job_id}: call revit_jobs with job_id {job_id}.",
+                )
             raise failure
         if result is None:
             raise RevitChannelError("Channel completed without a response.")
@@ -1149,7 +1409,7 @@ def _is_intermediate_response(response: dict[str, Any]) -> bool:
     data = data if isinstance(data, dict) else {}
     state = response.get("state", data.get("state"))
     if state is not None:
-        return state in {"queued", "waiting_revit", "running"}
+        return state in {"queued", "waiting_revit", "running", "waiting_dialog"}
     if isinstance(response.get("progress", data.get("progress")), dict):
         return True
     if response.get("error") == "Pending":

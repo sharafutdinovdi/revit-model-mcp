@@ -37,7 +37,13 @@ from revit_model_mcp.revit_channel import (
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
-from revit_model_mcp.toolsets import ENVIRONMENT_VARIABLE, TOOLSETS, apply_toolsets, parse_toolsets
+from revit_model_mcp.toolsets import (
+    ENVIRONMENT_VARIABLE,
+    PRESETS,
+    TOOLSETS,
+    apply_toolsets,
+    parse_toolsets,
+)
 
 if CHANNEL != "store":
     from revit_model_mcp.updates import check_for_updates, update_status
@@ -216,18 +222,21 @@ Document = Annotated[
     str | None,
     Field(
         validation_alias=AliasChoices("document", "targetDocument"),
-        description="Title or file name substring of the target document; needed when several Revit instances run.",
+        description="Session documentId, full path, title/file substring; selects among several Revit instances.",
     ),
 ]
 ProcessId = Annotated[
     int | None,
     Field(
         validation_alias=AliasChoices("process_id", "processId"),
-        description="Revit process ID; takes precedence over document.",
+        description="Process ID; must also match document.",
     ),
 ]
 _addressed_process_id: contextvars.ContextVar[int | None] = contextvars.ContextVar(
     "addressed_process_id", default=None
+)
+_audit_response_validator: contextvars.ContextVar[Any] = contextvars.ContextVar(
+    "audit_response_validator", default=None
 )
 
 
@@ -343,6 +352,12 @@ mcp = RevitMCPServer(
         "confirmation token first and perform nothing until a second call with identical arguments "
         "carries it; dry_run needs no token. With several Revit instances running, document or "
         "process_id selects one. REVIT_MCP_TOOLSETS limits which tools are listed. "
+        "Recommended task selections: preset:audit for reading and auditing models, preset:edit "
+        "for editing existing elements, preset:families for family audit/load/place/edit, "
+        "preset:sheets for views/schedules/sheets/export, and preset:batch for batch collection "
+        "and processing. Set REVIT_MCP_TOOLSETS or --toolsets to the preset and restart the "
+        "server connection to switch; combine presets and toolsets with commas, or use all "
+        "for unrestricted discovery. Hidden tools require switching before they can be called. "
         "The workstation read-only lock disables actions without hiding them. "
         "revit_set_read_only and the Model MCP ribbon switch it. Unlocking from chat requires "
         "a two-step AI app token handshake. The token does not prove human approval. Every read "
@@ -526,6 +541,53 @@ def batch_audit(
     )
 
 
+def _merge_read_diagnostics(result: dict[str, Any]) -> None:
+    skipped: list[dict[str, Any]] = []
+    unlisted = 0
+
+    def merge(value: Any) -> None:
+        nonlocal unlisted
+        if not isinstance(value, dict):
+            return
+        details = value.get("skipped", [])
+        if isinstance(details, list):
+            details = [item for item in details if isinstance(item, dict)]
+            for item in details:
+                if item not in skipped:
+                    skipped.append(item)
+            count = value.get("skippedCount", len(details))
+            if isinstance(count, int):
+                unlisted = max(unlisted, count - len(details))
+
+    data = result.get("data")
+    merge(data)
+    if result.get("command") == "family-audit" and isinstance(data, dict):
+        for family in data.get("families", []):
+            if family.get("status") in {"skipped", "failed"}:
+                merge(
+                    {
+                        "skipped": [
+                            {
+                                "what": f"family {family['name']} audit",
+                                "reason": family.get("reason") or "Family inspection was omitted.",
+                            }
+                        ]
+                    }
+                )
+    envelope = result.get("skipped", [])
+    if isinstance(envelope, list):
+        for item in envelope:
+            if isinstance(item, dict) and item not in skipped:
+                skipped.append(item)
+    count = result.get("skippedCount", 0)
+    if isinstance(count, int):
+        unlisted = max(unlisted, count - len(skipped))
+    result["skipped"] = skipped[:100]
+    result["skippedCount"] = len(skipped) + unlisted
+    if result["skippedCount"]:
+        result["partial"] = True
+
+
 async def _execute(
     job: Job,
     timeout_seconds: int,
@@ -538,13 +600,18 @@ async def _execute(
             job.for_document(document).for_process(_addressed_process_id.get()),
             timeout_seconds,
         )
+        if validator := _audit_response_validator.get():
+            validator(result)
         if job.command == "ping":
             result["serverVersion"] = package_version()
             if CHANNEL != "store":
                 result.update(update_status(package_version()))
-        result.setdefault("skipped", [])
-        result.setdefault("skippedCount", 0)
-        return redact_model_paths(result)
+        _merge_read_diagnostics(result)
+        from revit_model_mcp.artifact_download import complete_code_result
+
+        result = redact_model_paths(result)
+        complete_code_result(result)
+        return result
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(job.command, str(error)))
     except RevitChannelError as error:
@@ -647,6 +714,10 @@ async def revit_jobs(
     document: Document = None,
 ) -> dict[str, Any]:
     """List recent jobs, or wait up to wait_seconds (0 to 50, default 40) for the result of an action jobId. Results stay on the workstation for 24 hours, across server restarts."""
+    # Recover uncertain outcomes with the original jobId. Identical requests return the
+    # retained receipt; changed payloads are refused. Results expire after 24 hours
+    # or budget eviction. Request fingerprints remain and prevent re-execution.
+    # Expiry cannot prove non-execution; inspect the affected document before a new action.
     job = Job.jobs()
     if job_id is not None:
         job = Job("jobs", {"command": "jobs", "fetchJobId": job_id, "waitSeconds": wait_seconds})
@@ -1327,7 +1398,7 @@ async def revit_model_audit(
     """Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes."""
     from jsonschema import ValidationError
 
-    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource
+    from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
     from revit_model_mcp.audit.result import build_result, model_identity
     from revit_model_mcp.audit.rules import load_rules
 
@@ -1336,10 +1407,8 @@ async def revit_model_audit(
         for command in ("revit_model_audit", "model-snapshot"):
             if (blocked := policy_refusal(command)) is not None:
                 raise ToolError(blocked)
-        source = LiveReadSource(document, timeout_seconds)
-        evaluator = Evaluator(source)
         # Snapshot passport is the existing reader with full model and version identity.
-        # Keep raw paths only long enough to hash the history key; result paths are redacted.
+        # Raw paths address pinned reads and history keys; result paths are redacted.
         identity = await asyncio.wait_for(
             channel.execute(
                 Job("model-snapshot", {"command": "model-snapshot", "parameterRules": []})
@@ -1351,9 +1420,11 @@ async def revit_model_audit(
         )
         if not isinstance(identity.get("data"), dict):
             raise ValueError("Model identity is unavailable; audit history cannot be addressed.")
+        source = LiveReadSource(document, timeout_seconds, identity=identity)
+        evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
         return build_result(model_identity(identity["data"]), loaded, findings, compare_with, save)
-    except (OSError, ValueError, TypeError, ValidationError, TimeoutError) as error:
+    except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 
 
@@ -1548,7 +1619,8 @@ def main() -> None:
         default=os.environ.get(ENVIRONMENT_VARIABLE),
         help=(
             "Comma-separated toolsets whose tools are listed: all (default), "
-            f"{', '.join(TOOLSETS)}. core is always included; overrides {ENVIRONMENT_VARIABLE}."
+            f"{', '.join(TOOLSETS)}, {', '.join(PRESETS)}. "
+            f"core is always included; overrides {ENVIRONMENT_VARIABLE}."
         ),
     )
     parser.add_argument(

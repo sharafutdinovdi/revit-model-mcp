@@ -1,5 +1,8 @@
 """Machine-readable codes for action failures and refusals."""
 
+OUTCOME_UNKNOWN = "outcome_unknown"
+"""Submission may have succeeded; query the original jobId before another action."""
+
 TRANSPORT_UNAVAILABLE = "transport_unavailable"
 """The transport cannot reach Revit; the call can be retried."""
 

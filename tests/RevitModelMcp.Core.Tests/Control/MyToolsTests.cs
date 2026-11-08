@@ -441,10 +441,17 @@ public sealed class MyToolsTests
                 await Assert.That(Capture(() => store.Save(Definition()))).IsEqualTo("My tools store is busy");
                 await Assert.That(Capture(() => store.Delete("my_tool"))).IsEqualTo("My tools store is busy");
             }
-            var retryLock = new FileStream(Path.Combine(folder, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            var release = Task.Run(async () => { await Task.Delay(100); retryLock.Dispose(); });
-            store.Save(Definition());
-            await release;
+            using var retryLock = new FileStream(Path.Combine(folder, ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var release = new Thread(() => { Thread.Sleep(100); retryLock.Dispose(); });
+            release.Start();
+            try
+            {
+                store.Save(Definition());
+            }
+            finally
+            {
+                release.Join();
+            }
             await Assert.That(store.Get("my_tool").Name).IsEqualTo("my_tool");
         }
         finally { Directory.Delete(folder, true); }

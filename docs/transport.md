@@ -13,6 +13,33 @@ For a remote client, run the whole server on the workstation over SSH stdio; see
 HTTP connects directly to the add-in and requires no SSH server or remote file transfer.
 The MCP client still communicates with the Python server over stdio.
 
+### SSH file-channel reuse and polling
+
+Each call discovers live processes and fresh heartbeats before selecting its target.
+After a successful ping and identity recheck, the server remembers the verified
+process ID, OS process start time (when available), heartbeat startup identity,
+instance ID and file-channel version. A warm call skips the extra ping and
+rediscovery, not target selection or heartbeat validation. Changed identities,
+missing processes and heartbeats older than 60 seconds discard that verification.
+Job publication still checks the heartbeat, and responses still require the
+matching correlation and responder process ID. Fetching a retained job does not
+require a ping and does not establish a verified session.
+
+Pickup and result polling start immediately, then wait 0.5, 1, 2, 4, 8 and at most
+10 seconds between remote commands. Each wait and command timeout is bounded by
+the remaining overall deadline. Short jobs avoid the former initial 10-second
+wait; long jobs retain the 10-second cap to limit SSH traffic. Without SSH
+multiplexing, the existing connection-start quota can add delay. Transient
+connection failures are retried within the same deadline without resubmitting
+the job.
+
+The fake SSH regression records 12 remote commands for a cold document-info call
+and 6 for a warm call with immediate pickup and completion. This is a command
+count, not a workstation latency measurement. For live verification, record
+elapsed times and remote-command counts for repeated cold and warm calls and
+report median and p95 separately. During a long job, interrupt and restore SSH,
+then recover its retained result by job ID without submitting the action again.
+
 ## Transport errors
 
 Unavailable SSH, named pipe, and HTTP transports return a normal MCP tool result with `success:false`, `command`, `errorCode:"transport_unavailable"`, and `retryable:true`.
@@ -203,8 +230,30 @@ The limits apply to results of every transport, because all transports share one
 Two different stores hold results, so two different times apply.
 The scheduler keeps completed read results in memory for ten minutes after completion; they also disappear when Revit exits.
 Action results stay in memory for 24 hours and are also written to `jobs/<jobId>.json` in the instance directory, so `revit_jobs` can fetch them after an MCP server restart.
+Request journals (`jobs/<jobId>.journal`) and cancellation markers expire with action results.
+The same cleanup pass removes expired files left by earlier add-in sessions; a journal without a result expires 24 hours after its last write.
+Active actions are not expired.
+New submissions carry `attempt: "initial"`; resending the same request ID carries `attempt: "retry"`.
+The attempt marker is excluded from the request fingerprint.
+An omitted marker means `initial` for compatibility with older servers.
+An initial submission with an unknown ID is accepted; a retry with a known ID returns its recorded state or outcome.
+A retry with an unknown or expired ID fails with `outcome_unknown` and the message `Action outcome unknown (journal expired or missing), check the model before resubmitting.`
+It does not execute the action.
+After journal removal and an add-in restart, the ID is unknown; clients must not label a repeated request as initial.
 The limits above can evict a result earlier.
-Over HTTP, a result that is no longer available returns status 410 with `"error":"expired"`; status 404 means the ID was never known.
+Over HTTP, an unavailable result returns status 410 with `"error":"expired"` while its eviction remains in the bounded in-memory cache; otherwise status 404 means the ID is unknown, including after journal expiry and restart.
+
+`revit_jobs` without `job_id` returns at most 100 recent entries, newest first by completion or submission time.
+The list includes retained completed actions from the request journal, including after an add-in restart, and active jobs.
+Each entry contains `jobId`, `command`, `targetDocument`, `state` and `finishedUtc`; pending jobs and abandoned jobs with an unknown outcome have no finished time.
+`targetDocument` is the requested document filter, or null for an unaddressed request or a journal written before document metadata was recorded.
+Before sending an action, the Python server writes and flushes a client-side request record containing its ID, command, document filter, selected process ID and submission time.
+No action payload is stored in this record.
+The records are in `revit-model-mcp/requests` under `%LOCALAPPDATA%` on Windows, `~/Library/Caches` on macOS, or `$XDG_CACHE_HOME` (default `~/.cache`) on Linux.
+The next action removes records older than 24 hours and retains at most 100 records.
+A persistence failure prevents submission.
+If a reply is lost, a returned transport error includes the original request ID and `call revit_jobs with job_id <id>`.
+If the client process is killed before it can return an error, the record remains on the client computer; `revit_jobs` without an ID also lists the retained action on the selected workstation instance.
 
 ### Settings reference
 
@@ -340,6 +389,10 @@ It is final: do not poll it again, and inspect the model before resubmitting an 
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
+For a submission, the Python client treats only HTTP 400, 401, 403, 408, 413, 429 and 503 as pre-acceptance refusals.
+HTTP 500 and other unrecognized submission statuses do not establish whether an action executed.
+The client attempts to fetch the original job; without a recorded outcome it returns `outcome_unknown`, the original job ID and model-inspection advice.
+It does not resubmit the action.
 
 Direct HTTP `POST /jobs` validates a supplied `jobId` for action commands, whose results are persisted: the ID must be a 32-character hexadecimal GUID without dashes.
 An invalid value returns HTTP 400 with `error:invalid_job_id` and `message:"jobId must be a 32-character hexadecimal GUID without dashes."`.
@@ -530,12 +583,19 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 Response temporary files also remain in the selected instance directory.
 
 The server resolves a target before publishing any job.
-With several running Revit processes, pass `document` (a unique title or file name) or `process_id` to choose one.
-A `document` must match exactly one active document by case-insensitive title or file-name substring.
-Zero or multiple matches fail before publication.
-Actions retain their open-document resolution inside the selected process.
-After pickup, a directed read resolves the target among open documents and can read an inactive document.
-If the target closed, the error names the target and active documents and suggests passing `document` or calling `revit_activate_document`.
+With several running Revit processes, pass `document` or `process_id` to choose one.
+`document` accepts the session `documentId` advertised in instance discovery, an exact full path, or a case-insensitive title or file-name substring.
+Session IDs start with `doc:` and distinguish same-name unsaved documents; obtain a new ID after closing and reopening a document or restarting Revit.
+When both selectors are supplied, the document must belong to that process. Neither selector overrides the other.
+Zero or multiple matching processes fail before publication. Actions and directed reads refuse ambiguous open-document references inside the selected process.
+A directed read can target an inactive document.
+Response `responder` fields identify the actual process, Revit version and resolved target document; `documentId:null` and empty target name/path explicitly indicate no resolved target.
+`responder.activeDocument` describes the separate active UI document.
+Running and timeout receipts preserve the resolved responder snapshot, including the target document ID and separate active UI document.
+Before execution publishes a snapshot, running receipts use the selected process's discovery identity; an empty queued responder does not replace known identity fields.
+Long-running responses include `processId` and polling instructions with `process_id`. Subsequent `revit_jobs` calls remain bound to the original process generation during the server lifetime; a changed process generation or conflicting selector fails closed.
+Persisted results carrying `instanceId` are also checked against the selected process generation after a server restart.
+`revit_batch_start(process_id=...)` selects the launcher explicitly and never substitutes another process if that launcher is absent.
 
 A fresh heartbeat and an existing process are pre-checks.
 For v2 the server performs a bounded ping handshake with a fresh `correlationId` in the selected directory.

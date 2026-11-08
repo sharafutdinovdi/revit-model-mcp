@@ -51,6 +51,7 @@ A final poll preserves the original response, summary, timeout warnings, and ver
 Do not resubmit a running action.
 
 The add-in retains action results for 24 hours in the selected instance's `jobs/<jobId>.json` directory; other results are kept for ten minutes (see [result retention](transport.md#result-retention)).
+Request journals expire with the results; a retry after journal expiry is refused as an unknown outcome and never re-executes the action.
 Local pipe, SSH file, and authenticated HTTP clients can fetch the result after an MCP server restart.
 Path redaction applies to stored responses when `REVIT_MCP_REDACT_PATHS=1` on the workstation, and to returned responses when enabled on the server.
 `revit_cancel_job(job_id)` requests cancellation.

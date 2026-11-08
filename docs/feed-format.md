@@ -191,9 +191,9 @@ Locations and link instances are capped at 100; total fields report uncapped cou
 {"command":"parameter-fill-check","categories":["Walls","Doors"],"parameters":["Mark","Comments"],"level":"Level 1","workset":"Shell","view":"Plan","sampleLimit":20,"includeTypes":true}
 ```
 
-`categories` requires 1–20 names and `parameters` requires 1–30 names.
+`categories` requires 1-20 names and `parameters` requires 1-30 names.
 Optional `level`, `workset` and `view` use the universal query filter semantics, including localized category resolution and unknown-name errors.
-`sampleLimit` defaults to 20 and rejects values outside 1–100; `includeTypes` defaults to true.
+`sampleLimit` defaults to 20 and rejects values outside 1-100; `includeTypes` defaults to true.
 Python arguments `sample_limit` and `include_types` map to `sampleLimit` and `includeTypes`.
 Response data shape:
 

@@ -41,7 +41,6 @@ from revit_model_mcp.revit_channel import (
     select_instance,
 )
 from revit_model_mcp.ssh_host import (
-    ACTIVATION_DELAY_SECONDS,
     POLL_INTERVAL_SECONDS,
     RELAY_CONNECTION_LIMIT,
     RELAY_WINDOW_SECONDS,
@@ -725,9 +724,16 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         process = FakeSshProcess(None, hang=True)
         host = SshPowerShellHost()
 
-        with patch(
-            "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
-            new=AsyncMock(return_value=process),
+        # Keep quota reservation inside the deadline; only the running command times out.
+        with (
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.get_running_loop",
+                return_value=SimpleNamespace(time=lambda: 0.0),
+            ),
+            patch(
+                "revit_model_mcp.ssh_host.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=process),
+            ),
         ):
             with self.assertRaises(RemoteCommandTimeoutError) as raised:
                 await host._run("Start-Sleep 60", timeout_seconds=0.001)
@@ -818,7 +824,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(pickup.taken)
         self.assertEqual(pickup.activation_attempts, 1)
         scripts = [call.args[0] for call in host._run.await_args_list]
-        activation_index = int(ACTIVATION_DELAY_SECONDS / POLL_INTERVAL_SECONDS)
+        activation_index = 10
         self.assertEqual(sum("schtasks.exe" in script for script in scripts), 1)
         self.assertTrue(all("schtasks.exe" not in script for script in scripts[:activation_index]))
         self.assertIn("schtasks.exe", scripts[activation_index])
@@ -827,7 +833,7 @@ class SshHostErrorMappingTests(unittest.IsolatedAsyncioTestCase):
             scripts[activation_index].index("schtasks.exe"),
         )
         self.assertTrue(all("job_test.json" in script for script in scripts))
-        self.assertEqual(len(scripts), 7)
+        self.assertEqual(len(scripts), 11)
         self.assertIn("Revit window will be restored", " ".join(logs.output))
 
     async def test_trigger_polling_retries_one_broken_poll(self) -> None:
@@ -1396,15 +1402,18 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
     async def test_undo_response_timeout_has_action_advice(self) -> None:
         remote = FakeRemoteHost()
         remote.response_name = None
-        with self.assertRaises(ResponseTimeoutError) as raised:
-            await RevitChannel(remote).execute(
-                Job("undo-last", {"command": "undo-last"}), timeout_seconds=9
-            )
+        result = await RevitChannel(remote).execute(
+            Job("undo-last", {"command": "undo-last"}), timeout_seconds=9
+        )
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertFalse(result["retryable"])
+        self.assertIn(f"call revit_jobs with job_id {result['jobId']}", result["error"])
         self.assertIn(
             "The action may have executed. Inspect the model before retrying.",
-            str(raised.exception),
+            result["warnings"][0],
         )
-        self.assertNotIn("increase timeout_seconds", str(raised.exception))
+        self.assertNotIn("increase timeout_seconds", str(result))
+        self.assertRegex(result["jobId"], "^[0-9a-f]{32}$")
 
     async def test_cancel_read_only_refusal_returns_normal_result(self) -> None:
         from unittest.mock import AsyncMock
@@ -2786,8 +2795,10 @@ def test_execute_code_below_budget_returns_running_job_when_persisted(persisted)
                 assert result["status"] == "running"
                 assert result["jobId"] == json.loads(host.written_content)["jobId"]
             else:
-                with pytest.raises(ResponseTimeoutError):
-                    await execute
+                result = await execute
+                assert result["errorCode"] == "outcome_unknown"
+                assert result["retryable"] is False
+                assert result["jobId"] == json.loads(host.written_content)["jobId"]
 
     asyncio.run(check())
 
@@ -3156,14 +3167,20 @@ def test_progress_reporter_rate_limit_and_final_flush():
         ctx = RecordingProgressContext()
         reporter = ProgressReporter(ctx)
         await reporter.update(0, 3, "Running in Revit")
+        await reporter._sender
         started = asyncio.get_running_loop().time()
         await reporter.update(1, 3, "Step 1 of 3")
+        assert asyncio.get_running_loop().time() - started < 0.1
+        await reporter._sender
         assert asyncio.get_running_loop().time() - started >= 0.49
         started = asyncio.get_running_loop().time()
         await reporter.update(3, 3, "Done")
+        await reporter._sender
         assert asyncio.get_running_loop().time() - started < 0.1
         assert ctx.calls[-1] == (3, 3, "Done")
-        await ProgressReporter(ctx).update(3, 3, "Still running, poll revit_jobs")
+        reporter = ProgressReporter(ctx)
+        await reporter.update(3, 3, "Still running, poll revit_jobs")
+        await reporter._sender
         assert ctx.calls[-1][2] == "Still running, poll revit_jobs"
 
     asyncio.run(check())
@@ -3180,18 +3197,22 @@ def test_progress_reporter_states_models_steps_and_liveness(monkeypatch):
         for state in ("queued", "waiting_revit", "running"):
             reporter.last_sent = float("-inf")
             await reporter.observe({"state": state, "position": 2})
+            await reporter._sender
         reporter.last_sent = float("-inf")
         await reporter.observe(
             {"data": {"currentIndex": 3, "total": 12, "currentPath": r"C:\Private\Building.rvt"}}
         )
+        await reporter._sender
         reporter.last_sent = float("-inf")
         await reporter.observe(
             {"data": {"steps": [], "progress": {"steps": {"completed": 17, "total": 50}}}}
         )
+        await reporter._sender
         reporter.last_sent = float("-inf")
         reporter.started = asyncio.get_running_loop().time() - 12
         reporter.last_tick = reporter.started
         await reporter.tick()
+        await reporter._sender
         assert [call[2] for call in ctx.calls] == [
             "Queued in Revit (position 2)",
             "Waiting for the Revit API context",
@@ -3215,12 +3236,15 @@ def test_progress_reporter_interleaved_ticks_and_steps():
         for completed in (14, 15, 29):
             reporter.last_sent = float("-inf")
             await reporter.observe({"progress": {"steps": {"completed": completed, "total": 30}}})
+            await reporter._sender
             reporter.last_sent = float("-inf")
             reporter.started = reporter.last_tick = asyncio.get_running_loop().time() - 3
             await reporter.tick()
+            await reporter._sender
             assert ctx.calls[-1][:2] == (completed, 30)
             assert ctx.calls[-1][2].startswith("Running in Revit,")
         await reporter.update(30, 30, "Done")
+        await reporter._sender
         reporter.last_tick -= 3
         await reporter.tick()
         assert [call[0] for call in ctx.calls] == [14, 14, 15, 15, 29, 29, 30]
@@ -3237,6 +3261,7 @@ def test_progress_reporter_tick_waiting_for_step_uses_latest_progress(initial_to
         ctx = RecordingProgressContext()
         reporter = ProgressReporter(ctx)
         await reporter.update(14, initial_total, "Running in Revit")
+        await reporter._sender
         reporter.started = reporter.last_tick = asyncio.get_running_loop().time() - 3
         reporter.last_sent = float("-inf")
         async with reporter._lock:
@@ -3247,7 +3272,9 @@ def test_progress_reporter_tick_waiting_for_step_uses_latest_progress(initial_to
             assert not step.done()
             assert not tick.done()
         await asyncio.gather(step, tick)
+        await reporter._sender
         await reporter.update(30, 30, "Done")
+        await reporter._sender
         assert [call[0] for call in ctx.calls] == [14, 15, 15, 30]
         assert ctx.calls[-2][:2] == (15, 30)
         assert ctx.calls[-1] == (30, 30, "Done")
@@ -3262,10 +3289,12 @@ def test_progress_reporter_ticks_without_total_strictly_increase():
         ctx = RecordingProgressContext()
         reporter = ProgressReporter(ctx)
         await reporter.observe({"state": "running"})
+        await reporter._sender
         for _ in range(3):
             reporter.last_sent = float("-inf")
             reporter.last_tick -= 3
             await reporter.tick()
+            await reporter._sender
         assert [call[0] for call in ctx.calls] == [0, 1, 2, 3]
         assert all(call[1] is None for call in ctx.calls)
 
@@ -3278,9 +3307,13 @@ def test_progress_reporter_optional_context_token_and_broken_session(caplog):
     async def check():
         await ProgressReporter().update(1, 1, "Done")
         ctx = RecordingProgressContext(token=False)
-        await ProgressReporter(ctx).update(1, 1, "Done")
+        reporter = ProgressReporter(ctx)
+        await reporter.update(1, 1, "Done")
+        await reporter._sender
         assert ctx.calls == []
-        await ProgressReporter(RecordingProgressContext(reject=True)).update(1, 1, "Done")
+        reporter = ProgressReporter(RecordingProgressContext(reject=True))
+        await reporter.update(1, 1, "Done")
+        await reporter._sender
 
     asyncio.run(check())
     assert "Could not send MCP progress" in caplog.text
@@ -3309,6 +3342,7 @@ def test_jobs_wait_reports_partial_and_terminal_progress():
             )
 
         assert await wait(ctx=ctx) == final
+        await asyncio.sleep(0.51)
         assert ctx.calls == [(1, 2, "Step 1 of 2"), (2, 2, "Done")]
 
     asyncio.run(check())
@@ -3337,6 +3371,7 @@ def test_jobs_wait_budget_reports_still_running():
             )
 
         result = await wait(ctx=ctx)
+        await asyncio.sleep(0.51)
         assert result["status"] == "running"
         assert ctx.calls == [
             (3, 12, "Model 3 of 12: Building.rvt"),
@@ -3358,13 +3393,17 @@ def test_execute_reports_final_without_changing_tool_result():
             return await RevitChannel(host).execute(Job.document_info())
 
         result = await execute(ctx=ctx)
+        await asyncio.sleep(0.51)
         assert result == json.loads(SUCCESS_RESPONSE)
-        assert [call[2] for call in ctx.calls] == [
+        assert ctx.calls[-1] == (1, 1, "Done")
+        messages = [call[2] for call in ctx.calls]
+        states = [
             "Queued in Revit (position 1)",
             "Waiting for the Revit API context",
             "Running in Revit",
             "Done",
         ]
+        assert messages == sorted(messages, key=states.index)
 
     asyncio.run(check())
 
@@ -3622,3 +3661,239 @@ def test_channel_refusal_checks_log_file_process(name, quoted):
         {"processId": 42, "processStartedUtc": "2026-11-02T08:00:00Z"},
     )
     assert bool(result) == quoted
+
+
+class ActionJournalRecoveryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_client_request_records_have_bounded_retention_without_payload(self):
+        from revit_model_mcp import revit_channel
+
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            for index in range(105):
+                record = directory / f"old-{index:03}.json"
+                record.write_text("{}")
+                os.utime(record, (time.time() - index, time.time() - index))
+            expired = directory / "expired.json"
+            expired.write_text("{}")
+            os.utime(expired, (time.time() - 90000, time.time() - 90000))
+            request_id = "c" * 32
+            with patch.object(revit_channel, "_request_journal_directory", return_value=directory):
+                path = revit_channel._persist_request_id(
+                    Job("delete", {"jobId": request_id, "elementIds": [42]}), {"processId": 12}
+                )
+            self.assertEqual(len(list(directory.glob("*.json"))), 100)
+            self.assertFalse(expired.exists())
+            self.assertFalse((directory / "old-104.json").exists())
+            saved = json.loads(path.read_text())
+            self.assertEqual(saved["jobId"], request_id)
+            self.assertEqual(saved["processId"], 12)
+            self.assertNotIn("elementIds", saved)
+
+    async def test_request_id_is_durable_before_send_and_survives_cancellation(self):
+        from revit_model_mcp import revit_channel
+
+        with tempfile.TemporaryDirectory() as root:
+            directory = Path(root)
+            remote = FakeRemoteHost()
+
+            async def disconnect(name, content, command):
+                payload = json.loads(content)
+                record = json.loads((directory / (payload["jobId"] + ".json")).read_text())
+                self.assertEqual(record["jobId"], payload["jobId"])
+                self.assertEqual(record["command"], "delete")
+                self.assertEqual(record["targetDocument"], "Model A")
+                raise asyncio.CancelledError
+
+            remote.prepare_job = AsyncMock(side_effect=disconnect)
+            with patch.object(revit_channel, "_request_journal_directory", return_value=directory):
+                with self.assertRaises(asyncio.CancelledError):
+                    await RevitChannel(remote).execute(
+                        Job("delete", {"command": "delete", "targetDocument": "Model A"}), 1
+                    )
+            records = list(directory.glob("*.json"))
+            self.assertEqual(len(records), 1)
+            self.assertRegex(json.loads(records[0].read_text())["jobId"], "^[0-9a-f]{32}$")
+
+    async def test_transport_errors_include_persisted_request_id(self):
+        from revit_model_mcp import revit_channel
+        from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
+
+        for before_send in (True, False):
+            with self.subTest(before_send=before_send), tempfile.TemporaryDirectory() as root:
+                remote = FakeRemoteHost()
+                remote.prepare_error = (
+                    RemoteCommandNotStartedError("Not sent.")
+                    if before_send
+                    else SshUnavailableError("Reply lost.")
+                )
+                remote.fetch_job = AsyncMock(side_effect=RevitChannelError("Unknown."))
+                with patch.object(
+                    revit_channel, "_request_journal_directory", return_value=Path(root)
+                ):
+                    if before_send:
+                        with self.assertRaises(TransportUnavailableError) as captured:
+                            await RevitChannel(remote).execute(
+                                Job("delete", {"command": "delete"}), 1
+                            )
+                        message = str(captured.exception)
+                    else:
+                        result = await RevitChannel(remote).execute(
+                            Job("delete", {"command": "delete"}), 1
+                        )
+                        message = result["error"]
+                request_id = json.loads(next(Path(root).glob("*.json")).read_text())["jobId"]
+                self.assertIn(f"Request id {request_id}".lower(), message.lower())
+                self.assertIn(f"call revit_jobs with job_id {request_id}", message)
+
+    async def test_persistence_failure_never_sends_action(self):
+        from revit_model_mcp import revit_channel
+
+        remote = FakeRemoteHost()
+        remote.prepare_job = AsyncMock()
+        with patch.object(revit_channel, "_persist_request_id", side_effect=OSError("Disk full.")):
+            with self.assertRaisesRegex(RevitChannelError, "the action was not sent"):
+                await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        remote.prepare_job.assert_not_awaited()
+
+    async def test_attempt_marker_distinguishes_new_and_repeated_request(self):
+        for existing_id, expected in ((None, "initial"), ("a" * 32, "retry")):
+            with self.subTest(attempt=expected):
+                remote = FakeRemoteHost()
+                remote.wait_for_new_response = AsyncMock(
+                    side_effect=SshUnavailableError("Lost reply.")
+                )
+                remote.fetch_job = AsyncMock(side_effect=RevitChannelError("No result."))
+                payload = {"command": "delete"}
+                if existing_id is not None:
+                    payload["jobId"] = existing_id
+                await RevitChannel(remote).execute(Job("delete", payload), 1)
+                self.assertEqual(json.loads(remote.written_content)["attempt"], expected)
+
+    async def test_disconnect_before_send_remains_retryable(self):
+        from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
+
+        remote = FakeRemoteHost()
+        remote.prepare_error = RemoteCommandNotStartedError("Nothing was sent.")
+        with self.assertRaises(TransportUnavailableError):
+            await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+
+    async def test_disconnect_after_acceptance_returns_original_id(self):
+        remote = FakeRemoteHost()
+        remote.prepare_error = SshUnavailableError("Connection lost after submission.")
+        remote.fetch_job = AsyncMock(side_effect=RevitChannelError("Connection lost."))
+        request_id = "a" * 32
+        result = await RevitChannel(remote).execute(
+            Job("delete", {"command": "delete", "jobId": request_id}), 1
+        )
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertEqual(result["jobId"], request_id)
+        self.assertFalse(result["retryable"])
+        remote.fetch_job.assert_awaited_once_with(request_id)
+
+    async def test_disconnect_after_commit_recovers_original_receipt(self):
+        remote = FakeRemoteHost()
+        remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))
+        receipt = {
+            "command": "delete",
+            "success": True,
+            "jobId": "b" * 32,
+            "data": {"changedElementIds": [42], "document": "Drawing"},
+            "responder": {"processId": 12},
+        }
+        remote.fetch_job = AsyncMock(return_value=receipt)
+        result = await RevitChannel(remote).execute(
+            Job("delete", {"command": "delete", "jobId": receipt["jobId"]}), 1
+        )
+        self.assertEqual(result["data"], receipt["data"])
+        self.assertEqual(result["responder"], receipt["responder"])
+        self.assertEqual(result["jobId"], receipt["jobId"])
+        self.assertEqual(len([event for event in remote.events if event == "prepare"]), 1)
+
+    async def test_recovery_rejects_receipt_from_another_process_generation(self):
+        remote = FakeRemoteHost()
+        remote.instance_info = {
+            "addinVersion": package_version(),
+            "commands": ["delete"],
+            "processId": 12,
+            "instanceId": "original",
+        }
+        remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))
+        remote.fetch_job = AsyncMock(
+            return_value={
+                "command": "delete",
+                "success": True,
+                "responder": {"processId": 12, "instanceId": "replacement"},
+            }
+        )
+        result = await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertEqual(result["processId"], 12)
+        self.assertFalse(result["retryable"])
+
+    async def test_disconnect_during_commit_never_reports_non_execution(self):
+        remote = FakeRemoteHost()
+        remote.wait_for_new_response = AsyncMock(side_effect=SshUnavailableError("Lost reply."))
+        remote.fetch_job = AsyncMock(side_effect=RevitChannelError("No result."))
+        result = await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertRegex(result["jobId"], "^[0-9a-f]{32}$")
+        self.assertNotIn("did not run", result["error"])
+        self.assertFalse(result["retryable"])
+
+    async def test_changed_payload_refusal_does_not_return_original_receipt(self):
+        from revit_model_mcp.revit_channel import SubmissionRefusedError
+
+        remote = FakeRemoteHost()
+        remote.prepare_error = SubmissionRefusedError("This jobId belongs to a different request.")
+        remote.fetch_job = AsyncMock()
+        with self.assertRaisesRegex(SubmissionRefusedError, "different request"):
+            await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        remote.fetch_job.assert_not_awaited()
+
+    async def test_before_send_failure_during_poll_does_not_make_action_retryable(self):
+        from revit_model_mcp.ssh_host import RemoteCommandNotStartedError
+
+        remote = FakeRemoteHost()
+        remote.wait_for_new_response = AsyncMock(
+            side_effect=RemoteCommandNotStartedError("Polling did not start.")
+        )
+        remote.fetch_job = AsyncMock(side_effect=RevitChannelError("Connection lost."))
+        result = await RevitChannel(remote).execute(Job("delete", {"command": "delete"}), 1)
+        self.assertEqual(result["errorCode"], "outcome_unknown")
+        self.assertFalse(result["retryable"])
+        self.assertIn("Polling did not start", result["warnings"][0])
+
+
+def test_waiting_dialog_progress_and_running_result():
+    from revit_model_mcp.revit_channel import (
+        ProgressReporter,
+        _is_intermediate_response,
+        running_job,
+    )
+
+    async def check():
+        ctx = RecordingProgressContext()
+        reporter = ProgressReporter(ctx)
+        dialog = {"dialogId": "Review", "message": "Choose an option", "buttons": []}
+        response = {"partial": True, "data": {"state": "waiting_dialog", "dialog": dialog}}
+        assert _is_intermediate_response(response)
+        reporter.started = asyncio.get_running_loop().time() - 10
+        await reporter.observe(response)
+        await reporter.tick()
+        await reporter._sender
+        assert ctx.calls[-1][2] == "waiting for dialog Review / Choose an option"
+        assert reporter.started is None
+        result = running_job("abc", response)
+        assert result["state"] == "waiting_dialog"
+        assert result["dialog"] == dialog
+        assert result["message"].startswith("waiting for dialog Review / Choose an option.")
+        top_level = running_job("abc", {"state": "waiting_dialog", "dialog": dialog})
+        for key in ("state", "dialog", "message"):
+            assert top_level[key] == result[key]
+        assert "may already have changed" in result["message"]
+        reporter.last_sent = float("-inf")
+        await reporter.observe({"state": "waiting_dialog", "dialog": {"dialogId": "Next"}})
+        await reporter._sender
+        assert ctx.calls[-1][2] == "waiting for dialog Next"
+
+    asyncio.run(check())

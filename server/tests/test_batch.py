@@ -121,6 +121,29 @@ async def test_start_persists_inputs_and_chooses_process(boundary):
 
 
 @pytest.mark.anyio
+async def test_start_selects_explicit_launcher_without_fallback(boundary):
+    tools, host, channel = boundary
+    host.instances = [{"processId": 41}, {"processId": 42}]
+    result = await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], process_id=42)
+    assert result["processId"] == 42
+    assert channel.jobs[0].payload["targetProcessId"] == 42
+    with pytest.raises(ToolError, match="absent or ambiguous"):
+        await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], process_id=99)
+    assert len(channel.jobs) == 1
+    assert len(host.runs) == 1
+
+
+@pytest.mark.anyio
+async def test_start_missing_explicit_launcher_does_not_activate_another_process(boundary):
+    tools, host, channel = boundary
+    host.instances = []
+    with pytest.raises(ToolError, match="absent or ambiguous"):
+        await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], process_id=42)
+    assert host.activations == 0
+    assert not host.runs and not channel.jobs
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("minutes", [5, 30, 180])
 async def test_start_persists_open_timeout(boundary, minutes):
     tools, host, _channel = boundary

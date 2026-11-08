@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from mcp.types import ListToolsResult
 
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.toolsets import (
+    PRESETS,
     TOOLSETS,
     apply_toolsets,
     parse_toolsets,
@@ -101,3 +104,62 @@ def test_schemas_carry_no_generated_titles():
     for tool in asyncio.run(revit_server.mcp.list_tools()):
         for name, schema in tool.input_schema.get("properties", {}).items():
             assert not isinstance(schema.get("title"), str) or name == "title", (tool.name, name)
+
+
+@pytest.mark.parametrize(
+    ("preset", "groups"),
+    [
+        ("preset:audit", ("core", "read", "documents")),
+        ("preset:edit", ("core", "read", "actions", "documents", "views-sheets")),
+        ("preset:families", ("core", "read", "family", "documents", "code")),
+        ("preset:sheets", ("core", "read", "views-sheets", "documents", "export")),
+        ("preset:batch", ("core", "read", "batch", "documents", "code", "export")),
+    ],
+)
+def test_presets_include_task_prerequisites(preset, groups):
+    assert select_tools(preset) == {tool for group in groups for tool in TOOLSETS[group]}
+    assert select_tools(preset) <= _registered()
+
+
+def test_presets_combine_with_groups_and_other_presets():
+    assert parse_toolsets(" PRESET:AUDIT,actions,preset:families,read ") == [
+        "core",
+        "read",
+        "documents",
+        "actions",
+        "family",
+        "code",
+    ]
+    assert select_tools("preset:audit,preset:families") == select_tools("preset:families")
+    assert select_tools("all,preset:audit") == _registered()
+    with pytest.raises(ValueError, match="preset:audit.*preset:batch"):
+        parse_toolsets("preset:missing")
+
+
+def test_server_recommends_presets_and_switching():
+    instructions = revit_server.mcp.instructions
+    for preset in PRESETS:
+        assert preset in instructions
+    assert "restart" in instructions
+    assert "REVIT_MCP_TOOLSETS or --toolsets" in instructions
+
+
+@pytest.mark.parametrize("selection", ["all", "core,read", *PRESETS])
+def test_documented_schema_sizes(selection):
+    selected = [
+        tool
+        for tool in asyncio.run(revit_server.mcp.list_tools())
+        if tool.name in select_tools(selection)
+    ]
+    tools = [tool.model_dump(mode="json", by_alias=True, exclude_none=True) for tool in selected]
+    compact = {"separators": (",", ":"), "ensure_ascii": False}
+    baseline = sum(len(json.dumps(tool, **compact).encode("utf-8")) for tool in tools)
+    wire = len(
+        ListToolsResult(tools=selected)
+        .model_dump_json(by_alias=True, exclude_none=True)
+        .encode("utf-8")
+    )
+    row = f"| `{selection}` | {len(tools)} | {baseline:,} | {baseline // 4:,} | {wire:,} |"
+    print(row)
+    documentation = Path(__file__).resolve().parents[2] / "docs" / "tools.md"
+    assert row in documentation.read_text(encoding="utf-8")

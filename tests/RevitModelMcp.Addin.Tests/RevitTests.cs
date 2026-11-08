@@ -97,7 +97,11 @@ public sealed class RevitTests : RevitApiUiTest
             Command = "query-elements",
             Categories = ["OST_Walls"],
             Limit = 10000,
-            ParameterFilters = [new ParameterFilterContract { Parameter = parameterName, Operator = "empty" }]
+            ParameterFilters = [new ParameterFilterContract
+            {
+                Parameter = parameterName,
+                Operator = "empty"
+            }]
         });
         if (job.Error is not null) throw new ArgumentException(job.Error);
         var result = Read<QueryElementsData>("ElementQueryReader", "ReadQuery", Model, job);
@@ -505,6 +509,246 @@ public sealed class RevitTests : RevitApiUiTest
         var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);
         return Invoke<ActionResultData>(Type("Control.CodeExecution"), null, "Execute",
             UiApplication, Model, null, action, failures, "RMM tests", null, false);
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task NewDocumentActivationFailureAccountsForReplacementDocumentAsync(bool retainActiveDocument)
+    {
+        var originalActive = UiApplication.ActiveUIDocument?.Document;
+        // Revit cannot close its active document or restore a session with no active document through the API.
+        if (originalActive is null || !File.Exists(originalActive.PathName))
+            Skip.Test("Activation cleanup requires an existing saved active document for restoring the UI session.");
+        var template = Environment.GetEnvironmentVariable("RMM_TEST_PROJECT_TEMPLATE")
+            ?? Application.DefaultProjectTemplate;
+        if (!File.Exists(template)) Skip.Test("Set RMM_TEST_PROJECT_TEMPLATE to an existing project template.");
+        var before = Application.Documents.Cast<Document>().ToList();
+        var path = Path.Combine(_directory!, "activation-failure.rvt");
+        Document? replacement = null;
+        string? identity = null;
+        var injected = false;
+        try
+        {
+            Exception? failure = null;
+            try
+            {
+                RevitModelMcp.Control.DocumentActions.Execute(UiApplication, "new-document", new ActionJobContract
+                {
+                    Kind = "project",
+                    Template = template,
+                    SaveAs = path,
+                    Activate = true
+                }, (application, savedPath) =>
+                {
+                    // Force a replacement wrapper; normal activation can reuse the background document.
+                    var background = Application.Documents.Cast<Document>().Single(document => document.PathName == savedPath);
+                    if (!background.Close(false)) throw new InvalidOperationException("Could not prepare replacement activation.");
+                    replacement = application.OpenAndActivateDocument(savedPath).Document;
+                    identity = $"{replacement.Title} [{replacement.GetHashCode():X}]";
+                    if (!retainActiveDocument) application.OpenAndActivateDocument(originalActive!.PathName);
+                    injected = true;
+                    throw new InvalidOperationException("Injected activation failure after opening the UI document.");
+                });
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+            await Assert.That(injected).IsTrue();
+            await Assert.That(failure is not null).IsTrue();
+            await Assert.That(failure!.Message.Contains("Injected activation failure")).IsTrue();
+            await Assert.That(failure.Message.Contains(retainActiveDocument
+                ? $"Retained document '{identity}'" : $"Closed '{identity}'")).IsTrue();
+            await Assert.That(replacement!.IsValidObject).IsEqualTo(retainActiveDocument);
+            await AssertInventoryAsync(retainActiveDocument ? [.. before, replacement!] : before);
+        }
+        finally
+        {
+            if (replacement is { IsValidObject: true })
+            {
+                UiApplication.OpenAndActivateDocument(originalActive!.PathName);
+                replacement.Close(false);
+            }
+        }
+    }
+
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task NewDocumentSaveFailurePreservesExistingDocumentsAsync(bool refuseClosure)
+    {
+        var template = Environment.GetEnvironmentVariable("RMM_TEST_PROJECT_TEMPLATE")
+            ?? Application.DefaultProjectTemplate;
+        if (!File.Exists(template)) Skip.Test("Set RMM_TEST_PROJECT_TEMPLATE to an existing project template.");
+        var before = Application.Documents.Cast<Document>().ToList();
+        Document? created = null;
+        string? identity = null;
+        var closureAttempted = false;
+        void Created(object? sender, DocumentCreatedEventArgs arguments)
+        {
+            created = arguments.Document;
+            identity = $"{created.Title} [{created.GetHashCode():X}]";
+        }
+        void Closing(object? sender, DocumentClosingEventArgs arguments)
+        {
+            if (!arguments.Document.Equals(created)) return;
+            closureAttempted = true;
+            if (refuseClosure) arguments.Cancel();
+        }
+        Application.DocumentCreated += Created;
+        Application.DocumentClosing += Closing;
+        try
+        {
+            Exception? failure = null;
+            try
+            {
+                Invoke<ActionResultData>(Type("Control.DocumentActions"), null, "Execute",
+                    UiApplication, "new-document", new ActionJobContract
+                    {
+                        Kind = "project",
+                        Template = template,
+                        Activate = false,
+                        SaveAs = Path.Combine(_directory!, "missing", "project.rvt")
+                    });
+            }
+            catch (InvalidOperationException exception)
+            {
+                failure = exception;
+            }
+            await Assert.That(failure is not null).IsTrue();
+            await Assert.That(created is not null).IsTrue();
+            await Assert.That(closureAttempted).IsTrue();
+            await Assert.That(created!.IsValidObject).IsEqualTo(refuseClosure);
+            await Assert.That(failure!.Message.Contains(refuseClosure
+                ? $"Retained document '{identity}'" : $"Closed '{identity}'")).IsTrue();
+            await AssertInventoryAsync(refuseClosure ? [.. before, created!] : before);
+        }
+        finally
+        {
+            Application.DocumentCreated -= Created;
+            Application.DocumentClosing -= Closing;
+            if (created is { IsValidObject: true }) created.Close(false);
+        }
+    }
+
+    [Test]
+    [Arguments("edit")]
+    [Arguments("load")]
+    [Arguments("closure")]
+    public async Task FamilyEditFailureReportsDocumentClosureAsync(string failureStage)
+    {
+        var family = EditableFamily();
+        var before = Application.Documents.Cast<Document>().ToList();
+        Document? edited = null;
+        string? identity = null;
+        var loadAttempted = false;
+        void Loading(object? sender, FamilyLoadingIntoDocumentEventArgs arguments)
+        {
+            if (!arguments.Document.Equals(Model)) return;
+            loadAttempted = true;
+            arguments.Cancel();
+        }
+        void Closing(object? sender, DocumentClosingEventArgs arguments)
+        {
+            if (before.Any(document => document.Equals(arguments.Document))) return;
+            edited = arguments.Document;
+            identity = $"{edited.Title} [{edited.GetHashCode():X}]";
+            if (failureStage == "closure") arguments.Cancel();
+        }
+        Application.FamilyLoadingIntoDocument += Loading;
+        Application.DocumentClosing += Closing;
+        try
+        {
+            var result = EditFamilies(new ActionJobContract
+            {
+                Families = [family.Name],
+                StopOnError = true,
+                Operations = failureStage == "load"
+                    ? [new FamilyEditOperationContract
+                    {
+                        Op = "set_shared",
+                        Shared = family.get_Parameter(BuiltInParameter.FAMILY_SHARED).AsInteger() != 1
+                    }]
+                    : [new FamilyEditOperationContract
+                    {
+                        Op = "add_shared_parameters",
+                        SharedParameterFile = Path.Combine(_directory!, "missing-parameters.txt"),
+                        Parameters = []
+                    }]
+            });
+            var receipt = result.Families.Single();
+            await Assert.That(receipt.Status).IsEqualTo("failed");
+            await Assert.That(receipt.Reason is not null).IsTrue();
+            await Assert.That(result.FailedFamily).IsEqualTo(family.Name);
+            await Assert.That(result.RolledBack).IsTrue();
+            await Assert.That(result.Committed).IsFalse();
+            await Assert.That(loadAttempted).IsEqualTo(failureStage == "load");
+            await Assert.That(edited is not null).IsTrue();
+            await Assert.That(receipt.Closure is not null).IsTrue();
+            await Assert.That(receipt.Closure!.Identity).IsEqualTo(identity);
+            await Assert.That(receipt.Closure.Closed).IsEqualTo(failureStage != "closure");
+            await Assert.That(edited!.IsValidObject).IsEqualTo(failureStage == "closure");
+            await Assert.That(result.HasRetainedDocument).IsEqualTo(failureStage == "closure");
+            await AssertInventoryAsync(failureStage == "closure" ? [.. before, edited!] : before);
+        }
+        finally
+        {
+            Application.FamilyLoadingIntoDocument -= Loading;
+            Application.DocumentClosing -= Closing;
+            foreach (var document in Application.Documents.Cast<Document>().ToList())
+                if (!before.Any(existing => existing.Equals(document))) document.Close(false);
+        }
+    }
+
+    [Test]
+    public async Task FamilyEditKeepsPreExistingFamilyDocumentOpenAsync()
+    {
+        var family = EditableFamily();
+        var existing = Model.EditFamily(family);
+        try
+        {
+            var before = Application.Documents.Cast<Document>().ToList();
+            var result = EditFamilies(new ActionJobContract
+            {
+                Families = [family.Name],
+                StopOnError = true,
+                Operations = [new FamilyEditOperationContract
+                {
+                    Op = "add_shared_parameters",
+                    SharedParameterFile = Path.Combine(_directory!, "missing-parameters.txt"),
+                    Parameters = []
+                }]
+            });
+            await Assert.That(result.Families.Single().Status).IsEqualTo("failed");
+            await Assert.That(result.Families.Single().Closure is null).IsTrue();
+            await Assert.That(existing.IsValidObject).IsTrue();
+            await AssertInventoryAsync(before);
+        }
+        finally
+        {
+            if (existing.IsValidObject) existing.Close(false);
+        }
+    }
+
+    private Family EditableFamily() =>
+        new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+            .First(family => family.IsEditable && !family.IsInPlace &&
+                family.get_Parameter(BuiltInParameter.FAMILY_SHARED) is not null);
+
+    private FamilyEditData EditFamilies(ActionJobContract job)
+    {
+        var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);
+        return Invoke<FamilyEditData>(Type("Control.FamilyEditor"), null, "Execute",
+            Model, job, failures, UiApplication, "RMM tests");
+    }
+
+    private static async Task AssertInventoryAsync(List<Document> expected)
+    {
+        var actual = Application.Documents.Cast<Document>().ToList();
+        await Assert.That(actual.Count).IsEqualTo(expected.Count);
+        await Assert.That(expected.All(document => document.IsValidObject &&
+            actual.Any(candidate => candidate.Equals(document)))).IsTrue();
     }
 
     private List<Element> WallElements() => new FilteredElementCollector(Model).OfCategory(BuiltInCategory.OST_Walls).WhereElementIsNotElementType().ToElements().ToList();
