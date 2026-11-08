@@ -98,7 +98,7 @@ def endpoint():
                         },
                         "addinVersion": package_version(),
                         "protocolVersion": 1,
-                        "commands": ["ping", "select", "export", "export-view"],
+                        "commands": ["ping", "document-info", "select", "export", "export-view"],
                     },
                     proof=proof,
                 )
@@ -668,6 +668,38 @@ def test_http_action_keeps_inactive_document_address(endpoint):
     asyncio.run(RevitChannel(host).execute(job))
     assert state["payload"]["targetDocument"] == "Inactive"
     assert state["payload"]["targetProcessId"] == 42
+
+
+@pytest.mark.parametrize("command", ["ping", "document-info"])
+@pytest.mark.parametrize("process_id", [None, 42])
+@pytest.mark.parametrize("document", ["doc:" + "a" * 32, "Inactive", "C:/Models/Inactive.rvt"])
+def test_http_reads_defer_document_resolution_to_addin(endpoint, command, process_id, document):
+    host, state = endpoint
+    job = Job(command, {"command": command}).for_document(document).for_process(process_id)
+
+    result = asyncio.run(RevitChannel(host).execute(job))
+
+    assert result["success"] is True
+    assert state["payload"]["targetDocument"] == document
+    assert state["payload"]["targetProcessId"] == 42
+    assert state["requests"][-1] == (
+        "POST",
+        "/jobs?timeout=0",
+        "Bearer test-token",
+    )
+    assert job.payload.get("targetProcessId") == process_id
+    assert job.payload["targetDocument"] == document
+
+
+def test_http_document_id_does_not_override_explicit_process(endpoint):
+    host, state = endpoint
+    job = Job.ping().for_document("doc:" + "a" * 32).for_process(84)
+
+    with pytest.raises(RevitChannelError, match="explicitly selected Revit process"):
+        asyncio.run(RevitChannel(host).execute(job))
+
+    assert state["payload"] is None
+    assert state["requests"] == [("GET", "/health", None)]
 
 
 def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
