@@ -194,7 +194,7 @@
     },
     {
       "name": "revit_close_document",
-      "description": "Close a background document. Needs confirm_token from a first call, which changes nothing."
+      "description": "Close a background document. Confirmation is required when saving or discarding changes, except MCP-opened detached noncentral documents closed without saving."
     },
     {
       "name": "revit_save_document",
@@ -310,7 +310,7 @@
     },
     {
       "name": "revit_link_cad",
-      "description": "Link or import a DWG into a plan view on the Revit workstation. Returns CAD layers and extents in mm."
+      "description": "Link or import a DWG into a plan view on the Revit workstation. Layer counts and XY extents cover only lines and polyline segments; other geometry is ignored."
     },
     {
       "name": "revit_walls_from_cad",
@@ -334,7 +334,7 @@
     },
     {
       "name": "revit_place_views_on_sheet",
-      "description": "Place views and schedules on a sheet. Coordinates are sheet mm."
+      "description": "Place views and schedules on a sheet. Sheet mm coordinates are viewport centers for views and insertion points for schedules; they do not guarantee fit."
     },
     {
       "name": "revit_tag_elements",

@@ -149,7 +149,14 @@ def test_coordinator_prompts_render_expected_workflows(name: str):
         assert "cannot" in rendered and "undo" in rendered
     else:
         assert "read-only" in rendered.lower()
-        assert "Do not call action tools" in rendered
+        if name == "batch_audit":
+            assert "Source-model read-only" in rendered
+            assert "Permit batch start/cancel orchestration" in rendered
+            assert "no model edits" in rendered
+            assert "The workstation lock refuses batch start and cancel" in rendered
+            assert "never unlock without the user's explicit request and confirmation" in rendered
+        else:
+            assert "Do not call action tools" in rendered
         assert not mentioned_tools & ACTION_TOOLS
     if name in {"daily_qa", "sheet_set"}:
         assert len(rendered.splitlines()) < 40

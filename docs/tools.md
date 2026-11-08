@@ -65,28 +65,28 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `core` | 9 | 7,319 | 1,829 |
 | `read` | 13 | 18,688 | 4,672 |
 | `actions` | 9 | 11,103 | 2,775 |
-| `documents` | 6 | 4,810 | 1,202 |
-| `views-sheets` | 22 | 25,653 | 6,413 |
+| `documents` | 6 | 4,879 | 1,219 |
+| `views-sheets` | 22 | 25,742 | 6,435 |
 | `family` | 5 | 8,774 | 2,193 |
 | `links` | 3 | 4,053 | 1,013 |
-| `cad-mep` | 4 | 5,663 | 1,415 |
+| `cad-mep` | 4 | 5,720 | 1,430 |
 | `export` | 4 | 7,198 | 1,799 |
 | `batch` | 7 | 8,164 | 2,041 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,590 | 26,897 |
+| `all` (default) | 89 | 107,805 | 26,951 |
 | `core,read` | 22 | 26,007 | 6,501 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,590 | 26,897 | 107,747 |
+| `all` | 89 | 107,805 | 26,951 | 107,962 |
 | `core,read` | 22 | 26,007 | 6,501 | 26,097 |
-| `preset:audit` | 28 | 30,817 | 7,704 | 30,913 |
-| `preset:edit` | 59 | 67,573 | 16,893 | 67,700 |
-| `preset:families` | 40 | 45,756 | 11,439 | 45,864 |
-| `preset:sheets` | 54 | 63,668 | 15,917 | 63,790 |
-| `preset:batch` | 46 | 52,344 | 13,086 | 52,458 |
+| `preset:audit` | 28 | 30,886 | 7,721 | 30,982 |
+| `preset:edit` | 59 | 67,731 | 16,932 | 67,858 |
+| `preset:families` | 40 | 45,825 | 11,456 | 45,933 |
+| `preset:sheets` | 54 | 63,826 | 15,956 | 63,948 |
+| `preset:batch` | 46 | 52,413 | 13,103 | 52,527 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -103,10 +103,11 @@ Revit-backed tools support local, SSH and HTTP transports. `revit_build_report` 
 
 Every addressed Revit-backed read tool accepts optional `process_id` (alias `processId`), a strict positive integer. It selects an exact Revit process and must agree with `document` when both are given. See [batch collection](batch.md#explicit-process-addressing).
 
-Every Revit-backed read tool except `revit_list_sheets`, `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120` and `document=null`.
-The server environment variable `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` configures the file-channel pickup timeout (default 300 seconds). `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`.
+Every Revit-backed read tool except `revit_list_sheets`, `revit_schedule_data`, `revit_ui_state`, `revit_export_view`, `revit_capture_elements`, `revit_issue_register`, `revit_list_instances` and `revit_family_audit` accepts `timeout_seconds=120` and `document=null`.
+The server environment variable `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` configures the file-channel pickup timeout (default 300 seconds). `revit_ui_state` accepts only `process_id`. Family audit accepts `timeout_seconds=600` and `document=null`. Schedule reads use the default 120-second response wait without a timeout argument.
 Timeouts are seconds; pickup timeout applies only to local and SSH transports.
 Every timeout argument is named `timeout_seconds`; defaults and limits differ per tool and are listed in the tool schema. `revit_jobs(wait_seconds)` is a wait, not a timeout.
+The [read signatures](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/server.py) define these exceptions; the [contract evidence](actions.md#contract-evidence) covers safety and workflow guarantees.
 Arguments named `output_path` (a file) and `output_dir` (a directory) write on the machine that runs the MCP client, unless the description says the path is on the workstation. `revit_export`, `revit_process_models` exports and `save.output_dir` write on the workstation. `save_as` is a Revit Save As path on the workstation.
 Arguments without defaults in these tables are required.
 The query filters shared by aggregation and queries are `categories`, `family`, `type_name`, `level`, `view`, `workset`, `phase`, `area_scheme` and `parameter_filters`; each defaults to `null`.

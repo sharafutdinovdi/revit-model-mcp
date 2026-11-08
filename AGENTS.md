@@ -77,12 +77,17 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging commands and test coverage.
 
 ## Hard rules
 
-- Actions are enabled by default; every change is one named undo entry, listed in the activity pane and reported in `summary`; read-only mode must stay available through the shared workstation lock, controlled by the Model MCP ribbon or `revit_set_read_only`. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by ribbon or chat.
+- Actions are enabled by default; transactional model edits use one named undo entry and completed actions report an activity summary. Session operations, saves, sync, exports, link removal and saved-tool file changes are not covered by model Undo. Read-only mode must stay available through the shared workstation lock, controlled by the Model MCP ribbon or `revit_set_read_only`. Chat unlock requires explicit user confirmation. Machine policy cannot be lifted by ribbon or chat.
 - Direct HTTP actions still require authentication and are refused while the workstation read-only lock is on. The authenticated `set-read-only` command remains available while locked.
 - Never log model paths when redaction is on, or expose secrets and confidential model data in commits or logs.
 - Never include Revit API assemblies in artifacts.
 - Keep transports loopback-first; remote exposure requires explicit configuration.
 - Preserve timeout and verification warnings: a timed-out or failed verification response may follow a committed change.
+- Preserve confirmation binding to the exact execution intent, including `dry_run`; first saved-tool runs require confirmation even for read mode and previews.
+- Keep source-model read-only guarantees separate from batch orchestration permissions: batch start and cancel are refused while locked.
+- Preserve nested and top-level `skipped`/`skippedCount`, truncation and paging diagnostics; incomplete evidence is not a full-population pass.
+- Preserve write-new report and download destinations, request journal recovery, dialog diagnostics and progress notifications; progress is not proof of completion.
+- Maintain the [safety contract evidence](docs/actions.md#contract-evidence) when changing these guarantees.
 - Never run `git reset --hard`, `git clean -fd` or force push.
 
 ## Release ritual

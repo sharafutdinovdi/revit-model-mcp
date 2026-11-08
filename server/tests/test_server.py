@@ -567,6 +567,29 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("workstation read-only lock", instructions)
         self.assertIn("revit_undo_last", instructions)
 
+    def test_instructions_qualify_preview_undo_and_recovery_contracts(self) -> None:
+        instructions = revit_server.mcp.instructions
+        self.assertIn("Transactional model edits use one named Revit undo entry", instructions)
+        self.assertIn("not covered by that guarantee", instructions)
+        self.assertIn("close requires it when saving or discarding changes", instructions)
+        self.assertIn("first saved-tool run", instructions)
+        self.assertIn("even for read mode or dry_run", instructions)
+        self.assertIn("a preview token cannot authorize a commit", instructions)
+        self.assertIn("nonzero skippedCount", instructions)
+        self.assertIn("recover the original request with revit_jobs", instructions)
+        self.assertIn("Progress notifications are not completion evidence", instructions)
+
+    async def test_discovery_qualifies_close_cad_placement_and_schedule_waits(self) -> None:
+        tools = {tool.name: tool for tool in await revit_server.mcp.list_tools()}
+        self.assertIn(
+            "except MCP-opened detached noncentral", tools["revit_close_document"].description
+        )
+        self.assertIn("other geometry is ignored", tools["revit_link_cad"].description)
+        placement = tools["revit_place_views_on_sheet"].description
+        self.assertIn("viewport centers", placement)
+        self.assertIn("insertion points for schedules", placement)
+        self.assertNotIn("timeout_seconds", tools["revit_schedule_data"].input_schema["properties"])
+
     async def test_stdio_server_starts_and_lists_tools_without_revit(self) -> None:
         parameters = StdioServerParameters(
             command="revit-model-mcp",

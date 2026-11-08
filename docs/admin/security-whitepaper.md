@@ -16,7 +16,7 @@ Two components work together.
 
 | Component | Where it runs | Role |
 | --- | --- | --- |
-| Add-in | Inside Revit on Windows, as the Revit user | Receives requests, runs them on the Revit API thread, returns results. Opens no transaction for reads. Wraps every change in one named undo entry. |
+| Add-in | Inside Revit on Windows, as the Revit user | Receives requests, runs them on the Revit API thread, returns results. Opens no transaction for reads. Groups transactional model edits into one named undo entry. |
 | Server | Python process started by the MCP client, usually on the same machine | Speaks MCP to the client over stdio. Translates tool calls into add-in requests. Applies read-only mode and path redaction to outgoing responses. |
 
 The server never calls an AI service. The MCP client the user chose receives tool results and may forward them to its own model provider. That step is outside this project.
@@ -78,9 +78,9 @@ An administrator can set read-only mode, allow and deny lists for tools, whether
 
 ### Confirmations, dry runs and undo
 
-- Every change is one named Revit undo entry, listed in the activity pane. `revit_undo_last` reverts the last MCP action while it is still the latest change in Revit.
-- Save, synchronize, close with possible loss, link removal, overwriting exports, C# execution, in-place saves in multi-model runs and deletion of more than 500 elements need a single-use confirmation token. It expires after five minutes and is bound to the call it describes.
-- Tools that change data accept `dry_run` where it makes sense.
+- Transactional model edits use one named Revit undo entry, listed in the activity pane. `revit_undo_last` reverts only an eligible edit while its entry is latest in Revit. Session operations, saves, sync, exports, link removal and saved-tool file changes are not covered by that guarantee.
+- Confirmation gates and their dry-run and detached-document exceptions follow the [action contract](../actions.md#confirmation-tokens-for-irreversible-actions). Tokens are single use, expire after five minutes and bind the described call. Saved C# requires first-run confirmation even for read mode and previews; execution tokens bind `dry_run` intent.
+- Tools expose `dry_run` only where their schemas support it. Batch previews execute independent steps against unchanged state, not cumulative state.
 - A central model opened through MCP is detached by default. Saving an open central model is refused.
 - Confirmation tokens guard against mistakes and against instructions injected through model data or tool output. They do not stop an MCP client that confirms on its own, because the client receives the token. Use read-only mode or policy for unattended runs.
 
@@ -127,7 +127,7 @@ With the `LogDir`, `LogRetentionDays` and `RedactPaths` policy values an adminis
 
 - The activity pane and activity log record each request and action with the command and client name. They do not record all arguments.
 - The add-in log records jobs received, errors and lifecycle events. The HTTP token is never logged.
-- Revit's undo list carries one entry named `MCP (<client>): <summary>` for every change.
+- Revit's undo list carries one entry named `MCP (<client>): <summary>` for each committed transactional model edit; non-model effects have separate limits.
 - Path redaction (`REVIT_MCP_REDACT_PATHS=1`) shortens paths in Python responses. For add-in logs and audit files, the variable must be set in the Revit process environment, or by the `RedactPaths` policy. Model names and parameter values stay visible.
 - There is no Windows Event Log or SIEM sink and no tamper protection for the files. Forward the log folders with your own agent if you need that.
 
@@ -172,6 +172,9 @@ The confirmation shows name, mode, short revision hash, saved timestamp, replace
 The confirmed set exists only in Revit process memory, keyed by name and revision hash.
 After confirmation, read mode and dry runs execute without another token for that revision in that session.
 Action runs that commit changes still require per-call confirmation.
+Execution tokens bind preview versus commit intent; changing `dry_run` consumes and rejects the mismatched token.
+
+The [contract evidence](../actions.md#contract-evidence) links the maintained implementations for lock atomicity, write-new files, diagnostics, routing identity, request outcome recovery, dialogs and progress.
 
 Approval protects against silent tool replacement between sessions.
 The store HMAC key is readable in-process, and code with the Windows user's rights can write signed revisions.
