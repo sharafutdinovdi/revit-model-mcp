@@ -72,7 +72,10 @@ After a confirmed run, read mode and dry runs require no further token for that 
 Action runs that commit changes still require confirmation for each call.
 Read mode and dry runs roll back model changes.
 Both modes require an open target document and use `document` for addressing.
-The script cannot own the transaction.
+`transaction="auto"` owns the transaction; the script must not start a Transaction.
+`transaction="group"` opens no outer Transaction and permits script-owned transactions and native edit scopes.
+Every script-owned scope must finish before return; errors and unfinished scopes roll back the group.
+See [transaction ownership](actions.md#execute-c-code) for the shared runner and workstation validation requirements.
 A committed model change has one undo entry named `Model MCP: <tool name>`, an Activity record, and a summary.
 A procedure that changes nothing leaves no undo entry.
 Long calls can return `status:running`; polling `revit_jobs` retrieves the original result.

@@ -979,7 +979,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Close a background document. Needs confirm_token from a first call, which changes nothing."""
+        """Close a background document. Confirmation is required when saving or discarding changes, except MCP-opened detached noncentral documents closed without saving."""
         return await send(
             "close-document",
             document=document,
@@ -1596,7 +1596,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
-        """Link or import a DWG into a plan view on the Revit workstation. Returns CAD layers and extents in mm."""
+        """Link or import a DWG into a plan view on the Revit workstation. Layer counts and XY extents cover only lines and polyline segments; other geometry is ignored."""
         return await send(
             "link-cad",
             path=path,
@@ -1743,7 +1743,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:
-        """Place views and schedules on a sheet. Coordinates are sheet mm."""
+        """Place views and schedules on a sheet. Sheet mm coordinates are viewport centers for views and insertion points for schedules; they do not guarantee fit."""
         placements = [{"view": item.view, "xMm": item.x_mm, "yMm": item.y_mm} for item in views]
         return await send(
             "place-views-on-sheet",

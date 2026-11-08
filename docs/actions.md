@@ -11,17 +11,17 @@ Refused calls return `success:false`, `errorCode:"read_only"`, and a message nam
 See [Read-only mode](#read-only-mode) and [Errors and refusals](tools.md#errors-and-refusals).
 Transaction warnings are dismissed and reported in `warningsDismissed` (omitted when empty); errors that cannot be safely resolved roll back the action.
 
-Every action result carries a `summary`: one human sentence describing what changed, how many elements, and in
-which document, alongside `verification`. A committed mutation assimilates its transaction into a single named
-Revit undo entry, `MCP (<clientName>): <short summary>` (at most 60 characters), visible in Revit's Undo list and
-in the add-in's "MCP activity" dockable pane ("Activity" button in the MCP panel on Revit's Add-Ins tab).
+Completed actions report a `summary` in the activity pane.
+Transactional model edits use one named Revit undo entry, `MCP (<clientName>): <short summary>` (at most 60 characters), with verification where supported.
+Session operations, saves, synchronization, exports, link removal and saved-tool file changes do not share that model Undo guarantee.
 `select` and `show` make no document change and get no undo entry, but still appear in the activity pane.
 See [Undo the last action](#undo-the-last-action) for `revit_undo_last`.
 
 Action tools that target an open document accept `document`. `revit_process_models` uses `paths` or `folder` instead. `revit_export_nwc`, `revit_export`, `revit_link_cad`, `revit_walls_from_cad`, `revit_edit_families`, `revit_align_link_datums` and `revit_execute_code` also accept `timeout_seconds` from 30 to 3600 seconds. `revit_process_models` accepts 30 to 14400 seconds.
 Revit remains busy for the whole action duration.
-Other listed tools use the default response timeout of 120 seconds. All actions use a pickup timeout of 300 seconds and require exactly one instance returned by the transport.
-HTTP addresses one endpoint; the file transports discover workstation instances.
+Timeout defaults and limits follow each tool's schema, not its read/action classification.
+File-channel actions use a pickup timeout of 300 seconds unless `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` overrides it; HTTP and named pipes do not use file pickup.
+HTTP addresses one endpoint; local and SSH discovery select one process and revalidate its identity before submission.
 All IDs are unitless Revit element IDs.
 Revit 2022-2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
 
@@ -100,6 +100,17 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
 `revit_link_cad` accepts a workstation `.dwg` path subject to the same absolute-path and trusted network share rules as other file actions. The view must be a plan. Without `view`, it uses a floor plan on `level`, or the active plan. `origin` accepts `internal`, `shared` and `center`; `units` accepts `auto`, `mm`, `cm`, `m`, `in` and `ft`. The `layers` list selects imported layers. The result reports line and polyline segment counts by layer, plus XY extents.
+Counts and extents cover only `Line` and `PolyLine` segments, including nested instance transforms.
+Arcs, splines, meshes and other unsupported geometry are ignored; these extents do not establish the full DWG bounds.
+An import without supported segments returns zero segment counts for discovered layers and null extents.
+The wall extractor uses the same supported segments, not arbitrary CAD curves.
+
+Sheet placement coordinates are viewport centers for ordinary views and insertion points for schedules.
+The same coordinates therefore do not align their geometric centers.
+Automatic layout uses `View.Outline` with a minimum 20 mm footprint; an unavailable extent does not establish actual schedule dimensions.
+For a mixed layout, pass explicit anchors, for example `{"sheet":"A101","views":[{"view":"Level 1","x_mm":200,"y_mm":160},{"view":"Door Schedule","x_mm":20,"y_mm":280}]}`.
+The first anchor is a viewport center; the second is a schedule insertion point.
+Inspect actual bounds, labels, title block origin, overlap and fit in Revit after placement.
 
 `revit_walls_from_cad` uses the imported instance geometry and selected CAD layers. It merges collinear segments on each layer within 0.5 degree and 5 mm across gaps up to `max_gap_mm`. Short pieces participate in merging before the length filter. It pairs overlapping intervals within the thickness range. Unused intervals can pair with another partner. Bridged openings remain continuous. Each wall uses the requested basic type or the closest basic type by width. With `join=true`, centerlines extend or trim to L, T and X intersections within `max_thickness_mm`, and Revit joins are enabled there. `dry_run=true` returns the same planned walls and join numbers without model changes. Joins Revit would reject are left out and reported as `unjoinedEnds` with `unjoinedReasons`. `unpairedLines` counts merged lines with no paired interval; `mergedSegments` counts source segments absorbed by merging.
 
@@ -136,6 +147,12 @@ XML summaries are optional, contain the first sentence, and stop at 300 characte
 Missing XML and type load failures appear in `skipped` and `skippedCount`.
 
 ### Execute C# code
+
+Code return values can be incomplete independently of transaction success.
+`data.resultCompleteness` reports `truncated`, `retainedCount`, `omittedCount` and `reasons`.
+Truncation sets top-level `partial` and skipped diagnostics; `data.resultArtifact` identifies the full JSON file when publication succeeds.
+An artifact publication failure reports `complete:false` and a skipped reason; it does not undo a committed model change.
+Saved-tool runs use the same result limiter and artifact handling.
 
 `revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. Both supported transaction modes require a target document.
 
@@ -410,9 +427,10 @@ The handler sets `UIDocument.ActiveView` synchronously inside its ExternalEvent 
 After `ShowElements`, a newly opened view uses `UIView.ZoomToFit()`.
 The response includes `activeView` and `viewOpened`, which reports whether the handler opened a previously closed view.
 
-During action execution, the handler attempts to dismiss TaskDialog prompts with OK and then Yes.
-Messages from successful overrides appear in `dialogsSuppressed`.
-The dialog handler is removed in `finally`, including on errors.
+Ordinary non-code actions attempt to dismiss TaskDialog prompts with OK and then Yes; successful overrides appear in `dialogsSuppressed`.
+Code execution and saved-tool runs expose dialogs through progress and final diagnostics instead of this blanket override.
+Unknown batch-worker dialogs are never overridden and fail the model; only exact allowlist matches can be answered.
+Dialog handlers are removed in `finally`, including on errors.
 For the single-action `revit_place_family` tool, missing families return up to five similar names with their family categories in `closestFamilies`; unrelated names are omitted.
 Inside `revit_run_actions`, a missing family surfaces only as `steps[].error` text; `closestFamilies` is unavailable.
 For `Family: Type`, `type_name=null` uses the embedded type; a conflicting `type_name` is rejected.
@@ -425,6 +443,9 @@ Its file stays at `%LOCALAPPDATA%\RevitModelMcp\read-only` even when `REVIT_MCP_
 Revit checks the file on every job.
 File watching and a periodic check update running instances within one second.
 No restart is required.
+Lock updates serialize across processes through a persistent guard file and atomically replace the state file.
+Readers allow Windows read/write/delete sharing and retry sharing violations.
+Unreadable state fails closed; a changed lock revision invalidates a pending unlock token.
 
 The Model MCP ribbon has a **Read-only** toggle beside Activity.
 Its pressed state and closed padlock mean the lock is on.
@@ -648,3 +669,25 @@ In the store channel only machine policy `ExecuteCode=confirm` enables saved C#,
 Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.
 The workstation read-only lock blocks all runs, saves, and deletions.
 ExecuteCode and execution tool restrictions apply to the entire saved tool catalog.
+
+## Contract evidence
+
+The following source locations define the contracts in this guide.
+Schema and documentation checks run without Revit; independent preview rollback, native edit scopes, CAD geometry and mixed sheet layout require an in-Revit replay.
+
+| Contract | Implementation |
+| --- | --- |
+| Confirmation, first saved-tool preview and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [MyTools.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/MyTools.cs) |
+| Conditional close and detached-document exemption | [DocumentActions.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/DocumentActions.cs) |
+| Transaction ownership and native scopes | [CodeExecution.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/CodeExecution.cs) |
+| Independent batch previews and shared parameter transaction | [BatchActionExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/BatchActionExecutor.cs) |
+| CAD segment coverage and placement anchors | [ActionMutations.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionMutations.cs) |
+| Atomic workstation lock and Windows sharing | [ReadOnlyLock.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ReadOnlyLock.cs) |
+| Source-model read-only collection and orchestration permissions | [BatchReadOnlyPolicy.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Batch/BatchReadOnlyPolicy.cs), [batch.py](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/batch.py) |
+| Write-new client files | [atomic_write.py](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/atomic_write.py) |
+| Read diagnostics, timeout schemas and workflow instructions | [server.py](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/server.py) |
+| Toolset selection, presets and restart | [toolsets.py](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/toolsets.py) |
+| Routing identity, client request records, outcome recovery and progress notifications | [revit_channel.py](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/revit_channel.py) |
+| Durable workstation request journal and unknown outcomes | [JobScheduler.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/JobScheduler.cs) |
+| Code result truncation and full-result publication | [CodeSource.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/CodeSource.cs), [artifact_download.py](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/revit_model_mcp/artifact_download.py) |
+| Dialog exposure and unknown-dialog handling | [BatchDialogHandler.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/BatchDialogHandler.cs), [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs) |

@@ -155,7 +155,7 @@ Actions run by default; the single workstation read-only lock (Read-only ribbon 
 
 - [ ] **4.1 Gate negative test**: with the Read-only ribbon button on, an action is **refused** with `errorCode:"read_only"`; the tool stays listed and read tools still work. Turning it off with `revit_set_read_only` first returns a confirmation token and changes nothing until the user confirms.
 - [ ] **4.2 HTTP token gate**: a direct HTTP action without the bearer token is refused; `/health` works without token.
-- [ ] **4.3 Transaction safety**: every action wraps a Revit transaction; a failed action leaves the model unchanged (no partial edits).
+- [ ] **4.3 Transaction safety**: a failing transactional model edit rolls back; post-commit verification failures preserve the committed-change warning. Session operations, saves, sync, exports and link removal are not covered by model Undo. Check [contract evidence](actions.md#contract-evidence), including independent batch previews, native edit scopes and mixed view/schedule placement on a Revit workstation.
 - [ ] **4.4 Model restored**: after the action suite, the model matches its pre-test baseline (re-run `revit_aggregate_elements`).
 
 ---

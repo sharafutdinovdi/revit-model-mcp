@@ -282,10 +282,17 @@ Install these folders with the same copy or ZIP procedure.
 - **One Undo entry per transactional model edit.** Committed edits appear in Revit's Undo list and the Activity pane with a summary. Session operations, saves, synchronization, exports, and link removal have separate limits. Link removal cannot be undone. `revit_undo_last` works only while the latest Revit change remains eligible; temporary isolation also makes it ineligible.
 - **Confirmation tokens.** Tokens guard saves, synchronization, committed C#, real link removal, saved-tool saves and deletions, first saved-tool runs per Revit session, and every committed action-mode saved-tool run. Conditional gates cover destructive closes, large deletions, existing-file overwrites, and batch writes or code. See [confirmation exceptions](docs/actions.md#confirmation-tokens-for-irreversible-actions) for dry runs and detached documents. The first call changes nothing and returns confirmation text. The AI app returns the token on retry. Tokens are single use and expire after five minutes.
 - **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export`, and `revit_process_models` accept `dry_run` to preview the result without committing it.
+  The first saved-tool run per name and revision in each Revit process still requires confirmation for read mode and dry runs.
+  Execution tokens bind `dry_run` intent; a preview token cannot authorize a commit.
 - **Summaries and verification.** Completed actions report a summary. Model-editing actions include verification where supported. A timeout or failed verification can follow a committed change; inspect Revit before retrying.
+  Recover a lost reply with the original request ID through `revit_jobs`; progress notifications are not final results.
+  Missing or expired retry journals refuse re-execution instead of repeating an uncertain action.
 - **Path redaction.** `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields. Names, parameter values, and errors can still contain sensitive data.
 - **Unreachable workstation.** `errorCode: "transport_unavailable"` with `retryable: true` means the transport cannot reach Revit. If an action may have been submitted, inspect its job and the model before resubmitting. See [errors and refusals](https://sharafutdinovdi.github.io/revit-model-mcp/tools/#errors-and-refusals).
 - **HTTP.** Direct requests require the bearer token except for `/health`. Reads and authenticated `set-read-only` remain available while locked. Ordinary actions are refused by either the user lock or enforced policy.
+- **Files and completeness.** Client report and download destinations are write-new, including when another process creates the destination during publication.
+  Read completeness includes `skipped`, `skippedCount`, nested diagnostics, `partial`, `truncated` and paging indicators.
+  See the [contract evidence](docs/actions.md#contract-evidence) for implementations and workstation-only validation limits.
 
 For unattended runs, switch on read-only mode.
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.

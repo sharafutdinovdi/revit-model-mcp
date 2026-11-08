@@ -293,9 +293,10 @@ A batch job contains a nonempty `steps` array of at most 50 command objects:
 
 Steps use each command's normal channel fields.
 All steps are validated at parse time before execution; an invalid later step rejects the entire batch without executing any step and without `failedStep`.
-Allowed commands are `move`, `place-family`, `create-wall`, `set-parameter`, `delete`, `select` and `isolate`.
-Each model step uses its own transaction; the group is assimilated into the single undo entry `MCP (<clientName>): <short summary>`.
-A batch dry run retains each step's changes for subsequent steps and rolls back the group at the end.
+Allowed commands follow the [`revit_run_actions` schema](actions.md#actions-enabled-by-default); nested batches and tools excluded from batches are refused.
+Model steps normally use separate transactions; eligible string-parameter-only writes share one transaction as described in [batch execution](actions.md).
+A batch dry run previews each step independently against unchanged model state and rolls back each step and the group.
+A later preview cannot reference an element created by an earlier preview.
 An individual channel step with `dryRun:true` (MCP `dry_run:true`) in a real batch is accepted and previews only that step.
 Selection is restored on batch rollback.
 
