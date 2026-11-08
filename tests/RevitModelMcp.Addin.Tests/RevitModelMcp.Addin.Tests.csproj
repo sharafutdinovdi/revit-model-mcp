@@ -4,7 +4,6 @@
     <OutputType>Exe</OutputType>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <EnableTUnitPolyfills>false</EnableTUnitPolyfills>
     <RestorePackagesWithLockFile>false</RestorePackagesWithLockFile>
     <IsTestProject Condition="'$(RunRevitTests)' != 'true'">false</IsTestProject>
     <Configurations>Debug.R22;Debug.R23;Debug.R24;Debug.R25;Debug.R26;Debug.R27;Release.R22;Release.R23;Release.R24;Release.R25;Release.R26;Release.R27</Configurations>
