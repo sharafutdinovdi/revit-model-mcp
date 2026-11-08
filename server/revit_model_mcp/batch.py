@@ -167,7 +167,9 @@ def _public(state: dict[str, Any]) -> dict[str, Any]:
     return redact_model_paths(public)
 
 
-async def _responsive_instances(host: object) -> list[dict[str, Any]]:
+async def _launcher_instances(host: object) -> list[dict[str, Any]]:
+    if isinstance(host, SshPowerShellHost) and not host.local:
+        return await host._discover_instances()
     return [
         item for item in await host.list_revit_instances() if item.get("pluginResponding", True)
     ]
@@ -175,7 +177,9 @@ async def _responsive_instances(host: object) -> list[dict[str, Any]]:
 
 async def _wait_for_responsive_instance(host: object) -> list[dict[str, Any]]:
     for _ in range(120):
-        instances = await _responsive_instances(host)
+        instances = [
+            item for item in await host.list_revit_instances() if item.get("pluginResponding", True)
+        ]
         if instances:
             return instances
         await asyncio.sleep(1)
@@ -226,7 +230,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
                 await file_host.batch_discover(folder, recursive) if folder is not None else paths
             )
             selected_paths = _paths(discovered)
-            instances = await _responsive_instances(host)
+            instances = await _launcher_instances(host)
             if (
                 not instances
                 and process_id is None
@@ -238,6 +242,11 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             selected = select_instance(
                 instances, Job("batch-supervisor-start", {}).for_process(process_id)
             )
+            if isinstance(host, SshPowerShellHost) and not host.local:
+                launcher, _ = await host.select_job(
+                    Job("batch-supervisor-start", {}).for_process(selected["processId"])
+                )
+                selected = launcher.instance_info
             run_id = uuid.uuid4().hex
             state = {
                 "runId": run_id,

@@ -600,6 +600,8 @@ Before execution publishes a snapshot, running receipts use the selected process
 Long-running responses include `processId` and polling instructions with `process_id`. Subsequent `revit_jobs` calls remain bound to the original process generation during the server lifetime; a changed process generation or conflicting selector fails closed.
 Persisted results carrying `instanceId` are also checked against the selected process generation after a server restart.
 `revit_batch_start(process_id=...)` selects the launcher explicitly and never substitutes another process if that launcher is absent.
+SSH batch launch uses the same verified process generation and handshake budget as ordinary requests.
+A selected process that exceeds the handshake budget reports `not responding within Ns`; it is not reported as absent.
 
 A fresh heartbeat and an existing process are pre-checks.
 For v2 the server performs a bounded ping handshake with a fresh `correlationId` in the selected directory.
