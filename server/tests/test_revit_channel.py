@@ -2568,7 +2568,8 @@ asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
 
 
 @pytest.mark.parametrize("completed", [False, True])
-def test_long_action_budget_boundary_preserves_result_and_job(completed):
+@pytest.mark.parametrize("response_wait_times_out", [False, True])
+def test_long_action_budget_boundary_preserves_result_and_job(completed, response_wait_times_out):
     async def check():
         host = FakeRemoteHost()
         host.instance_info = {
@@ -2578,10 +2579,16 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
         host.response_name = None
 
         async def expire_response_wait(command, known_names, timeout_seconds, correlation_id):
-            await asyncio.sleep(timeout_seconds)
+            assert host.events == ["prepare", "pickup"]
+            assert timeout_seconds == 40
+            assert json.loads(host.written_content)["correlationId"] == correlation_id
+            # Expire only after publication and pickup, not during runner scheduling.
+            clock.return_value += timeout_seconds
+            if response_wait_times_out:
+                raise TimeoutError
             return None
 
-        host.wait_for_new_response = expire_response_wait
+        host.wait_for_new_response = AsyncMock(side_effect=expire_response_wait)
         response = {
             "command": "process-models",
             "success": True,
@@ -2595,11 +2602,16 @@ def test_long_action_budget_boundary_preserves_result_and_job(completed):
             "verification": {"warning": "Check exported files."},
         }
         host.fetch_job = AsyncMock(return_value=response)
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.1):
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=40),
+            patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock,
+        ):
             result = await RevitChannel(host).execute(
                 Job("process-models", {"command": "process-models"})
             )
         job_id = json.loads(host.written_content)["jobId"]
+        host.wait_for_new_response.assert_awaited_once()
+        assert clock.return_value == 140.0
         host.fetch_job.assert_awaited_once_with(job_id)
         assert host.deleted_names == []
         if completed:
