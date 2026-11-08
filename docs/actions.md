@@ -63,7 +63,7 @@ Cancellation is refused while the workstation read-only lock is on.
 | --- | --- | --- |
 | `revit_cancel_job` | `job_id`, `document=null`, `process_id=null` | Request cancellation. Process-models stops before the next model. Poll `revit_jobs` for the final result. Completed changes remain committed. |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
-| `revit_show` | `element_ids`, `select=true` | Show nonempty IDs and zoom to fit when opening a new view; return `activeView`, `viewOpened` and `count`, the current selection size after the call. With `select=false`, `count` reports the previous selection. |
+| `revit_show` | `element_ids`, `select=true` | Frame nonempty IDs in an explicitly selected level plan or orthographic 3D view; return `activeView`, `viewOpened`, `elapsedMs` and `count`. With `select=false`, `count` reports the requested element count. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
 | `revit_isolate` | `element_ids`, `reset=false` | Temporarily isolate IDs; `element_ids=[]` with `reset=true` clears hide/isolate. |
 | `revit_move` | `element_ids`, `dx_mm`, `dy_mm`, `dz_mm=0` | Move by model-axis offsets in mm. Group members that Revit refuses to change are skipped; see [Group members](#group-members-in-dry-runs-and-real-runs). Pinned, hosted and constrained elements that do not move are skipped too; see [Elements that cannot move](#elements-that-move-rotate-or-mirror-cannot-change). |
@@ -461,14 +461,15 @@ A per-step `dry_run:true` inside a real batch is accepted and previews only that
 Verification describes each step's immediate result; subsequent steps may change those elements again.
 Batches accept 1-50 steps; `select` and `isolate` are allowed, while `show`, nested batches and unknown argument keys are rejected.
 
-`revit_show` checks the open UI views before calling `ShowElements`.
-If none contains a requested element, it opens a non-template plan for an element's level.
-Floor plans take priority, followed by names starting with the level name.
-Without a matching plan it uses the first non-template 3D view.
-The handler sets `UIDocument.ActiveView` synchronously inside its ExternalEvent without a transaction; `ShowElements` needs the view active immediately.
-`RequestViewChange` defers the change until control returns to Revit.
-After `ShowElements`, a newly opened view uses `UIView.ZoomToFit()`.
-The response includes `activeView` and `viewOpened`, which reports whether the handler opened a previously closed view.
+`revit_show` chooses a non-template plan for the common element level, or an orthographic 3D view when no matching plan exists.
+Within the matching level, the active view takes priority, followed by an already open view and then a floor plan.
+Mixed or missing element levels require a 3D view.
+The chosen view must contain every requested element; incompatible crop, phase or visibility settings produce an error naming that view.
+The handler activates the chosen view without an open transaction and frames the element bounds with `UIView.ZoomAndCenterRectangle`.
+It does not search other open views, call `ShowElements`, zoom to the entire model or wait for activation or repaint events.
+The response includes `activeView`, `viewOpened` and `data.elapsedMs` for view selection, activation, framing and optional selection.
+`viewOpened` reports whether the chosen view was previously closed.
+Native view activation and graphics generation remain synchronous Revit operations without a safe cancellation API.
 
 Ordinary non-code actions attempt to dismiss TaskDialog prompts with OK and then Yes; successful overrides appear in `dialogsSuppressed`.
 Code execution and saved-tool runs expose dialogs through progress and final diagnostics instead of this blanket override.

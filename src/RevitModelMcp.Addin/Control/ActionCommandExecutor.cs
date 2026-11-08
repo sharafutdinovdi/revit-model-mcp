@@ -1047,15 +1047,19 @@ internal static class ActionCommandExecutor
         var ids = (command == "isolate" && action.Reset) || (command is "tag-elements" or "create-schedule") ? [] : ResolveIds(document, action.ElementIds);
         if (command is "select" or "show")
         {
+            var viewStopwatch = Stopwatch.StartNew();
             if (command == "show")
             {
                 viewOpened = OpenViewForElements(uiDocument!, ids);
-                uiDocument!.ShowElements(ids);
-                if (viewOpened) DocumentActions.ZoomActiveView(uiDocument);
+                DocumentActions.ZoomActiveView(uiDocument!, "elements", ids.Select(RevitValueReader.GetId).ToList());
             }
             var selecting = command == "select" || action.Select;
             if (selecting) uiDocument!.Selection.SetElementIds(ids);
-            var viewData = new ActionResultData { Count = selecting ? uiDocument!.Selection.GetElementIds().Count : ids.Count };
+            var viewData = new ActionResultData
+            {
+                Count = selecting ? uiDocument!.Selection.GetElementIds().Count : ids.Count,
+                ElapsedMs = command == "show" ? viewStopwatch.ElapsedMilliseconds : null
+            };
             viewData.Summary = BuildSummary(command, action, viewData, document.Title, ids);
             return viewData;
         }
@@ -1406,42 +1410,29 @@ internal static class ActionCommandExecutor
     private static bool OpenViewForElements(UIDocument uiDocument, List<ElementId> ids)
     {
         var document = uiDocument.Document;
+        var openIds = uiDocument.GetOpenUIViews().Select(view => view.ViewId).ToHashSet();
+        using var collector = document.CollectElements().OfClass<View>();
+        var views = collector.Cast<View>()
+            .Where(view => !view.IsTemplate && (view is View3D || view is ViewPlan &&
+                view.ViewType is ViewType.FloorPlan or ViewType.CeilingPlan or ViewType.EngineeringPlan))
+            .ToList();
+        var candidates = views.Select(view => new ShowViewCandidate(
+            RevitValueReader.GetId(view.Id),
+            view is ViewPlan plan ? RevitValueReader.GetId(plan.GenLevel.Id) : null,
+            view.ViewType == ViewType.FloorPlan, view is View3D, view.IsTemplate,
+            view is View3D { IsPerspective: true }, view.Id == uiDocument.ActiveView.Id, openIds.Contains(view.Id)));
+        var levels = ids.Select(id => RevitValueReader.GetId(document.GetElement(id).LevelId)).ToList();
+        var choice = ShowViewPolicy.Choose(candidates, levels)
+            ?? throw new InvalidOperationException("No non-template level plan or orthographic 3D view is available to show these elements.");
+        var target = views.Single(view => RevitValueReader.GetId(view.Id) == choice.Id);
+        // View-scoped collectors can regenerate graphics. Inspect only the explicitly chosen view.
         using var idFilter = new ElementIdSetFilter(ids);
-        foreach (var uiView in uiDocument.GetOpenUIViews())
-        {
-            if (!FilteredElementCollector.IsViewValidForElementIteration(document, uiView.ViewId)) continue;
-            using var visible = document.CollectElements(uiView.ViewId).WherePasses(idFilter);
-            if (visible.Any()) return false;
-        }
-
-        View? target = null;
-        var levels = ids.Select(id => id.ToElement(document)?.LevelId.ToElement<Level>(document))
-            .Where(level => level is not null).Distinct().ToList();
-        if (levels.Count > 0)
-        {
-            using var planCollector = document.CollectElements().OfClass<ViewPlan>();
-            var plans = planCollector.Cast<ViewPlan>()
-                .Where(view => !view.IsTemplate).ToList();
-            foreach (var level in levels)
-            {
-                target = plans.Where(view => view.GenLevel?.Id == level!.Id)
-                    .OrderByDescending(view => view.ViewType == ViewType.FloorPlan)
-                    .ThenByDescending(view => view.Name.StartsWith(level!.Name, StringComparison.OrdinalIgnoreCase))
-                    .FirstOrDefault();
-                if (target is not null) break;
-            }
-        }
-        if (target is null)
-        {
-            using var viewCollector = document.CollectElements().OfClass<View3D>();
-            target = viewCollector.Cast<View3D>().FirstOrDefault(view => !view.IsTemplate);
-        }
-        if (target is null) throw new InvalidOperationException("No non-template level plan or 3D view is available to show these elements.");
-
-        var wasOpen = uiDocument.GetOpenUIViews().Any(view => view.ViewId == target.Id);
-        // The ExternalEvent runs without a transaction; ShowElements requires the view change immediately.
-        uiDocument.ActiveView = target;
-        return !wasOpen;
+        using var visible = document.CollectElements(target.Id).WherePasses(idFilter);
+        if (visible.GetElementCount() != ids.Count ||
+            ids.Any(id => document.GetElement(id).IsHidden(target)))
+            throw new InvalidOperationException($"View '{target.Name}' cannot show all requested elements. Check its crop, visibility and phase settings or activate a suitable model view.");
+        if (!choice.IsActive) uiDocument.ActiveView = target;
+        return !choice.IsOpen;
     }
 
     private static void CaptureViewSheetAfter(Document document, string command, ActionJobContract action, ActionResultData result)
