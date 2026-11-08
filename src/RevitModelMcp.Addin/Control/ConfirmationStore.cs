@@ -5,7 +5,8 @@ namespace RevitModelMcp.Control;
 
 internal static class ConfirmationStore
 {
-    private static readonly Dictionary<Document, (Guid SessionId, long ChangeCount)> Documents = [];
+    private static readonly Dictionary<Document, (Guid SessionId, long ChangeCount)> Documents =
+        new(new DocumentIdentityComparer<Document>((first, second) => first.Equals(second), document => document.IsValidObject));
 
     internal static DocumentConfirmationTokens Tokens { get; } = new();
 

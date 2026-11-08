@@ -15,7 +15,8 @@ namespace RevitModelMcp.Control;
 
 internal static class ActionMutations
 {
-    private static readonly Dictionary<Document, Dictionary<(long View, long Element), OverrideGraphicSettings>> GraphicHistory = new();
+    private static readonly Dictionary<Document, Dictionary<(long View, long Element), OverrideGraphicSettings>> GraphicHistory =
+        new(new DocumentIdentityComparer<Document>((first, second) => first.Equals(second), document => document.IsValidObject));
 
     internal static ActionResultData OverrideGraphics(Document document, ActionJobContract action, List<ElementId> ids)
     {

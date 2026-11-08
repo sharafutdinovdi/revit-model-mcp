@@ -734,9 +734,15 @@ public static class DocumentIdentityMatcher
         before.All(document => Contains(after, document, comparer));
 }
 
-public sealed class DocumentIdentityComparer<T>(Func<T, T, bool> equals) : IEqualityComparer<T> where T : class
+public sealed class DocumentIdentityComparer<T>(Func<T, T, bool> equals, Func<T, bool>? isValid = null) : IEqualityComparer<T> where T : class
 {
-    public bool Equals(T? first, T? second) => first is null ? second is null : second is not null && equals(first, second);
+    public bool Equals(T? first, T? second)
+    {
+        if (ReferenceEquals(first, second)) return true;
+        if (first is null || second is null) return false;
+        if (isValid is not null && (!isValid(first) || !isValid(second))) return false;
+        return equals(first, second);
+    }
 
     public int GetHashCode(T value) => 0;
 }

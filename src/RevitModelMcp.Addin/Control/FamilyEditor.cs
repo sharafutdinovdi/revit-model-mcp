@@ -106,7 +106,7 @@ internal static class FamilyEditor
                 using var suppression = new FamilyAuditReader.FamilySuppression(uiApplication, family.Name, data.Skipped);
                 Document? familyDocument = null;
                 var existingDocuments = application.Documents.Cast<Document>().ToList();
-                var identity = new DocumentIdentityComparer<Document>((first, second) => first.Equals(second));
+                var identity = new DocumentIdentityComparer<Document>((first, second) => first.Equals(second), candidate => candidate.IsValidObject);
                 var familyResult = new FamilyEditFamily
                 {
                     Name = family.Name,
