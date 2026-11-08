@@ -27,6 +27,14 @@ The Install script column also covers the release installers for every year from
 Screenshots and JSON responses are in the [validation archive](https://github.com/sharafutdinovdi/revit-model-mcp/tree/main/docs/screenshots/validation).
 The Revit undo menu label for a group of actions (`MCP (<clientName>): <short summary>`) cannot be verified through the API.
 
+## Scoped plan captures
+
+I reproduced [issue #276](https://github.com/sharafutdinovdi/revit-model-mcp/issues/276) on Revit 2027 build 27.3.0.28 with a single door, 1500 mm padding and a 1200-pixel plan capture.
+The source plan's scope box overrode the requested crop after regeneration.
+Plan captures detach the scope box on the temporary duplicate before applying the element bounds.
+The original plan's scope box and crop remain unchanged after capture.
+The in-Revit regression checks the committed temporary crop against the padded door bounds and checks the original plan after rollback.
+
 ## Revit 2026 live validation
 
 The October validation covered add-in builds `2db6698` through `7778d0c` on Revit 2026 build 26.5.0.55.
