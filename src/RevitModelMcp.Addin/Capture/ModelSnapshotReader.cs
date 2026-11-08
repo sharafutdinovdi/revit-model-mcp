@@ -143,10 +143,12 @@ internal static class ModelSnapshotReader
 
     private static ModelSnapshotFamilies ReadFamilies(Document document, IList<FailureMessage>? warnings, SkippedReadDiagnostics diagnostics)
     {
-        var families = new FilteredElementCollector(document).OfClass(typeof(Family)).Cast<Family>()
+        using var familyCollector = new FilteredElementCollector(document).OfClass(typeof(Family));
+        var families = familyCollector.Cast<Family>()
             .OrderBy(family => family.Name, StringComparer.OrdinalIgnoreCase).ThenBy(family => RevitValueReader.GetId(family.Id)).ToList();
         var counts = new Dictionary<long, int>();
-        foreach (var instance in new FilteredElementCollector(document).OfClass(typeof(FamilyInstance)).Cast<FamilyInstance>())
+        using var instanceCollector = new FilteredElementCollector(document).OfClass(typeof(FamilyInstance));
+        foreach (var instance in instanceCollector.Cast<FamilyInstance>())
         {
             var familyId = RevitValueReader.GetId(instance.Symbol.Family.Id);
             counts[familyId] = counts.GetValueOrDefault(familyId) + 1;

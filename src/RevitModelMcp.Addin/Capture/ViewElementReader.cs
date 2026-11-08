@@ -95,7 +95,7 @@ internal sealed class ViewElementReader
 
     private static void ReadGeometryCore(Element element, ElementGeometryData result)
     {
-        var location = element.Location;
+        using var location = element.Location;
         if (location is LocationPoint point)
         {
             var coordinates = CoordinatesMm(point.Point);
@@ -109,15 +109,17 @@ internal sealed class ViewElementReader
             if (element is Room room && room.Area > 0)
                 result.RoomCenterMm = coordinates;
         }
-        else if (location is LocationCurve curveLocation && curveLocation.Curve is { IsBound: true } curve)
+        else if (location is LocationCurve curveLocation)
         {
-            result.Location = new ElementLocationData
-            {
-                Type = "curve",
-                StartMm = CoordinatesMm(curve.GetEndPoint(0)),
-                EndMm = CoordinatesMm(curve.GetEndPoint(1)),
-                LengthMm = Math.Round(curve.Length.ToMillimeters(), 1)
-            };
+            using var curve = curveLocation.Curve;
+            if (curve is { IsBound: true })
+                result.Location = new ElementLocationData
+                {
+                    Type = "curve",
+                    StartMm = CoordinatesMm(curve.GetEndPoint(0)),
+                    EndMm = CoordinatesMm(curve.GetEndPoint(1)),
+                    LengthMm = Math.Round(curve.Length.ToMillimeters(), 1)
+                };
         }
 
         using var bounds = element.get_BoundingBox(null);
@@ -148,8 +150,8 @@ internal sealed class ViewElementReader
 
     private static RoomDetails ReadRoom(Room room)
     {
-        var boundaries = room.GetBoundarySegments(new SpatialElementBoundaryOptions()) ??
-                         new List<IList<BoundarySegment>>();
+        using var options = new SpatialElementBoundaryOptions();
+        var boundaries = room.GetBoundarySegments(options) ?? new List<IList<BoundarySegment>>();
         return new RoomDetails
         {
             Level = room.Level?.Name,
@@ -157,12 +159,17 @@ internal sealed class ViewElementReader
             VolumeM3 = UnitConverter.CubicFeetToCubicMeters(room.Volume),
             Boundaries = boundaries.Select(loop => new RoomBoundaryLoop
             {
-                Segments = loop.Select(segment => new RoomBoundarySegment
+                Segments = loop.Select(segment =>
                 {
-                    ElementId = RevitValueReader.GetId(segment.ElementId),
-                    LengthMm = UnitConverter.FeetToMillimeters(segment.GetCurve().Length),
-                    StartMm = RevitValueReader.ToVector(segment.GetCurve().GetEndPoint(0), true),
-                    EndMm = RevitValueReader.ToVector(segment.GetCurve().GetEndPoint(1), true)
+                    using var boundary = segment;
+                    using var curve = boundary.GetCurve();
+                    return new RoomBoundarySegment
+                    {
+                        ElementId = RevitValueReader.GetId(boundary.ElementId),
+                        LengthMm = UnitConverter.FeetToMillimeters(curve.Length),
+                        StartMm = RevitValueReader.ToVector(curve.GetEndPoint(0), true),
+                        EndMm = RevitValueReader.ToVector(curve.GetEndPoint(1), true)
+                    };
                 }).ToList()
             }).ToList()
         };

@@ -62,34 +62,33 @@ internal static class ReadCommandReader
         return ReadDocumentInfo(uiDocument.Document);
     }
 
-    public static IReadOnlyList<Workset> ReadUserWorksets(Document document) => document.IsWorkshared
-        ? new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset).ToWorksets()
-            .OrderBy(workset => workset.Name, StringComparer.Ordinal).ToList()
-        : [];
+    public static IReadOnlyList<Workset> ReadUserWorksets(Document document)
+    {
+        if (!document.IsWorkshared) return [];
+        using var collector = new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset);
+        return collector.ToWorksets().OrderBy(workset => workset.Name, StringComparer.Ordinal).ToList();
+    }
 
     public static DocumentInfoData ReadDocumentInfo(Document document)
     {
         var roomCounts = new Dictionary<long, int>();
-        foreach (var room in new FilteredElementCollector(document)
-                     .OfCategory(BuiltInCategory.OST_Rooms)
-                     .WhereElementIsNotElementType()
-                     .OfType<Room>())
+        using var rooms = new FilteredElementCollector(document)
+            .OfCategory(BuiltInCategory.OST_Rooms).WhereElementIsNotElementType();
+        foreach (var room in rooms.OfType<Room>())
         {
             Increment(roomCounts, room.LevelId);
         }
 
         var areaCounts = new Dictionary<long, int>();
-        foreach (var area in new FilteredElementCollector(document)
-                     .OfCategory(BuiltInCategory.OST_Areas)
-                     .WhereElementIsNotElementType()
-                     .OfType<Area>())
+        using var areas = new FilteredElementCollector(document)
+            .OfCategory(BuiltInCategory.OST_Areas).WhereElementIsNotElementType();
+        foreach (var area in areas.OfType<Area>())
         {
             Increment(areaCounts, area.AreaScheme?.Id);
         }
 
-        var levels = new FilteredElementCollector(document)
-            .OfClass(typeof(Level))
-            .Cast<Level>()
+        using var levelCollector = new FilteredElementCollector(document).OfClass(typeof(Level));
+        var levels = levelCollector.Cast<Level>()
             .OrderBy(level => level.Elevation)
             .Select(level => new DocumentLevelInfo
             {
@@ -98,9 +97,8 @@ internal static class ReadCommandReader
                 RoomCount = roomCounts.GetValueOrDefault(RevitValueReader.GetId(level.Id))
             })
             .ToList();
-        var schemes = new FilteredElementCollector(document)
-            .OfClass(typeof(AreaScheme))
-            .Cast<AreaScheme>()
+        using var schemeCollector = new FilteredElementCollector(document).OfClass(typeof(AreaScheme));
+        var schemes = schemeCollector.Cast<AreaScheme>()
             .OrderBy(scheme => scheme.Name, StringComparer.Ordinal)
             .Select(scheme => new DocumentAreaSchemeInfo
             {
@@ -117,10 +115,8 @@ internal static class ReadCommandReader
                     IsOpen = workset.IsOpen
                 })
                 .ToList();
-        var viewCount = new FilteredElementCollector(document)
-            .OfClass(typeof(View))
-            .Cast<View>()
-            .Count(view => !view.IsTemplate);
+        using var viewCollector = new FilteredElementCollector(document).OfClass(typeof(View));
+        var viewCount = viewCollector.Cast<View>().Count(view => !view.IsTemplate);
 
         return new DocumentInfoData
         {
@@ -149,9 +145,8 @@ internal static class ReadCommandReader
             return result;
         }
 
-        var views = new FilteredElementCollector(document)
-            .OfClass(typeof(View))
-            .Cast<View>()
+        using var collector = new FilteredElementCollector(document).OfClass(typeof(View));
+        var views = collector.Cast<View>()
             .Where(view => !view.IsTemplate)
             .ToList();
         result.Total = views.Count;
@@ -201,8 +196,8 @@ internal static class ReadCommandReader
     {
         var categories = new Dictionary<string, CategoryAccumulator>(StringComparer.Ordinal);
         var count = 0;
-        foreach (var element in new FilteredElementCollector(document, view.Id)
-                     .WhereElementIsNotElementType())
+        using var collector = new FilteredElementCollector(document, view.Id).WhereElementIsNotElementType();
+        foreach (var element in collector)
         {
             count++;
             var name = element.Category?.Name ?? "<no category>";
@@ -238,9 +233,8 @@ internal static class ReadCommandReader
 
     public static ViewWarningsData ReadViewWarnings(Document document, View view)
     {
-        var viewIds = new FilteredElementCollector(document, view.Id)
-            .WhereElementIsNotElementType()
-            .ToElementIds()
+        using var collector = new FilteredElementCollector(document, view.Id).WhereElementIsNotElementType();
+        var viewIds = collector.ToElementIds()
             .Select(RevitValueReader.GetId)
             .ToHashSet();
         var warnings = document.GetWarnings()
@@ -276,9 +270,8 @@ internal static class ReadCommandReader
 
     public static View? FindView(Document document, string name)
     {
-        var views = new FilteredElementCollector(document)
-            .OfClass(typeof(View))
-            .Cast<View>()
+        using var collector = new FilteredElementCollector(document).OfClass(typeof(View));
+        var views = collector.Cast<View>()
             .Where(view => !view.IsTemplate);
         return ViewReferenceMatcher.Find(views, name, view => RevitValueReader.GetId(view.Id), view => view.Name,
             view => (view as ViewSheet)?.SheetNumber, view => view.ViewType.ToString(), SheetCollectionName);

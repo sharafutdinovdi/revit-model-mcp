@@ -63,18 +63,28 @@ internal static class ModelHealthReader
             ["roomsUnplaced"] = () => Rooms(document).Count(room => room.Area <= 0 && room.Location is null),
             ["roomsNotEnclosed"] = () => Rooms(document).Count(room => room.Area <= 0 && room.Location is not null),
             ["families"] = () => CountClass<Family>(document),
-            ["familiesInPlace"] = () => new FilteredElementCollector(document).OfClass(typeof(Family))
-                .Cast<Family>().Count(family => family.IsInPlace),
+            ["familiesInPlace"] = () =>
+            {
+                using var collector = new FilteredElementCollector(document).OfClass(typeof(Family));
+                return collector.Cast<Family>().Count(family => family.IsInPlace);
+            },
             ["familyTypesUnused"] = () => UnusedTypes(document),
             ["groupsModel"] = () => CountCategory(document, BuiltInCategory.OST_IOSModelGroups),
             ["groupsDetail"] = () => CountCategory(document, BuiltInCategory.OST_IOSDetailGroups),
             ["groupTypes"] = () => CountClass<GroupType>(document),
             ["designOptions"] = () => CountClass<DesignOption>(document),
-            ["worksets"] = () => document.IsWorkshared
-                ? new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset).ToWorksets().Count : 0,
+            ["worksets"] = () =>
+            {
+                if (!document.IsWorkshared) return 0;
+                using var collector = new FilteredWorksetCollector(document).OfKind(WorksetKind.UserWorkset);
+                return collector.ToWorksets().Count;
+            },
             ["linksRvt"] = () => CountClass<RevitLinkType>(document),
-            ["linksCad"] = () => new FilteredElementCollector(document).OfClass(typeof(CADLinkType))
-                .Cast<CADLinkType>().Count(type => type.IsExternalFileReference()),
+            ["linksCad"] = () =>
+            {
+                using var collector = new FilteredElementCollector(document).OfClass(typeof(CADLinkType));
+                return collector.Cast<CADLinkType>().Count(type => type.IsExternalFileReference());
+            },
             ["cadImports"] = () => Imports(document).Count(instance => !instance.IsLinked),
             ["images"] = () => CountClass<ImageInstance>(document)
         };
@@ -104,17 +114,29 @@ internal static class ModelHealthReader
     private static int CountClass<T>(Document document) => Count(document, collector => collector.OfClass(typeof(T)));
     private static int CountCategory(Document document, BuiltInCategory category) =>
         Count(document, collector => collector.OfCategory(category).WhereElementIsNotElementType());
-    private static IEnumerable<View> Views(Document document) =>
-        new FilteredElementCollector(document).OfClass(typeof(View)).Cast<View>();
-    private static IEnumerable<Room> Rooms(Document document) =>
-        new FilteredElementCollector(document).OfCategory(BuiltInCategory.OST_Rooms).WhereElementIsNotElementType().Cast<Room>();
-    private static IEnumerable<ImportInstance> Imports(Document document) =>
-        new FilteredElementCollector(document).OfClass(typeof(ImportInstance)).Cast<ImportInstance>();
+    private static IEnumerable<View> Views(Document document)
+    {
+        using var collector = new FilteredElementCollector(document).OfClass(typeof(View));
+        foreach (var view in collector.Cast<View>()) yield return view;
+    }
+
+    private static IEnumerable<Room> Rooms(Document document)
+    {
+        using var collector = new FilteredElementCollector(document)
+            .OfCategory(BuiltInCategory.OST_Rooms).WhereElementIsNotElementType();
+        foreach (var room in collector.Cast<Room>()) yield return room;
+    }
+
+    private static IEnumerable<ImportInstance> Imports(Document document)
+    {
+        using var collector = new FilteredElementCollector(document).OfClass(typeof(ImportInstance));
+        foreach (var instance in collector.Cast<ImportInstance>()) yield return instance;
+    }
 
     private static int ViewsNotOnSheets(Document document)
     {
-        var placed = new HashSet<ElementId>(new FilteredElementCollector(document).OfClass(typeof(ViewSheet))
-            .Cast<ViewSheet>().SelectMany(sheet => sheet.GetAllPlacedViews()));
+        using var collector = new FilteredElementCollector(document).OfClass(typeof(ViewSheet));
+        var placed = new HashSet<ElementId>(collector.Cast<ViewSheet>().SelectMany(sheet => sheet.GetAllPlacedViews()));
         return Views(document).Count(view => !view.IsTemplate && !placed.Contains(view.Id) &&
             view.ViewType is ViewType.FloorPlan or ViewType.CeilingPlan or ViewType.EngineeringPlan
                 or ViewType.AreaPlan or ViewType.Section or ViewType.Elevation or ViewType.ThreeD
