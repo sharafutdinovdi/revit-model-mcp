@@ -53,7 +53,42 @@ public sealed record JoinSkip(JoinEnd End, string Reason);
 public static class WallJoinPreflight
 {
     public const double ToleranceMm = 10;
-    public const int MaxRounds = 6;
+
+    public static int RoundLimit(int candidateCount)
+    {
+        if (candidateCount < 0) throw new ArgumentOutOfRangeException(nameof(candidateCount));
+        return checked(candidateCount + 1);
+    }
+
+    public static List<JoinSkip> IsolateFailures(IReadOnlyList<JoinCandidate> candidates,
+        Func<IReadOnlyList<JoinCandidate>, string?> rejection)
+    {
+        var accepted = new List<JoinCandidate>(candidates.Count);
+        var rejected = new List<JoinSkip>();
+        if (candidates.Count == 0) return rejected;
+        var baselineFailure = rejection(accepted);
+        if (baselineFailure is not null)
+            throw new InvalidOperationException($"Revit rejected the CAD walls with all joins disabled: {baselineFailure}");
+        ProbeRange(0, candidates.Count);
+        return rejected;
+
+        void ProbeRange(int start, int count)
+        {
+            var acceptedCount = accepted.Count;
+            for (var index = start; index < start + count; index++) accepted.Add(candidates[index]);
+            var reason = rejection(accepted);
+            if (reason is null) return;
+            accepted.RemoveRange(acceptedCount, count);
+            if (count == 1)
+            {
+                rejected.Add(new JoinSkip(candidates[start].End, reason));
+                return;
+            }
+            var half = count / 2;
+            ProbeRange(start, half);
+            ProbeRange(start + half, count - half);
+        }
+    }
 
     public static List<JoinCandidate> FindCandidates(IReadOnlyList<CadWallPlan> walls, double toleranceMm = ToleranceMm)
     {
@@ -112,7 +147,7 @@ public static class WallJoinPreflight
 
     public static string BuildWarning(int unjoinedEnds, IReadOnlyList<long> nearbyExistingIds, bool converged)
     {
-        if (!converged) return $"Join preflight did not converge in {MaxRounds} rounds; all walls were created without joins.";
+        if (!converged) return "Join preflight could not identify another failing end; all walls were created without joins.";
         var ends = unjoinedEnds == 1 ? "end was" : "ends were";
         var nearby = nearbyExistingIds.Count == 0 ? "" : "; existing walls near them: ids " +
             string.Join(", ", nearbyExistingIds.Take(20)) + (nearbyExistingIds.Count > 20 ? ", ..." : "");

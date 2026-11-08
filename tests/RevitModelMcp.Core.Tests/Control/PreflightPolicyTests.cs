@@ -93,6 +93,78 @@ public sealed class PreflightPolicyTests
     }
 
     [Test]
+    [Arguments(0, 1)]
+    [Arguments(1, 2)]
+    [Arguments(88, 89)]
+    public async Task RoundLimit_AllowsOneFailurePerEndAndFinalCommit(int candidates, int expected)
+    {
+        await Assert.That(WallJoinPreflight.RoundLimit(candidates)).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task RoundLimit_PreservesJoinableEndsAfterMoreThanSixFailures()
+    {
+        var candidates = Enumerable.Range(0, 88)
+            .Select(index => new JoinCandidate(new JoinEnd(index, 0), new CadPlanPoint(index * 1000, 0))).ToList();
+        var skipped = new HashSet<JoinEnd>();
+        var committed = false;
+        var probes = 0;
+        for (var round = 0; round < WallJoinPreflight.RoundLimit(candidates.Count); round++)
+        {
+            probes++;
+            if (skipped.Count == 68)
+            {
+                committed = true;
+                break;
+            }
+            var wall = skipped.Count;
+            var skips = WallJoinPreflight.DeriveSkips(candidates, skipped,
+                [new PreflightFailure("Revit refused this end", [new PreflightElement(wall, wall, null, null, null)])]);
+            skipped.UnionWith(skips.Select(skip => skip.End));
+        }
+        await Assert.That(committed).IsTrue();
+        await Assert.That(probes).IsEqualTo(69);
+        await Assert.That(candidates.Count - skipped.Count).IsEqualTo(20);
+    }
+
+    [Test]
+    public async Task IsolateFailures_PreservesAllAcceptedEndsWithoutFailureIds()
+    {
+        var candidates = Enumerable.Range(0, 88)
+            .Select(index => new JoinCandidate(new JoinEnd(index, 0), new CadPlanPoint(index * 1000, 0))).ToList();
+        var probes = 0;
+        var skips = WallJoinPreflight.IsolateFailures(candidates, enabled =>
+        {
+            probes++;
+            return enabled.Any(candidate => candidate.End.Wall % 4 == 0) ? "Cannot join" : null;
+        });
+        await Assert.That(skips.Select(skip => skip.End.Wall).SequenceEqual(Enumerable.Range(0, 22).Select(index => index * 4))).IsTrue();
+        await Assert.That(skips.All(skip => skip.Reason == "Cannot join")).IsTrue();
+        await Assert.That(candidates.Count - skips.Count).IsEqualTo(66);
+        await Assert.That(probes <= 2 * candidates.Count).IsTrue();
+    }
+
+    [Test]
+    public async Task IsolateFailures_AccountsForInteractionsWithAcceptedEnds()
+    {
+        var candidates = Enumerable.Range(0, 4)
+            .Select(index => new JoinCandidate(new JoinEnd(index, 0), new CadPlanPoint(index * 1000, 0))).ToList();
+        var skips = WallJoinPreflight.IsolateFailures(candidates, enabled =>
+            enabled.Any(candidate => candidate.End.Wall == 0) && enabled.Any(candidate => candidate.End.Wall == 2)
+                ? "These ends cannot coexist" : null);
+        await Assert.That(skips.Count).IsEqualTo(1);
+        await Assert.That(skips[0].End).IsEqualTo(new JoinEnd(2, 0));
+        await Assert.That(skips[0].Reason).IsEqualTo("These ends cannot coexist");
+    }
+
+    [Test]
+    public async Task IsolateFailures_DoesNotHideWallCreationFailures()
+    {
+        await Assert.That(() => WallJoinPreflight.IsolateFailures(Candidates, _ => "Wall creation failed"))
+            .Throws<InvalidOperationException>();
+    }
+
+    [Test]
     public async Task FindCandidates_SelectsTouchingTJunctionEnd()
     {
         var candidates = WallJoinPreflight.FindCandidates([
@@ -196,7 +268,7 @@ public sealed class PreflightPolicyTests
         await Assert.That(WallJoinPreflight.BuildWarning(2, ids, true)).IsEqualTo(
             "2 wall ends were left unjoined because Revit could not keep or cut the joins there; existing walls near them: ids " + string.Join(", ", ids.Take(20)) + ", ....");
         await Assert.That(WallJoinPreflight.BuildWarning(2, ids, false)).IsEqualTo(
-            "Join preflight did not converge in 6 rounds; all walls were created without joins.");
+            "Join preflight could not identify another failing end; all walls were created without joins.");
     }
 
     [Test]
