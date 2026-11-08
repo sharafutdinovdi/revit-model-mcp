@@ -11,6 +11,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using System.Xml.Linq;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 using RevitModelMcp.Activity;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
@@ -39,6 +40,7 @@ internal sealed class ControlChannel
     private readonly Stopwatch _fileProgressWrite = new();
     private DateTimeOffset? _responseDeliveredAt;
     private volatile bool _stopped;
+    private readonly HashSet<string> _saveReminderJobs = [];
 
     public ControlChannel(string channelDirectory)
     {
@@ -76,6 +78,27 @@ internal sealed class ControlChannel
             completion = source.Task;
             return submitted;
         }
+    }
+
+    internal void OnDialog(object? sender, DialogBoxShowingEventArgs arguments)
+    {
+        BatchDialogGuard.Run(() =>
+        {
+            if (DismissSaveReminder(arguments.DialogId, arguments.GetType().Name, arguments.OverrideResult)) return;
+            JobDialogScope.Current?.ReportDialog(arguments);
+        }, exception => PluginLog.Info($"Job dialog handler failed: {exception.GetType().Name}."));
+    }
+
+    internal bool DismissSaveReminder(string? dialogId, string runtimeType, Func<int, bool> overrideResult)
+    {
+        if (!BatchDialogPolicy.IsSaveReminder(dialogId, runtimeType)) return false;
+        var job = _scheduler.ActiveJobs().OrderBy(candidate => candidate.State == JobState.Running ? 0 : 1)
+            .ThenBy(candidate => candidate.Position).FirstOrDefault();
+        if (!BatchDialogPolicy.IsSaveReminder(dialogId, runtimeType, job is not null) ||
+            !overrideResult((int)TaskDialogResult.Cancel)) return false;
+        _saveReminderJobs.Add(job!.JobId);
+        if (_current?.JobId == job.JobId) JobDialogScope.Current?.RecordDismissal();
+        return true;
     }
 
     public void ScanPendingFiles(UIApplication? application = null)
@@ -201,8 +224,8 @@ internal sealed class ControlChannel
                 _httpResponse = content;
                 _responseDeliveredAt = DateTimeOffset.UtcNow;
                 _tabActivity.Progress(_current.JobId, content);
-                if (ActionJobParser.IsAction(_current.Command))
-                    _scheduler.PublishProgress(_current.JobId, content, persist: firstResponse);
+                _scheduler.PublishProgress(_current.JobId, content,
+                    persist: firstResponse && ActionJobParser.IsAction(_current.Command));
                 if (!isHttp)
                 {
                     if (_current.Command == "batch" && _fileProgressWrite.IsRunning &&
@@ -219,6 +242,23 @@ internal sealed class ControlChannel
                     _scheduler.Cancel(_current.JobId, _current.ClientId, true);
                 return _scheduler.IsCancellationRequested(_current.JobId);
             };
+            var dialogDelivery = ResponseDelivery.Current;
+            var dialogCommand = _current.Command;
+            var dialogCorrelationId = _currentJob.CorrelationId;
+            var dialogResponder = ReadCommandReader.ReadResponder(application);
+            var dialogJob = _current;
+            var dialogQueuedMs = _currentQueuedMs;
+            using var dialogs = new JobDialogScope(_saveReminderJobs.Contains(_current.JobId), dialog =>
+            {
+                var progress = CommandResponse<JobDialogProgress>.PartialResult(dialogCommand,
+                    new JobDialogProgress { Dialog = dialog }, $"waiting for dialog {dialog.DialogId}", 0);
+                progress.CorrelationId = dialogCorrelationId;
+                progress.Responder = dialogResponder;
+                progress.JobId = dialogJob.JobId;
+                progress.Client = new ClientIdentity { Name = dialogJob.ClientName, Id = dialogJob.ClientId };
+                progress.QueuedMs = dialogQueuedMs;
+                dialogDelivery(CommandResponseJsonSerializer.Serialize(progress));
+            });
             if (_session is not null)
             {
                 if (_scheduler.IsCancellationRequested(_current.JobId))
@@ -277,6 +317,7 @@ internal sealed class ControlChannel
                 {
                     if (_httpCompletions.Remove(_current.JobId, out var completion)) completion.TrySetResult(response);
                 }
+                _saveReminderJobs.Remove(_current.JobId);
                 _current = null;
                 _currentJob = null;
                 _httpResponse = null;

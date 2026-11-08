@@ -11,6 +11,42 @@ namespace RevitModelMcp.Core.Tests.Batch;
 public sealed class BatchDialogPolicyTests
 {
     [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task SaveReminder_OnlyCancelsWithPendingWork(bool pending)
+    {
+        await Assert.That(BatchDialogPolicy.IsSaveReminder("TaskDialog_Project_Not_Saved_Recently",
+            "TaskDialogShowingEventArgs", pending)).IsEqualTo(pending);
+    }
+
+    [Test]
+    [Arguments("TaskDialog_Project_Not_Saved_Recently", "MessageBoxShowingEventArgs")]
+    [Arguments("TaskDialog_Project_Not_Saved_Recently", "DialogBoxShowingEventArgs")]
+    [Arguments("TaskDialog_Project_Not_Saved_Recently_Other", "TaskDialogShowingEventArgs")]
+    [Arguments("Project Not Saved Recently", "TaskDialogShowingEventArgs")]
+    [Arguments(null, "TaskDialogShowingEventArgs")]
+    public async Task SaveReminder_DoesNotMatchOtherDialogs(string? dialogId, string type)
+    {
+        await Assert.That(BatchDialogPolicy.IsSaveReminder(dialogId, type)).IsFalse();
+    }
+
+    [Test]
+    public async Task SaveReminder_CancelCannotBeReplacedWithSaveOrReminderSettings()
+    {
+        var choices = new Dictionary<(string Id, string Type), int>
+        {
+            [("TaskDialog_Project_Not_Saved_Recently", "TaskDialogShowingEventArgs")] = 1001
+        };
+        var decision = BatchDialogPolicy.Decide("TaskDialog_Project_Not_Saved_Recently",
+            "TaskDialogShowingEventArgs", choices);
+        await Assert.That(decision.Allowed).IsTrue();
+        await Assert.That(decision.OverrideResult).IsEqualTo(2);
+        await Assert.That(decision.Recycle).IsFalse();
+        await Assert.That(BatchDialogPolicy.SaveReminderDismissed)
+            .IsEqualTo("Dismissed Revit's save reminder without saving");
+    }
+
+    [Test]
     public async Task FamilyAudit_PartialResponsePreservesFamiliesAndDismissedDialogs()
     {
         var data = new FamilyAuditData

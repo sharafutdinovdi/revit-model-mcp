@@ -45,6 +45,30 @@ internal static class NativeDialogReader
         return found;
     }
 
+
+    internal static IReadOnlyList<IntPtr> ModalWindows(uint threadId)
+    {
+        var windows = new List<IntPtr>();
+        EnumThreadWindows(threadId, (window, _) =>
+        {
+            if (!IsWindowVisible(window)) return true;
+            var owner = GetWindow(window, 4);
+            if (owner == IntPtr.Zero || IsWindowEnabled(owner)) return true;
+            var className = new StringBuilder(128);
+            GetClassName(window, className, className.Capacity);
+            if (className.ToString() == "#32770") windows.Add(window);
+            return true;
+        }, IntPtr.Zero);
+        return windows;
+    }
+
+    internal static string Title(IntPtr window)
+    {
+        var text = new StringBuilder(2048);
+        GetWindowText(window, text, text.Capacity);
+        return text.ToString();
+    }
+
     internal static IReadOnlyList<NativeDialogControl> Read(IntPtr dialog)
     {
         var controls = new List<NativeDialogControl>();
@@ -106,4 +130,12 @@ internal static class NativeDialogReader
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern IntPtr SendMessageTimeout(IntPtr window, uint message, IntPtr textLength,
         StringBuilder text, uint flags, uint timeoutMilliseconds, out IntPtr result);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowEnabled(IntPtr window);
+
 }

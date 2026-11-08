@@ -35,6 +35,15 @@ internal sealed class CommandResponseFileWriter
         {
             response.Responder = _responder;
             response.CorrelationId = _correlationId;
+            if (Control.JobDialogScope.Current is { } dialogs)
+            {
+                if (!response.Partial) dialogs.Finish();
+                if (dialogs.DismissalWarning is string warning)
+                {
+                    response.DialogsSuppressed ??= [];
+                    if (!response.DialogsSuppressed.Contains(warning)) response.DialogsSuppressed.Add(warning);
+                }
+            }
             if (ResponseDelivery.Current is { } delivery)
             {
                 delivery(CommandResponseJsonSerializer.Serialize(response));

@@ -99,6 +99,22 @@ Dialog callback exceptions are contained and logged by exception type, without d
 Path-redaction regex evaluation has a 200 ms match timeout.
 A redaction timeout is logged and leaves the dialog without an override; Revit retains its default handling and a blocked worker remains subject to the model deadline.
 
+### Save reminders during queued and running requests
+
+I dismiss `TaskDialog_Project_Not_Saved_Recently` with Cancel (`IDCANCEL`, result 2) while a request is queued, waiting for Revit, or running.
+I identify it by the journal's stable dialog ID, not its translated title or message.
+The journal records this periodic interruption as `Interrupt`, `SaveReminder` at `idle0_doc`; it can appear before the pending external event executes.
+I never select the save or reminder interval command links (1001, 1002, 1003).
+The result records `Dismissed Revit's save reminder without saving` in `dialogsSuppressed`, and the Activity entry includes the same notice.
+Without pending work, I leave the reminder to the user.
+
+I report other unhandled dialogs as `waiting_dialog` through `revit_jobs`, including document open and close requests.
+Native modal window inspection supplements event reporting for visible `#32770` windows whose owner is disabled.
+This inspection reports the title, text and available buttons; it never presses a button.
+The periodic reminder is not deterministically triggerable through the public API.
+The Revit test suite exercises the handler's dialog ID seam for queued work, running work and no pending work.
+
+
 ### Reading a dialog record and choosing a result
 
 Read `dialogId` and `type` as the exact match keys. `message` contains up to 2000 characters of available dialog text. Each entry in `buttons` has a `caption` and a numeric `result`. `decision` shows whether the dialog was allowed or unknown. `phase` identifies the batch operation, and `modelPath` identifies the affected model.
