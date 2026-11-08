@@ -200,6 +200,12 @@ jobs:
             $productName = (Get-Item "src/RevitModelMcp.Addin/bin/Release.R$year/$name").VersionInfo.ProductName
             if ($productName -ne 'Model MCP') { throw "R$year $name has product name '$productName', expected 'Model MCP'" }
           }
+      - name: Build in-Revit regression tests
+        if: matrix.year == '22' || matrix.year == '27'
+        shell: pwsh
+        run: |
+          dotnet build tests/RevitModelMcp.Addin.Tests -c "Release.R${{ matrix.year }}" -p:EnableWindowsTargeting=true -p:DeployAddin=false
+          if ($LASTEXITCODE -ne 0) { throw "In-Revit regression test build failed" }
 
   installer:
     runs-on: windows-latest

@@ -192,7 +192,11 @@ public sealed class RevitTests : RevitApiUiTest
         });
         if (job.Error is not null) throw new ArgumentException(job.Error);
         var result = Read<QueryElementsData>("ElementQueryReader", "ReadQuery", Model, job);
-        var expected = WallElements().Count(wall => wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS) is { HasValue: false });
+        var expected = WallElements().Count(wall =>
+        {
+            var comments = wall.get_Parameter(BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS);
+            return comments is not null && (!comments.HasValue || string.IsNullOrWhiteSpace(comments.AsString()));
+        });
         await Assert.That(result.Total).IsEqualTo(expected);
     }
 
@@ -502,6 +506,26 @@ public sealed class RevitTests : RevitApiUiTest
             rollback.RollBack();
         }
         await Assert.That(Model.GetElement(target) is null).IsTrue();
+    }
+
+    [Test]
+    [Arguments("auto")]
+    [Arguments("group")]
+    public async Task CodeExecution_FullClassUsesHostContextAsync(string mode)
+    {
+        var result = ExecuteCode(new ActionJobContract
+        {
+            TransactionMode = mode,
+            DryRun = true,
+            Code = """
+                public static class Script
+                {
+                    public static object Execute(ScriptContext ctx) => ctx.Document.Title;
+                }
+                """
+        });
+        await Assert.That(result.CodeError).IsNull();
+        await Assert.That(result.ReturnValue).IsEqualTo(Model.Title);
     }
 
     [Test]

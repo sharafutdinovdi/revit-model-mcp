@@ -104,6 +104,15 @@ internal static class CodeExecution
         public System.Reflection.Assembly? Loaded { get; set; }
     }
 
+#if !NETFRAMEWORK
+    private sealed class ScriptLoadContext(string name) : AssemblyLoadContext(name, isCollectible: true)
+    {
+        protected override Assembly? Load(AssemblyName assemblyName) =>
+            GetBoundAssemblies().Concat(AppDomain.CurrentDomain.GetAssemblies())
+                .FirstOrDefault(assembly => assembly.GetName().Name == assemblyName.Name);
+    }
+#endif
+
     private static readonly BoundedLruCache<string, CompiledCode> Cache = new(32);
     [ThreadStatic] private static ActionCommandExecutor.ActionFailures? _currentFailures;
 
@@ -261,9 +270,7 @@ internal static class CodeExecution
             application.Application.DocumentCreated += Created;
         }
 #if !NETFRAMEWORK
-        var loadContext = new AssemblyLoadContext("McpScript_" + key.Substring(0, 12), isCollectible: true);
-        loadContext.Resolving += (_, name) => GetBoundAssemblies().Concat(AppDomain.CurrentDomain.GetAssemblies())
-            .FirstOrDefault(item => item.GetName().Name == name.Name);
+        var loadContext = new ScriptLoadContext("McpScript_" + key.Substring(0, 12));
 #endif
         var previousContext = ScriptContext.Current;
         var previousFailures = _currentFailures;
