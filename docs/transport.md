@@ -782,6 +782,13 @@ Or install the latest GitHub release for every detected Revit year (2022-2027):
 The inline build, copy and manifest-patching commands live in [`install.ps1`](../install.ps1).
 Installation uses `RevitModelMcp\` and `RevitModelMcp.addin` under `%APPDATA%\Autodesk\Revit\Addins\<year>`.
 Use `-Year 2024,2026` to select years and `-Version 0.2.0` to pin a release.
+Explicit `-Year` and `-Source Build` installs stage each year's payload beside its target before renaming the owned folder and manifest.
+The previous files remain available until both replacements succeed; a failure restores that year without reverting successful years.
+The final table lists `Year`, `Previous version`, `New version` (the attempted payload version), and `Result` for each requested year.
+A failed payload download or build reports `Unavailable` as the new version.
+The script continues with the remaining years and exits with code 1 if any year fails, or 0 when all years succeed.
+`Not installed` identifies an absent previous installation; `Unknown` identifies a DLL without a file version.
+`-InstallRoot <directory>` redirects the per-year folders for isolated checkout-install tests; it does not redirect MSI installations.
 `-Source Release` requires a release with an asset for each requested year: v0.1.0 ships R22-R26; v0.2.0 adds R27.
 Add `-SignThumbprint <thumbprint>` to sign installed DLLs with a local code-signing certificate on workstations where Revit shows the unsigned add-in dialog on every rebuild.
 Add `-RegisterClaude` to register the local server with Claude Code; both `claude` and `uv` must be on PATH.

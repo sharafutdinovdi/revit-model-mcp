@@ -491,6 +491,7 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
 $env:APPDATA = $root
 $env:SystemRoot = $root
 $addins = Join-Path $root 'Autodesk\Revit\Addins'
+$InstallRoot = $addins
 $marker = Join-Path $addins 'RevitModelMcp-http-urlacl.txt'
 New-Item $addins -ItemType Directory -Force | Out-Null
 try {
@@ -546,6 +547,7 @@ $ast.FindAll({ param($node)
 }, $false) | ForEach-Object { Invoke-Expression $_.Extent.Text }
 $root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
 $env:APPDATA = $root
+$InstallRoot = Join-Path $env:APPDATA 'Autodesk\Revit\Addins'
 $SignThumbprint = $null
 try {
     foreach ($year in '2024', '2026') {
@@ -903,6 +905,7 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ([guid]::NewGuid().ToString())
 $repo = $root
 $tempRoot = Join-Path $root 'stage'
 $env:APPDATA = Join-Path $root 'appdata'
+$InstallRoot = Join-Path $env:APPDATA 'Autodesk\Revit\Addins'
 $Source = 'Build'
 $SignThumbprint = $null
 function dotnet {

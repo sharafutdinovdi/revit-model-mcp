@@ -27,6 +27,7 @@ param(
     [ValidatePattern('^(?:\d{1,3}\.){3}\d{1,3}$')] [string] $HttpBind = '127.0.0.1',
     [ValidateRange(1, 65535)] [int] $HttpPort = 53110,
     [switch] $Uninstall,
+    [string] $InstallRoot = (Join-Path $env:APPDATA 'Autodesk\Revit\Addins'),
     [switch] $Force
 )
 
@@ -127,29 +128,79 @@ function Sign-Folder([string] $Folder) {
     }
 }
 
+function Get-InstalledVersion([string] $Dll) {
+    if (!(Test-Path -LiteralPath $Dll -PathType Leaf)) { return 'Not installed' }
+    $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($Dll).FileVersion
+    if (!$fileVersion) { return 'Unknown' }
+    return $fileVersion
+}
+
 function Install-Year([string] $SelectedYear, [string] $Payload) {
-    $addins = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$SelectedYear"
+    $addins = Join-Path $InstallRoot $SelectedYear
     $install = Join-Path $addins 'RevitModelMcp'
-    [xml]$manifest = Get-Content -LiteralPath (Join-Path $Payload 'RevitModelMcp.addin')
-    if ([int]$SelectedYear -lt 2026) {
-        $settings = $manifest.SelectSingleNode('/RevitAddIns/ManifestSettings')
-        if ($settings) { [void]$settings.ParentNode.RemoveChild($settings) }
+    $manifestPath = Join-Path $addins 'RevitModelMcp.addin'
+    $stage = Join-Path $addins ('.RevitModelMcp-stage-' + [guid]::NewGuid().ToString('N'))
+    $backup = Join-Path $addins ('.RevitModelMcp-backup-' + [guid]::NewGuid().ToString('N'))
+    $oldFolder = $false
+    $oldManifest = $false
+    $newFolder = $false
+    $newManifest = $false
+    $succeeded = $false
+    try {
+        New-Item -ItemType Directory -Path $stage, $backup -Force | Out-Null
+        $stagedFolder = Join-Path $stage 'RevitModelMcp'
+        Copy-Item -LiteralPath (Join-Path $Payload 'RevitModelMcp') -Destination $stagedFolder -Recurse
+        $dll = Join-Path $stagedFolder 'RevitModelMcp.dll'
+        if (!(Test-Path -LiteralPath $dll -PathType Leaf)) { throw "Staged DLL is missing: $dll" }
+        Sign-Folder $stagedFolder
+        [xml]$manifest = Get-Content -LiteralPath (Join-Path $Payload 'RevitModelMcp.addin')
+        if ([int]$SelectedYear -lt 2026) {
+            $settings = $manifest.SelectSingleNode('/RevitAddIns/ManifestSettings')
+            if ($settings) { [void]$settings.ParentNode.RemoveChild($settings) }
+        }
+        $manifest.SelectSingleNode('/RevitAddIns/AddIn/Assembly').InnerText =
+            [IO.Path]::GetFullPath((Join-Path $install 'RevitModelMcp.dll'))
+        $stagedManifest = Join-Path $stage 'RevitModelMcp.addin'
+        $manifest.Save($stagedManifest)
+        # Keep both old paths until both staged paths have been promoted.
+        if (Test-Path -LiteralPath $install) {
+            Move-Item -LiteralPath $install -Destination $backup
+            $oldFolder = $true
+        }
+        if (Test-Path -LiteralPath $manifestPath) {
+            Move-Item -LiteralPath $manifestPath -Destination $backup
+            $oldManifest = $true
+        }
+        Move-Item -LiteralPath $stagedFolder -Destination $install
+        $newFolder = $true
+        Move-Item -LiteralPath $stagedManifest -Destination $manifestPath
+        $newManifest = $true
+        $succeeded = $true
     }
-    $dll = [IO.Path]::GetFullPath((Join-Path $install 'RevitModelMcp.dll'))
-    $manifest.SelectSingleNode('/RevitAddIns/AddIn/Assembly').InnerText = $dll
-    # Replace the owned folder to remove stale dependencies from earlier versions.
-    if (Test-Path -LiteralPath $install) { Remove-Item -LiteralPath $install -Recurse -Force }
-    New-Item -ItemType Directory -Path $install -Force | Out-Null
-    Copy-Item (Join-Path $Payload 'RevitModelMcp\*') $install -Recurse -Force
-    if (!(Test-Path -LiteralPath $dll -PathType Leaf)) { throw "Installed DLL is missing: $dll" }
-    Sign-Folder $install
-    $manifest.Save((Join-Path $addins 'RevitModelMcp.addin'))
-    $fileVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($dll).FileVersion
-    Write-Host "installed $SelectedYear -> $install (version $fileVersion)"
+    catch {
+        $installError = $_
+        try {
+            if ($newManifest) { Remove-Item -LiteralPath $manifestPath -Force }
+            if ($newFolder) { Remove-Item -LiteralPath $install -Recurse -Force }
+            if ($oldFolder) { Move-Item -LiteralPath (Join-Path $backup 'RevitModelMcp') -Destination $install }
+            if ($oldManifest) { Move-Item -LiteralPath (Join-Path $backup 'RevitModelMcp.addin') -Destination $manifestPath }
+        }
+        catch {
+            throw "Install failed: $installError Rollback failed: $_ Previous files retained at $backup."
+        }
+        throw $installError
+    }
+    finally {
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction Continue }
+        # Never discard backups if rollback itself failed.
+        if ($succeeded -or !(Get-ChildItem -LiteralPath $backup -ErrorAction SilentlyContinue)) {
+            if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction Continue }
+        }
+    }
 }
 
 function Uninstall-Year([string] $SelectedYear) {
-    $addins = Join-Path $env:APPDATA "Autodesk\Revit\Addins\$SelectedYear"
+    $addins = Join-Path $InstallRoot $SelectedYear
     foreach ($name in 'RevitModelMcp.addin', 'RevitModelMcp') {
         $path = Join-Path $addins $name
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
@@ -169,7 +220,7 @@ function Get-HttpIdentity {
 }
 
 function Update-HttpUrlAcl {
-    $ownershipFile = Join-Path $env:APPDATA 'Autodesk\Revit\Addins\RevitModelMcp-http-urlacl.txt'
+    $ownershipFile = Join-Path $InstallRoot 'RevitModelMcp-http-urlacl.txt'
     if (!$Uninstall -and !$EnableHttp) { return }
     if ($Uninstall -and !(Test-Path -LiteralPath $ownershipFile)) { return }
     $address = [Net.IPAddress]::Parse($HttpBind)
@@ -185,7 +236,7 @@ function Update-HttpUrlAcl {
     }
     if ($Uninstall) {
         foreach ($candidate in 2022..2027) {
-            if (Test-Path (Join-Path $env:APPDATA "Autodesk\Revit\Addins\$candidate\RevitModelMcp.addin")) {
+            if (Test-Path (Join-Path $InstallRoot "$candidate\RevitModelMcp.addin")) {
                 return
             }
         }
@@ -410,13 +461,34 @@ try {
         $tempRoot = Join-Path $env:TEMP ("revit-model-mcp-" + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tempRoot | Out-Null
     }
+    $results = @()
+    $failed = $false
     foreach ($selected in $Year) {
-        if ($Uninstall) { Uninstall-Year $selected }
-        else {
-            $payload = Get-Payload $selected
-            Install-Year $selected $payload
+        $row = [pscustomobject]@{
+            Year = $selected; 'Previous version' = 'Unavailable'; 'New version' = 'Unavailable'; Result = 'Failed'
         }
+        try {
+            $row.'Previous version' = Get-InstalledVersion (Join-Path $InstallRoot "$selected\RevitModelMcp\RevitModelMcp.dll")
+            if ($Uninstall) {
+                Uninstall-Year $selected
+                $row.'New version' = 'Not installed'
+                $row.Result = 'Uninstalled'
+            }
+            else {
+                $payload = Get-Payload $selected
+                $row.'New version' = Get-InstalledVersion (Join-Path $payload 'RevitModelMcp\RevitModelMcp.dll')
+                Install-Year $selected $payload
+                $row.Result = 'Installed'
+            }
+        }
+        catch {
+            $failed = $true
+            Write-Warning "Revit ${selected}: $_"
+        }
+        $results += $row
     }
+    $results | Format-Table -AutoSize | Out-String -Width 240 | Write-Host
+    if ($failed) { throw 'One or more Revit years failed. See the per-year results above.' }
     if ($EnableHttp -or $Uninstall) { Update-HttpUrlAcl }
     if ($RegisterClaude -and !$Uninstall) { Register-Claude }
     $action = 'Installed'
