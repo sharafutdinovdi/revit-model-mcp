@@ -107,26 +107,13 @@ internal static class ActionPreflight
         if (plan.NoBasicTypes) return null;
         var joinState = new PreflightState { WallPlan = plan, Candidates = WallJoinPreflight.FindCandidates(plan.Geometry.Walls) };
         if (joinState.Candidates.Count == 0) return joinState;
-        for (var round = 1; round <= WallJoinPreflight.MaxRounds; round++)
+        var roundLimit = WallJoinPreflight.RoundLimit(joinState.Candidates.Count);
+        for (var round = 1; round <= roundLimit; round++)
         {
             var failures = new PreflightFailures();
             var newWalls = new Dictionary<long, int>();
-            var status = Probe(document, failures, () =>
-            {
-                var created = new List<Wall>();
-                foreach (var wall in plan.Planned)
-                {
-                    var element = Wall.Create(document, Line.CreateBound(wall.Start, wall.End), wall.Type.Id,
-                        plan.Level.Id, UnitUtils.ConvertToInternalUnits(action.HeightMm, UnitTypeId.Millimeters), 0, false, false);
-                    WallUtils.DisallowWallJoinAtEnd(element, 0);
-                    WallUtils.DisallowWallJoinAtEnd(element, 1);
-                    newWalls.Add(RevitValueReader.GetId(element.Id), created.Count);
-                    created.Add(element);
-                }
-                foreach (var candidate in joinState.Candidates)
-                    if (!joinState.SkippedEnds.Contains(candidate.End))
-                        WallUtils.AllowWallJoinAtEnd(created[candidate.End.Wall], candidate.End.End);
-            });
+            var status = ProbeWallJoins(document, action, plan,
+                joinState.Candidates.Where(candidate => !joinState.SkippedEnds.Contains(candidate.End)), failures, newWalls);
             if (status == TransactionStatus.Committed)
             {
                 joinState.NearbyExistingIds.Sort();
@@ -156,7 +143,22 @@ internal static class ActionPreflight
             }
             var skips = WallJoinPreflight.DeriveSkips(joinState.Candidates, joinState.SkippedEnds, mapped);
             foreach (var skip in skips) AddSkip(joinState, skip.End, skip.Reason);
-            if (skips.Count == 0 || round == WallJoinPreflight.MaxRounds)
+            if (skips.Count == 0)
+            {
+                var remaining = joinState.Candidates.Where(candidate => !joinState.SkippedEnds.Contains(candidate.End)).ToList();
+                var isolated = WallJoinPreflight.IsolateFailures(remaining, candidates =>
+                {
+                    var isolatedFailures = new PreflightFailures();
+                    if (ProbeWallJoins(document, action, plan, candidates, isolatedFailures) == TransactionStatus.Committed)
+                        return null;
+                    var descriptions = isolatedFailures.Errors.Select(failure => failure.Description).Distinct().ToList();
+                    return descriptions.Count == 0 ? "Revit rejected this wall join." : string.Join("; ", descriptions);
+                });
+                foreach (var skip in isolated) AddSkip(joinState, skip.End, skip.Reason);
+                joinState.NearbyExistingIds.Sort();
+                return joinState;
+            }
+            if (round == roundLimit)
             {
                 joinState.JoinConverged = false;
                 foreach (var candidate in joinState.Candidates)
@@ -166,6 +168,28 @@ internal static class ActionPreflight
         }
         joinState.NearbyExistingIds.Sort();
         return joinState;
+    }
+
+    private static TransactionStatus ProbeWallJoins(Document document, ActionJobContract action,
+        ActionMutations.WallPlan plan, IEnumerable<JoinCandidate> candidates, PreflightFailures failures,
+        Dictionary<long, int>? newWalls = null)
+    {
+        return Probe(document, failures, () =>
+        {
+            var created = new List<Wall>(plan.Planned.Count);
+            var height = UnitUtils.ConvertToInternalUnits(action.HeightMm, UnitTypeId.Millimeters);
+            foreach (var wall in plan.Planned)
+            {
+                var element = Wall.Create(document, Line.CreateBound(wall.Start, wall.End), wall.Type.Id,
+                    plan.Level.Id, height, 0, false, false);
+                WallUtils.DisallowWallJoinAtEnd(element, 0);
+                WallUtils.DisallowWallJoinAtEnd(element, 1);
+                newWalls?.Add(RevitValueReader.GetId(element.Id), created.Count);
+                created.Add(element);
+            }
+            foreach (var candidate in candidates)
+                WallUtils.AllowWallJoinAtEnd(created[candidate.End.Wall], candidate.End.End);
+        });
     }
 
     private static void ApplyGroupAction(Document document, string command, ActionJobContract action, List<ElementId> ids)

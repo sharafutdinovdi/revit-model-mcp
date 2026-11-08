@@ -113,6 +113,11 @@ The first anchor is a viewport center; the second is a schedule insertion point.
 Inspect actual bounds, labels, title block origin, overlap and fit in Revit after placement.
 
 `revit_walls_from_cad` uses the imported instance geometry and selected CAD layers. It merges collinear segments on each layer within 0.5 degree and 5 mm across gaps up to `max_gap_mm`. Short pieces participate in merging before the length filter. It pairs overlapping intervals within the thickness range. Unused intervals can pair with another partner. Bridged openings remain continuous. Each wall uses the requested basic type or the closest basic type by width. With `join=true`, centerlines extend or trim to L, T and X intersections within `max_thickness_mm`, and Revit joins are enabled there. `dry_run=true` returns the same planned walls and join numbers without model changes. Joins Revit would reject are left out and reported as `unjoinedEnds` with `unjoinedReasons`. `unpairedLines` counts merged lines with no paired interval; `mergedSegments` counts source segments absorbed by merging.
+Join preflight continues while each rejected probe identifies another failing end.
+Its round limit is the number of candidate ends plus one final commit probe, not a fixed cutoff.
+If Revit omits useful failure IDs, preflight bisects the remaining candidates against the already accepted ends.
+Only individual additions rejected by Revit are excluded; accepted subsets remain enabled.
+Wall creation failures with all joins disabled still fail the action.
 
 An unknown layer name is refused with the list of available layers, for a dry run and a real run. A real run that pairs no walls fails with the count of unpaired lines and creates nothing, so no empty undo entry is recorded.
 
