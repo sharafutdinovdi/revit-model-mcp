@@ -464,6 +464,8 @@ internal static class ReadCommandExecutor
                         ?? throw new InvalidOperationException("No floor plan is available for an element snapshot.");
                     view = (View)document.GetElement(source.Duplicate(ViewDuplicateOption.Duplicate));
                     view.ViewTemplateId = ElementId.InvalidElementId;
+                    view.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP)?.Set(ElementId.InvalidElementId);
+                    document.Regenerate();
                     var crop = view.CropBox;
                     var inverse = crop.Transform.Inverse;
                     var corners = new List<XYZ>();

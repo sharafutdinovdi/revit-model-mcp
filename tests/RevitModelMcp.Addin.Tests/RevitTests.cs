@@ -218,6 +218,63 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
+    public async Task PlanCaptureDetachesScopeBoxAndPreservesSourceAsync()
+    {
+        using var doors = new FilteredElementCollector(Model).OfCategory(BuiltInCategory.OST_Doors).WhereElementIsNotElementType();
+        using var plans = new FilteredElementCollector(Model).OfClass(typeof(ViewPlan));
+        var eligible = plans.Cast<ViewPlan>().Where(plan => !plan.IsTemplate && plan.ViewType == ViewType.FloorPlan).ToList();
+        var door = doors.FirstOrDefault(element =>
+        {
+            var source = eligible.FirstOrDefault(plan => plan.GenLevel?.Id == element.LevelId);
+            return element.get_BoundingBox(null) is not null &&
+                source?.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP)?.AsElementId() is ElementId scopeId &&
+                scopeId != ElementId.InvalidElementId;
+        });
+        if (door is null) Skip.Test("The model needs a door on a level whose first floor plan has a scope box.");
+        var source = eligible.First(plan => plan.GenLevel?.Id == door!.LevelId);
+        var originalScope = source.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP).AsElementId();
+        var originalCrop = source.CropBox;
+        var doorBounds = door!.get_BoundingBox(null);
+        BoundingBoxXYZ? capturedCrop = null;
+        ElementId? capturedScope = null;
+        void Changed(object? sender, DocumentChangedEventArgs arguments)
+        {
+            if (!arguments.GetDocument().Equals(Model) ||
+                !arguments.GetTransactionNames().Contains("Prepare element snapshot")) return;
+            var snapshot = arguments.GetAddedElementIds().Select(Model.GetElement).OfType<ViewPlan>().Single();
+            capturedCrop = snapshot.CropBox;
+            capturedScope = snapshot.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP).AsElementId();
+        }
+        Application.DocumentChanged += Changed;
+        try
+        {
+            var job = Parse($$"""{"command":"capture-elements","elementIds":[{{Id(door.Id)}}],"mode":"plan","paddingMm":1500,"pixelSize":1200}""");
+            var result = Invoke<ElementCaptureData>(Type("Control.ReadCommandExecutor"), null, "CaptureElements", Model, job, DateTime.Now);
+            await Assert.That(result.ElementCount).IsEqualTo(1);
+            await Assert.That(capturedScope == ElementId.InvalidElementId).IsTrue();
+            await Assert.That(capturedCrop is not null).IsTrue();
+            var inverse = capturedCrop!.Transform.Inverse;
+            var corners = new List<XYZ>();
+            var padding = 1500 / 304.8;
+            foreach (var coordinateX in new[] { doorBounds.Min.X - padding, doorBounds.Max.X + padding })
+                foreach (var coordinateY in new[] { doorBounds.Min.Y - padding, doorBounds.Max.Y + padding })
+                    foreach (var coordinateZ in new[] { doorBounds.Min.Z - padding, doorBounds.Max.Z + padding })
+                        corners.Add(inverse.OfPoint(new XYZ(coordinateX, coordinateY, coordinateZ)));
+            await Assert.That(capturedCrop.Min.X).IsEqualTo(corners.Min(point => point.X)).Within(1e-6);
+            await Assert.That(capturedCrop.Min.Y).IsEqualTo(corners.Min(point => point.Y)).Within(1e-6);
+            await Assert.That(capturedCrop.Max.X).IsEqualTo(corners.Max(point => point.X)).Within(1e-6);
+            await Assert.That(capturedCrop.Max.Y).IsEqualTo(corners.Max(point => point.Y)).Within(1e-6);
+            await Assert.That(source.get_Parameter(BuiltInParameter.VIEWER_VOLUME_OF_INTEREST_CROP).AsElementId() == originalScope).IsTrue();
+            await Assert.That(source.CropBox.Min.IsAlmostEqualTo(originalCrop.Min)).IsTrue();
+            await Assert.That(source.CropBox.Max.IsAlmostEqualTo(originalCrop.Max)).IsTrue();
+        }
+        finally
+        {
+            Application.DocumentChanged -= Changed;
+        }
+    }
+
+    [Test]
     [Arguments("set-parameter")]
     [Arguments("move")]
     [Arguments("copy")]
