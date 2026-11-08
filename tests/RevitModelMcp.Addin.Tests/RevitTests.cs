@@ -173,7 +173,9 @@ public sealed class RevitTests : RevitApiUiTest
     {
         var family = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
             .First(item => item.IsEditable && !item.IsInPlace);
-        var result = Read<FamilyAuditData>("FamilyAuditReader", "Read", Model, new List<string> { family.Name }, detail);
+        object?[] arguments = [UiApplication, Model, new List<string> { family.Name }, detail, (Func<bool>)(() => false), false];
+        var result = Read<FamilyAuditData>("FamilyAuditReader", "Read", arguments);
+        await Assert.That((bool)arguments[5]!).IsFalse();
         var audited = result.Families.Single();
         await Assert.That(audited.Status).IsEqualTo("audited");
         await Assert.That(audited.Name).IsEqualTo(family.Name);
@@ -283,7 +285,13 @@ public sealed class RevitTests : RevitApiUiTest
                 await Assert.That(result.Copies!.Single().Count).IsEqualTo(1);
                 await Assert.That(Model.GetElement(CreateId(result.Copies!.Single().Single())) is Wall).IsTrue();
             }
-            if (command == "delete") await Assert.That(Model.GetElement(target) is null).IsTrue();
+            if (command == "delete")
+            {
+                await Assert.That(Model.GetElement(target) is null).IsTrue();
+                await Assert.That(result.Verification!.Changed!).Contains(Id(target));
+                await Assert.That(result.Verification.After!.StillPresent!.Count).IsEqualTo(0);
+                await Assert.That(result.Warning is null).IsTrue();
+            }
         }
         finally
         {
