@@ -7,7 +7,7 @@ import json
 import re
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SHIPPED_LOCKS = (
@@ -37,7 +37,7 @@ def collect(root: Path) -> dict[tuple[str, str], set[str]]:
 
 
 def build(root: Path, product_version: str, now: datetime | None = None) -> dict:
-    stamp = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = (now or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
     components = []
     for (name, version), years in sorted(
         collect(root).items(), key=lambda item: item[0]
