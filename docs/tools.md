@@ -375,6 +375,11 @@ Progress text reads `waiting for dialog <id> / <text>`.
 The usual timeout warning still applies: a waiting call may already have committed changes.
 Failure and dialog handlers are removed when execution ends, including exceptional exits.
 
+`revit_execute_code` supports family editing and reloading with `transaction="group"`.
+The default `auto` mode keeps an outer transaction open; Revit refuses `EditFamily` and the family-document `LoadFamily` overloads when their target is modifiable.
+Reloading an edited family into its source project requires `LoadFamily(Document, IFamilyLoadOptions)`; the overload without conflict options rejects that workflow.
+See the [execution contract](actions.md#execute-c-code) for confirmation, per-document receipts, rollback and document ownership.
+
 ## My tools
 
 [My tools](my-tools.md) stores parameterized C# procedures on the Revit workstation.

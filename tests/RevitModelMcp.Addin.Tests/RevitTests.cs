@@ -302,6 +302,229 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
+    [Arguments("group", true, false)]
+    [Arguments("group", false, true)]
+    [Arguments("group", false, false)]
+    [Arguments("auto", true, false)]
+    [Arguments("auto", false, true)]
+    [Arguments("auto", false, false)]
+    public async Task CodeExecution_ProtectsBothDocumentsWithoutConstructorTrackingAsync(string mode, bool dryRun, bool fail)
+    {
+        using var other = Application.NewProjectDocument(UnitSystem.Metric);
+        var initialTarget = Model.ProjectInformation.Number;
+        var initialOther = other.ProjectInformation.Number;
+        var marker = Guid.NewGuid().ToString("N");
+        try
+        {
+            var result = ExecuteCode(new ActionJobContract
+            {
+                TransactionMode = mode,
+                DryRun = dryRun,
+                Args = new Dictionary<string, object>
+                {
+                    ["other"] = other.GetHashCode(),
+                    ["marker"] = marker,
+                    ["mode"] = mode,
+                    ["fail"] = fail
+                },
+                Code = """
+                    var other = ctx.Application.Documents.Cast<Document>().Single(document => document.GetHashCode() == (int)ctx.Args["other"]);
+                    var marker = (string)ctx.Args["marker"];
+                    void Change(Document target)
+                    {
+                        for (var index = 0; index < 2; index++)
+                        {
+                            using var transaction = (Transaction)Activator.CreateInstance(typeof(Transaction), new object[] { target, "Cross-document change " + index });
+                            transaction.Start();
+                            target.ProjectInformation.Number = marker + index;
+                            transaction.Commit();
+                        }
+                    }
+                    if ((string)ctx.Args["mode"] == "auto") ctx.Document.ProjectInformation.Number = marker + "1";
+                    else Change(ctx.Document);
+                    Change(other);
+                    if ((bool)ctx.Args["fail"]) throw new InvalidOperationException("Cross-document failure");
+                    return null;
+                    """
+            });
+            await Assert.That(result.CodeError is not null).IsEqualTo(fail);
+            var targetReceipt = result.DocumentReceipts!.Single(receipt => receipt.DocumentKey == Model.GetHashCode().ToString("X8"));
+            var otherReceipt = result.DocumentReceipts!.Single(receipt => receipt.DocumentKey == other.GetHashCode().ToString("X8"));
+            await Assert.That(targetReceipt.DocumentKey == otherReceipt.DocumentKey).IsFalse();
+            if (dryRun || fail)
+            {
+                await Assert.That(Model.ProjectInformation.Number).IsEqualTo(initialTarget);
+                await Assert.That(other.ProjectInformation.Number).IsEqualTo(initialOther);
+                await Assert.That(targetReceipt.Outcome).IsEqualTo("rolledBack");
+                await Assert.That(otherReceipt.Outcome).IsEqualTo("rolledBack");
+                await Assert.That(result.RolledBack).IsTrue();
+            }
+            else
+            {
+                await Assert.That(Model.ProjectInformation.Number).IsEqualTo(marker + "1");
+                await Assert.That(other.ProjectInformation.Number).IsEqualTo(marker + "1");
+                await Assert.That(targetReceipt.Outcome).IsEqualTo("committed");
+                await Assert.That(otherReceipt.Outcome).IsEqualTo("committed");
+                var expectedUndo = ActionSummaryBuilder.BuildGroupName("RMM tests", "Execute code");
+                await Assert.That(targetReceipt.UndoName).IsEqualTo(expectedUndo);
+                await Assert.That(otherReceipt.UndoName).IsEqualTo(expectedUndo);
+                await Assert.That(result.Committed).IsTrue();
+            }
+        }
+        finally
+        {
+            other.Close(false);
+        }
+    }
+
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task CodeGroup_EditFamilyLoadFamilyUsesConflictOptionsAndHonorsDryRunAsync(bool dryRun)
+    {
+        var typeName = "CrossDocumentRollback" + Guid.NewGuid().ToString("N");
+        var originalFamily = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+            .First(item => item.IsEditable && !item.IsInPlace);
+        var familyName = originalFamily.Name;
+        var initialDocuments = Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet();
+        var initialFamilies = new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount();
+        try
+        {
+            var result = ExecuteCode(new ActionJobContract
+            {
+                TransactionMode = "group",
+                DryRun = dryRun,
+                Args = new Dictionary<string, object> { ["name"] = typeName },
+                Code = """
+                    var family = new FilteredElementCollector(ctx.Document).OfClass(typeof(Family)).Cast<Family>()
+                        .First(item => item.IsEditable && !item.IsInPlace);
+                    var edited = ctx.Document.EditFamily(family);
+                    using (var transaction = new Transaction(edited, "Add edited family type"))
+                    {
+                        transaction.Start();
+                        edited.FamilyManager.NewType((string)ctx.Args["name"]);
+                        transaction.Commit();
+                    }
+                    var loaded = edited.LoadFamily(ctx.Document, new Nice3point.Revit.Toolkit.Options.FamilyLoadOptions());
+                    return loaded.Name;
+                    """
+            });
+            await Assert.That(result.CodeError).IsNull();
+            await Assert.That(result.ReturnValue).IsEqualTo(familyName);
+            var loadedFamily = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+                .Single(family => family.Name == familyName);
+            var loadedTypeExists = loadedFamily.GetFamilySymbolIds()
+                .Any(id => Model.GetElement(id).Name == typeName);
+            if (dryRun)
+            {
+                await Assert.That(new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount()).IsEqualTo(initialFamilies);
+                await Assert.That(loadedTypeExists).IsFalse();
+                await Assert.That(Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet()
+                    .SetEquals(initialDocuments)).IsTrue();
+                await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "rolledBack")).IsTrue();
+                await Assert.That(result.RolledBack).IsTrue();
+            }
+            else
+            {
+                await Assert.That(loadedTypeExists).IsTrue();
+                await Assert.That(result.DocumentReceipts!.Single(receipt => receipt.DocumentKey == Model.GetHashCode().ToString("X8"))
+                    .Outcome).IsEqualTo("committed");
+                await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "leftOpen")).IsTrue();
+                await Assert.That(result.Committed).IsTrue();
+            }
+        }
+        finally
+        {
+            foreach (var opened in Application.Documents.Cast<Document>()
+                         .Where(document => !document.IsLinked && !initialDocuments.Contains(document.GetHashCode())).ToList())
+                opened.Close(false);
+        }
+    }
+
+    [Test]
+    [Arguments(true, false)]
+    [Arguments(false, true)]
+    public async Task CodeRollback_ClosesDocumentsCreatedDuringTheCallAsync(bool dryRun, bool fail)
+    {
+        var initialDocuments = Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet();
+        var result = ExecuteCode(new ActionJobContract
+        {
+            TransactionMode = "group",
+            DryRun = dryRun,
+            Args = new Dictionary<string, object> { ["fail"] = fail },
+            Code = """
+                var created = ctx.Application.NewProjectDocument(UnitSystem.Metric);
+                using (var transaction = new Transaction(created, "Create preview level"))
+                {
+                    transaction.Start();
+                    Level.Create(created, 10);
+                    transaction.Commit();
+                }
+                if ((bool)ctx.Args["fail"]) throw new InvalidOperationException("New document failure");
+                return null;
+                """
+        });
+        await Assert.That(result.CodeError is not null).IsEqualTo(fail);
+        await Assert.That(Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet()
+            .SetEquals(initialDocuments)).IsTrue();
+        await Assert.That(result.DocumentReceipts!.Single(receipt => receipt.OpenedByCall).Outcome).IsEqualTo("rolledBack");
+        await Assert.That(result.RolledBack).IsTrue();
+    }
+
+    [Test]
+    [Arguments("auto", true)]
+    [Arguments("auto", false)]
+    [Arguments("group", true)]
+    [Arguments("group", false)]
+    public async Task CodeExecution_RefusesBeforeRunningWhenAnotherDocumentHasAnOpenTransactionAsync(string mode, bool dryRun)
+    {
+        using var other = Application.NewProjectDocument(UnitSystem.Metric);
+        try
+        {
+            using var callerTransaction = new Transaction(other, "Caller-owned transaction");
+            callerTransaction.Start();
+            other.ProjectInformation.Number = "Caller-owned change";
+            try
+            {
+                var result = ExecuteCode(new ActionJobContract
+                {
+                    TransactionMode = mode,
+                    DryRun = dryRun,
+                    Args = new Dictionary<string, object> { ["other"] = other.GetHashCode() },
+                    Code = """
+                        ctx.Log("Script ran");
+                        var other = ctx.Application.Documents.Cast<Document>().Single(document => document.GetHashCode() == (int)ctx.Args["other"]);
+                        other.ProjectInformation.Number = "Unexpected script change";
+                        return null;
+                        """
+                });
+                await Assert.That(result.CodeError!).Contains("The script did not run");
+                await Assert.That(result.CodeError!).Contains(other.Title);
+                await Assert.That(result.CodeError!).Contains("open transaction or edit mode");
+                await Assert.That(result.CodeError!).Contains("Finish the open edit or transaction");
+                await Assert.That(result.Log!.Count).IsEqualTo(0);
+                await Assert.That(other.ProjectInformation.Number).IsEqualTo("Caller-owned change");
+                await Assert.That(callerTransaction.GetStatus()).IsEqualTo(TransactionStatus.Started);
+            }
+            finally
+            {
+                callerTransaction.RollBack();
+            }
+        }
+        finally
+        {
+            other.Close(false);
+        }
+    }
+
+    private ActionResultData ExecuteCode(ActionJobContract action)
+    {
+        var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);
+        return Invoke<ActionResultData>(Type("Control.CodeExecution"), null, "Execute",
+            UiApplication, Model, null, action, failures, "RMM tests", null, false);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task NewDocumentActivationFailureAccountsForReplacementDocumentAsync(bool retainActiveDocument)

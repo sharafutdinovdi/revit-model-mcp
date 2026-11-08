@@ -1253,6 +1253,8 @@ public sealed class ProcessModelCodeResult
     [IgnoreDataMember] public object? ReturnValue { get; set; }
     [DataMember(Name = "returnValue")] public string ReturnValueMarker { get; set; } = string.Empty;
     [DataMember(Name = "log")] public List<string> Log { get; set; } = [];
+    [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }
+    [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
 }
 
 public sealed class FileExportJob
@@ -1791,6 +1793,7 @@ public sealed class ActionResultData
     [DataMember(Name = "resultArtifact", EmitDefaultValue = false)] public string? ResultArtifact { get; set; }
     [DataMember(Name = "log", EmitDefaultValue = false)] public List<string>? Log { get; set; }
     [DataMember(Name = "diagnostics", EmitDefaultValue = false)] public List<CodeDiagnostic>? Diagnostics { get; set; }
+    [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }
     [DataMember(Name = "exceptionType", EmitDefaultValue = false)] public string? ExceptionType { get; set; }
     [DataMember(Name = "stackTrace", EmitDefaultValue = false)] public List<string>? StackTrace { get; set; }
     [DataMember(Name = "title", EmitDefaultValue = false)] public string? Title { get; set; }

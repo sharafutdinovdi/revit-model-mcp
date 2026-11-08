@@ -485,14 +485,17 @@ internal static class ActionCommandExecutor
                 var codeAction = new ActionJobContract
                 {
                     Code = request.Code.Code,
-                    TransactionMode = request.Code.Transaction ?? "auto"
+                    TransactionMode = request.Code.Transaction ?? "auto",
+                    DryRun = request.DryRun
                 };
                 var code = CodeExecution.Execute(application, document, null, codeAction, failures, job.ClientName, job.JobId);
                 result.Code = new ProcessModelCodeResult
                 {
                     ReturnValue = code.ReturnValue,
                     ReturnValueMarker = Guid.NewGuid().ToString("N"),
-                    Log = code.Log ?? []
+                    Log = code.Log ?? [],
+                    DocumentReceipts = code.DocumentReceipts,
+                    Warning = code.Warning
                 };
                 if (code.CodeError is not null) throw new InvalidOperationException(code.CodeError);
             }
@@ -532,6 +535,8 @@ internal static class ActionCommandExecutor
                     if (group.RollBack() != TransactionStatus.RolledBack)
                         throw new InvalidOperationException("Could not roll back the model preview.");
                     MarkProcessBatchRolledBack(result.Steps, document.Title, true);
+                    if (result.Code?.DocumentReceipts is { Count: > 0 } previewReceipts)
+                        previewReceipts[0].Outcome = "rolledBack";
                 }
                 else
                 {
@@ -558,12 +563,17 @@ internal static class ActionCommandExecutor
             {
                 try
                 {
-                    group.RollBack();
+                    if (group.RollBack() != TransactionStatus.RolledBack)
+                        throw new InvalidOperationException("Could not roll back the model changes.");
+                    if (result.Code?.DocumentReceipts is { Count: > 0 } failedReceipts)
+                        failedReceipts[0].Outcome = "rolledBack";
                     MarkProcessBatchRolledBack(result.Steps, document?.Title ?? string.Empty, request.DryRun);
                 }
                 catch (Exception rollbackException)
                 {
                     result.Error += " Rollback failed: " + rollbackException.Message;
+                    if (result.Code?.DocumentReceipts is { Count: > 0 } uncertainReceipts)
+                        uncertainReceipts[0].Outcome = "unknown";
                 }
             }
             result.Status = "failed";
