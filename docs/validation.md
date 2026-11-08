@@ -54,6 +54,39 @@ The build completed with zero errors and one debug-information warning during as
 | 0 | Restore | PASS | Settings and selected add-in folders restored |
 
 
+## Startup and assembly diagnostics
+
+I measured checkout `80a94b2` on 2026-11-08 with no project open.
+Each row records three new Revit processes after the initial unsigned add-in approval.
+Times are seconds from process launch to pipe availability and the first successful `ping`.
+
+| Revit | Pipe availability, three runs | First successful ping, three runs |
+| --- | --- | --- |
+| 2022 | 42.121, 43.961, 44.362 | 47.879, 49.686, 50.246 |
+| 2025 | 38.603, 38.997, 41.462 | 42.965, 43.697, 46.309 |
+
+I retain the initial 238.963-second 2022 run and 80.237-second 2025 run separately; both journals contain the unsigned add-in approval dialog.
+Those first-run approval delays are not part of the three-run table.
+In the initial three runs, the logged interval from the add-in startup message to pipe-listener readiness is 0.988-1.204 seconds on 2022 and 0.129-0.180 seconds on 2025.
+The full process-launch timings include Revit and the other installed add-ins.
+These measurements do not attribute a 90-second initialization delay to Model MCP.
+
+The 2022 journal retains this diagnostic:
+
+```text
+API_ERROR { : Assembly version conflict in some references in RevitModelMcp.dll assembly
+Addin's module System.Net.Http of version 4.2.0.0 conflicts with same preloaded module of version 4.0.0.0
+Addin's module System.Collections.Immutable of version 8.0.0.0 conflicts with same preloaded module of version 1.2.2.0 }
+```
+
+The 2025 journal reports .NET assembly-reference differences, including `System.Runtime` 8.0.0.0 versus the preloaded 10.0.0.0, and Revit reference differences against the installed 25.5 assemblies.
+The Revit API references remain pinned to the supported minimum version.
+Every recorded ping succeeds and reports `2.0.0+80a94b2538bb40e1e5acb29975ab1444491d1d77`; each journal records `API_SUCCESS` for Model MCP after the reference diagnostic.
+The missing `Assembly Version` field in the 2022 journal also occurs for other successfully loaded add-ins; the 2025 Model MCP entry explicitly reports `2.0.0.0`.
+The reference diagnostics are non-blocking for startup in this configuration.
+This check does not establish compatibility for commands that run after startup.
+No startup implementation change is made for [issue #207](https://github.com/sharafutdinovdi/revit-model-mcp/issues/207).
+
 ## Historical validation matrix
 
 Validation status as of 2026-10-06; ✅ denotes a completed check and - denotes no validation evidence for that check.
