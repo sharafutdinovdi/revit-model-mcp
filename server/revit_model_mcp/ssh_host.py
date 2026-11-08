@@ -443,7 +443,7 @@ class SshPowerShellHost:
         async def ping(instance: dict[str, object]) -> None:
             if instance.get("fileChannelVersion") == 2:
                 try:
-                    await self._for_instance(instance)._handshake(timeout=5.0)
+                    await self._for_instance(instance)._handshake()
                     instance["pluginResponding"] = True
                 except RevitChannelError:
                     instance["pluginResponding"] = False
@@ -502,7 +502,8 @@ class SshPowerShellHost:
             await asyncio.wait_for(confirm(), resolved_timeout)
         except TimeoutError as error:
             raise RevitChannelError(
-                "The selected file channel is unconfirmed: handshake timed out; its ping may still execute later."
+                f"Revit process {self._instance['processId']} is not responding within "
+                f"{resolved_timeout:g}s: handshake timed out; its ping may still execute later."
             ) from error
 
     async def fetch_job(self, job_id: str) -> dict[str, Any]:

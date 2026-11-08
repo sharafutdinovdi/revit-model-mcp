@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import base64
+import copy
 import errno
 import json
 import os
 import shutil
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -15,6 +17,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from revit_model_mcp import batch
 from revit_model_mcp.artifact_download import save_batch_artifact
 from revit_model_mcp.batch import register_batch
+from revit_model_mcp.revit_channel import RevitChannel, select_instance
 from revit_model_mcp.ssh_host import SshPowerShellHost, _fail_dead_supervisor
 
 
@@ -46,6 +49,14 @@ class Host(SshPowerShellHost):
             if not self.instance_delay:
                 self.instances = [{"processId": 91}]
         return self.instances
+
+    async def _discover_instances(self):
+        return await self.list_revit_instances()
+
+    async def select_job(self, job):
+        selected = copy.copy(self)
+        selected._instance = select_instance(self.instances, job)
+        return selected, job
 
     async def batch_discover(self, folder, recursive):
         self.discovery.append((folder, recursive))
@@ -141,6 +152,84 @@ async def test_start_missing_explicit_launcher_does_not_activate_another_process
         await tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], process_id=42)
     assert host.activations == 0
     assert not host.runs and not channel.jobs
+
+
+class SlowSshHost(Host):
+    select_job = SshPowerShellHost.select_job
+    list_revit_instances = SshPowerShellHost.list_revit_instances
+
+    def __init__(self):
+        super().__init__()
+        self.instances = [
+            {
+                "processId": 41,
+                "fileChannelVersion": 2,
+                "startedUtc": "2026-11-01T00:00:00Z",
+                "updatedUtc": datetime.now(timezone.utc).isoformat(),
+                "instanceId": "first",
+                "pluginResponding": False,
+            }
+        ]
+
+    async def _discover_instances(self):
+        return [dict(instance) for instance in self.instances]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("process_id", [None, 41])
+async def test_ssh_batch_reuses_verified_generation_on_slow_channel(monkeypatch, process_id):
+    registry, host, channel = Registry(), SlowSshHost(), Channel()
+    register_batch(registry, lambda: host, lambda: channel)
+    pings = []
+
+    async def slow_ping(_channel, job, timeout, pickup_timeout):
+        # Model a 12-second SSH round trip without waiting in real time.
+        if min(timeout, pickup_timeout) < 12:
+            raise TimeoutError
+        pings.append(job)
+        return {"success": True}
+
+    monkeypatch.setattr(RevitChannel, "_execute_serial", slow_ping)
+    for _ in range(2):
+        result = await registry.tools["revit_batch_start"](
+            paths=[r"C:\models\A.rvt"], process_id=process_id
+        )
+        assert result["processId"] == 41
+    assert len(pings) == 1
+    assert len(host.runs) == len(channel.jobs) == 2
+    assert not host.activations
+    host.instances[0]["instanceId"] = "replacement"
+    await registry.tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], process_id=process_id)
+    assert len(pings) == 2
+
+
+@pytest.mark.anyio
+async def test_ssh_discovery_uses_normal_handshake_timeout(monkeypatch):
+    host = SlowSshHost()
+
+    async def slow_ping(_channel, _job, timeout, pickup_timeout):
+        if min(timeout, pickup_timeout) < 12:
+            raise TimeoutError
+        return {"success": True}
+
+    monkeypatch.setattr(RevitChannel, "_execute_serial", slow_ping)
+    assert (await host.list_revit_instances())[0]["pluginResponding"] is True
+
+
+@pytest.mark.anyio
+async def test_slow_explicit_ssh_launcher_reports_timeout_without_creating_run(monkeypatch):
+    registry, host, channel = Registry(), SlowSshHost(), Channel()
+    register_batch(registry, lambda: host, lambda: channel)
+
+    async def stalled_ping(*_args):
+        await batch.asyncio.sleep(1)
+
+    monkeypatch.setattr(RevitChannel, "_execute_serial", stalled_ping)
+    monkeypatch.setattr("revit_model_mcp.ssh_host.HANDSHAKE_TIMEOUT_SECONDS", 0.01)
+    with pytest.raises(ToolError, match="process 41 is not responding within 0.01s"):
+        await registry.tools["revit_batch_start"](paths=[r"C:\models\A.rvt"], process_id=41)
+    assert not host.runs and not channel.jobs and not host.activations
+    assert not host._verified_instances
 
 
 @pytest.mark.anyio
