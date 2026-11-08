@@ -62,8 +62,10 @@ public sealed class RevitTests : RevitApiUiTest
         {
             RevitModelMcp.Control.DocumentActions.Execute(UiApplication, "new-document", new ActionJobContract
             {
-                Kind = "project", Template = template,
-                SaveAs = Path.Combine(_directory!, "show-wall.rvt"), Activate = true
+                Kind = "project",
+                Template = template,
+                SaveAs = Path.Combine(_directory!, "show-wall.rvt"),
+                Activate = true
             });
             var uiDocument = UiApplication.ActiveUIDocument
                 ?? throw new InvalidOperationException("The regression document was not activated.");
