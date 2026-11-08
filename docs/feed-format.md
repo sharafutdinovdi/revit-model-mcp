@@ -322,6 +322,8 @@ Coordinates use model axes in mm rounded to one decimal place.
 Exports return `fileName`, `width`, `height`, `sizeBytes`, `viewName` and `viewType` in `data`.
 The Python server adds `localPath` after downloading the PNG.
 `width` and `height` are pixels; `sizeBytes` is the PNG size in bytes.
+An export that fails after writing an image removes its new PNG files from the workstation channel directory.
+Files present before that export remain unchanged.
 See [HTTP endpoints](transport.md#http-configuration) for direct image retrieval.
 
 ## Heartbeats
