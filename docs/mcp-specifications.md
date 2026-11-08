@@ -14,10 +14,30 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 | --- | --- |
 | Server name | `revit-model-mcp` |
 | Transport | `stdio` |
-| MCP specification version | `2025-11-25` |
+| Latest MCP specification version | `2026-07-28` |
 | Tools | 89 (36 read-only, 53 modifying) |
 | Resources | 1 (`revit://guides/coordinator`) |
 | Prompts | 7 |
+
+## Protocol negotiation and client identity
+
+The pinned `mcp` SDK 2.3.0 supports MCP `2026-07-28` through per-request envelopes over stdio.
+The `initialize` handshake negotiates `2024-11-05`, `2025-03-26`, `2025-06-18` or `2025-11-25`.
+An unsupported handshake offer, including `2026-07-28`, receives the latest handshake version, `2025-11-25`.
+Modern clients use `server/discover` or select `2026-07-28` directly and send the protocol version and client capabilities in each request's `_meta`.
+
+Legacy client name and version come from `initialize.params.clientInfo`.
+Modern clients can supply them in `_meta["io.modelcontextprotocol/clientInfo"]`.
+The SDK exposes both forms through `ctx.session.client_params.client_info`, with `name` and `version` fields.
+For modern requests, these parameters are request-scoped; an absent client identity produces `client_params=None`.
+Malformed client identity is rejected as invalid request parameters.
+Model MCP forwards the name as `clientName` in Revit requests and uses `unknown` when no name is available.
+The client version is available in the SDK context but is not forwarded to Revit.
+Client identity is self-reported, not an authentication credential.
+
+Protocol tests cover handshake negotiation, modern per-request name and version, omitted or malformed identity, and the name forwarded by `revit_ping`.
+These in-memory transport tests do not establish compatibility with a released client application or a live Revit model.
+
 
 ## Data handling
 

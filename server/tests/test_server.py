@@ -1154,11 +1154,14 @@ def test_discovery_unions_heartbeats_with_all_running_processes():
     assert [item["processId"] for item in _parse_instance_package(package, "", now)] == [84]
 
 
-def test_client_name_comes_from_initialize_context():
+@pytest.mark.parametrize("mode", ["direct", "legacy", "2026-07-28"])
+def test_client_name_comes_from_initialize_context(mode):
     import asyncio
     from types import SimpleNamespace
 
+    from mcp.client._memory import InMemoryTransport
     from mcp.server.mcpserver import Context
+    from mcp.types import Implementation
 
     from revit_model_mcp import package_version
     from revit_model_mcp.revit_channel import JobPickupStatus, RevitChannel
@@ -1192,8 +1195,25 @@ def test_client_name_comes_from_initialize_context():
         client_params=SimpleNamespace(client_info=SimpleNamespace(name="codex"))
     )
     context = Context(request_context=SimpleNamespace(session=session))
+
+    async def call():
+        if mode == "direct":
+            await revit_server.mcp.call_tool("revit_ping", {}, context=context)
+        else:
+            async with Client(
+                InMemoryTransport(revit_server.mcp),
+                mode=mode,
+                client_info=Implementation(name="codex", version="1.2.3"),
+                read_timeout_seconds=10,
+            ) as client:
+                assert client.protocol_version == (
+                    "2025-11-25" if mode == "legacy" else "2026-07-28"
+                )
+                result = await client.call_tool("revit_ping", {})
+                assert not result.is_error
+
     with patch.object(revit_server, "channel", RevitChannel(host)):
-        asyncio.run(revit_server.mcp.call_tool("revit_ping", {}, context=context))
+        asyncio.run(call())
     assert host.payload["clientName"] == "codex"
     assert len(host.payload["clientId"]) == 32
 

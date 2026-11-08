@@ -35,7 +35,7 @@ Running accepts `document` and `process_id` for its model and session.
 | Field | Value |
 | --- | --- |
 | `schemaVersion` | `1.0` |
-| `mcpSpecVersion` | MCP specification version, `2025-11-25` |
+| `mcpSpecVersion` | Latest supported MCP specification version, `2026-07-28`; see [protocol negotiation](mcp-specifications.md#protocol-negotiation-and-client-identity) for legacy handshake versions |
 | `server` | `name`, `transport` (`stdio`) and `location` (`local`: the server runs on the user's machine) |
 | `tools` | Every registered tool, see below |
 | `resources`, `prompts` | Every registered resource and prompt with a description |

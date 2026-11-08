@@ -303,7 +303,7 @@ def build_manifest(tools, resources, prompts, managed=False) -> dict:
     return {
         "schemaVersion": "1.0",
         **({"variant": "managed"} if managed else {}),
-        "mcpSpecVersion": "2025-11-25",
+        "mcpSpecVersion": "2026-07-28",
         "server": {
             "name": "revit-model-mcp",
             "transport": "stdio",
