@@ -46,18 +46,18 @@ public sealed class ActivityTitleTests
     }
 
     [Test]
-    public async Task Build_DryRun_UsesProcessForm()
+    public async Task Build_DryRun_UsesCompletedPreviewWording()
     {
         var entry = Entry("move", changed: 3, state: "dry_run");
-        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Moving 3 elements");
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Previewed move");
     }
 
     [Test]
-    public async Task Build_Failed_UsesProcessFormWithoutErrorText()
+    public async Task Build_Failed_UsesCompletedFailureWording()
     {
         var entry = Entry("align-link-datums", state: "failed");
         entry.Summary = "Link 'AR' is not loaded.";
-        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Aligning datums to link");
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Failed align-link-datums");
     }
 
     [Test]
@@ -79,6 +79,68 @@ public sealed class ActivityTitleTests
     {
         await Assert.That(ActivityTitleBuilder.BuildRunning("align-link-datums")).IsEqualTo("Aligning datums to link…");
         await Assert.That(ActivityTitleBuilder.BuildRunning("move")).IsEqualTo("Moving elements…");
+    }
+
+    [Test]
+    [Arguments("done", false, "Executed code")]
+    [Arguments("done", true, "Previewed execute-code")]
+    [Arguments("dry_run", true, "Previewed execute-code")]
+    [Arguments("dry_run", false, "Previewed execute-code")]
+    [Arguments("failed", false, "Failed execute-code")]
+    [Arguments("failed", true, "Failed execute-code")]
+    [Arguments("timeout", false, "Timed out execute-code")]
+    [Arguments("timed_out", true, "Timed out execute-code")]
+    [Arguments("cancelled", false, "Cancelled execute-code")]
+    [Arguments("canceled", true, "Cancelled execute-code")]
+    public async Task Build_ExecuteCode_ReplacesRunningTitleOnCompletion(string state, bool dryRun, string expected)
+    {
+        var entry = Entry("execute-code", state: "running");
+        entry.DryRun = dryRun;
+        entry.Summary = "return UIThemeManager.CurrentTheme.ToString(); [audit hash]";
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Executing code");
+
+        entry.State = state;
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo(expected);
+
+        ActivityTitleBuilder.Build(Entry("move", changed: 1));
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments("done", false)]
+    [Arguments("dry_run", true)]
+    [Arguments("failed", false)]
+    [Arguments("timed_out", false)]
+    [Arguments("cancelled", false)]
+    public async Task Build_AllOperations_ReplaceTheRunningTitle(string state, bool dryRun)
+    {
+        string[] commands =
+        [
+            "select", "show", "isolate", "move", "delete", "edit-families", "remove-links",
+            "place-family", "create-wall", "set-parameter", "execute-code", "batch", "export-nwc",
+            "align-link-datums", "undo-last", "open-document", "close-document", "save-document",
+            "sync-document", "set-view-visibility", "purge-model"
+        ];
+        foreach (var command in commands)
+        {
+            var entry = Entry(command, changed: 3, state: "running");
+            entry.DryRun = dryRun;
+            var runningTitle = ActivityTitleBuilder.Build(entry);
+            entry.State = state;
+            var completedTitle = ActivityTitleBuilder.Build(entry);
+            await Assert.That(completedTitle).IsNotEqualTo(runningTitle);
+            await Assert.That(completedTitle + "…").IsNotEqualTo(ActivityTitleBuilder.BuildRunning(command));
+        }
+    }
+
+    [Test]
+    [Arguments("queued")]
+    [Arguments("running")]
+    public async Task Build_ActivePreview_KeepsProcessWording(string state)
+    {
+        var entry = Entry("execute-code", state: state);
+        entry.DryRun = true;
+        await Assert.That(ActivityTitleBuilder.Build(entry)).IsEqualTo("Executing code");
     }
 
     private static ActivityEntry Entry(string command, int changed = 0, int created = 0, int deleted = 0, string state = "done") =>

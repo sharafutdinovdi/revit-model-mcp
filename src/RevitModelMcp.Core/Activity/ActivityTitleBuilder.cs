@@ -1,9 +1,8 @@
 namespace RevitModelMcp.Core.Activity;
 
 /// <summary>
-/// Builds the short row titles the activity pane shows. Finished changes read in the past tense with
-/// element counts ("Moved 3 elements"); dry runs, failures and running jobs read as the process
-/// ("Moving 3 elements").
+/// Builds short activity pane titles. Only queued and running jobs use process wording.
+/// Recorded outcomes use completed wording, including previews and unsuccessful operations.
 /// </summary>
 public static class ActivityTitleBuilder
 {
@@ -23,6 +22,7 @@ public static class ActivityTitleBuilder
         ["place-family"] = new("Placed a family", "Placing a family", null),
         ["create-wall"] = new("Created a wall", "Creating a wall", null),
         ["set-parameter"] = new("Set a parameter", "Setting a parameter", null),
+        ["execute-code"] = new("Executed code", "Executing code", null),
         ["batch"] = new("Ran a batch", "Running a batch", null),
         ["export-nwc"] = new("Exported NWC", "Exporting NWC", null),
         ["align-link-datums"] = new("Aligned datums to link", "Aligning datums to link", null),
@@ -44,8 +44,15 @@ public static class ActivityTitleBuilder
         if (entry is null) throw new ArgumentNullException(nameof(entry));
         if (entry.Command == "system-notice") return entry.Summary;
         var count = entry.ActionCount ?? entry.ChangedCount + entry.CreatedCount + entry.DeletedCount;
-        var finished = !entry.DryRun && entry.State is not ("failed" or "dry_run" or "queued" or "running");
-        return Format(entry.Command, count, finished);
+        return entry.State switch
+        {
+            "queued" or "running" => Format(entry.Command, count, false),
+            "failed" => $"Failed {entry.Command}",
+            "timeout" or "timed_out" => $"Timed out {entry.Command}",
+            "cancelled" or "canceled" => $"Cancelled {entry.Command}",
+            _ when entry.DryRun || entry.State == "dry_run" => $"Previewed {entry.Command}",
+            _ => Format(entry.Command, count, true)
+        };
     }
 
     /// <summary>Title of a job that is still running or waiting in the queue, ending with an ellipsis.</summary>
