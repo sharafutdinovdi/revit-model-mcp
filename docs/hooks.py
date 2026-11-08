@@ -4,10 +4,10 @@ import html
 import json
 import posixpath
 import re
+import tomllib
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import tomllib
 from bs4 import BeautifulSoup
 from markdown import Markdown
 

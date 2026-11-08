@@ -182,8 +182,8 @@ See [Evaluation](../../docs/evaluation.md) for the published results table.
 cd server
 uv run --with pytest pytest -q tests/test_llm_eval.py
 cd ..
-uvx ruff==0.16.10 check build/llm-eval server/tests/test_llm_eval.py
-uvx ruff==0.16.10 format --check build/llm-eval server/tests/test_llm_eval.py
+uvx ruff==0.17.3 check build/llm-eval server/tests/test_llm_eval.py
+uvx ruff==0.17.3 format --check build/llm-eval server/tests/test_llm_eval.py
 uv run --with-requirements docs/requirements.txt mkdocs build --strict
 ```
 
