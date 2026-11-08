@@ -135,6 +135,11 @@ Keep credentials and model files out of commits and use sanitized fixtures.
 Run `uvx ruff==0.16.10 check --fix .` and `uvx ruff==0.16.10 format .` to apply Python lint fixes and formatting.
 Run `actionlint` 1.7.12 from the repository root after changing a workflow.
 
+Keep Ruff at 0.16.10 until the formatter, hooks and contributor commands can move together.
+Regenerate `server/requirements.docker.txt` from `server/uv.lock` with `uv export --frozen --no-dev --no-emit-project --no-header --quiet -o requirements.docker.txt` inside `server/`; independent pin changes can leave Pydantic and its core incompatible.
+The MCPB build overrides `tmp` and `zod` to patched versions until the CLI updates its dependency ranges.
+After changing these overrides, run `npm ci`, `npm audit`, and validate and pack the bundle with the pinned CLI.
+
 ## Documentation site
 
 The documentation site uses MkDocs Material and includes the repository and server READMEs.

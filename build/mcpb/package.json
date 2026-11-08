@@ -5,5 +5,9 @@
   "description": "Pinned MCPB CLI used to validate and pack the Claude Desktop bundle.",
   "dependencies": {
     "@anthropic-ai/mcpb": "2.1.2"
+  },
+  "overrides": {
+    "tmp": "0.2.7",
+    "zod": "4.6.7"
   }
 }
