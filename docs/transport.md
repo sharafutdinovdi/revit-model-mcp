@@ -585,7 +585,11 @@ Each v2 add-in owns `ROOT\instances\<pid>\`:
 Response temporary files also remain in the selected instance directory.
 
 The server resolves a target before publishing any job.
-With several running Revit processes, pass `document` or `process_id` to choose one.
+With several listed Revit processes, I select actions with an exact document ID (`doc:...` from `revit_documents`) or `process_id`.
+Starting and unresponsive processes count, even when a title matches only one responding process.
+Title, file name and full path references alone are refused before action submission.
+Reads retain title matching, and single-process selection is unchanged.
+Action responses include top-level `processId` and `revitVersion`; existing response fields remain intact.
 `document` accepts the Revit session `documentId` advertised in instance discovery, an exact full path, or a case-insensitive title or file-name substring.
 Session IDs start with `doc:` and distinguish same-name unsaved documents.
 An ID belongs to the open document in its Revit process and is shared across local, SSH and HTTP connections, not scoped to a Python server session.

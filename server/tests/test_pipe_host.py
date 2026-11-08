@@ -395,7 +395,7 @@ def test_action_result_can_be_fetched_by_new_server_connection(tmp_path: Path) -
                 )
             )
             await host.aclose()
-            assert result == FakeRevit.result(job)
+            assert result == {**FakeRevit.result(job), "processId": PID, "revitVersion": "2026"}
             assert revit.messages(1) == ["hello", "status"]
 
     asyncio.run(scenario())
@@ -445,6 +445,7 @@ def test_pipe_read_only_action_returns_refusal_and_read_raises():
             "command": "select",
             "error": "read-only mode",
             "errorCode": "read_only",
+            "processId": PID,
         }
         with pytest.raises(ReadOnlyRefusedError, match="workstation is in read-only mode"):
             await RevitChannel(remote).execute(Job.ping())
@@ -470,6 +471,7 @@ def test_pipe_read_only_cancel_returns_refusal():
             "command": "jobs",
             "error": "read-only mode",
             "errorCode": "read_only",
+            "processId": PID,
         }
 
     asyncio.run(check())
@@ -522,6 +524,7 @@ def test_pipe_policy_read_only_and_denial_keep_the_organization_text():
             "command": "select",
             "error": text,
             "errorCode": "policy_blocked",
+            "processId": PID,
         }
         with pytest.raises(PolicyRefusedError, match="Blocked by organization policy"):
             await remote.fetch_job("a" * 32)

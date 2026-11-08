@@ -22,11 +22,15 @@ Revit remains busy for the whole action duration.
 Timeout defaults and limits follow each tool's schema, not its read/action classification.
 File-channel actions use a pickup timeout of 300 seconds unless `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` overrides it; HTTP and named pipes do not use file pickup.
 HTTP addresses one endpoint; local and SSH discovery select one process and revalidate its identity before submission.
+When several Revit processes are listed, I target actions with an exact document ID (`doc:...` from `revit_documents`) or `process_id`.
+Starting and unresponsive processes count; a title, file name or full path alone is refused before action submission, even if it matches only one document.
+With one process, document matching is unchanged; reads still accept titles with several processes.
+Action responses include top-level `processId` and `revitVersion` for the selected process, without replacing existing response fields.
 All IDs are unitless Revit element IDs.
 Revit 2022-2023 accept IDs up to 2,147,483,647 only; larger IDs fail on those years.
 
 Action jobs with `targetDocument` resolve that reference when the add-in executes the job.
-The reference must match exactly one open document by a case-insensitive substring of its title or file name.
+The reference matches an exact session document ID, an exact full path, or exactly one open document by a case-insensitive substring of its title or file name.
 The resolved document is bound by its title and full path for all mutations and verification, even if another document is active.
 An unknown or closed target returns `The addressed document '<TargetDocument>' is not open.`
 An ambiguous target returns `The document reference '<TargetDocument>' is ambiguous (N open documents match); use a more specific substring.`

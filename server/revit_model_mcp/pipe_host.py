@@ -439,7 +439,9 @@ class LocalPipeHost:
         return list(await asyncio.gather(*(ping(instance) for instance in matched)))
 
     async def select_job(self, job: Job) -> tuple[RemoteHost, Job]:
-        instances = self.heartbeats()
+        instances = (
+            await self.fallback._discover_instances() if job.is_action else self.heartbeats()
+        )
         if any(PIPE_PROTOCOL in _protocols(item) for item in instances):
             instance = select_instance(instances, job)
             if PIPE_PROTOCOL in _protocols(instance):

@@ -72,7 +72,7 @@ def test_session_document_selector_and_conjunctive_process():
     assert select_instance(instances, job)["processId"] == 42
     with pytest.raises(RevitChannelError, match="not open"):
         select_instance(instances, job.for_process(41))
-    with pytest.raises(RevitChannelError, match="ambiguous"):
+    with pytest.raises(RevitChannelError, match="exact document ID"):
         select_instance(instances, Job("execute-code", {}).for_document("Same"))
 
 
@@ -228,3 +228,129 @@ def test_queued_process_operation_does_not_claim_the_active_document_as_its_targ
     assert receipt["responder"]["documentName"] == ""
     assert receipt["responder"]["documentPath"] == ""
     assert receipt["responder"]["activeDocument"]["documentId"] == "doc:ui-42"
+
+
+@pytest.mark.parametrize("document", ["Same", "Same.rvt", r"C:\models\Same.rvt", None])
+@pytest.mark.parametrize("responding", [True, False])
+def test_actions_refuse_text_target_even_when_only_one_process_matches(document, responding):
+    router = Router()
+    instances = [item.instance_info for item in router.instances]
+    instances[0]["documents"][0]["path"] = r"C:\models\Same.rvt"
+    instances[1] = {"processId": 42, "pluginResponding": responding}
+    with pytest.raises(RevitChannelError, match=r"doc:.*revit_documents.*process_id"):
+        select_instance(instances, Job("execute-code", {}).for_document(document))
+
+
+@pytest.mark.parametrize(
+    "command", ["execute-code", "select", "save-tool", "set-read-only", "jobs"]
+)
+def test_exact_action_targets_and_read_title_selection(command):
+    router = Router()
+    instances = [item.instance_info for item in router.instances]
+    instances[1] = {"processId": 42, "pluginResponding": False}
+    job = Job(command, {"requestCancellation": True})
+    assert select_instance(instances, job.for_document("doc:first"))["processId"] == 41
+    assert select_instance(instances, job.for_document("Same").for_process(41))["processId"] == 41
+    assert select_instance(instances[:1], job.for_document("Same"))["processId"] == 41
+    assert select_instance(instances, Job.document_info().for_document("Same"))["processId"] == 41
+
+
+def test_action_wrapper_refuses_title_before_sending_and_adds_identity():
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    from revit_model_mcp.actions import _send_action
+
+    async def scenario():
+        router = Router()
+        host = AsyncMock()
+        host.list_revit_instances.return_value = [
+            router.instances[0].instance_info,
+            {"processId": 42, "pluginResponding": False},
+        ]
+        execute = AsyncMock(return_value={"success": True, "data": {"count": 1}})
+        with pytest.raises(ToolError, match="exact document ID"):
+            await _send_action(execute, lambda: host, "select", document="Same")
+        execute.assert_not_awaited()
+        for target in ({"document": "doc:first"}, {"document": "Same", "process_id": 41}):
+            result = await _send_action(execute, lambda: host, "select", **target)
+            assert result == {
+                "success": True,
+                "data": {"count": 1},
+                "processId": 41,
+                "revitVersion": "2026",
+            }
+        host.list_revit_instances.return_value = [router.instances[0].instance_info]
+        await _send_action(execute, lambda: host, "select", document="Same")
+        assert execute.await_count == 3
+
+    asyncio.run(scenario())
+
+
+def test_pipe_action_selection_counts_processes_without_a_heartbeat():
+    from revit_model_mcp.pipe_host import LocalPipeHost, PipeJobHost
+
+    async def scenario():
+        instance = Instance(41, "doc:first").instance_info
+        instance["protocols"] = ["pipe/1"]
+        fallback = AsyncMock()
+        fallback._discover_instances.return_value = [
+            instance,
+            {"processId": 42, "pluginResponding": False},
+        ]
+        host = LocalPipeHost(fallback)
+        host.heartbeats = lambda: [instance]
+        host.connection = AsyncMock()
+        with pytest.raises(RevitChannelError, match="exact document ID"):
+            await host.select_job(Job("execute-code", {}).for_document("Same"))
+        host.connection.assert_not_awaited()
+        for job in (
+            Job("execute-code", {}).for_document("doc:first"),
+            Job("execute-code", {}).for_document("Same").for_process(41),
+        ):
+            selected, addressed = await host.select_job(job)
+            assert isinstance(selected, PipeJobHost)
+            assert addressed.payload["targetProcessId"] == 41
+        execute = AsyncMock(return_value={"success": True})
+        from revit_model_mcp.actions import _send_action
+
+        with pytest.raises(Exception, match="exact document ID"):
+            await _send_action(execute, lambda: host, "select", document="Same")
+        execute.assert_not_awaited()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("command", ["execute-code", "select", "save-tool", "set-read-only"])
+@pytest.mark.parametrize("success", [True, False])
+def test_channel_action_responses_include_identity_without_changing_payload(command, success):
+    from unittest.mock import patch
+
+    async def scenario():
+        remote = Instance(41, "doc:first")
+        remote.instance_info["commands"].append(command)
+        response = {"success": success, "data": {"existing": True}, "summary": "Existing"}
+        with patch.object(RevitChannel, "_execute_serial", AsyncMock(return_value=response)):
+            result = await RevitChannel(remote).execute(Job(command, {}).for_process(41))
+        assert result == {
+            "success": success,
+            "data": {"existing": True},
+            "summary": "Existing",
+            "processId": 41,
+            "revitVersion": "2026",
+        }
+
+    asyncio.run(scenario())
+
+
+def test_read_response_is_unchanged():
+    from unittest.mock import patch
+
+    async def scenario():
+        remote = Instance(41, "doc:first")
+        remote.instance_info["commands"].append("document-info")
+        response = {"success": True, "data": {"existing": True}}
+        with patch.object(RevitChannel, "_execute_serial", AsyncMock(return_value=response)):
+            result = await RevitChannel(remote).execute(Job.document_info())
+        assert result == {"success": True, "data": {"existing": True}}
+
+    asyncio.run(scenario())

@@ -2193,18 +2193,17 @@ class InstanceRoutingTests(unittest.IsolatedAsyncioTestCase):
                         await RevitChannel(host).execute(Job.document_info().for_document(document))
                 prepare.assert_not_awaited()
 
-    async def test_actions_resolve_a_unique_document_match_across_processes(self):
+    async def test_actions_refuse_a_unique_title_match_across_processes(self):
         host = SshPowerShellHost()
         host._discover_instances = AsyncMock(
             return_value=[instance_status(), {"processId": 84, "pluginResponding": False}]
         )
         with patch.object(SshPowerShellHost, "_handshake", AsyncMock()) as handshake:
-            selected, job = await host.select_job(
-                Job("delete", {"command": "delete", "targetDocument": "Structural"})
-            )
-        handshake.assert_awaited_once()
-        self.assertEqual(job.payload["targetProcessId"], 42)
-        self.assertIn(r"instances\42", selected._directory)
+            with self.assertRaisesRegex(RevitChannelError, "exact document ID"):
+                await host.select_job(
+                    Job("delete", {"command": "delete", "targetDocument": "Structural"})
+                )
+        handshake.assert_not_awaited()
 
     async def test_actions_require_one_process_without_a_document(self):
         host = SshPowerShellHost()

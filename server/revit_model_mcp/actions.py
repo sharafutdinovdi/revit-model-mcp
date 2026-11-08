@@ -21,7 +21,6 @@ from revit_model_mcp.revit_channel import (
     TransportUnavailableError,
     _optional_text,
     _unique_texts,
-    resolve_instance,
     select_instance,
     with_client_identity,
 )
@@ -704,21 +703,29 @@ async def _send_action(
     confirmation_processes: dict[str, int] | None = None,
     **payload,
 ) -> dict[str, Any]:
+    from revit_model_mcp.pipe_host import LocalPipeHost
+
     try:
-        instances = await host_provider().list_revit_instances()
-        if command in {"list-tools", "get-tool", "delete-tool"} and instances:
+        host = host_provider()
+        instances = (
+            await host.fallback._discover_instances()
+            if isinstance(host, LocalPipeHost) and Job(command, payload).is_action
+            else await host.list_revit_instances()
+        )
+        if (
+            command in {"list-tools", "get-tool", "delete-tool"}
+            and instances
+            and process_id is None
+            and document is None
+        ):
             process_id = min(int(instance["processId"]) for instance in instances)
             if command == "delete-tool" and confirmation_processes is not None:
                 process_id = confirmation_processes.get(payload.get("confirmToken"), process_id)
-        if command == "set-read-only" and process_id is None and instances:
+        if command == "set-read-only" and process_id is None and document is None and instances:
             process_id = min(int(instance["processId"]) for instance in instances)
-        selected = (
-            select_instance(
-                instances,
-                Job(command, {"targetProcessId": process_id, "targetDocument": document}),
-            )
-            if process_id is not None
-            else resolve_instance(instances, document)
+        selected = select_instance(
+            instances,
+            Job(command, {**payload, "targetProcessId": process_id, "targetDocument": document}),
         )
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(command, str(error)))
@@ -735,6 +742,10 @@ async def _send_action(
         },
     )
     result = redact_model_paths(await execute(job, timeout_seconds, None))
+    if job.is_action:
+        for key in ("processId", "revitVersion"):
+            if key in selected:
+                result.setdefault(key, selected[key])
     if command == "delete-tool" and confirmation_processes is not None:
         data = result.get("data")
         token = data.get("confirmToken") if isinstance(data, dict) else None
