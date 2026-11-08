@@ -87,6 +87,7 @@ public sealed class Application : ExternalApplication
         {
             FileChannelEnabled = fileChannelEnabled
         };
+        Application.DialogBoxShowing += _controlChannel.OnDialog;
         _eventHandler = new ControlExternalEventHandler(_controlChannel);
         _externalEvent = Autodesk.Revit.UI.ExternalEvent.Create(_eventHandler);
         _requestQueue = new ExternalEventRequestQueue(() =>
@@ -269,6 +270,7 @@ public sealed class Application : ExternalApplication
         _pipeChannel = null;
         _httpChannel?.Dispose();
         _httpChannel = null;
+        Application.DialogBoxShowing -= _controlChannel.OnDialog;
         _controlChannel.Shutdown();
         _externalEvent?.Dispose();
         _externalEvent = null;

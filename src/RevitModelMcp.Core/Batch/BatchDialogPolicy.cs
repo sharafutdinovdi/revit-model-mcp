@@ -14,6 +14,11 @@ public static class BatchDialogPolicy
 
     public const int MaximumRecords = 20;
 
+    public const string SaveReminderDismissed = "Dismissed Revit's save reminder without saving";
+
+    public static bool IsSaveReminder(string? dialogId, string? runtimeType, bool hasPendingJob = true) =>
+        hasPendingJob && dialogId == "TaskDialog_Project_Not_Saved_Recently" && runtimeType == "TaskDialogShowingEventArgs";
+
     public static IReadOnlyList<int> FamilyAuditDialogResults(string runtimeType, int dialogType = 0)
     {
         return runtimeType switch
@@ -84,6 +89,7 @@ public static class BatchDialogPolicy
 
     public static BatchDialogDecision Decide(string? dialogId, string? runtimeType,
         IReadOnlyDictionary<(string Id, string Type), int>? allowlist = null) =>
+        IsSaveReminder(dialogId, runtimeType) ? new(true, 2, false) :
         dialogId is not null && runtimeType is not null &&
         (allowlist ?? SafeChoices).TryGetValue((dialogId, runtimeType), out var choice)
             ? new(true, choice, false) : new(false, null, true);

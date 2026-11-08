@@ -83,6 +83,8 @@ internal static class ActivityRecorder
     private static void Record(ActivityEntry entry, Document? document, string? undoName, bool rolledBack,
         ChangeCapture? changes, Action? fillDryRun = null, bool success = true, bool partial = false)
     {
+        if (JobDialogScope.Current?.DismissalWarning is string warning)
+            entry.Summary = $"{entry.Summary} {warning}.";
         if (fillDryRun is not null) fillDryRun();
         else changes?.Fill(entry);
         ActivityLog.Record(entry);
