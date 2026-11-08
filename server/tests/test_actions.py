@@ -2131,6 +2131,7 @@ def test_read_only_action_result_has_error_code(name, arguments, command):
         "command": command,
         "error": "read-only mode",
         "errorCode": "read_only",
+        **({"processId": 42} if command != "jobs" else {}),
     }
     execute.assert_awaited_once()
     if name == "revit_cancel_job":
@@ -2334,6 +2335,8 @@ def test_my_tools_confirmation_round_trip(tool, arguments, command, selectors):
 
     if tool == "revit_save_tool" and selectors:
         selectors = {"processId": 84} if "processId" in selectors else {"process_id": 84}
+    if tool == "revit_run_tool" and selectors.get("document"):
+        selectors = {**selectors, "process_id": 84}
 
     server, execute, host = action_server()
     host.list_revit_instances.return_value = (
@@ -2448,6 +2451,8 @@ def test_my_tools_route_to_selected_instance(tool, arguments, selector):
 
     if tool == "revit_save_tool":
         selector = {"process_id": 84}
+    if tool == "revit_run_tool" and selector.get("document"):
+        selector = {**selector, "process_id": 84}
 
     server, execute, host = action_server()
     host.list_revit_instances.return_value = [
