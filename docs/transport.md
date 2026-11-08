@@ -430,6 +430,8 @@ The heartbeat advertises `httpPort` only after the listener binds successfully; 
 For several instances, configure a distinct port in each process environment before launch.
 An occupied port disables HTTP for the later instance and produces a log message; its file channel remains available.
 `revit_list_instances` reports the connected endpoint in HTTP mode.
+HTTP health discovery reports only the active document title, not open document IDs or paths.
+HTTP submission preserves the document reference for resolution inside Revit, including inactive documents and IDs obtained through another transport.
 `targetDocument` and `targetProcessId` are checked in the Revit API context before execution.
 
 ## Remote setups
@@ -584,8 +586,10 @@ Response temporary files also remain in the selected instance directory.
 
 The server resolves a target before publishing any job.
 With several running Revit processes, pass `document` or `process_id` to choose one.
-`document` accepts the session `documentId` advertised in instance discovery, an exact full path, or a case-insensitive title or file-name substring.
-Session IDs start with `doc:` and distinguish same-name unsaved documents; obtain a new ID after closing and reopening a document or restarting Revit.
+`document` accepts the Revit session `documentId` advertised in instance discovery, an exact full path, or a case-insensitive title or file-name substring.
+Session IDs start with `doc:` and distinguish same-name unsaved documents.
+An ID belongs to the open document in its Revit process and is shared across local, SSH and HTTP connections, not scoped to a Python server session.
+Obtain a new ID after closing and reopening a document or restarting Revit.
 When both selectors are supplied, the document must belong to that process. Neither selector overrides the other.
 Zero or multiple matching processes fail before publication. Actions and directed reads refuse ambiguous open-document references inside the selected process.
 A directed read can target an inactive document.

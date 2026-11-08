@@ -137,7 +137,10 @@ class HttpHost:
         ]
 
     async def select_job(self, job: Job) -> tuple[HttpHost, Job]:
-        instance = select_instance(await self.list_revit_instances(), job)
+        # Health advertises only the active title, not the open documents or their IDs.
+        # Resolve the document in the add-in after selecting the configured endpoint.
+        endpoint_job = replace(job, payload={**job.payload, "targetDocument": None})
+        instance = select_instance(await self.list_revit_instances(), endpoint_job)
         selected = copy.copy(self)
         selected._verified_token = None
         selected._identity = instance
