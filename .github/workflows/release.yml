@@ -265,7 +265,7 @@ jobs:
       - name: Upload unsigned artifacts
         id: upload-unsigned
         if: ${{ steps.signpath.outputs.enabled == 'true' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-for-signing
           path: signing/unsigned/*
@@ -336,13 +336,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Signed store bundle validation failed' }
       - name: Upload MSI logs on failure
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installer-logs
           path: |
             ${{ runner.temp }}/mcp-*.log
             ${{ runner.temp }}/*-extract.log
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: installers
           path: output/*.msi
@@ -354,12 +354,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Python build failed' }
           uvx twine==7.0.0 check server/dist/*
           if ($LASTEXITCODE -ne 0) { throw 'Package validation failed' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: python-dist
           path: server/dist/*
           if-no-files-found: error
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - name: Set bundle release version
@@ -420,7 +420,7 @@ jobs:
             if ($tool.inputSchema -isnot [System.Management.Automation.PSCustomObject]) { throw "Tool $($tool.name) must have an inputSchema object" }
           }
       - name: Upload checked store submission artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: store-${{ env.RELEASE_VERSION }}
           path: |
@@ -467,7 +467,7 @@ jobs:
           # The bundle file is JSONL already: one attestation bundle per line.
           jq -c . "$ATTEST_BUNDLE_PATH" > "artifacts/release/revit-model-mcp-$RELEASE_VERSION.intoto.jsonl"
           test -s "artifacts/release/revit-model-mcp-$RELEASE_VERSION.intoto.jsonl"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets
           path: artifacts/release/
@@ -483,7 +483,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-assets
           path: artifacts/release
@@ -595,11 +595,11 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: python-dist
           path: dist
-      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   mcp-registry:
     needs: pypi
@@ -657,7 +657,7 @@ jobs:
       - name: Skip without Smithery API key
         if: ${{ env.SMITHERY_API_KEY == '' }}
         run: echo '::notice::SMITHERY_API_KEY is empty; skipping Smithery publishing.'
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
           name: release-assets
@@ -666,14 +666,14 @@ jobs:
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
           python-version: '3.12'
       - name: Install uv
         if: ${{ env.SMITHERY_API_KEY != '' }}
         run: pip install --require-hashes -r .github/requirements/uv.txt
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: ${{ env.SMITHERY_API_KEY != '' }}
         with:
           node-version: '22'
