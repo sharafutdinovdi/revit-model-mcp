@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "mcpSpecVersion": "2025-11-25",
+  "mcpSpecVersion": "2026-07-28",
   "server": {
     "name": "revit-model-mcp",
     "transport": "stdio",

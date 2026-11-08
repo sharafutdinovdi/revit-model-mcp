@@ -20,6 +20,13 @@ This page states which MCP clients were checked against Model MCP, which were no
 
 ## What "not tested" means
 
-The server follows MCP specification `2025-11-25` over stdio. A compliant client can use it. Differences in tool-list size limits, schema handling and confirmation behavior between clients are not covered. The server returns a confirmation token for risky calls, and the client has to show the preview to the user; a client that does not do this weakens that safeguard. Check this before you use a client for work on a real model.
+The server supports MCP `2026-07-28` per-request envelopes and legacy handshake versions through `2025-11-25` over stdio.
+See [protocol negotiation and client identity](mcp-specifications.md#protocol-negotiation-and-client-identity) for the supported versions and identity fields.
+Automated in-memory transport tests cover negotiation, client name and version from modern request metadata, and client names forwarded to Revit.
+These checks do not add a live client validation entry to the table above.
+Differences in tool-list size limits, schema handling and confirmation behavior between clients are not covered.
+The server returns a confirmation token for risky calls, and the client has to show the preview to the user.
+A client that does not do this weakens that safeguard.
+Check this before using a client for work on a real model.
 
 If you try another client, report the result in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions).
