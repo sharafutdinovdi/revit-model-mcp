@@ -1192,7 +1192,7 @@ def test_client_name_comes_from_initialize_context(mode):
 
     host = Host()
     session = SimpleNamespace(
-        client_params=SimpleNamespace(client_info=SimpleNamespace(name="codex"))
+        client_params=SimpleNamespace(client_info=SimpleNamespace(name="example-client"))
     )
     context = Context(request_context=SimpleNamespace(session=session))
 
@@ -1203,7 +1203,7 @@ def test_client_name_comes_from_initialize_context(mode):
             async with Client(
                 InMemoryTransport(revit_server.mcp),
                 mode=mode,
-                client_info=Implementation(name="codex", version="1.2.3"),
+                client_info=Implementation(name="example-client", version="1.2.3"),
                 read_timeout_seconds=10,
             ) as client:
                 assert client.protocol_version == (
@@ -1214,7 +1214,7 @@ def test_client_name_comes_from_initialize_context(mode):
 
     with patch.object(revit_server, "channel", RevitChannel(host)):
         asyncio.run(call())
-    assert host.payload["clientName"] == "codex"
+    assert host.payload["clientName"] == "example-client"
     assert len(host.payload["clientId"]) == 32
 
 
