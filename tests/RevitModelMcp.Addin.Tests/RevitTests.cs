@@ -47,6 +47,71 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task ShowFarWallFromScheduleCompletesWithinThirtySecondsAsync(bool planAlreadyOpen)
+    {
+        var original = UiApplication.ActiveUIDocument?.Document;
+        if (original is null || !File.Exists(original.PathName))
+            Skip.Test("Showing elements requires a saved active document for restoring the UI session.");
+        var template = Environment.GetEnvironmentVariable("RMM_TEST_PROJECT_TEMPLATE")
+            ?? Application.DefaultProjectTemplate;
+        if (!File.Exists(template)) Skip.Test("Set RMM_TEST_PROJECT_TEMPLATE to an existing project template.");
+        Document? shownDocument = null;
+        try
+        {
+            RevitModelMcp.Control.DocumentActions.Execute(UiApplication, "new-document", new ActionJobContract
+            {
+                Kind = "project",
+                Template = template,
+                SaveAs = Path.Combine(_directory!, "show-wall.rvt"),
+                Activate = true
+            });
+            var uiDocument = UiApplication.ActiveUIDocument
+                ?? throw new InvalidOperationException("The regression document was not activated.");
+            shownDocument = uiDocument.Document;
+            ViewPlan plan;
+            ViewSchedule schedule;
+            Wall wall;
+            using (var transaction = new Transaction(shownDocument, "Create show regression model"))
+            {
+                transaction.Start();
+                var level = Level.Create(shownDocument, 0);
+                var planType = new FilteredElementCollector(shownDocument).OfClass(typeof(ViewFamilyType))
+                    .Cast<ViewFamilyType>().First(type => type.ViewFamily == ViewFamily.FloorPlan);
+                plan = ViewPlan.Create(shownDocument, planType.Id, level.Id);
+                plan.CropBoxActive = false;
+                wall = Wall.Create(shownDocument,
+                    Line.CreateBound(new XYZ(3000, 3000, 0), new XYZ(3030, 3000, 0)), level.Id, false);
+                schedule = ViewSchedule.CreateSchedule(shownDocument, new ElementId(BuiltInCategory.OST_Walls));
+                transaction.Commit();
+            }
+            if (planAlreadyOpen) uiDocument.ActiveView = plan;
+            uiDocument.ActiveView = schedule;
+            var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var result = Invoke<ActionResultData>(Type("Control.ActionCommandExecutor"), null, "ExecuteStep",
+                shownDocument, uiDocument, "show", new ActionJobContract { ElementIds = [Id(wall.Id)], Select = true },
+                failures, "RMM tests", false, true);
+            await Assert.That(stopwatch.Elapsed < TimeSpan.FromSeconds(30)).IsTrue();
+            await Assert.That(result.ElapsedMs.HasValue).IsTrue();
+            await Assert.That(uiDocument.ActiveView.Id).IsEqualTo(plan.Id);
+            await Assert.That(uiDocument.Selection.GetElementIds().Contains(wall.Id)).IsTrue();
+            var zoom = uiDocument.GetOpenUIViews().Single(view => view.ViewId == plan.Id).GetZoomCorners();
+            await Assert.That(Math.Abs((zoom[0].X + zoom[1].X) / 2 - 3015) < 1).IsTrue();
+            await Assert.That(Math.Abs((zoom[0].Y + zoom[1].Y) / 2 - 3000) < 1).IsTrue();
+        }
+        finally
+        {
+            if (shownDocument is { IsValidObject: true })
+            {
+                UiApplication.OpenAndActivateDocument(original!.PathName);
+                shownDocument.Close(false);
+            }
+        }
+    }
+
+    [Test]
     public async Task CatalogLimitAndNameFilterAsync()
     {
         var result = Read<CatalogData>("CatalogReader", "Read", Model, "categories", null, 1);
