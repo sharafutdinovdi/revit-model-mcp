@@ -411,7 +411,9 @@ public sealed class RevitTests : RevitApiUiTest
             });
             await Assert.That(result.CodeError).IsNull();
             await Assert.That(result.ReturnValue).IsEqualTo(familyName);
-            var loadedTypeExists = originalFamily.GetFamilySymbolIds()
+            var loadedFamily = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+                .Single(family => family.Name == familyName);
+            var loadedTypeExists = loadedFamily.GetFamilySymbolIds()
                 .Any(id => Model.GetElement(id).Name == typeName);
             if (dryRun)
             {
