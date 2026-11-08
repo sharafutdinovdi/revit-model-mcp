@@ -505,6 +505,26 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
+    [Arguments("auto")]
+    [Arguments("group")]
+    public async Task CodeExecution_FullClassUsesHostContextAsync(string mode)
+    {
+        var result = ExecuteCode(new ActionJobContract
+        {
+            TransactionMode = mode,
+            DryRun = true,
+            Code = """
+                public static class Script
+                {
+                    public static object Execute(ScriptContext ctx) => ctx.Document.Title;
+                }
+                """
+        });
+        await Assert.That(result.CodeError).IsNull();
+        await Assert.That(result.ReturnValue).IsEqualTo(Model.Title);
+    }
+
+    [Test]
     [Arguments("group", true, false)]
     [Arguments("group", false, true)]
     [Arguments("group", false, false)]

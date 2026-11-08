@@ -172,7 +172,8 @@ These tests do not require a live Revit model.
 
 `tests/RevitModelMcp.Addin.Tests` runs readers and action executors directly through Nice3point.TUnit.Revit.
 A licensed Revit installation and an interactive Windows user session are required.
-The solution lists the project under `tests` without a default build mapping; CI continues to run only Core tests.
+The solution lists the project under `tests` without a default build mapping.
+Windows CI builds this project for Revit 2022 and 2027; execution still requires the licensed workstation.
 `RunRevitTests=true` opts into Revit test discovery.
 
 ```powershell
@@ -190,6 +191,7 @@ The runner uses the supported `dotnet run --project ... -c Release.R<year>` laun
 For Revit 2025 and later, the console test host uses the .NET runtime specified by the installed `RevitAPI.runtimeconfig.json`.
 Revit updates can change that runtime independently of the project's compile-time target framework.
 Direct project runs require `-p:RevitTestRuntimeVersion=<installed-runtime-version>` when the installed API requires a newer runtime.
+Script dependencies bind to the executor's loaded assemblies, including when the test host uses an isolated assembly load context.
 The tests check the returned undo name and commit events; native undo menu inspection remains a manual check.
 The runner refuses to start while any `Revit.exe` exists and requires at least 15 passing tests with no failures; a run that executes no tests fails.
 TRX files default to `C:\Projects\rmm-test\out\tests\addin-<year>.trx`; `-OutputDirectory` overrides the directory.
