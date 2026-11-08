@@ -650,6 +650,46 @@ public sealed class ActionJobParserTests
         await Assert.That(opened.Remove(wrapper)).IsTrue();
     }
 
+    [Test]
+    public async Task DocumentIdentityComparer_ClosedDocumentsDoNotCallNativeMembers()
+    {
+        var comparer = new DocumentIdentityComparer<ClosingDocument>((first, second) => first.Equals(second),
+            document => document.IsValid);
+        var first = new ClosingDocument(Guid.NewGuid());
+        var second = new ClosingDocument(Guid.NewGuid());
+        var survivor = new ClosingDocument(Guid.NewGuid());
+        var wrapper = new ClosingDocument(survivor.Id);
+        var documents = new Dictionary<ClosingDocument, string>(comparer)
+        {
+            [first] = "first",
+            [second] = "second",
+            [survivor] = "survivor"
+        };
+        var hash = comparer.GetHashCode(first);
+        first.IsValid = false;
+        second.IsValid = false;
+
+        await Assert.That(comparer.Equals(first, second)).IsFalse();
+        await Assert.That(comparer.Equals(first, first)).IsTrue();
+        await Assert.That(comparer.Equals(first, survivor)).IsFalse();
+        await Assert.That(comparer.Equals(survivor, first)).IsFalse();
+        await Assert.That(comparer.GetHashCode(first)).IsEqualTo(hash);
+        await Assert.That(documents[wrapper]).IsEqualTo("survivor");
+        await Assert.That(documents.Remove(first)).IsTrue();
+        await Assert.That(documents.Remove(second)).IsTrue();
+        documents.Add(new ClosingDocument(Guid.NewGuid()), "new");
+        await Assert.That(documents.Count).IsEqualTo(2);
+    }
+
+    private sealed class ClosingDocument(Guid id)
+    {
+        public bool IsValid { get; set; } = true;
+        public Guid Id => IsValid ? id : throw new InvalidOperationException("The document is closed.");
+
+        public override bool Equals(object? other) => other is ClosingDocument document && Id == document.Id;
+        public override int GetHashCode() => Id.GetHashCode();
+    }
+
     private sealed class DocumentIdentity(Guid id, string title, string path)
     {
         public Guid Id { get; } = id;

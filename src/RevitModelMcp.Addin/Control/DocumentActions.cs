@@ -13,7 +13,8 @@ namespace RevitModelMcp.Control;
 
 internal static class DocumentActions
 {
-    private static readonly DocumentIdentityComparer<Document> Identity = new((first, second) => first.Equals(second));
+    private static readonly DocumentIdentityComparer<Document> Identity =
+        new((first, second) => first.Equals(second), document => document.IsValidObject);
     private static readonly Dictionary<Document, (string Mode, string OriginalPath)> Opened =
         new(Identity);
 

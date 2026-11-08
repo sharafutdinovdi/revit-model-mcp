@@ -11,8 +11,8 @@ namespace RevitModelMcp.Capture;
 
 internal static class ReadCommandReader
 {
-    private static readonly Dictionary<Document, string> DocumentIds =
-        new(new DocumentIdentityComparer<Document>((first, second) => first.Equals(second)));
+    private static Dictionary<Document, string> DocumentIds =
+        new(new DocumentIdentityComparer<Document>((first, second) => first.Equals(second), document => document.IsValidObject));
 
     internal static string DocumentId(Document document)
     {
@@ -24,14 +24,13 @@ internal static class ReadCommandReader
 
     internal static void PruneDocumentIds()
     {
-        List<Document>? closed = null;
-        foreach (var document in DocumentIds.Keys)
+        if (DocumentIds.Keys.All(document => document.IsValidObject)) return;
+        var open = new Dictionary<Document, string>(DocumentIds.Comparer);
+        foreach (var entry in DocumentIds)
         {
-            if (document.IsValidObject) continue;
-            (closed ??= []).Add(document);
+            if (entry.Key.IsValidObject) open.Add(entry.Key, entry.Value);
         }
-        if (closed is null) return;
-        foreach (var document in closed) DocumentIds.Remove(document);
+        DocumentIds = open;
     }
 
     public static ResponderInfo ReadResponder(UIApplication application, Document? document = null)

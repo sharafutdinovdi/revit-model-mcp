@@ -197,9 +197,10 @@ internal static class CodeExecution
         {
             if (ReferenceEquals(_currentFailures, failures)) failures.ProcessCallFailures(arguments);
         }
-        var initialDocuments = new HashSet<Document>(application.Application.Documents.Cast<Document>());
-        var receipts = new Dictionary<Document, CodeDocumentReceipt>();
-        var groups = new Dictionary<Document, TransactionGroup>();
+        var identity = new DocumentIdentityComparer<Document>((first, second) => first.Equals(second), candidate => candidate.IsValidObject);
+        var initialDocuments = new HashSet<Document>(application.Application.Documents.Cast<Document>(), identity);
+        var receipts = new Dictionary<Document, CodeDocumentReceipt>(identity);
+        var groups = new Dictionary<Document, TransactionGroup>(identity);
         Transaction? transaction = null;
         var rollbackRequested = action.DryRun || action.ToolMode == "read" && action.ToolName is not null;
         var failed = false;

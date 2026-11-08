@@ -38,6 +38,10 @@ A breaking change to anything in the first list needs a major release.
 - Supported Revit years can be added in a minor release. I announce a year's removal one minor release ahead.
 - Security fixes can break the rules above. The changelog says so.
 
+## Document identity
+
+I keep session document IDs stable while a document remains open. Closing family or project documents removes their cached IDs on the next discovery refresh without reading native members of closed documents. Document discovery and subsequent project creation remain available after those closures.
+
 ## How it is enforced
 
 A test snapshots the schemas of every registered tool: names, parameters, types, defaults and required status.

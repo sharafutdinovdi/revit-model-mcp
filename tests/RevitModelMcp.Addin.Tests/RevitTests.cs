@@ -218,6 +218,65 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
+    public async Task ClosedFamilyDocumentsDoNotPoisonDocumentIdentityAsync()
+    {
+        var template = Environment.GetEnvironmentVariable("RMM_TEST_PROJECT_TEMPLATE")
+            ?? Application.DefaultProjectTemplate;
+        if (!File.Exists(template)) Skip.Test("Set RMM_TEST_PROJECT_TEMPLATE to an existing project template.");
+        var families = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+            .Where(family => family.IsEditable && !family.IsInPlace).Take(2).ToList();
+        if (families.Count < 2) Skip.Test("The model needs two editable families.");
+        var opened = new List<Document>();
+        var closedIds = new List<string>();
+        var survivorId = RevitModelMcp.Capture.ReadCommandReader.DocumentId(Model);
+        var discovery = new RevitModelMcp.Application();
+        var path = Path.Combine(_directory!, "after-family-close.rvt");
+        Document? created = null;
+        try
+        {
+            foreach (var family in families)
+            {
+                var document = Model.EditFamily(family);
+                opened.Add(document);
+                closedIds.Add(RevitModelMcp.Capture.ReadCommandReader.DocumentId(document));
+            }
+            foreach (var document in opened)
+                await Assert.That(document.Close(false)).IsTrue();
+
+            var documents = Invoke<IReadOnlyList<InstanceDocument>>(typeof(RevitModelMcp.Application),
+                discovery, "ReadDocuments", (object?)null);
+            await Assert.That(documents.Any(document => document.DocumentId == survivorId)).IsTrue();
+            await Assert.That(documents.Any(document => closedIds.Contains(document.DocumentId!))).IsFalse();
+            var listed = RevitModelMcp.Control.DocumentActions.List(UiApplication, false);
+            await Assert.That(listed.Count).IsEqualTo(Application.Documents.Cast<Document>().Count(document => !document.IsLinked));
+
+            var result = RevitModelMcp.Control.DocumentActions.Execute(UiApplication, "new-document", new ActionJobContract
+            {
+                Kind = "project",
+                Template = template,
+                SaveAs = path,
+                Activate = false
+            });
+            created = Application.Documents.Cast<Document>().Single(document => document.PathName == path);
+            await Assert.That(result.Path).IsEqualTo(path);
+            await Assert.That(result.Saved).IsEqualTo((bool?)true);
+            await Assert.That(File.Exists(path)).IsTrue();
+            documents = Invoke<IReadOnlyList<InstanceDocument>>(typeof(RevitModelMcp.Application),
+                discovery, "ReadDocuments", (object?)null);
+            await Assert.That(documents.Any(document => document.Path == path)).IsTrue();
+            await Assert.That(documents.Any(document => closedIds.Contains(document.DocumentId!))).IsFalse();
+            await Assert.That(RevitModelMcp.Capture.ReadCommandReader.DocumentId(Model)).IsEqualTo(survivorId);
+        }
+        finally
+        {
+            created ??= Application.Documents.Cast<Document>().FirstOrDefault(document => document.PathName == path);
+            if (created is { IsValidObject: true }) created.Close(false);
+            foreach (var document in opened)
+                if (document.IsValidObject) document.Close(false);
+        }
+    }
+
+    [Test]
     public async Task PlanCaptureDetachesScopeBoxAndPreservesSourceAsync()
     {
         using var doors = new FilteredElementCollector(Model).OfCategory(BuiltInCategory.OST_Doors).WhereElementIsNotElementType();
