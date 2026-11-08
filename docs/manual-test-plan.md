@@ -254,13 +254,14 @@ For the run, produce a short results table: environment, release tag, per-sectio
 ## Workstation regression and release smoke
 
 The workstation must have a licensed Revit installation, .NET from `global.json`, uv, and an interactive user session.
-Both scripts refuse to start while another Revit process exists.
-Shared workstation runs use only `rmm-*` tasks and never stop another session's Revit or scheduled tasks.
+The regression runner refuses to start while another Revit process exists.
+The release check waits while two or more Revit processes exist and never closes a process it did not start.
 
 ```powershell
 .\build\run-addin-tests.ps1 -Year 2027
 .\build\run-addin-tests.ps1 -Year 2022 -Model 'C:\Projects\rmm-test\2022\rac_basic_sample_project.rvt'
-.\build\release-smoke.ps1 -Msi '.\output\RevitModelMcp-1.0.0-SingleUser.msi' -ExpectedVersion '1.0.0'
+.\build\release-smoke.ps1 -Tag v0.9.1 -ModelDirectory .\test-models
+.\build\release-smoke.ps1 -BuildDirectory . -Years 2024 -ModelDirectory .\test-models
 ```
 
 The regression executable opens private model copies and exercises catalog limits, aggregation, query filters and paging, skipped reads, details, warnings, health counts, parameter fill, family audit summary/full, API lookup, view listing, and readers after another document closes.
@@ -270,12 +271,12 @@ The original sample model is never saved.
 TRX reports appear under `C:\Projects\rmm-test\out\tests`; the runner rejects fewer than 15 passes or any failure.
 Record the counters for each year and retain the TRX files with workstation evidence.
 
-The release smoke requires a SingleUser MSI.
-An existing registered SingleUser installation also requires `-PreviousMsi <full previous package>`; its ProductCode must match the installed product.
-The smoke restores the previous MSI registration, add-in files, and settings after removing the tested package.
-It retains a dated backup and checks per-year manifests and ProductVersions, a fresh 2027 heartbeat for the selected model, and a successful `revit_ping` over the named pipe.
-After the run, inspect `summary.txt` or `summary.csv` in the dated smoke output directory.
-Every restore row must pass; compare the restored DLL ProductVersions with the integration build and confirm that no owned Revit process or scheduled task remains.
-An installation failure still triggers cleanup and restoration.
-The backup remains available if cleanup fails.
+I use the [repeatable release check](validation.md#repeatable-release-check) as the release gate.
+I supply one disposable test model per selected year and reserve the Windows account during the check.
+The check installs the verified release MSI or local build, starts each selected year, pings over the named pipe, moves a seeded wall and verifies undo restores its details, captures a PNG, verifies read-only refusal and token unlock, and requests HTTP health on an allocated loopback port.
+The fixed terminal and CSV columns are `Year`, `Check`, `Result`, `Detail`; `Result` is `PASS` or `FAIL`, and `Year=0` identifies shared checks.
+Each successful year reports `Install/start`, `Ping`, `Move`, `Undo`, `Capture`, `Read-only`, `HTTP`, `Cleanup`.
+Failures produce exit code 1; I retain `summary.txt`, `summary.csv`, per-year response logs and PNG evidence.
+I inspect every cleanup row before accepting the release.
+Tag mode requires a disposable account without an existing Model MCP MSI; local mode backs up and restores selected add-in folders.
 See [release ritual](../CONTRIBUTING.md#release-ritual) for the release gate and packaging command.

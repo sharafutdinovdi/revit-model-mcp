@@ -1,104 +1,37 @@
-﻿[CmdletBinding()]
+﻿[CmdletBinding(DefaultParameterSetName = 'Build')]
 param(
-    [Parameter(Mandatory)][string]$Msi,
-    [Parameter(Mandatory)][string]$ExpectedVersion,
-    [string]$PreviousMsi,
-    [string]$Model = 'C:\Projects\rmm-test\2027\Snowdon Towers Sample Architectural.rvt',
-    [string]$ServerDirectory = (Join-Path (Split-Path $PSScriptRoot -Parent) 'server'),
-    [string]$OutputDirectory = 'C:\Projects\rmm-test\out\tests',
+    [Parameter(Mandatory, ParameterSetName = 'Release')][string]$Tag,
+    [Parameter(Mandatory, ParameterSetName = 'Build')][string]$BuildDirectory,
+    [ValidateRange(2022, 2027)][int[]]$Years,
+    [Parameter(Mandatory)][string]$ModelDirectory,
+    [string]$OutputDirectory = (Join-Path $env:LOCALAPPDATA 'RevitModelMcp\release-checks'),
     [ValidateRange(30, 900)][int]$TimeoutSeconds = 300
 )
 $ErrorActionPreference = 'Stop'
-$results = [Collections.Generic.List[object]]::new()
-function Result([string]$Check, [bool]$Passed, [string]$Detail) {
-    $results.Add([pscustomobject]@{ Check = $Check; Result = $(if ($Passed) { 'PASS' } else { 'FAIL' }); Detail = $Detail })
-}
-function Assert-NoForeignRevit([int]$OwnedId = 0) {
-    $foreign = @(Get-CimInstance Win32_Process -Filter "Name='Revit.exe'" | Where-Object ProcessId -ne $OwnedId)
-    if ($foreign.Count) { throw 'A foreign Revit.exe is running. Smoke aborted; no foreign process will be closed.' }
-}
-function Run-Msi([string]$Operation, [string]$Log, [string]$Package = $Msi, [string]$Scope = 'ALLUSERS=2 MSIINSTALLPERUSER=1') {
-    $process = Start-Process msiexec.exe -ArgumentList "$Operation `"$Package`" /qn /norestart $Scope /l*v `"$Log`"" -Wait -PassThru
-    if ($process.ExitCode -notin 0, 3010) { throw "msiexec $Operation failed: $($process.ExitCode); $Log" }
-}
-Assert-NoForeignRevit
-$Msi = (Resolve-Path -LiteralPath $Msi).Path
-if ([IO.Path]::GetFileName($Msi) -notmatch 'SingleUser.*\.msi$') { throw 'A SingleUser MSI is required.' }
-if (!(Test-Path -LiteralPath $Model -PathType Leaf)) { throw "Model not found: $Model" }
-$Model = (Resolve-Path -LiteralPath $Model).Path
-$ServerDirectory = (Resolve-Path -LiteralPath $ServerDirectory).Path
-$installed = @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -eq 'Model MCP' -and $_.WindowsInstaller -eq 1 })
-$previousScope = '0'
-if ($installed.Count) {
-    if ($installed.Count -ne 1 -or !$PreviousMsi) { throw 'Supply -PreviousMsi for the single existing Model MCP installation.' }
-    $PreviousMsi = (Resolve-Path -LiteralPath $PreviousMsi).Path
-    if ([IO.Path]::GetFileName($PreviousMsi) -notmatch 'SingleUser.*\.msi$') { throw 'Only a previous SingleUser package can be restored.' }
-    $installer = New-Object -ComObject WindowsInstaller.Installer
-    $database = $installer.OpenDatabase($PreviousMsi, 0)
-    $view = $database.OpenView("SELECT ``Value`` FROM ``Property`` WHERE ``Property``='ProductCode'")
-    $view.Execute()
-    if ($view.Fetch().StringData(1) -ne $installed[0].PSChildName) { throw 'PreviousMsi does not match the installed ProductCode.' }
-    $previousScope = $installer.ProductInfo($installed[0].PSChildName, 'AssignmentType')
-}
-$years = @(2022..2027 | Where-Object { Test-Path "C:\Program Files\Autodesk\Revit $_\Revit.exe" })
-if (2027 -notin $years) { throw 'Revit 2027 must be installed for the interactive smoke.' }
-$runDirectory = Join-Path $OutputDirectory ('smoke-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$results = New-Object 'Collections.Generic.List[object]'
+$runDirectory = Join-Path $OutputDirectory ((Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force $runDirectory | Out-Null
-$backup = Join-Path $runDirectory 'backup'
-New-Item -ItemType Directory $backup | Out-Null
+function Result([int]$Year, [string]$Check, [bool]$Passed, [string]$Detail) {
+    $results.Add([pscustomobject]@{ Year = $Year; Check = $Check; Result = $(if ($Passed) { 'PASS' } else { 'FAIL' }); Detail = $Detail })
+}
+function Wait-Capacity {
+    $deadline = (Get-Date).AddMinutes(60)
+    while (@(Get-Process Revit -ErrorAction SilentlyContinue).Count -ge 2) {
+        if ((Get-Date) -ge $deadline) { throw 'Two or more Revit processes remained running for 60 minutes.' }
+        Start-Sleep -Seconds 120
+    }
+}
+$root = Split-Path $PSScriptRoot -Parent
 $addinRoot = Join-Path $env:APPDATA 'Autodesk\Revit\Addins'
-$backedUp = [Collections.Generic.List[int]]::new()
-$taskName = 'release-check-' + [guid]::NewGuid().ToString('N')
-$ownedId = 0
-$installationAttempted = $false
-$previousRemoved = $false
 $settings = Join-Path $env:LOCALAPPDATA 'RevitModelMcp\settings.json'
-$hadSettings = Test-Path -LiteralPath $settings
-$taskRegistered = $false
-try {
-    if ($hadSettings) { Copy-Item -LiteralPath $settings -Destination (Join-Path $backup 'settings.json') }
-    if ($installed.Count) { Copy-Item -LiteralPath $PreviousMsi -Destination (Join-Path $backup 'previous.msi') }
-    foreach ($year in $years) {
-        $target = Join-Path $addinRoot $year
-        $saved = Join-Path $backup $year
-        New-Item -ItemType Directory -Force $saved | Out-Null
-        foreach ($name in 'RevitModelMcp.addin', 'RevitModelMcp') {
-            $source = Join-Path $target $name
-            if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $saved -Recurse }
-        }
-        $backedUp.Add($year)
-    }
-    Assert-NoForeignRevit
-    if ($installed.Count) {
-        Run-Msi '/x' (Join-Path $runDirectory 'remove-previous.log') (Join-Path $backup 'previous.msi')
-        $previousRemoved = $true
-        Result 'Remove previous MSI' $true $installed[0].DisplayVersion
-    }
-    $installationAttempted = $true
-    Run-Msi '/i' (Join-Path $runDirectory 'install.log')
-    Result 'Install per user' $true ([IO.Path]::GetFileName($Msi))
-    foreach ($year in $years) {
-        try {
-            $manifestPath = Join-Path $addinRoot "$year\RevitModelMcp.addin"
-            [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
-            $entry = @($manifest.RevitAddIns.AddIn | Where-Object FullClassName -eq 'RevitModelMcp.Application')
-            if ($entry.Count -ne 1) { throw "Invalid manifest for Revit $year" }
-            $assembly = [string]$entry[0].Assembly
-            if (![IO.Path]::IsPathRooted($assembly)) { $assembly = Join-Path (Split-Path $manifestPath) $assembly }
-            $version = (Get-Item -LiteralPath $assembly).VersionInfo.ProductVersion
-            $versionMatches = ($version -split '\+')[0] -eq $ExpectedVersion
-            Result "Manifest/DLL $year" $versionMatches $version
-        }
-        catch { Result "Manifest/DLL $year" $false $_.Exception.Message }
-    }
-    if ($results.Where({ $_.Result -eq 'FAIL' }).Count) { throw 'Installed add-in validation failed.' }
-    $launcher = Join-Path $runDirectory 'launch.ps1'
-    $launchSource = @'
-param([string]$Model, [string]$PidFile)
+$lock = Join-Path $env:LOCALAPPDATA 'RevitModelMcp\read-only'
+$hadSettings = Test-Path $settings
+$settingsChanged = $false
+$backedUp = @()
+$launchSource = @'
+param([string]$Model, [string]$PidFile, [string]$Executable)
 $ErrorActionPreference = 'Stop'
-$process = Start-Process 'C:\Program Files\Autodesk\Revit 2027\Revit.exe' -ArgumentList "`"$Model`"" -PassThru
+$process = Start-Process $Executable -ArgumentList "`"$Model`"" -PassThru
 [IO.File]::WriteAllText($PidFile, [string]$process.Id)
     Add-Type @"
 using System;
@@ -133,137 +66,288 @@ while (!$process.HasExited) {
     $process.Refresh()
 }
 '@
-    $launchSource | Set-Content -LiteralPath $launcher -Encoding UTF8
-    $pidFile = Join-Path $runDirectory 'revit.pid'
-    $action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -Model `"$Model`" -PidFile `"$pidFile`""
-    $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
-    Assert-NoForeignRevit
-    Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal | Out-Null
-    $taskRegistered = $true
-    Start-ScheduledTask -TaskName $taskName
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-    while (!(Test-Path $pidFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }
-    if (!(Test-Path $pidFile)) { throw 'The interactive task did not report a Revit PID.' }
-    $ownedId = [int](Get-Content -LiteralPath $pidFile -Raw)
-
-    $heartbeatPath = Join-Path $env:LOCALAPPDATA "RevitModelMcp\instance_$ownedId.json"
-    $ready = $false
-    while ((Get-Date) -lt $deadline) {
-        Assert-NoForeignRevit $ownedId
-        if (!(Get-Process -Id $ownedId -ErrorAction SilentlyContinue)) { throw 'Revit exited before heartbeat.' }
-        if (Test-Path $heartbeatPath) {
-            $heartbeat = Get-Content -Raw $heartbeatPath | ConvertFrom-Json
-            if ($heartbeat.processId -eq $ownedId -and $heartbeat.documentPath -eq $Model -and
-                (Get-Date $heartbeat.updatedUtc) -gt (Get-Date).AddSeconds(-60)) { $ready = $true; break }
-        }
-        Start-Sleep -Seconds 2
-    }
-    if (!$ready) { throw 'Timed out waiting for a fresh heartbeat for the test model.' }
-    Result 'Heartbeat 2027' $true "PID $ownedId"
-    $ping = Join-Path $runDirectory 'ping.py'
-    @'
+$driverSource = @'
 import asyncio
 import json
 import sys
+import urllib.request
+from pathlib import Path
 from revit_model_mcp.pipe_host import LocalPipeHost, PipeJobHost
-from revit_model_mcp.revit_channel import Job, RevitChannel
+from revit_model_mcp.revit_channel import Job, RevitChannel, ReadOnlyRefusedError
+
+pid, folder, port = int(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
+rows = []
+def record(check, passed, detail):
+    rows.append(dict(Check=check, Result="PASS" if passed else "FAIL", Detail=detail))
 
 class PipeOnlyHost(LocalPipeHost):
     async def select_job(self, job):
         selected, addressed = await super().select_job(job)
-        assert isinstance(selected, PipeJobHost), 'Named pipe required; file fallback refused'
+        assert isinstance(selected, PipeJobHost), "Named pipe required"
         return selected, addressed
 
 async def main():
     host = PipeOnlyHost()
+    channel = RevitChannel(host)
+    locked = False
+    async def send(command, **payload):
+        result = await channel.execute(Job(command, dict(command=command, targetProcessId=pid, **payload)), timeout_seconds=90)
+        print(json.dumps(result, ensure_ascii=True), flush=True)
+        assert result.get("success") is True, result
+        return result.get("data")
+    async def unlock():
+        preview = await send("set-read-only", enabled=False)
+        assert preview.get("confirmToken"), preview
+        result = await send("set-read-only", enabled=False, confirmToken=preview["confirmToken"])
+        return result
     try:
-        instance = next(item for item in host.heartbeats() if item['processId'] == int(sys.argv[1]))
-        connection = await host.connection(instance)
-        assert connection.hello['protocol'] == 'pipe/1', connection.hello
-        job = Job.ping()
-        job.payload['targetProcessId'] = int(sys.argv[1])
-        result = await RevitChannel(host).execute(job, timeout_seconds=60)
-        print(json.dumps(result, ensure_ascii=True))
-        assert result.get('success') is True and result.get('data') == 'pong', result
+        assert await send("ping") == "pong"
+        record("Ping", True, "pong over pipe/1")
+        info = await send("document-info")
+        level = info["levels"][0]["name"]
+        fixture = await send("create-wall", startMm=[100000,100000], endMm=[101000,100000], level=level, heightMm=1000)
+        element = fixture["id"]
+        before = await send("element-details", id=element)
+        moved = await send("move", elementIds=[element], dxMm=25, dyMm=0, dzMm=0)
+        assert moved["count"] == 1, moved
+        after = await send("element-details", id=element)
+        assert before != after, "Move did not change element details"
+        record("Move", True, "25 mm; one element changed")
+        await send("undo-last")
+        for _ in range(30):
+            restored = await send("element-details", id=element)
+            if restored == before:
+                break
+            await asyncio.sleep(1)
+        assert restored == before, "Undo did not restore element details"
+        record("Undo", True, "Element details restored")
+        image = folder / "view.png"
+        views = await send("list-views", viewType="FloorPlan")
+        assert views["views"], "No floor plan view for capture"
+        job = Job.export_view(str(views["views"][0]["id"]), pixel_size=800, output_path=str(image)).for_process(pid)
+        result = await channel.execute(job, timeout_seconds=90)
+        print(json.dumps(result, ensure_ascii=True), flush=True)
+        assert result.get("success") is True, result
+        assert image.is_file() and image.stat().st_size > 0, "No view image"
+        assert image.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", "Invalid PNG signature"
+        record("Capture", True, "Nonempty PNG with valid signature")
+        await send("set-read-only", enabled=True)
+        locked = True
+        refused = False
+        try:
+            result = await channel.execute(Job("move", dict(command="move", targetProcessId=pid, elementIds=[element], dxMm=25, dyMm=0, dzMm=0)), timeout_seconds=30)
+            refused = result.get("errorCode") == "read_only"
+        except ReadOnlyRefusedError:
+            refused = True
+        assert refused, "Locked action was not refused as read_only"
+        await unlock()
+        locked = False
+        assert await send("element-details", id=element) == before, "Refused action changed the element"
+        record("Read-only", True, "Action refused; token unlock; element unchanged")
+        with urllib.request.urlopen("http://127.0.0.1:%d/health" % port, timeout=15) as response:
+            health = json.load(response)
+            assert response.status == 200 and health.get("commands"), health
+        record("HTTP", True, "HTTP 200; nonempty commands on allocated loopback port")
+    except Exception as error:
+        record("Live checks", False, str(error))
+        raise
     finally:
-        await host.aclose()
+        try:
+            if locked:
+                await unlock()
+        finally:
+            await host.aclose()
+            (folder / "checks.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
 
 asyncio.run(main())
-'@ | Set-Content -LiteralPath $ping -Encoding UTF8
-    Push-Location $ServerDirectory
-    try {
-        $previousPythonPath = $env:PYTHONPATH
-        $env:PYTHONPATH = $ServerDirectory
-        & uv run --project $ServerDirectory python $ping $ownedId 2>&1 | Tee-Object -FilePath (Join-Path $runDirectory 'ping.log')
-        if ($LASTEXITCODE -ne 0) { throw 'revit_ping over named pipe failed.' }
-    }
-    finally { $env:PYTHONPATH = $previousPythonPath; Pop-Location }
-    Result 'revit_ping (pipe/1)' $true 'pong'
-}
-catch { Result 'Smoke' $false $_.Exception.Message }
-finally {
-    if (!$ownedId -and (Test-Path (Join-Path $runDirectory 'revit.pid'))) {
-        $ownedId = [int](Get-Content (Join-Path $runDirectory 'revit.pid') -Raw)
-    }
-    if ($ownedId) {
-        try {
-            $process = Get-Process -Id $ownedId -ErrorAction SilentlyContinue
-            if ($process -and $process.ProcessName -eq 'Revit') {
-                $null = $process.CloseMainWindow()
-                if (!$process.WaitForExit(20000)) {
-                    Stop-Process -Id $ownedId -Force
-                    if (!$process.WaitForExit(10000)) { throw 'The owned Revit process did not exit.' }
-                }
+
+'@
+try {
+    if (!$Years) { $Years = @(2022..2027 | Where-Object { Test-Path "C:\Program Files\Autodesk\Revit $_\Revit.exe" }) }
+    $Years = @($Years | Sort-Object -Unique)
+    if (!$Years.Count) { throw 'No supported Revit installation found.' }
+    # Settings and the lock are shared by all years of this Windows user.
+    if (Test-Path $lock) { throw 'Read-only is already enabled. Unlock explicitly before the release check.' }
+    if ($hadSettings) { Copy-Item $settings (Join-Path $runDirectory 'settings.json') }
+    if ($Tag) {
+        $assets = Join-Path $runDirectory 'assets'
+        New-Item -ItemType Directory $assets | Out-Null
+        & gh release download $Tag --repo sharafutdinovdi/revit-model-mcp --dir $assets --pattern 'SHA256SUMS.txt' --pattern '*SingleUser*.msi'
+        if ($LASTEXITCODE -ne 0) { throw 'Release asset download failed.' }
+        $packages = @(Get-ChildItem $assets -Filter '*SingleUser*.msi')
+        if ($packages.Count -ne 1) { throw 'Expected one SingleUser MSI.' }
+        $package = $packages[0]
+        $lines = @(Get-Content (Join-Path $assets 'SHA256SUMS.txt') | Where-Object { $_ -match ('^[0-9a-fA-F]{64}  ' + [regex]::Escape($package.Name) + '$') })
+        if ($lines.Count -ne 1 -or (Get-FileHash $package.FullName -Algorithm SHA256).Hash -ne $lines[0].Substring(0, 64)) { throw 'Release checksum verification failed.' }
+        & gh attestation verify $package.FullName --repo sharafutdinovdi/revit-model-mcp
+        if ($LASTEXITCODE -ne 0) { throw 'Release attestation verification failed.' }
+        Result 0 'Assets' $true 'SHA256 and attestation verified'
+        if (@(Get-Process Revit -ErrorAction SilentlyContinue).Count) { throw 'Close Revit before installing an MSI.' }
+        $existing = @(Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue | Where-Object DisplayName -eq 'Model MCP')
+        if ($existing.Count) { throw 'MSI smoke requires a disposable Windows account without an existing Model MCP MSI.' }
+        foreach ($installedYear in @(2022..2027 | Where-Object { Test-Path "C:\Program Files\Autodesk\Revit $_\Revit.exe" })) {
+            $target = Join-Path $addinRoot $installedYear
+            $backup = Join-Path $runDirectory "backup\$installedYear"
+            New-Item -ItemType Directory -Force $backup | Out-Null
+            foreach ($name in 'RevitModelMcp.addin', 'RevitModelMcp') {
+                if (Test-Path (Join-Path $target $name)) { Copy-Item (Join-Path $target $name) $backup -Recurse }
             }
-            Result 'Close owned Revit' $true "PID $ownedId"
+            $backedUp += $installedYear
         }
-        catch { Result 'Close owned Revit' $false $_.Exception.Message }
+        $installationAttempted = $true
+        $msi = Start-Process msiexec.exe -ArgumentList "/i `"$($package.FullName)`" /qn /norestart ALLUSERS=2 MSIINSTALLPERUSER=1 /l*v `"$(Join-Path $runDirectory 'install.log')`"" -PassThru -Wait
+        if ($msi.ExitCode -notin 0, 3010) { throw "MSI install failed: $($msi.ExitCode)" }
     }
-    if ($taskRegistered) {
-        Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
-        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    else {
+        $BuildDirectory = (Resolve-Path $BuildDirectory).Path
+        Wait-Capacity
+        foreach ($running in @(Get-CimInstance Win32_Process | Where-Object Name -eq 'Revit.exe')) {
+            foreach ($year in $Years) {
+                if ($running.ExecutablePath -like "*\Revit $year\Revit.exe") { throw "Revit $year is already running. Its installation will not be changed." }
+            }
+        }
+        foreach ($year in $Years) {
+            $target = Join-Path $addinRoot $year
+            $backup = Join-Path $runDirectory "backup\$year"
+            New-Item -ItemType Directory -Force $backup | Out-Null
+            foreach ($name in 'RevitModelMcp.addin', 'RevitModelMcp') {
+                if (Test-Path (Join-Path $target $name)) { Copy-Item (Join-Path $target $name) $backup -Recurse }
+            }
+            $backedUp += $year
+        }
+        $previousReuse = $env:MSBUILDDISABLENODEREUSE
+        $previousCompilation = $env:UseSharedCompilation
+        try {
+            $env:MSBUILDDISABLENODEREUSE = '1'
+            $env:UseSharedCompilation = 'false'
+            & (Join-Path $BuildDirectory 'install.ps1') -Source Build -Year @($Years | ForEach-Object { [string]$_ }) -Force
+            if ($LASTEXITCODE -ne 0) { throw 'Build installation failed.' }
+        }
+        finally {
+            $env:MSBUILDDISABLENODEREUSE = $previousReuse
+            $env:UseSharedCompilation = $previousCompilation
+        }
     }
+    foreach ($year in $Years) {
+        $ownedId = 0
+        $reservedUrl = $null
+        $taskName = 'release-check-' + [guid]::NewGuid().ToString('N')
+        $yearDirectory = Join-Path $runDirectory $year
+        New-Item -ItemType Directory $yearDirectory | Out-Null
+        try {
+            $executable = "C:\Program Files\Autodesk\Revit $year\Revit.exe"
+            if (!(Test-Path $executable)) { throw "Revit $year is not installed." }
+            $models = @(Get-ChildItem (Join-Path $ModelDirectory $year) -Filter '*.rvt' -File)
+            if ($models.Count -ne 1) { throw "Supply exactly one disposable .rvt in the $year model directory (links belong in subdirectories)." }
+            $model = $models[0].FullName
+            $listener = New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback, 0)
+            $listener.Start()
+            $port = $listener.LocalEndpoint.Port
+            $listener.Stop()
+            $url = "http://127.0.0.1:$port/"
+            & netsh http show urlacl "url=$url" | Out-File (Join-Path $yearDirectory 'urlacl-before.txt')
+            Write-Host "HTTP reservation rollback: netsh http delete urlacl url=$url"
+            & netsh http add urlacl "url=$url" "user=$([Security.Principal.WindowsIdentity]::GetCurrent().Name)" | Out-Host
+            if ($LASTEXITCODE -ne 0) { throw 'HTTP URL reservation failed. Run the release check from elevated PowerShell.' }
+            $reservedUrl = $url
+            @{ httpEnabled = $true; httpBind = '127.0.0.1'; httpPort = $port; token = [guid]::NewGuid().ToString('N'); showActivityPaneOnAction = $false } | ConvertTo-Json | Set-Content $settings -Encoding UTF8
+            $settingsChanged = $true
+            $launcher = Join-Path $yearDirectory 'launch.ps1'
+            $launchSource | Set-Content $launcher -Encoding UTF8
+            $pidFile = Join-Path $yearDirectory 'revit.pid'
+            $action = New-ScheduledTaskAction -Execute 'conhost.exe' -Argument "--headless powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -Model `"$model`" -PidFile `"$pidFile`" -Executable `"$executable`""
+            $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
+            Register-ScheduledTask -TaskName $taskName -Action $action -Principal $principal | Out-Null
+            Wait-Capacity
+            Start-ScheduledTask $taskName
+            $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+            while (!(Test-Path $pidFile) -and (Get-Date) -lt $deadline) { Start-Sleep 1 }
+            if (!(Test-Path $pidFile)) { throw 'Interactive launch did not report a PID.' }
+            $ownedId = [int](Get-Content $pidFile -Raw)
+            $heartbeatPath = Join-Path $env:LOCALAPPDATA "RevitModelMcp\instance_$ownedId.json"
+            $ready = $false
+            while ((Get-Date) -lt $deadline) {
+                if (Test-Path $heartbeatPath) {
+                    $heartbeat = Get-Content $heartbeatPath -Raw | ConvertFrom-Json
+                    if ($heartbeat.documentPath -eq $model -and (Get-Date $heartbeat.updatedUtc) -gt (Get-Date).AddSeconds(-60)) { $ready = $true; break }
+                }
+                Start-Sleep 2
+            }
+            if (!$ready) { throw 'Timed out waiting for the test model heartbeat.' }
+            Result $year 'Install/start' $true 'Fresh test model heartbeat'
+            $driver = Join-Path $yearDirectory 'checks.py'
+            $driverSource | Set-Content $driver -Encoding UTF8
+            $server = if ($BuildDirectory) { Join-Path $BuildDirectory 'server' } else { Join-Path $root 'server' }
+            $previousPythonPath = $env:PYTHONPATH
+            $previousErrorPreference = $ErrorActionPreference
+            try {
+                $env:PYTHONPATH = $server
+                # Windows PowerShell treats native stderr as ErrorRecord objects, even on exit 0.
+                $ErrorActionPreference = 'Continue'
+                & uv run --project $server python $driver $ownedId $yearDirectory $port 2>&1 | Tee-Object (Join-Path $yearDirectory 'checks.log') | Out-Host
+                $driverExit = $LASTEXITCODE
+            }
+            finally {
+                $env:PYTHONPATH = $previousPythonPath
+                $ErrorActionPreference = $previousErrorPreference
+            }
+            $report = Join-Path $yearDirectory 'checks.json'
+            if (Test-Path $report) {
+                foreach ($row in (Get-Content $report -Raw | ConvertFrom-Json)) { Result $year $row.Check ($row.Result -eq 'PASS') $row.Detail }
+            }
+            if ($driverExit -ne 0) { throw 'Live checks failed; see checks.log.' }
+        }
+        catch { Result $year 'Smoke' $false $_.Exception.Message }
+        finally {
+            if (!$ownedId -and (Test-Path (Join-Path $yearDirectory 'revit.pid'))) { $ownedId = [int](Get-Content (Join-Path $yearDirectory 'revit.pid') -Raw) }
+            try {
+                if ($settingsChanged -and (Test-Path $lock)) { Remove-Item $lock -Force }
+                if ($ownedId) {
+                    $process = Get-Process -Id $ownedId -ErrorAction SilentlyContinue
+                    if ($process -and $process.ProcessName -eq 'Revit') {
+                        $null = $process.CloseMainWindow()
+                        if (!$process.WaitForExit(20000)) { Stop-Process -Id $ownedId -Force; $process.WaitForExit() }
+                    }
+                }
+                if ($reservedUrl) {
+                    & netsh http delete urlacl "url=$reservedUrl" | Out-Host
+                    if ($LASTEXITCODE -ne 0) { throw 'HTTP URL reservation cleanup failed.' }
+                }
+                Result $year 'Cleanup' (!(Test-Path $lock)) 'Read-only off; owned Revit closed without saving'
+            }
+            catch { Result $year 'Cleanup' $false $_.Exception.Message }
+            Stop-ScheduledTask $taskName -ErrorAction SilentlyContinue
+            Unregister-ScheduledTask $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        }
+    }
+}
+catch { Result 0 'Setup' $false $_.Exception.Message }
+finally {
     if ($installationAttempted) {
-        try { Assert-NoForeignRevit; Run-Msi '/x' (Join-Path $runDirectory 'uninstall.log'); Result 'Uninstall' $true 'SingleUser MSI removed' }
-        catch { Result 'Uninstall' $false $_.Exception.Message }
-    }
-    if ($previousRemoved) {
         try {
-            Assert-NoForeignRevit
-            $scope = if ($previousScope -eq '1') { 'ALLUSERS=1' } else { 'ALLUSERS=2 MSIINSTALLPERUSER=1' }
-            Run-Msi '/i' (Join-Path $runDirectory 'restore-previous.log') (Join-Path $backup 'previous.msi') $scope
-            Result 'Restore previous MSI' $true $installed[0].DisplayVersion
+            $remove = Start-Process msiexec.exe -ArgumentList "/x `"$($package.FullName)`" /qn /norestart" -PassThru -Wait
+            Result 0 'Uninstall' ($remove.ExitCode -in 0, 3010, 1605) "Exit $($remove.ExitCode)"
         }
-        catch { Result 'Restore previous MSI' $false $_.Exception.Message }
+        catch { Result 0 'Uninstall' $false $_.Exception.Message }
     }
-    foreach ($year in $backedUp) {
-        try {
-            Assert-NoForeignRevit
+    try {
+        if ($settingsChanged) {
+            if ($hadSettings) { Copy-Item (Join-Path $runDirectory 'settings.json') $settings -Force }
+            else { Remove-Item $settings -Force -ErrorAction SilentlyContinue }
+        }
+        foreach ($year in $backedUp) {
             $target = Join-Path $addinRoot $year
             foreach ($name in 'RevitModelMcp.addin', 'RevitModelMcp') {
                 $destination = Join-Path $target $name
-                if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }
-                $saved = Join-Path $backup "$year\$name"
-                if (Test-Path -LiteralPath $saved) { Copy-Item -LiteralPath $saved -Destination $target -Recurse }
+                if (Test-Path $destination) { Remove-Item $destination -Recurse -Force }
+                $saved = Join-Path $runDirectory "backup\$year\$name"
+                if (Test-Path $saved) { Copy-Item $saved $target -Recurse }
             }
-            $dll = Join-Path $target 'RevitModelMcp\RevitModelMcp.dll'
-            $savedDll = Join-Path $backup "$year\RevitModelMcp\RevitModelMcp.dll"
-            $same = (!(Test-Path $savedDll)) -or ((Get-FileHash $dll).Hash -eq (Get-FileHash $savedDll).Hash)
-            $version = if (Test-Path $dll) { (Get-Item $dll).VersionInfo.ProductVersion } else { 'No previous add-in' }
-            Result "Restore $year" $same $version
         }
-        catch { Result "Restore $year" $false $_.Exception.Message }
+        Result 0 'Restore' $true 'Settings and selected add-in folders restored'
     }
-    try {
-        Assert-NoForeignRevit
-        if ($hadSettings -and (Test-Path (Join-Path $backup 'settings.json'))) {
-            Copy-Item -LiteralPath (Join-Path $backup 'settings.json') -Destination $settings -Force
-        }
-        if (!$hadSettings -and (Test-Path -LiteralPath $settings)) { Remove-Item -LiteralPath $settings -Force }
-    }
-    catch { Result 'Restore settings' $false $_.Exception.Message }
-    $results | Format-Table -AutoSize | Out-String -Width 240 | Tee-Object -FilePath (Join-Path $runDirectory 'summary.txt') | Write-Host
-    $results | Export-Csv -NoTypeInformation -Encoding UTF8 (Join-Path $runDirectory 'summary.csv')
-    Write-Host "Evidence and backup: $runDirectory"
+    catch { Result 0 'Restore' $false $_.Exception.Message }
+    $results | Export-Csv (Join-Path $runDirectory 'summary.csv') -NoTypeInformation -Encoding UTF8
+    $results | Format-Table Year, Check, Result, Detail -AutoSize | Out-String -Width 240 | Tee-Object (Join-Path $runDirectory 'summary.txt') | Write-Host
 }
 if ($results.Result -contains 'FAIL') { exit 1 }
