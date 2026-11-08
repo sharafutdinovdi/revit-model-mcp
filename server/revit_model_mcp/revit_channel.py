@@ -422,6 +422,7 @@ def running_job(
         "progress": progress,
         "partial": models,
         **({"processId": process_id} if process_id is not None else {}),
+        "revitVersion": identity.get("revitVersion"),
         "responder": responder,
         "message": waiting_message
         + "The action may already have changed the model. Poll revit_jobs with "
@@ -519,6 +520,14 @@ class Job:
     command: str
     payload: dict[str, Any]
     output_path: str | None = None
+
+    @property
+    def is_action(self) -> bool:
+        return (
+            self.command in ACTION_COMMANDS
+            or self.command == "set-read-only"
+            or (self.command == "jobs" and bool(self.payload.get("requestCancellation")))
+        )
 
     @classmethod
     def ping(cls) -> Job:
@@ -826,11 +835,18 @@ def _describe_instance(instance: dict[str, Any]) -> str:
     return f"pid {instance.get('processId')} ({names or 'no document'})"
 
 
-def resolve_instance(instances: list[dict[str, Any]], document: str | None) -> dict[str, Any]:
-    """Pick one running instance: unambiguous with a single instance regardless of document text;
-    otherwise match by document, or fall back to requiring exactly one instance."""
+def resolve_instance(
+    instances: list[dict[str, Any]], document: str | None, *, action: bool = False
+) -> dict[str, Any]:
+    """Resolve reads by document text, but require exact targets for multi-process actions."""
     if len(instances) == 1:
         return instances[0]
+    if len(instances) > 1 and action and not (document or "").strip().casefold().startswith("doc:"):
+        raise RevitChannelError(
+            "Several Revit instances are running. An action requires an exact document ID "
+            "(doc:... from revit_documents) or process_id, not a title or file name. "
+            "Running instances: " + "; ".join(_describe_instance(item) for item in instances)
+        )
     if not document:
         if not instances:
             raise RevitChannelError(
@@ -868,7 +884,7 @@ def select_instance(instances: list[dict[str, Any]], job: Job) -> dict[str, Any]
             raise RevitChannelError("The explicitly selected Revit process is absent or ambiguous.")
         selected = matches[0]
     else:
-        selected = resolve_instance(instances, document)
+        selected = resolve_instance(instances, document, action=job.is_action)
     if (
         document
         and (process_id is not None or isinstance(selected.get("documents"), list))
@@ -1033,21 +1049,33 @@ class RevitChannel:
                 from revit_model_mcp.ssh_host import RemoteCommandError
 
                 try:
-                    return await remote.cancel_job(job_id)
+                    response = await remote.cancel_job(job_id)
+                except ReadOnlyRefusedError as error:
+                    response = refused_response(job.command, error)
                 except RemoteCommandError as error:
                     # File-channel cancellation reports the gate through PowerShell stderr.
                     if READ_ONLY_MESSAGE in str(
                         error
                     ) or "Read-only is on for this Windows user" in str(error):
-                        raise ReadOnlyRefusedError(str(error)) from error
-                    raise
+                        response = refused_response(job.command, ReadOnlyRefusedError(str(error)))
+                    else:
+                        raise
+                for key in ("processId", "revitVersion"):
+                    if key in getattr(remote, "instance_info", {}):
+                        response.setdefault(key, remote.instance_info[key])
+                return response
             deadline = asyncio.get_running_loop().time() + wait_seconds
             while True:
                 response = await remote.fetch_job(job_id)
                 validate_job_identity(response, getattr(remote, "instance_info", {}))
                 await current_progress_reporter().observe(response)
                 if not _is_intermediate_response(response):
-                    return parse_response(json.dumps(response), response.get("command", ""))
+                    result = parse_response(json.dumps(response), response.get("command", ""))
+                    if Job(response.get("command", ""), {}).is_action:
+                        for key in ("processId", "revitVersion"):
+                            if key in getattr(remote, "instance_info", {}):
+                                result.setdefault(key, remote.instance_info[key])
+                    return result
                 remaining = deadline - asyncio.get_running_loop().time()
                 if remaining <= 0:
                     return running_job(
@@ -1068,7 +1096,16 @@ class RevitChannel:
             check_addin_compatibility(job.command, instance)
             channel = RevitChannel(remote)
             channel._job_routes = self._job_routes
-            result = await channel._execute_serial(job, timeout_seconds, pickup_timeout_seconds)
+            try:
+                result = await channel._execute_serial(job, timeout_seconds, pickup_timeout_seconds)
+            except ReadOnlyRefusedError as error:
+                if not job.is_action:
+                    raise
+                result = refused_response(job.command, error)
+            if job.is_action:
+                for key in ("processId", "revitVersion"):
+                    if key in instance:
+                        result.setdefault(key, instance[key])
             if job.command == "ping":
                 result["addinVersion"] = instance["addinVersion"]
                 if isinstance(state := instance.get("httpState"), str):

@@ -830,6 +830,8 @@ def test_http_read_only_action_returns_refusal(endpoint):
         "command": "select",
         "error": "read-only mode",
         "errorCode": "read_only",
+        "processId": 42,
+        "revitVersion": "2026",
     }
     assert any(
         method == "POST" and path.startswith("/jobs") for method, path, _ in state["requests"]
@@ -845,6 +847,8 @@ def test_http_read_only_cancel_returns_refusal(endpoint):
         "command": "jobs",
         "error": "read-only mode",
         "errorCode": "read_only",
+        "processId": 42,
+        "revitVersion": "2026",
     }
     assert any(
         method == "POST" and path == "/jobs/" + "a" * 32 + "/cancel"
@@ -864,6 +868,8 @@ def test_http_policy_read_only_action_keeps_the_organization_text(endpoint):
         "command": "select",
         "error": POLICY_READ_ONLY_TEXT,
         "errorCode": "policy_blocked",
+        "processId": 42,
+        "revitVersion": "2026",
     }
 
 
@@ -876,6 +882,8 @@ def test_http_policy_denied_action_returns_policy_blocked(endpoint):
         "command": "select",
         "error": "Blocked by organization policy: the tool 'select' is denied.",
         "errorCode": "policy_blocked",
+        "processId": 42,
+        "revitVersion": "2026",
     }
 
 
@@ -893,7 +901,14 @@ def test_http_action_preserves_workstation_lock_description(endpoint, message, c
     host, state = endpoint
     state.update(status=403, error_text=message)
     result = asyncio.run(RevitChannel(host).execute(Job("select", {"command": "select"})))
-    assert result == {"success": False, "command": "select", "error": message, "errorCode": code}
+    assert result == {
+        "success": False,
+        "command": "select",
+        "error": message,
+        "errorCode": code,
+        "processId": 42,
+        "revitVersion": "2026",
+    }
 
 
 def test_agent_installer_dry_run_has_one_json_object_and_no_writes():
