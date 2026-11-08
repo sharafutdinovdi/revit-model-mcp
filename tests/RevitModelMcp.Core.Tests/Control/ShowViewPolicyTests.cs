@@ -5,6 +5,62 @@ namespace RevitModelMcp.Core.Tests.Control;
 public sealed class ShowViewPolicyTests
 {
     [Test]
+    public async Task DefaultThreeDimensionalViewPrecedesOtherOpenViewsAsync()
+    {
+        ShowViewCandidate[] candidates =
+        [
+            new(1, null, false, true, false, false, true, true),
+            new(2, null, false, true, false, false, false, false, true, false, true)
+        ];
+        await Assert.That(ShowViewPolicy.Choose(candidates, [10])!.Id).IsEqualTo(2L);
+    }
+
+    [Test]
+    public async Task OutsideCropFallsBackToThreeDimensionalViewAsync()
+    {
+        ShowViewCandidate[] candidates =
+        [
+            new(1, 10, true, false, false, false, true, true, false, true),
+            new(2, null, false, true, false, false, false, true)
+        ];
+        await Assert.That(ShowViewPolicy.Choose(candidates, [10])!.Id).IsEqualTo(2L);
+    }
+
+    [Test]
+    public async Task UncroppedPlanPrecedesOpenCroppedPlanAsync()
+    {
+        ShowViewCandidate[] candidates =
+        [
+            new(1, 10, true, false, false, false, true, true, true, true),
+            new(2, 10, true, false, false, false, false, false)
+        ];
+        await Assert.That(ShowViewPolicy.Choose(candidates, [10])!.Id).IsEqualTo(2L);
+    }
+
+    [Test]
+    public async Task NonFloorPlansCannotPreventThreeDimensionalFallbackAsync()
+    {
+        ShowViewCandidate[] candidates =
+        [
+            new(1, 10, false, false, false, false, true, true),
+            new(2, null, false, true, false, false, false, false)
+        ];
+        await Assert.That(ShowViewPolicy.Choose(candidates, [10])!.Id).IsEqualTo(2L);
+    }
+
+    [Test]
+    public async Task RankingRetainsThreeDimensionalFallbackAfterPlansAsync()
+    {
+        ShowViewCandidate[] candidates =
+        [
+            new(1, 10, true, false, false, false, false, true),
+            new(2, 10, true, false, false, false, false, false),
+            new(3, null, false, true, false, false, true, true)
+        ];
+        await Assert.That(ShowViewPolicy.Rank(candidates, [10]).Select(view => view.Id).SequenceEqual([1L, 2L, 3L])).IsTrue();
+    }
+
+    [Test]
     public async Task ChoosesMatchingLevelInsteadOfUnrelatedOpenPlanAsync()
     {
         ShowViewCandidate[] candidates =

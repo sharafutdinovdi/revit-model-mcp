@@ -1413,26 +1413,57 @@ internal static class ActionCommandExecutor
         var openIds = uiDocument.GetOpenUIViews().Select(view => view.ViewId).ToHashSet();
         using var collector = document.CollectElements().OfClass<View>();
         var views = collector.Cast<View>()
-            .Where(view => !view.IsTemplate && (view is View3D || view is ViewPlan &&
-                view.ViewType is ViewType.FloorPlan or ViewType.CeilingPlan or ViewType.EngineeringPlan))
+            .Where(view => !view.IsTemplate && (view is View3D { IsPerspective: false } ||
+                view is ViewPlan && view.ViewType == ViewType.FloorPlan))
             .ToList();
+        var elements = ids.Select(document.GetElement).ToList();
+        var elementCorners = new List<XYZ>();
+        foreach (var element in elements)
+        {
+            var bounds = element.get_BoundingBox(null)
+                ?? throw new InvalidOperationException($"Element {RevitValueReader.GetId(element.Id)} has no model bounds to show.");
+            foreach (var horizontal in new[] { bounds.Min.X, bounds.Max.X })
+                foreach (var vertical in new[] { bounds.Min.Y, bounds.Max.Y })
+                    foreach (var depth in new[] { bounds.Min.Z, bounds.Max.Z })
+                        elementCorners.Add(bounds.Transform.OfPoint(new XYZ(horizontal, vertical, depth)));
+        }
+        bool ContainsBounds(View view)
+        {
+            var threeDimensional = view as View3D;
+            var cropped = threeDimensional is not null ? threeDimensional.IsSectionBoxActive : view.CropBoxActive;
+            if (!cropped) return true;
+            using var crop = threeDimensional is not null ? threeDimensional.GetSectionBox() : view.CropBox;
+            var inverse = crop.Transform.Inverse;
+            return elementCorners.All(corner =>
+            {
+                var point = inverse.OfPoint(corner);
+                return point.X >= crop.Min.X && point.X <= crop.Max.X &&
+                    point.Y >= crop.Min.Y && point.Y <= crop.Max.Y &&
+                    (threeDimensional is null || point.Z >= crop.Min.Z && point.Z <= crop.Max.Z);
+            });
+        }
         var candidates = views.Select(view => new ShowViewCandidate(
             RevitValueReader.GetId(view.Id),
             view is ViewPlan plan ? RevitValueReader.GetId(plan.GenLevel.Id) : null,
             view.ViewType == ViewType.FloorPlan, view is View3D, view.IsTemplate,
-            view is View3D { IsPerspective: true }, view.Id == uiDocument.ActiveView.Id, openIds.Contains(view.Id)));
-        var levels = ids.Select(id => RevitValueReader.GetId(document.GetElement(id).LevelId)).ToList();
-        var choice = ShowViewPolicy.Choose(candidates, levels)
-            ?? throw new InvalidOperationException("No non-template level plan or orthographic 3D view is available to show these elements.");
-        var target = views.Single(view => RevitValueReader.GetId(view.Id) == choice.Id);
-        // View-scoped collectors can regenerate graphics. Inspect only the explicitly chosen view.
+            false, view.Id == uiDocument.ActiveView.Id, openIds.Contains(view.Id), ContainsBounds(view),
+            view is View3D threeDimensional ? threeDimensional.IsSectionBoxActive : view.CropBoxActive,
+            view is View3D && view.Name.Equals("{3D}", StringComparison.OrdinalIgnoreCase)));
+        var levels = elements.Select(element => RevitValueReader.GetId(element.LevelId)).ToList();
         using var idFilter = new ElementIdSetFilter(ids);
-        using var visible = document.CollectElements(target.Id).WherePasses(idFilter);
-        if (visible.GetElementCount() != ids.Count ||
-            ids.Any(id => document.GetElement(id).IsHidden(target)))
-            throw new InvalidOperationException($"View '{target.Name}' cannot show all requested elements. Check its crop, visibility and phase settings or activate a suitable model view.");
-        if (!choice.IsActive) uiDocument.ActiveView = target;
-        return !choice.IsOpen;
+        bool CanShow(View view)
+        {
+            using var visible = document.CollectElements(view.Id).WherePasses(idFilter);
+            return visible.GetElementCount() == ids.Count && elements.All(element => !element.IsHidden(view));
+        }
+        foreach (var choice in ShowViewPolicy.Rank(candidates, levels))
+        {
+            var target = views.Single(view => RevitValueReader.GetId(view.Id) == choice.Id);
+            if (!CanShow(target)) continue;
+            if (!choice.IsActive) uiDocument.ActiveView = target;
+            return !choice.IsOpen;
+        }
+        throw new InvalidOperationException("No existing floor plan or orthographic 3D view can show all requested elements. Create an uncropped 3D view with revit_create_view (kind='3d'), then retry.");
     }
 
     private static void CaptureViewSheetAfter(Document document, string command, ActionJobContract action, ActionResultData result)
