@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text.RegularExpressions;
 using Autodesk.Revit.UI.Events;
 using RevitModelMcp.Core.Batch;
 
@@ -29,6 +28,11 @@ internal sealed class BatchDialogHandler
     }
 
     public void OnDialog(object? sender, DialogBoxShowingEventArgs arguments)
+    {
+        BatchDialogGuard.Run(() => HandleDialog(arguments), ReportFailure);
+    }
+
+    private void HandleDialog(DialogBoxShowingEventArgs arguments)
     {
         var dialogId = arguments.DialogId ?? string.Empty;
         var type = arguments.GetType().Name;
@@ -63,23 +67,21 @@ internal sealed class BatchDialogHandler
                 _dialogs.Add(record);
             }
         }
+        Log(record);
         if (decision.Allowed && decision.OverrideResult.HasValue && !arguments.OverrideResult(decision.OverrideResult.Value))
         {
             record = record with { Decision = "unknown", Result = null };
             ReplaceRecord(recordIndex, record);
         }
-        if (record.Decision != "unknown")
-        {
-            Log(record);
-            return;
-        }
+        if (record.Decision != "unknown") return;
         if (message is null && arguments is not TaskDialogShowingEventArgs)
         {
             var threadId = NativeDialogReader.CurrentThreadId;
             var existing = NativeDialogReader.VisibleWindows(threadId);
             var initialRecord = record;
             lock (_sync)
-                _pendingCapture = Task.Run(() => CaptureAndPublish(initialRecord, threadId, existing, recordIndex));
+                _pendingCapture = Task.Run(() => BatchDialogGuard.Run(
+                    () => CaptureAndPublish(initialRecord, threadId, existing, recordIndex), ReportFailure));
             return;
         }
         CompleteUnknown(record);
@@ -151,11 +153,13 @@ internal sealed class BatchDialogHandler
             ? BatchDialogText.DescribeUnknown(record)
             : $"{record.Message ?? "No message available."} Buttons: {buttonDetails}.";
         var loggedDescription = redact
-            ? Regex.Replace(description, @"(?:[A-Za-z]:[\\/]|\\\\)(?:[^\r\n\\/:*?""<>|]+[\\/])*[^\r\n\\/:*?""<>|]+?\.[A-Za-z0-9]{1,10}\b",
-                match => Path.GetFileName(match.Value))
+            ? BatchDialogGuard.RedactPaths(description)
             : description;
         PluginLog.Info($"Batch dialog. DialogId='{SingleLine(record.DialogId)}' Type='{SingleLine(record.Type)}' Details='{SingleLine(loggedDescription)}' Decision='{record.Decision}' Result='{record.Result}' ModelPath='{SingleLine(loggedPath)}' Phase='{record.Phase}' TimeUtc='{record.TimeUtc}'.");
     }
+
+    private static void ReportFailure(Exception exception) =>
+        PluginLog.Info($"Batch dialog handler failed: {exception.GetType().Name}. No additional dialog override was applied.");
 
     private static List<BatchDialogButton>? StandardButtons(int dialogType)
     {

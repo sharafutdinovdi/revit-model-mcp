@@ -94,6 +94,9 @@ An entry matches only the exact dialog ID and runtime event args type.
 An invalid or unreadable file fails the current phase before model work. During open, the model is not opened.
 An unknown dialog is never overridden and fails the model.
 Allow only dialogs whose selected answer does not modify or save the model.
+Dialog callback exceptions are contained and logged by exception type, without dialog text or paths.
+Path-redaction regex evaluation has a 200 ms match timeout.
+A redaction timeout is logged and leaves the dialog without an override; Revit retains its default handling and a blocked worker remains subject to the model deadline.
 
 ### Reading a dialog record and choosing a result
 
