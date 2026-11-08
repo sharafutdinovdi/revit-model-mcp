@@ -4,6 +4,58 @@ description: "Model MCP validation evidence for releases, server packaging, Revi
 
 # Validation evidence
 
+## Repeatable release check
+
+I run the release check from a Windows checkout with elevated Windows PowerShell 5.1, `uv`, GitHub CLI, an interactive Windows logon and supported Revit installations.
+The HTTP check creates and removes a URL reservation for its allocated loopback port.
+I use disposable test models with exactly one `.rvt` in each `<model-directory>\<year>` directory; linked files belong in subdirectories.
+I close selected Revit years before installation and leave the workstation read-only lock off.
+The check temporarily changes the shared settings and read-only lock; I reserve the Windows account for this check.
+
+```powershell
+.\build\release-smoke.ps1 -Tag v0.9.1 -ModelDirectory .\test-models
+```
+
+For a local checkout build, I replace `-Tag` with `-BuildDirectory .` and optionally select years with `-Years 2024,2026`.
+The default selects all installed supported years.
+Tag mode downloads the SingleUser MSI and checksums, verifies SHA256 and `gh attestation verify`, and installs the MSI in a disposable account without an existing Model MCP MSI.
+Local mode uses `install.ps1 -Source Build` and skips download and attestation.
+The check restores affected per-year add-in folders and settings, uninstalls its MSI, unlocks read-only and closes only the Revit processes it started, without saving.
+The check waits up to 60 minutes when two or more Revit processes are running.
+
+### Fixed result format
+
+The terminal table and `summary.csv` use the columns `Year`, `Check`, `Result`, `Detail` in that order.
+`Result` is `PASS` or `FAIL`; year `0` denotes a shared setup or installer check.
+Each successful year has `Install/start`, `Ping`, `Move`, `Undo`, `Capture`, `Read-only`, `HTTP` and `Cleanup` rows.
+A failed prerequisite adds `Setup`, `Smoke` or `Live checks`; subsequent dependent checks have no fabricated pass rows.
+Any failed row produces exit code 1.
+Evidence is retained in a timestamped directory below `%LOCALAPPDATA%\RevitModelMcp\release-checks`, or `-OutputDirectory`.
+The directory contains the table, CSV, per-year JSON responses and captured PNG.
+
+### Revit 2024 local build: 2026-11-08
+
+I ran `-BuildDirectory . -Years 2024` against main commit `c19beea` with `rac_basic_sample_project.rvt`.
+The command returned exit code 0.
+Download, checksum and attestation checks were not exercised in local build mode.
+The capture was an 800 by 673 PNG (32,250 bytes).
+The build completed with zero errors and one debug-information warning during assembly repacking.
+
+| Year | Check | Result | Detail |
+| --- | --- | --- | --- |
+| 2024 | Install/start | PASS | Fresh test model heartbeat |
+| 2024 | Ping | PASS | pong over pipe/1 |
+| 2024 | Move | PASS | 25 mm; one element changed |
+| 2024 | Undo | PASS | Element details restored |
+| 2024 | Capture | PASS | Nonempty PNG with valid signature |
+| 2024 | Read-only | PASS | Action refused; token unlock; element unchanged |
+| 2024 | HTTP | PASS | HTTP 200; nonempty commands on allocated loopback port |
+| 2024 | Cleanup | PASS | Read-only off; owned Revit closed without saving |
+| 0 | Restore | PASS | Settings and selected add-in folders restored |
+
+
+## Historical validation matrix
+
 Validation status as of 2026-10-06; ✅ denotes a completed check and - denotes no validation evidence for that check.
 CI evidence includes the v0.1.0 release builds for R22-R26 and the R22/R26/R27 CI builds.
 Local build evidence includes `Release.R26` and `Release.R27`, plus the Revit 2024 build through `install.ps1 -Source Build`.

@@ -206,19 +206,19 @@ The runner's isolated self-test requires PowerShell on Windows and does not laun
 ## Release ritual
 
 Before merging the release PR, run the in-Revit regression command above for the oldest and newest supported years.
-Run the SingleUser installer smoke from an interactive Windows workstation with no running Revit:
+I run the release check from elevated PowerShell in an interactive Windows account reserved for validation:
 
 ```powershell
-.\build\release-smoke.ps1 -Msi '.\output\RevitModelMcp-1.0.0-SingleUser.msi' -ExpectedVersion '1.0.0'
+.\build\release-smoke.ps1 -BuildDirectory . -ModelDirectory .\test-models
 ```
 
-`-ExpectedVersion` matches the DLL ProductVersion before its commit suffix; prerelease suffixes remain significant.
-The check installs the package, verifies manifests and DLL versions, starts Revit 2027 through a `release-check-*` scheduled task, and calls `revit_ping` after a fresh heartbeat.
-`-ServerDirectory` selects the server checkout; `-Model` selects the 2027 test project.
-An existing SingleUser MSI installation requires `-PreviousMsi <full previous package>` with the same ProductCode.
-The check preserves the previous installation and settings, and closes only the Revit process it starts.
-The output includes installation logs, the ping response and a PASS/FAIL table.
-A failure returns exit code 1, including a failure to recover the previous installation.
+After publication, I repeat with `-Tag <release-tag>` instead of `-BuildDirectory` to verify checksums, provenance and the SingleUser MSI.
+Tag mode requires an account without an existing Model MCP MSI.
+The default covers every installed supported Revit year; `-Years` narrows the selection.
+I use the [documented model layout and fixed result format](docs/validation.md#repeatable-release-check).
+The check exercises ping, move and undo, image capture, read-only refusal and token unlock, and HTTP health on a free loopback port.
+Cleanup restores affected add-in folders and settings, removes its HTTP reservation, unlocks read-only and closes only the Revit processes it starts.
+Any failed check or cleanup row returns exit code 1.
 Attach the table and TRX counters to release validation before publication.
 
 1. Merge PRs with Conventional Commit titles.
