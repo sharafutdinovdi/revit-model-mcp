@@ -64,7 +64,7 @@ internal static class LinkDatumReader
             foreach (var grid in collector.Cast<Grid>())
             {
                 var multiSegment = RevitValueReader.IsValidId(MultiSegmentGrid.GetMultiSegementGridId(grid));
-                var curve = grid.Curve;
+                using var curve = grid.Curve;
                 result.Add(curve switch
                 {
                     Line line => new DatumRecord(RevitValueReader.GetId(grid.Id), grid.Name, "grid",
