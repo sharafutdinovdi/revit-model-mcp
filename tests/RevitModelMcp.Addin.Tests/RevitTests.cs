@@ -374,7 +374,10 @@ public sealed class RevitTests : RevitApiUiTest
     [Arguments(false)]
     public async Task CodeGroup_EditFamilyLoadFamilyUsesConflictOptionsAndHonorsDryRunAsync(bool dryRun)
     {
-        var familyName = "CrossDocumentRollback" + Guid.NewGuid().ToString("N");
+        var typeName = "CrossDocumentRollback" + Guid.NewGuid().ToString("N");
+        var originalFamily = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
+            .First(item => item.IsEditable && !item.IsInPlace);
+        var familyName = originalFamily.Name;
         var initialDocuments = Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet();
         var initialFamilies = new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount();
         try
@@ -383,15 +386,15 @@ public sealed class RevitTests : RevitApiUiTest
             {
                 TransactionMode = "group",
                 DryRun = dryRun,
-                Args = new Dictionary<string, object> { ["name"] = familyName },
+                Args = new Dictionary<string, object> { ["name"] = typeName },
                 Code = """
                     var family = new FilteredElementCollector(ctx.Document).OfClass(typeof(Family)).Cast<Family>()
                         .First(item => item.IsEditable && !item.IsInPlace);
                     var edited = ctx.Document.EditFamily(family);
-                    using (var transaction = new Transaction(edited, "Rename edited family"))
+                    using (var transaction = new Transaction(edited, "Add edited family type"))
                     {
                         transaction.Start();
-                        edited.OwnerFamily.Name = (string)ctx.Args["name"];
+                        edited.FamilyManager.NewType((string)ctx.Args["name"]);
                         transaction.Commit();
                     }
                     var loaded = edited.LoadFamily(ctx.Document, new Nice3point.Revit.Toolkit.Options.FamilyLoadOptions());
@@ -400,12 +403,12 @@ public sealed class RevitTests : RevitApiUiTest
             });
             await Assert.That(result.CodeError).IsNull();
             await Assert.That(result.ReturnValue).IsEqualTo(familyName);
-            var loadedFamilyExists = new FilteredElementCollector(Model).OfClass(typeof(Family)).Cast<Family>()
-                .Any(family => family.Name == familyName);
+            var loadedTypeExists = originalFamily.GetFamilySymbolIds()
+                .Any(id => Model.GetElement(id).Name == typeName);
             if (dryRun)
             {
                 await Assert.That(new FilteredElementCollector(Model).OfClass(typeof(Family)).GetElementCount()).IsEqualTo(initialFamilies);
-                await Assert.That(loadedFamilyExists).IsFalse();
+                await Assert.That(loadedTypeExists).IsFalse();
                 await Assert.That(Application.Documents.Cast<Document>().Select(document => document.GetHashCode()).ToHashSet()
                     .SetEquals(initialDocuments)).IsTrue();
                 await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "rolledBack")).IsTrue();
@@ -413,7 +416,7 @@ public sealed class RevitTests : RevitApiUiTest
             }
             else
             {
-                await Assert.That(loadedFamilyExists).IsTrue();
+                await Assert.That(loadedTypeExists).IsTrue();
                 await Assert.That(result.DocumentReceipts!.Single(receipt => receipt.DocumentKey == Model.GetHashCode().ToString("X8"))
                     .Outcome).IsEqualTo("committed");
                 await Assert.That(result.DocumentReceipts!.Any(receipt => receipt.OpenedByCall && receipt.Outcome == "leftOpen")).IsTrue();
