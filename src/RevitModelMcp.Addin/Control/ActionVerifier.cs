@@ -46,7 +46,7 @@ internal static class ActionVerifier
                 break;
             case "delete":
                 var stillPresent = verification.Changed!
-                    .Where(id => ActionCommandExecutor.CreateId(id).ToElement(targetDocument) is not null).ToList();
+                    .Where(id => targetDocument.GetElement(ActionCommandExecutor.CreateId(id)) is not null).ToList();
                 verification.After = new ActionFacts { StillPresent = stillPresent };
                 if (stillPresent.Count > 0) throw new InvalidOperationException("Deletion verification found surviving elements.");
                 break;
