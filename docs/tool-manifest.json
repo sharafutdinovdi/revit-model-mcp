@@ -1673,7 +1673,7 @@
     },
     {
       "name": "revit_model_audit",
-      "description": "Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Audit a live model or offline snapshots_dir. batch_models accepts revit_batch_fetch.models. Reuse model history. Missing evidence is not_assessed. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "modifying",
       "annotations": {

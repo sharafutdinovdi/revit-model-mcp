@@ -45,6 +45,10 @@ def text(value):
 
 
 def tables(result):
+    if result.get("kind") == "batch_audit":
+        from revit_model_mcp.audit.batch import report_tables
+
+        return report_tables(result, tables)
     content = {
         "Summary": [
             ["Field", "Value"],
@@ -79,7 +83,10 @@ def build_report(audit, output, format="both"):
     if format not in ("xlsx", "html", "both"):
         raise ValueError("format must be xlsx, html or both.")
     result = json.loads(Path(audit).expanduser().read_text(encoding="utf-8"))
-    if result.get("schema") != 1 or not isinstance(result.get("findings"), list):
+    if result.get("schema") != 1 or not (
+        isinstance(result.get("findings"), list)
+        or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
+    ):
         raise ValueError("Expected a schema 1 audit result.")
     base = Path(output).expanduser().absolute()
     formats = ["xlsx", "html"] if format == "both" else [format]
@@ -118,10 +125,16 @@ def build_report(audit, output, format="both"):
             for title, rows in content.items():
                 sections.append("<h2>" + title + "</h2>")
                 if title == "Findings":
+                    severity_column = rows[0].index("Severity")
                     for severity in ("critical", "major", "minor", "info"):
                         sections.append("<h3>" + severity + "</h3>")
                         sections.append(
-                            table([HEADERS, *[row for row in rows[1:] if row[1] == severity]])
+                            table(
+                                [
+                                    rows[0],
+                                    *[row for row in rows[1:] if row[severity_column] == severity],
+                                ]
+                            )
                         )
                 else:
                     sections.append(table(rows))

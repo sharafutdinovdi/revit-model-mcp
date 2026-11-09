@@ -1407,8 +1407,10 @@ async def revit_model_audit(
     save: bool = True,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
+    snapshots_dir: str | None = None,
+    batch_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes."""
+    """Audit a live model or offline snapshots_dir. batch_models accepts revit_batch_fetch.models. Reuse model history. Missing evidence is not_assessed."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1417,6 +1419,16 @@ async def revit_model_audit(
 
     try:
         loaded = load_rules(rules, rules_inline)
+        if snapshots_dir is not None:
+            from revit_model_mcp.audit.batch import audit_snapshots
+
+            if document is not None or _addressed_process_id.get() is not None:
+                raise ValueError("Offline audits cannot target a live document or process.")
+            if (blocked := policy_refusal("revit_model_audit")) is not None:
+                raise ToolError(blocked)
+            return await audit_snapshots(snapshots_dir, loaded, compare_with, save, batch_models)
+        if batch_models is not None:
+            raise ValueError("batch_models requires snapshots_dir.")
         for command in ("revit_model_audit", "model-snapshot"):
             if (blocked := policy_refusal(command)) is not None:
                 raise ToolError(blocked)
