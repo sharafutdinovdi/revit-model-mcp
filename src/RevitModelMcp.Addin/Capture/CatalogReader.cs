@@ -1,12 +1,15 @@
 using Autodesk.Revit.DB;
 using RevitModelMcp.Core.Models;
+using RevitModelMcp.Core.Query;
 
 namespace RevitModelMcp.Capture;
 
 internal static class CatalogReader
 {
-    public static CatalogData Read(Document document, string section, string? nameContains, int limit)
+    public static CatalogData Read(Document document, string section, string? nameContains, int limit, int offset = 0)
     {
+        if (section.Equals("worksets", StringComparison.OrdinalIgnoreCase) || section.Equals("ownership", StringComparison.OrdinalIgnoreCase))
+            return WorksharingCatalogReader.Read(document, section, nameContains, offset, limit);
         var items = section.ToLowerInvariant() switch
         {
             "categories" => ReadCategories(document),
@@ -14,20 +17,11 @@ internal static class CatalogReader
             "levels" => ReadLevels(document),
             "area-schemes" => ReadAreaSchemes(document),
             "views" => ReadViews(document),
-            "worksets" => ReadWorksets(document),
             "phases" => ReadPhases(document),
             "parameters" => ReadParameters(document),
             _ => throw new ArgumentOutOfRangeException(nameof(section), section, "Unknown catalog section.")
         };
-        var filtered = items.Where(item => nameContains is null ||
-            item.Name.IndexOf(nameContains, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
-        return new CatalogData
-        {
-            Section = section,
-            Items = filtered.Take(limit).ToList(),
-            Total = filtered.Count,
-            HasMore = filtered.Count > limit
-        };
+        return WorksharingCatalog.Page(section, items, nameContains, offset, limit);
     }
 
     private static List<CatalogItem> ReadCategories(Document document)
@@ -115,23 +109,6 @@ internal static class CatalogReader
             .ToList();
     }
 
-    private static List<CatalogItem> ReadWorksets(Document document)
-    {
-        if (!document.IsWorkshared)
-        {
-            return new List<CatalogItem>();
-        }
-
-        return new FilteredWorksetCollector(document).ToWorksets()
-            .Select(workset => new CatalogItem
-            {
-                Id = workset.Id.IntegerValue,
-                Name = workset.Name,
-                Type = workset.Kind.ToString()
-            })
-            .OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
 
     private static List<CatalogItem> ReadPhases(Document document)
     {

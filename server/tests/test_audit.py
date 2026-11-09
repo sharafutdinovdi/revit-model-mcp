@@ -635,7 +635,7 @@ def test_coordinates_and_worksets():
     assert f["status"] == "partial"
     for r in [
         rule("coordinates", metric="present"),
-        rule("worksets", metric="closed"),
+        rule("worksets", metric="unsupported"),
         {**rule(), "enabled": False},
     ]:
         f, source = evaluate(r, {})

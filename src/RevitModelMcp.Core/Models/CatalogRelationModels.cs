@@ -36,6 +36,12 @@ public sealed class CatalogData
     [DataMember(Name = "hasMore")]
     public bool HasMore { get; set; }
 
+    [DataMember(Name = "nextOffset")]
+    public long NextOffset { get; set; }
+
+    [DataMember(Name = "isWorkshared", EmitDefaultValue = false)]
+    public bool? IsWorkshared { get; set; }
+
     [DataMember(Name = "section")]
     public string Section { get; set; } = string.Empty;
 
@@ -75,6 +81,18 @@ public sealed class CatalogItem
 
     [DataMember(Name = "categories", EmitDefaultValue = false)]
     public List<string>? Categories { get; set; }
+
+    [DataMember(Name = "owner", EmitDefaultValue = false)]
+    public string? Owner { get; set; }
+
+    [DataMember(Name = "isOpen", EmitDefaultValue = false)]
+    public bool? IsOpen { get; set; }
+
+    [DataMember(Name = "worksetId", EmitDefaultValue = false)]
+    public long? WorksetId { get; set; }
+
+    [DataMember(Name = "checkoutStatus", EmitDefaultValue = false)]
+    public string? CheckoutStatus { get; set; }
 }
 
 [DataContract]

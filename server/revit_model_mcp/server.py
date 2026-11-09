@@ -1062,10 +1062,11 @@ async def revit_list_catalog(
     limit: Annotated[int, Field(ge=1, le=2000)] = 200,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
+    offset: Annotated[int, Field(ge=0)] = 0,
 ) -> dict[str, Any]:
-    """List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore."""
+    """List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets include counts, owner and open state. Ownership scans limit candidates and returns checked-out rows with nextOffset; no name_contains. Worksharing sections require a workshared model."""
     return await _execute(
-        Job.list_catalog(section, name_contains, limit),
+        Job.list_catalog(section, name_contains, limit, offset),
         timeout_seconds,
         document,
     )

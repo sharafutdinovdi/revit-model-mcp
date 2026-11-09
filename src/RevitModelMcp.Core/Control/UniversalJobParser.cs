@@ -6,7 +6,7 @@ internal static class UniversalJobParser
 {
     private static readonly HashSet<string> CatalogSections = new(StringComparer.OrdinalIgnoreCase)
     {
-        "categories", "family-types", "levels", "area-schemes", "views", "worksets", "phases", "parameters"
+        "categories", "family-types", "levels", "area-schemes", "views", "worksets", "ownership", "phases", "parameters"
     };
 
     private static readonly HashSet<string> Relations = new(StringComparer.OrdinalIgnoreCase)
@@ -56,6 +56,10 @@ internal static class UniversalJobParser
         var section = Normalize(job.Section);
         if (job.Limit is < 1 or > 2000)
             return ControlJobParseResult.Invalid("list-catalog", "limit must be between 1 and 2000.");
+        if (job.Offset is < 0)
+            return ControlJobParseResult.Invalid("list-catalog", "offset must be nonnegative.");
+        if (string.Equals(section, "ownership", StringComparison.OrdinalIgnoreCase) && Normalize(job.NameContains) is not null)
+            return ControlJobParseResult.Invalid("list-catalog", "nameContains is not supported for ownership.");
         return section is null || !CatalogSections.Contains(section)
             ? ControlJobParseResult.Invalid(
                 "list-catalog",
@@ -201,6 +205,7 @@ internal static class UniversalJobParser
         result.CatalogSection = section;
         result.NameContains = Normalize(job.NameContains);
         result.Limit = job.Limit ?? 200;
+        result.Offset = job.Offset ?? 0;
         return result;
     }
 

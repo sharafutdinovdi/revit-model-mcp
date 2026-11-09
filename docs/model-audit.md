@@ -47,7 +47,14 @@ Categories and parameters resolve through `revit_list_catalog`. Use `builtin`, s
 | `sheets-and-views` | Missing title blocks, unplaced views, default view names. |
 | `iso19650-information` | Required description, Mark and classification code on walls and doors. These are review defaults. Replace them with project EIR or BEP requirements. They do not prove ISO 19650 compliance. |
 
-Checks include `parameter_filled`, `parameter_in`, `parameter_matches`, `name_matches`, `count`, `model_health`, `coordinates`, `sheets` and `worksets`. The last is validated but not assessed until #213 supplies a reader. Thresholds accept one of `max_count`, `max_percent`, or `min_percent`. Omitted thresholds allow zero findings. For parameter fill, use `min_percent`. For `coordinates` metric `link_offset_mm`, `max_count` is the tolerance in millimetres.
+Checks include `parameter_filled`, `parameter_in`, `parameter_matches`, `name_matches`, `count`, `model_health`, `coordinates`, `sheets` and `worksets`.
+The worksets check supports metric `closed` through the paged user-workset catalog.
+Non-workshared models and older add-ins without open-state metadata return `not_assessed`.
+Closed worksets and bounded count scans produce incomplete evidence and prevent a full-population pass.
+Thresholds accept one of `max_count`, `max_percent`, or `min_percent`.
+Omitted thresholds allow zero findings.
+For parameter fill, use `min_percent`.
+For `coordinates` metric `link_offset_mm`, `max_count` is the tolerance in millimetres.
 
 Threshold units are validated after inheritance, before any model read.
 `count`, `coordinates` and `worksets` accept only `max_count`.
@@ -109,5 +116,3 @@ Files are `<model key>/<UTC timestamp>.json`. The key hashes central path or sou
 | Skipped | Reader omissions and total skipped count. |
 
 `audit.to_register_issues(result)` maps failed audit findings to `revit_issue_register` issues. It maps title directly, category from the pack, finding from measured value and threshold, severity directly, and requirement_source and requirement from reference. Review the project requirements before creating a register. The register's existing limits still apply.
-
-Workset checks (#213), multi-model batch audits (#215), BCF and images are outside this slice.

@@ -705,7 +705,15 @@ class Job:
         return cls("aggregate-elements", payload)
 
     @classmethod
-    def list_catalog(cls, section: str, name_contains: str | None = None, limit: int = 200) -> Job:
+    def list_catalog(
+        cls, section: str, name_contains: str | None = None, limit: int = 200, offset: int = 0
+    ) -> Job:
+        if offset < 0 or not 1 <= limit <= 2000:
+            raise RevitChannelError(
+                "offset must be nonnegative and limit must be between 1 and 2000."
+            )
+        if section.strip().lower() == "ownership" and _optional_text(name_contains):
+            raise RevitChannelError("name_contains is not supported for ownership.")
         return cls(
             "list-catalog",
             {
@@ -713,6 +721,7 @@ class Job:
                 "section": _required_text(section, "section"),
                 "nameContains": _optional_text(name_contains),
                 "limit": limit,
+                **({"offset": offset} if offset else {}),
             },
         )
 

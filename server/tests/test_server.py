@@ -270,6 +270,7 @@ EXPECTED_PARAMETERS = {
         "limit",
         "timeout_seconds",
         "document",
+        "offset",
     ],
     "revit_aggregate_elements": [
         "group_by",
