@@ -22,8 +22,12 @@ public sealed class WorksharingCatalogTests
         await Assert.That(counts[1]).IsEqualTo(2);
         await Assert.That(counts[2]).IsEqualTo(1);
         await Assert.That(diagnostics.Count).IsEqualTo(0);
-        counts = WorksharingCatalog.CountElements(Enumerable.Repeat(1L, WorksharingCatalog.MaximumCountElements + 1), diagnostics);
+        counts = WorksharingCatalog.CountElements(Enumerable.Repeat<long?>(1, WorksharingCatalog.MaximumCountElements + 1), diagnostics);
         await Assert.That(counts[1]).IsEqualTo(WorksharingCatalog.MaximumCountElements);
+        await Assert.That(diagnostics.Count).IsEqualTo(1);
+        diagnostics = new SkippedReadDiagnostics();
+        counts = WorksharingCatalog.CountElements(Enumerable.Repeat<long?>(null, WorksharingCatalog.MaximumCountElements + 1), diagnostics);
+        await Assert.That(counts.Count).IsEqualTo(0);
         await Assert.That(diagnostics.Count).IsEqualTo(1);
     }
 

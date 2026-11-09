@@ -117,9 +117,10 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 ### Worksets and ownership
 
 `revit_list_catalog(section="worksets")` returns user worksets with `id`, `name`, `count`, `owner` and `isOpen`.
+The response includes `isWorkshared: true`; audits reject older responses without this marker, even when the workset list is empty.
 Both worksharing sections refuse non-workshared documents with an explicit error.
 Counts include loaded non-type elements only.
-The count scan examines at most 100,000 elements per request; further elements produce skipped diagnostics and counts become lower bounds.
+The count scan aggregates at most 100,000 elements per request, with one extra candidate for limit detection; further elements produce skipped diagnostics and counts become lower bounds.
 Closed worksets also produce skipped diagnostics; unloaded elements are unavailable.
 Workset pages apply `name_contains` before `offset` and `limit`.
 

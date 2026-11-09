@@ -11,7 +11,7 @@ public static class WorksharingCatalog
         if (!isWorkshared) throw new InvalidOperationException("Workset and ownership reads require a workshared document.");
     }
 
-    public static Dictionary<long, int> CountElements(IEnumerable<long> worksetIds, SkippedReadDiagnostics diagnostics)
+    public static Dictionary<long, int> CountElements(IEnumerable<long?> worksetIds, SkippedReadDiagnostics diagnostics)
     {
         var counts = new Dictionary<long, int>();
         var processed = 0;
@@ -23,7 +23,8 @@ public static class WorksharingCatalog
                     $"Count scan stopped at {MaximumCountElements} loaded non-type elements; counts are lower bounds."));
                 break;
             }
-            counts[worksetId] = counts.GetValueOrDefault(worksetId) + 1;
+            if (worksetId.HasValue)
+                counts[worksetId.Value] = counts.GetValueOrDefault(worksetId.Value) + 1;
         }
         return counts;
     }

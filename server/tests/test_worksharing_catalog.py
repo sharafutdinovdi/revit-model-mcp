@@ -48,6 +48,7 @@ def test_workset_audit_pages_counts_and_incomplete_evidence(skipped, expected):
         return {
             "success": True,
             "data": {
+                "isWorkshared": True,
                 "items": [{"isOpen": True}] * (2000 if offset == 0 else 1),
                 "total": 2001,
                 "hasMore": offset == 0,
@@ -75,9 +76,17 @@ def test_workset_audit_pages_counts_and_incomplete_evidence(skipped, expected):
     assert source.read.await_count == 2
 
 
-def test_workset_audit_refusal_is_not_assessed():
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"success": False, "error": "Requires a workshared document."},
+        {"success": True, "data": {"items": [], "total": 0, "hasMore": False}},
+        {"success": True, "data": {"isWorkshared": False, "items": [], "total": 0}},
+    ],
+)
+def test_workset_audit_refusal_or_missing_marker_is_not_assessed(response):
     source = AsyncMock()
-    source.read.return_value = {"success": False, "error": "Requires a workshared document."}
+    source.read.return_value = response
     result = asyncio.run(
         Evaluator(source).evaluate(
             [

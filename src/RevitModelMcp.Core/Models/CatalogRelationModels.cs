@@ -39,6 +39,9 @@ public sealed class CatalogData
     [DataMember(Name = "nextOffset")]
     public long NextOffset { get; set; }
 
+    [DataMember(Name = "isWorkshared", EmitDefaultValue = false)]
+    public bool? IsWorkshared { get; set; }
+
     [DataMember(Name = "section")]
     public string Section { get; set; } = string.Empty;
 

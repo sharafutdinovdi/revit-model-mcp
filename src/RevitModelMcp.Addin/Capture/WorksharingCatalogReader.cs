@@ -19,22 +19,14 @@ internal static class WorksharingCatalogReader
         if (section.Equals("ownership", StringComparison.OrdinalIgnoreCase))
             return WorksharingCatalog.ReadOwnership(true, ElementIds(elements), id => ReadOwnership(document, id), offset, limit, diagnostics);
 
-        var sampled = 0;
-        IEnumerable<long> WorksetIds()
+        IEnumerable<long?> WorksetIds()
         {
             foreach (var element in elements)
             {
-                if (sampled == WorksharingCatalog.MaximumCountElements)
-                {
-                    diagnostics.Add("workset element counts", new InvalidOperationException(
-                        $"Count scan stopped at {WorksharingCatalog.MaximumCountElements} loaded non-type elements; counts are lower bounds."));
-                    yield break;
-                }
-                sampled++;
                 long? worksetId = null;
                 try { worksetId = element.WorksetId.IntegerValue; }
                 catch (Exception exception) { diagnostics.Add($"element {RevitValueReader.GetId(element.Id)} workset", exception); }
-                if (worksetId.HasValue) yield return worksetId.Value;
+                yield return worksetId;
             }
         }
         var counts = WorksharingCatalog.CountElements(WorksetIds(), diagnostics);
@@ -55,7 +47,9 @@ internal static class WorksharingCatalogReader
             }
             catch (Exception exception) { diagnostics.Add($"workset {workset.Id.IntegerValue}", exception); }
         }
-        return WorksharingCatalog.Page("worksets", items.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase), nameContains, offset, limit);
+        var result = WorksharingCatalog.Page("worksets", items.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase), nameContains, offset, limit);
+        result.IsWorkshared = true;
+        return result;
     }
 
     private static IEnumerable<long> ElementIds(FilteredElementCollector collector)

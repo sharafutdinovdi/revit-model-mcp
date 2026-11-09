@@ -283,6 +283,8 @@ class Evaluator:
                 data = await self.read(
                     "revit_list_catalog", section="worksets", offset=page * 2000, limit=2000
                 )
+                if data.get("isWorkshared") is not True:
+                    raise NotAssessed("Workshared document status is unavailable on this add-in.")
                 items = data.get("items", [])
                 if any(type(row.get("isOpen")) is not bool for row in items):
                     raise NotAssessed("Workset open state is unavailable on this add-in.")
