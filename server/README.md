@@ -163,7 +163,7 @@ From the repository root:
 
 ```sh
 cd server
-uv run --with pytest pytest -q
+uv run --with pytest --with hypothesis --with lxml==6.1.3 pytest -q
 ```
 
 The tests use mocked host operations and exercise MCP stdio without Revit.
