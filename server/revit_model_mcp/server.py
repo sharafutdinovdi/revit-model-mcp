@@ -1410,7 +1410,7 @@ async def revit_model_audit(
     snapshots_dir: str | None = None,
     batch_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Audit a live model or offline snapshots_dir. batch_models accepts revit_batch_fetch.models. Reuse model history. Missing evidence is not_assessed."""
+    """Audit a live model or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1469,7 +1469,7 @@ def revit_audit_report(
     output: str,
     format: Literal["xlsx", "html", "both"] = "both",
 ) -> dict[str, Any]:
-    """Write new XLSX and self-contained HTML reports from a local audit JSON file. Paths resolve on the server machine. Existing files are refused."""
+    """Write new XLSX or self-contained HTML from local audit JSON. Server-side paths; existing files are refused."""
     from revit_model_mcp.audit.report import build_report
 
     if (blocked := policy_refusal("revit_audit_report")) is not None:
@@ -1489,21 +1489,21 @@ def revit_build_report(
         str,
         Field(
             validation_alias=AliasChoices("snapshots_dir", "snapshotsDir"),
-            description="Directory of schema-version-1 JSON snapshots on the MCP client machine.",
+            description="Schema-v1 JSON snapshot directory on the MCP client.",
         ),
     ],
     output_path: Annotated[
         str,
         Field(
             validation_alias=AliasChoices("output_path", "outputPath"),
-            description="New .xlsx file path, resolved on the machine running this server; existing files are never replaced.",
+            description="New .xlsx path, resolved on the machine running this server; existing files are refused.",
         ),
     ],
     previous_dir: Annotated[
         str | None,
         Field(
             validation_alias=AliasChoices("previous_dir", "previousDir"),
-            description="Optional directory of earlier snapshots matched by model title for the Changes sheet.",
+            description="Earlier snapshots matched by model title for the Changes sheet.",
         ),
     ] = None,
     findings: Annotated[
