@@ -65,7 +65,7 @@ jobs:
         working-directory: server
         run: |
           uv sync --frozen
-          uv run --frozen --with pytest==9.1.1 --with hypothesis pytest -q
+          uv run --frozen --with pytest==9.1.1 --with hypothesis --with lxml==6.1.3 pytest -q
       - name: Restore Revit API reference pin helper with lock
         run: dotnet restore build/RevitApiReferencePin/RevitApiReferencePin.csproj --locked-mode -p:Configuration=Release
       - name: Build and zip Revit 2022-2027
