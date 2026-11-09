@@ -81,7 +81,11 @@ Every subsequent read targets that process and the resolved document path, or it
 Responses with missing or changed identity return `not_assessed`; their measurements are not used.
 Identity validation precedes path redaction.
 
-The Python `SnapshotReadSource` adapter accepts a loaded snapshot v1 dictionary. Load snapshot directories with `snapshot_report.load_snapshots`. Snapshot counts, warnings and matching parameterFill rows can be assessed. V1 has no element rows, sheets, links or stable catalog identifier mappings. Those checks are `not_assessed`. The MCP audit tool addresses a live document; offline callers use the same evaluator directly.
+The Python `SnapshotReadSource` adapter accepts a loaded snapshot v1 dictionary.
+`revit_model_audit` evaluates a local directory through `snapshots_dir` without contacting Revit.
+Snapshot counts, warnings and matching parameterFill rows can be assessed.
+V1 has no element rows, sheets, links or stable catalog identifier mappings.
+Those checks are `not_assessed`.
 
 View `name_matches` rules scoped to `categories: [{builtin: OST_Views}]`, including `VIEWS-names`, use `revit_list_views` instead of the category catalog. They check view names across all pages. Current add-ins return all non-template views in one response. View templates are excluded by default; an applied template name does not exclude a view. Set `scope.include_templates: true` to request templates. The current live reader cannot include them and returns `not_assessed` for that request. Snapshot v1 has no view list. An unavailable view reader produces `not_assessed`.
 
@@ -97,7 +101,75 @@ Set `REVIT_MCP_AUDIT_DIR` to choose a history directory. Otherwise audits share 
 
 Files are `<model key>/<UTC timestamp>.json`. The key hashes central path or source path together with title. `REVIT_MCP_REDACT_PATHS` redacts stored model paths and returned paths. Files are created once and never overwritten. There is no automatic pruning.
 
-`compare_with="previous"` finds the newest earlier result for the same key and versionGuid family. A result path selects an explicit baseline. `"none"` disables comparison. Missing or different version identity prevents deltas. Failed evidence is matched by rule id and element id; model-level findings use an empty element id. Deltas are `new`, `fixed` or `unchanged`. Missing, truncated or incomplete evidence cannot prove a fix. `not_assessed` never yields a fixed item. `summary.rulesChanged` flags a changed rules hash.
+`compare_with="previous"` selects the latest strictly earlier `collectedAtUtc` for the same key.
+`evaluatedAtUtc` records evaluation time, not evidence freshness.
+Offline results retain the snapshot collection time.
+Live results retain the initial snapshot collection time, or the evaluation time when that reader provides no collection time.
+Missing, equal or later collection times cannot establish a baseline; deltas remain unassessed.
+Older history files without collection timestamps are not eligible baselines.
+A result path selects an explicit baseline with the same collection-time requirement.
+`"none"` disables comparison.
+Deltas require equal, nonempty `passport.lineageId` values, retained as `model.lineageId` in audit history.
+Snapshots use `ProjectInformation.UniqueId` as the lineage identity for live and batch collection.
+The Revit API reference defines `Element.UniqueId` as stable across upgrades and workset operations such as Save To Central.
+`WorksharingCentralGUID` is not used: the Revit 2022 API reference restricts it to Revit Server central models and documents an exception for file-based models.
+`versionGuid` remains informational and may differ between comparable collections.
+Missing lineage in legacy history or a different lineage produces an explicit `deltas not assessed` message.
+A rebuilt project with different Project Information identity cannot reuse the previous project's element findings.
+Copies retaining Project Information identity remain in the same lineage; separate paths retain separate history keys.
+Failed evidence is matched by rule id and element id; model-level findings use an empty element id.
+Deltas are `new`, `fixed` or `unchanged`.
+Missing, truncated or incomplete evidence cannot prove a fix.
+`not_assessed` never yields a fixed item.
+`summary.rulesChanged` flags a changed rules hash.
+
+## Batch snapshot audits
+
+Collect a folder with `revit_batch_start`, wait for a terminal result with `revit_batch_status`, then download its snapshots with `revit_batch_fetch`.
+Pass the fetch response's complete `models` array as `batch_models`.
+Each inventory item uses `path`, `status` and `localPath`, with optional `error` or `reason`.
+Relative `localPath` values resolve inside `snapshots_dir`.
+Snapshot files must be direct directory members, not symlinks.
+
+```json
+{
+  "snapshots_dir": "/reports/current",
+  "rules": "pack:model-health",
+  "batch_models": [
+    {"path": "Tower A.rvt", "status": "completed", "localPath": "snapshot_0000.json"},
+    {"path": "Tower B.rvt", "status": "failed", "error": "Model could not be opened"}
+  ],
+  "compare_with": "previous",
+  "save": true
+}
+```
+
+Without `batch_models`, every direct JSON file in the directory represents a model.
+Directory discovery cannot identify models that failed before producing a snapshot.
+An inventory retains failed, cancelled and missing models as report rows with reasons.
+Invalid snapshots remain failed rows.
+An empty directory is accepted only with a nonempty inventory.
+
+Each assessed model uses the same rule evaluator, immutable history key and comparison as a live audit.
+Fetched snapshots contain a `historyKey` computed from the original model identity before path redaction.
+The offline audit uses this key for both model separation and history lookup.
+A snapshot without `historyKey` requires a model path with a directory.
+A basename-only identity without a key produces a failed model row with an explanatory reason.
+Batch comparison accepts `previous` or `none`.
+The previous result is selected independently for each model, not by model title.
+No baseline or unavailable version identity leaves deltas unassessed.
+Absent and incomplete evidence cannot prove a fix.
+Rule status totals separate `not_assessed` from `passed`, `failed` and `partial`.
+Models without usable snapshots count every rule as `not_assessed`.
+Collection failures and reader omissions remain in `skipped` and `skippedCount`.
+
+With `save=true`, each model audit is stored in its normal history directory.
+The combined result is stored under `batches` in the audit history root, and `savedTo` identifies its JSON file.
+`save=false` returns the combined result without writing history or a combined file.
+Pass the combined `savedTo` to `revit_audit_report` for XLSX and HTML.
+The Models section contains one row per model, rule status counts, new, fixed and unchanged findings, comparison availability, failure reasons and the per-model history path.
+Findings and Deltas include the model identifier.
+Rules and Skipped retain the single-model report contracts.
 
 ## Reports and issue registers
 
@@ -116,3 +188,5 @@ Files are `<model key>/<UTC timestamp>.json`. The key hashes central path or sou
 | Skipped | Reader omissions and total skipped count. |
 
 `audit.to_register_issues(result)` maps failed audit findings to `revit_issue_register` issues. It maps title directly, category from the pack, finding from measured value and threshold, severity directly, and requirement_source and requirement from reference. Review the project requirements before creating a register. The register's existing limits still apply.
+
+BCF and images are outside this slice.

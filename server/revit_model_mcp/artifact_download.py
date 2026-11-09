@@ -65,7 +65,13 @@ def save_batch_artifact(result: dict[str, object], output_dir: str) -> str:
     ):
         raise ValueError("Remote response does not contain a safe batch artifact.")
     content = base64.b64decode(encoded, validate=True)
-    snapshot = redact_model_paths(json.loads(content))
+    snapshot = json.loads(content)
+    from revit_model_mcp.audit.result import model_identity, model_key
+
+    identity = model_identity(snapshot)
+    if identity.get("centralPath") or identity.get("path"):
+        snapshot["historyKey"] = model_key(identity)
+    snapshot = redact_model_paths(snapshot)
     content = json.dumps(snapshot, ensure_ascii=False).encode("utf-8")
     try:
         directory = Path(output_dir).expanduser().absolute()

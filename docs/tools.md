@@ -4,8 +4,8 @@ description: "Model MCP tool reference with toolsets, arguments, response contra
 
 # Tool reference
 
-The default tool list contains 89 tools, about 26,972 tokens.
-The `core,read` selection contains 22 tools, about 6,522 tokens.
+The default tool list contains 89 tools, about 26,973 tokens.
+The `core,read` selection contains 22 tools, about 6,545 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
@@ -63,7 +63,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
 | `core` | 9 | 7,319 | 1,829 |
-| `read` | 13 | 18,771 | 4,692 |
+| `read` | 13 | 18,863 | 4,715 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
 | `views-sheets` | 22 | 25,742 | 6,435 |
@@ -71,22 +71,22 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
 | `export` | 4 | 7,198 | 1,799 |
-| `batch` | 7 | 8,164 | 2,041 |
+| `batch` | 7 | 8,077 | 2,019 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,888 | 26,972 |
-| `core,read` | 22 | 26,090 | 6,522 |
+| `all` (default) | 89 | 107,893 | 26,973 |
+| `core,read` | 22 | 26,182 | 6,545 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,888 | 26,972 | 108,045 |
-| `core,read` | 22 | 26,090 | 6,522 | 26,180 |
-| `preset:audit` | 28 | 30,969 | 7,742 | 31,065 |
-| `preset:edit` | 59 | 67,814 | 16,953 | 67,941 |
-| `preset:families` | 40 | 45,908 | 11,477 | 46,016 |
-| `preset:sheets` | 54 | 63,909 | 15,977 | 64,031 |
-| `preset:batch` | 46 | 52,496 | 13,124 | 52,610 |
+| `all` | 89 | 107,893 | 26,973 | 108,050 |
+| `core,read` | 22 | 26,182 | 6,545 | 26,272 |
+| `preset:audit` | 28 | 31,061 | 7,765 | 31,157 |
+| `preset:edit` | 59 | 67,906 | 16,976 | 68,033 |
+| `preset:families` | 40 | 46,000 | 11,500 | 46,108 |
+| `preset:sheets` | 54 | 64,001 | 16,000 | 64,123 |
+| `preset:batch` | 46 | 52,501 | 13,125 | 52,615 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -375,10 +375,18 @@ Cycles, nesting of 128 levels, colliding dictionary keys after string conversion
 
 | Tool | Purpose |
 | --- | --- |
-| `revit_model_audit` | Read one addressed model against local YAML or JSON rules, inline rules or a builtin pack. Save immutable results and compare with earlier results. Toolset: `read`. |
-| `revit_audit_report` | Build new XLSX and self-contained HTML files from a local audit result without Revit. Toolset: `batch`. |
+| `revit_model_audit` | Read one addressed model or evaluate a local snapshot directory against local YAML or JSON rules, inline rules or a builtin pack. Save immutable per-model results and compare with earlier results. Toolset: `read`. |
+| `revit_audit_report` | Build new XLSX and self-contained HTML files from a local single-model or batch audit result without Revit. Toolset: `batch`. |
 
 See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html` or `both`).
+
+For offline batch evaluation, pass `snapshots_dir` and optionally `batch_models` from the complete `revit_batch_fetch.models` inventory.
+No Revit transport is used in this mode; `document` and `process_id` are rejected.
+The inventory retains failed, cancelled and missing models.
+Directory discovery alone includes only files present.
+The combined result's `savedTo` can be passed to `revit_audit_report`.
+Batch reports contain one Models row per model and separate not-assessed counts.
+The existing audit tool covers live and offline evidence with the same rule and history contracts; no additional discovery entry is required.
 
 For `revit_issue_register`, audit `findings` map to issues through the pure Python helper `audit.to_register_issues(result)`: `title` stays title, `category` comes from pack, `finding` describes measured value and threshold, `severity` stays severity, and `requirement_source` and `requirement` come from reference. Only failed findings and partial findings with observed violations become issues. The existing register limits remain in force.
 

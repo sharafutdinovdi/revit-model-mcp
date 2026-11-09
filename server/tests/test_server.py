@@ -244,6 +244,8 @@ EXPECTED_PARAMETERS = {
         "save",
         "timeout_seconds",
         "document",
+        "snapshots_dir",
+        "batch_models",
     ],
     "revit_audit_report": ["audit", "output", "format"],
     "revit_model_health": ["timeout_seconds", "document", "output_path"],

@@ -1407,8 +1407,10 @@ async def revit_model_audit(
     save: bool = True,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
+    snapshots_dir: str | None = None,
+    batch_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Audit one model with local YAML or JSON rules, or pack:model-health by default. Reads only. Save immutable history on the server machine and compare with previous, a result path, or none. Unsupported evidence is not_assessed. The run is bounded to ten minutes."""
+    """Audit a live model or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1417,6 +1419,16 @@ async def revit_model_audit(
 
     try:
         loaded = load_rules(rules, rules_inline)
+        if snapshots_dir is not None:
+            from revit_model_mcp.audit.batch import audit_snapshots
+
+            if document is not None or _addressed_process_id.get() is not None:
+                raise ValueError("Offline audits cannot target a live document or process.")
+            if (blocked := policy_refusal("revit_model_audit")) is not None:
+                raise ToolError(blocked)
+            return await audit_snapshots(snapshots_dir, loaded, compare_with, save, batch_models)
+        if batch_models is not None:
+            raise ValueError("batch_models requires snapshots_dir.")
         for command in ("revit_model_audit", "model-snapshot"):
             if (blocked := policy_refusal(command)) is not None:
                 raise ToolError(blocked)
@@ -1436,7 +1448,14 @@ async def revit_model_audit(
         source = LiveReadSource(document, timeout_seconds, identity=identity)
         evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
-        return build_result(model_identity(identity["data"]), loaded, findings, compare_with, save)
+        return build_result(
+            model_identity(identity["data"]),
+            loaded,
+            findings,
+            compare_with,
+            save,
+            collected_at=identity["data"].get("collectedAtUtc"),
+        )
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 
@@ -1450,7 +1469,7 @@ def revit_audit_report(
     output: str,
     format: Literal["xlsx", "html", "both"] = "both",
 ) -> dict[str, Any]:
-    """Write new XLSX and self-contained HTML reports from a local audit JSON file. Paths resolve on the server machine. Existing files are refused."""
+    """Write new XLSX or self-contained HTML from local audit JSON. Server-side paths; existing files are refused."""
     from revit_model_mcp.audit.report import build_report
 
     if (blocked := policy_refusal("revit_audit_report")) is not None:
@@ -1470,21 +1489,21 @@ def revit_build_report(
         str,
         Field(
             validation_alias=AliasChoices("snapshots_dir", "snapshotsDir"),
-            description="Directory of schema-version-1 JSON snapshots on the MCP client machine.",
+            description="Schema-v1 JSON snapshot directory on the MCP client.",
         ),
     ],
     output_path: Annotated[
         str,
         Field(
             validation_alias=AliasChoices("output_path", "outputPath"),
-            description="New .xlsx file path, resolved on the machine running this server; existing files are never replaced.",
+            description="New .xlsx path, resolved on the machine running this server; existing files are refused.",
         ),
     ],
     previous_dir: Annotated[
         str | None,
         Field(
             validation_alias=AliasChoices("previous_dir", "previousDir"),
-            description="Optional directory of earlier snapshots matched by model title for the Changes sheet.",
+            description="Earlier snapshots matched by model title for the Changes sheet.",
         ),
     ] = None,
     findings: Annotated[

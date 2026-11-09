@@ -3617,6 +3617,21 @@
       "readOnlyHint": false
     },
     "properties": {
+      "batch_models": {
+        "anyOf": [
+          {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "compare_with": {
         "default": "previous",
         "type": "string"
@@ -3669,6 +3684,17 @@
       "save": {
         "default": true,
         "type": "boolean"
+      },
+      "snapshots_dir": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "timeout_seconds": {
         "default": 120,
