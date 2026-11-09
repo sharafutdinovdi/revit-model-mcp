@@ -98,6 +98,18 @@ def build_report(audit, output, format="both"):
         or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
     ):
         raise ValueError("Expected a schema 1 audit result.")
+    is_batch = result.get("kind") == "batch_audit"
+    if is_batch and format in ("bcf", "all"):
+        raise ValueError("BCF export requires a single-model audit; export each model separately.")
+    findings = (
+        [
+            finding
+            for row in result["models"]
+            for finding in (row.get("audit") or {}).get("findings", [])
+        ]
+        if is_batch
+        else result["findings"]
+    )
     base = Path(output).expanduser().absolute()
     formats = (
         ["xlsx", "html", "bcf"]
@@ -112,7 +124,7 @@ def build_report(audit, output, format="both"):
     ]
     images = {
         index: image
-        for index, finding in enumerate(result["findings"])
+        for index, finding in enumerate(findings)
         if (image := image_bytes(finding)) is not None
     }
     image_targets = (
@@ -126,7 +138,7 @@ def build_report(audit, output, format="both"):
         if not target.parent.is_dir():
             raise ValueError("Output parent directory must exist.")
     content = tables(result)
-    for index, finding in enumerate(result["findings"]):
+    for index, finding in enumerate(findings):
         evidence = finding.get("evidence", {})
         content["Findings"][index + 1][-1] = text(
             {
@@ -148,7 +160,7 @@ def build_report(audit, output, format="both"):
                 _header(sheet, [26] * len(rows[0]), filter_rows=True)
                 if title == "Findings":
                     for index, image_target in image_targets.items():
-                        cell = sheet.cell(index + 2, len(HEADERS))
+                        cell = sheet.cell(index + 2, len(rows[0]))
                         cell.hyperlink = image_target.name
                         cell.style = "Hyperlink"
             write_new_file(target, workbook.save)
@@ -183,7 +195,7 @@ def build_report(audit, output, format="both"):
                                 ]
                             )
                         )
-                    for index, finding in enumerate(result["findings"]):
+                    for index, finding in enumerate(findings):
                         if index in images:
                             sections.append(
                                 "<figure><figcaption>"

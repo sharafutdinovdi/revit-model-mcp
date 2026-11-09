@@ -1,7 +1,9 @@
 """Offline batch audits retain inventory and reuse per-model evidence history."""
 
 import asyncio
+import base64
 import copy
+import io
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -12,6 +14,7 @@ from openpyxl import load_workbook
 
 from revit_model_mcp import server
 from revit_model_mcp.audit.batch import audit_snapshots
+from revit_model_mcp.audit.bcf import write_bcf
 from revit_model_mcp.audit.report import build_report
 from revit_model_mcp.audit.result import build_result, model_identity, model_key
 from revit_model_mcp.audit.rules import load_rules
@@ -70,6 +73,53 @@ def put(directory, name, value):
 
 def run(directory, **kwargs):
     return asyncio.run(audit_snapshots(str(directory), rules(), **kwargs))
+
+
+@pytest.mark.parametrize("with_image", [False, True])
+def test_batch_report_keeps_model_columns_and_evidence(tmp_path, with_image):
+    put(tmp_path, "a.json", snapshot())
+    put(tmp_path, "b.json", snapshot("B"))
+    result = run(tmp_path, save=False)
+    png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7e8AAAAASUVORK5CYII="
+    finding = result["models"][1]["audit"]["findings"][0]
+    finding["evidence"] = {
+        "status": "captured" if with_image else "not_assessed",
+        **({"png": png} if with_image else {}),
+    }
+    source = put(tmp_path, "batch.json", result)
+    output = build_report(str(source), str(tmp_path / "review"))
+    assert len(output["files"]) == (3 if with_image else 2)
+    sheet = load_workbook(tmp_path / "review.xlsx")["Findings"]
+    assert sheet.cell(1, 1).value == "Model"
+    assert sheet.cell(1, sheet.max_column).value == "Evidence"
+    assert "A.rvt" in sheet.cell(2, 1).value
+    assert "B.rvt" in sheet.cell(4, 1).value
+    assert sheet.cell(4, 2).value == finding["id"]
+    evidence = sheet.cell(4, sheet.max_column)
+    assert finding["evidence"]["status"] in evidence.value
+    html = (tmp_path / "review.html").read_text()
+    assert "A.rvt" in html and "B.rvt" in html and "Not assessed" in html
+    if with_image:
+        assert evidence.hyperlink.target == "review.evidence-3.png"
+        assert (tmp_path / evidence.hyperlink.target).read_bytes() == base64.b64decode(png)
+        assert "data:image/png;base64," + png in html
+    else:
+        assert evidence.hyperlink is None
+        assert "data:image/png" not in html
+
+
+@pytest.mark.parametrize("format", ["bcf", "all"])
+def test_batch_bcf_refuses_before_writing_outputs(tmp_path, format):
+    put(tmp_path, "a.json", snapshot())
+    result = run(tmp_path, save=False)
+    source = put(tmp_path, "batch.json", result)
+    with pytest.raises(ValueError, match="single-model audit"):
+        build_report(str(source), str(tmp_path / "review"), format)
+    assert not list(tmp_path.glob("review*"))
+    stream = io.BytesIO()
+    with pytest.raises(ValueError, match="single-model audit"):
+        write_bcf(result, stream)
+    assert stream.getvalue() == b""
 
 
 def test_two_runs_store_history_and_compare_each_model(tmp_path, monkeypatch):

@@ -21,6 +21,8 @@ def _xml(node):
 
 def write_bcf(result, stream):
     """Export failed and incomplete findings; unavailable evidence stays explicit."""
+    if result.get("kind") == "batch_audit":
+        raise ValueError("BCF export requires a single-model audit; export each model separately.")
     with ZipFile(stream, "w", compression=ZIP_DEFLATED) as archive:
         archive.writestr("bcf.version", _xml(ET.Element("Version", VersionId="2.1")))
         for finding in result["findings"]:

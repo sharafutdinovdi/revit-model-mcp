@@ -163,6 +163,8 @@ Pass the combined `savedTo` to `revit_audit_report` for XLSX and HTML.
 The Models section contains one row per model, rule status counts, new, fixed and unchanged findings, comparison availability, failure reasons and the per-model history path.
 Findings and Deltas include the model identifier.
 Rules and Skipped retain the single-model report contracts.
+Offline batch audits do not capture live images. Reports retain any stored per-model evidence and keep missing evidence unassessed.
+Batch results accept `xlsx`, `html` and `both`. `bcf` and `all` are refused before any output is written; export each model's saved audit separately for BCF.
 
 ## Reports and issue registers
 
@@ -234,4 +236,3 @@ Only the tests use an XML schema validator; the BCF writer uses standard-library
 
 The `pre_issue_check`, `weekly_coordinator_report` and `subcontractor_model_acceptance` prompts cover the roadmap scenarios.
 They require agreed project rules, preserve incomplete results and generate reports with evidence.
-
