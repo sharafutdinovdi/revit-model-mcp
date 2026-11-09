@@ -196,6 +196,9 @@ Evaluation remains read-only.
 Capture runs after evaluation with a separate 210-second budget and at most 25 images, ordered by severity.
 Each capture uses at most 500 element IDs.
 The saved finding's `evidence` contains the base64 PNG, camera, component metadata, status and skipped diagnostics.
+Capture requires `save=true`; `capture_evidence=true` with `save=false` is refused before any model read.
+The MCP response omits PNG bytes and returns `evidence.image` with the capture status and diagnostics.
+Report generation reads full images from the audit JSON identified by `savedTo`.
 Count limits, timeouts, transport failures, missing elements and skipped reads remain in that finding's evidence and the result's `skipped` and `skippedCount`.
 Capture failure does not discard a finding or change its assessment into a pass.
 Without capture, report generation remains entirely offline.
@@ -212,8 +215,6 @@ Reports retain incomplete and not-assessed checks, not just failed rules.
 BCF 2.1 targets the common file exchange format.
 [BIMcollab Zoom explicitly supports reading and writing 2.1](https://helpcenter.bimcollab.com/en/articles/347383-why-can-t-others-read-the-bcf-files-i-create-with-bimcollab-zoom-application).
 [Revizto documents BCF file exchange](https://help.revizto.com/hc/en-us/articles/360001575975-Working-with-BCF-files), and [Solibri documents BCF collaboration](https://help.solibri.com/hc/en-us/sections/1500000775082-Collaboration-with-BCF).
-Version-specific import and camera behavior in those viewers remain pending workstation verification.
-Revit BCF add-in compatibility also requires an actual import test; no universal compatibility claim is made.
 BCF 3.0 is not required for this file exchange.
 
 Components include `OriginatingSystem` and `AuthoringToolId` with the Revit element ID.
@@ -233,13 +234,4 @@ Only the tests use an XML schema validator; the BCF writer uses standard-library
 
 The `pre_issue_check`, `weekly_coordinator_report` and `subcontractor_model_acceptance` prompts cover the roadmap scenarios.
 They require agreed project rules, preserve incomplete results and generate reports with evidence.
-
-### Pending workstation verification
-
-1. Run an audit with failed element-based rules and `capture_evidence=true` on Revit 2022 and 2026.
-2. Confirm that temporary views disappear, the model remains unmodified, and captured components contain the original Revit IDs and stored IFC GUIDs.
-3. Run with unavailable snapshot transport or missing IDs and inspect per-finding and top-level skipped diagnostics.
-4. Build `format="all"` reports and inspect embedded HTML images and XLSX image links.
-5. Import the BCF with the matching IFC in BIMcollab Zoom, Revizto and Solibri, then import with a Revit BCF add-in against the source model.
-6. Confirm topic labels, snapshots, selection and camera framing; compare stored IFC GUIDs with the exported IFC and verify matching coordinate transforms.
 

@@ -194,7 +194,10 @@ def test_three_roadmap_prompts():
 
 
 @pytest.mark.parametrize("identity_changed", [False, True])
-def test_live_capture_pins_document_and_persists_outcome(tmp_path, monkeypatch, identity_changed):
+@pytest.mark.parametrize("finding_count", [1, 25])
+def test_live_capture_pins_document_and_persists_outcome(
+    tmp_path, monkeypatch, identity_changed, finding_count
+):
     from revit_model_mcp.audit.evaluate import Evaluator
 
     responder = {"processId": 123, "documentName": "Tower", "documentPath": "Tower.rvt"}
@@ -208,7 +211,10 @@ def test_live_capture_pins_document_and_persists_outcome(tmp_path, monkeypatch, 
     }
     monkeypatch.setattr(server, "channel", channel)
     monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path))
-    monkeypatch.setattr(Evaluator, "evaluate", AsyncMock(return_value=[finding()]))
+    monkeypatch.setattr(
+        Evaluator, "evaluate", AsyncMock(return_value=[finding() for _ in range(finding_count)])
+    )
+    image_payload = PNG + b"\0" * 200_000
 
     async def execute(job, timeout, document):
         assert job.command == "capture-elements"
@@ -216,7 +222,9 @@ def test_live_capture_pins_document_and_persists_outcome(tmp_path, monkeypatch, 
         assert server._addressed_process_id.get() == 123
         identity = {**responder, "documentName": "Other"} if identity_changed else responder
         server._audit_response_validator.get()({"responder": identity})
-        return await capture(job.payload["elementIds"], job.output_path, timeout)
+        captured = await capture(job.payload["elementIds"], job.output_path, timeout)
+        Path(job.output_path).write_bytes(image_payload)
+        return captured
 
     monkeypatch.setattr(server, "_execute", execute)
     response = asyncio.run(
@@ -230,13 +238,22 @@ def test_live_capture_pins_document_and_persists_outcome(tmp_path, monkeypatch, 
     )
     saved = json.loads(Path(response["savedTo"]).read_text())
     evidence = saved["findings"][0]["evidence"]
+    encoded_response = json.dumps(response)
+    assert len(encoded_response) < 40_000
+    assert '"png"' not in encoded_response
+    assert base64.b64encode(PNG).decode()[:40] not in encoded_response
+    assert len(saved["findings"]) == finding_count
+    assert all("image" not in item["evidence"] for item in saved["findings"])
+    assert all(item["evidence"]["image"] is (not identity_changed) for item in response["findings"])
     if identity_changed:
         assert evidence["status"] == "unavailable"
         assert "identity changed" in evidence["skipped"][0]
-        assert saved["skippedCount"] == 1
+        assert saved["skippedCount"] == finding_count
     else:
         assert evidence["status"] == "captured"
-        assert evidence["png"]
+        assert all(
+            base64.b64decode(item["evidence"]["png"]) == image_payload for item in saved["findings"]
+        )
 
 
 def test_invalid_images_and_idless_findings_are_reported():
@@ -254,3 +271,14 @@ def test_invalid_images_and_idless_findings_are_reported():
     assert items[0]["skippedCount"] == 1
     assert "PNG" in items[0]["evidence"]["skipped"][0]
     assert "evidence" not in items[1] and "evidence" not in items[2]
+
+
+def test_capture_without_saving_is_refused_before_model_access(monkeypatch):
+    channel = AsyncMock()
+    execute = AsyncMock()
+    monkeypatch.setattr(server, "channel", channel)
+    monkeypatch.setattr(server, "_execute", execute)
+    with pytest.raises(server.ToolError, match="capture_evidence requires save=true"):
+        asyncio.run(server.revit_model_audit(capture_evidence=True, save=False))
+    channel.execute.assert_not_awaited()
+    execute.assert_not_awaited()

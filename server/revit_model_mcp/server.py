@@ -1450,6 +1450,8 @@ async def revit_model_audit(
     from revit_model_mcp.audit.rules import load_rules
 
     try:
+        if capture_evidence and not save:
+            raise ValueError("capture_evidence requires save=true to preserve evidence images.")
         loaded = load_rules(rules, rules_inline)
         if snapshots_dir is not None:
             from revit_model_mcp.audit.batch import audit_snapshots
@@ -1507,7 +1509,7 @@ async def revit_model_audit(
                     _addressed_process_id.reset(process_token)
 
             await capture_findings(findings, capture)
-        return build_result(
+        result = build_result(
             model_identity(identity["data"]),
             loaded,
             findings,
@@ -1515,6 +1517,16 @@ async def revit_model_audit(
             save,
             collected_at=identity["data"].get("collectedAtUtc"),
         )
+        response = {**result, "findings": []}
+        for finding in result["findings"]:
+            returned = dict(finding)
+            if evidence := finding.get("evidence"):
+                returned["evidence"] = {
+                    key: value for key, value in evidence.items() if key != "png"
+                }
+                returned["evidence"]["image"] = bool(evidence.get("png"))
+            response["findings"].append(returned)
+        return response
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 
