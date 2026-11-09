@@ -4,8 +4,8 @@ description: "Model MCP tool reference with toolsets, arguments, response contra
 
 # Tool reference
 
-The default tool list contains 89 tools, about 26,973 tokens.
-The `core,read` selection contains 22 tools, about 6,545 tokens.
+The default tool list contains 89 tools, about 26,974 tokens.
+The `core,read` selection contains 22 tools, about 6,546 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
@@ -62,8 +62,8 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 9 | 7,319 | 1,829 |
-| `read` | 13 | 18,863 | 4,715 |
+| `core` | 9 | 7,291 | 1,822 |
+| `read` | 13 | 18,896 | 4,724 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
 | `views-sheets` | 22 | 25,742 | 6,435 |
@@ -71,22 +71,22 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
 | `export` | 4 | 7,198 | 1,799 |
-| `batch` | 7 | 8,077 | 2,019 |
+| `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,893 | 26,973 |
-| `core,read` | 22 | 26,182 | 6,545 |
+| `all` (default) | 89 | 107,896 | 26,974 |
+| `core,read` | 22 | 26,187 | 6,546 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,893 | 26,973 | 108,050 |
-| `core,read` | 22 | 26,182 | 6,545 | 26,272 |
-| `preset:audit` | 28 | 31,061 | 7,765 | 31,157 |
-| `preset:edit` | 59 | 67,906 | 16,976 | 68,033 |
-| `preset:families` | 40 | 46,000 | 11,500 | 46,108 |
-| `preset:sheets` | 54 | 64,001 | 16,000 | 64,123 |
-| `preset:batch` | 46 | 52,501 | 13,125 | 52,615 |
+| `all` | 89 | 107,896 | 26,974 | 108,053 |
+| `core,read` | 22 | 26,187 | 6,546 | 26,277 |
+| `preset:audit` | 28 | 31,066 | 7,766 | 31,162 |
+| `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
+| `preset:families` | 40 | 46,005 | 11,501 | 46,113 |
+| `preset:sheets` | 54 | 64,006 | 16,001 | 64,128 |
+| `preset:batch` | 46 | 52,504 | 13,126 | 52,618 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.

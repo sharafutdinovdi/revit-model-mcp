@@ -86,7 +86,7 @@
     },
     {
       "name": "revit_document_info",
-      "description": "Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read model filename, Revit version, levels (mm), area schemes, worksets and view count. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "core",
       "access": "read_only",
       "annotations": {
@@ -162,7 +162,7 @@
     },
     {
       "name": "revit_model_snapshot",
-      "description": "Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read schema-v1 project snapshots for batch audits; closed worksets can omit data. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -258,7 +258,7 @@
     },
     {
       "name": "revit_list_catalog",
-      "description": "List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets include counts, owner and open state. Ownership scans limit candidates and returns checked-out rows with nextOffset; no name_contains. Worksharing sections require a workshared model. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets: counts, owner, open state. Ownership: limit candidates, checked-out rows, nextOffset, no name_contains. Worksharing requires a workshared model. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -1673,7 +1673,7 @@
     },
     {
       "name": "revit_model_audit",
-      "description": "Audit live models or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: up to 25 images in 210 seconds; omissions per finding. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Audit live/snapshots_dir with per-model history; batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: 25 images/210s max, per-finding omissions. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "modifying",
       "annotations": {
@@ -1692,7 +1692,7 @@
     },
     {
       "name": "revit_audit_report",
-      "description": "Write server-side XLSX, embedded-image HTML or BCF 2.1 from audit JSON; all writes all formats. XLSX links sibling PNGs. Existing files are refused.",
+      "description": "Write server-side XLSX, image-embedded HTML or BCF 2.1 from audit JSON; all selects all. XLSX links sibling PNGs. Refuse existing files.",
       "toolset": "batch",
       "access": "modifying",
       "annotations": {
@@ -1711,7 +1711,7 @@
     },
     {
       "name": "revit_build_report",
-      "description": "Build a local Excel report from snapshots without contacting Revit.",
+      "description": "Build local snapshot Excel reports without Revit.",
       "toolset": "batch",
       "access": "modifying",
       "annotations": {

@@ -829,7 +829,7 @@ async def revit_document_info(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count."""
+    """Read model filename, Revit version, levels (mm), area schemes, worksets and view count."""
     return await _execute(Job.document_info(), timeout_seconds, document)
 
 
@@ -893,7 +893,7 @@ async def revit_model_snapshot(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete."""
+    """Read schema-v1 project snapshots for batch audits; closed worksets can omit data."""
     return await _execute(
         Job(
             "model-snapshot",
@@ -1095,7 +1095,7 @@ async def revit_list_catalog(
     document: Document = None,
     offset: Annotated[int, Field(ge=0)] = 0,
 ) -> dict[str, Any]:
-    """List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets include counts, owner and open state. Ownership scans limit candidates and returns checked-out rows with nextOffset; no name_contains. Worksharing sections require a workshared model."""
+    """List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets: counts, owner, open state. Ownership: limit candidates, checked-out rows, nextOffset, no name_contains. Worksharing requires a workshared model."""
     return await _execute(
         Job.list_catalog(section, name_contains, limit, offset),
         timeout_seconds,
@@ -1442,7 +1442,7 @@ async def revit_model_audit(
     snapshots_dir: str | None = None,
     batch_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Audit live models or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: up to 25 images in 210 seconds; omissions per finding."""
+    """Audit live/snapshots_dir with per-model history; batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: 25 images/210s max, per-finding omissions."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1540,7 +1540,7 @@ def revit_audit_report(
     output: str,
     format: Literal["xlsx", "html", "both", "bcf", "all"] = "both",
 ) -> dict[str, Any]:
-    """Write server-side XLSX, embedded-image HTML or BCF 2.1 from audit JSON; all writes all formats. XLSX links sibling PNGs. Existing files are refused."""
+    """Write server-side XLSX, image-embedded HTML or BCF 2.1 from audit JSON; all selects all. XLSX links sibling PNGs. Refuse existing files."""
     from revit_model_mcp.audit.report import build_report
 
     if (blocked := policy_refusal("revit_audit_report")) is not None:
@@ -1560,7 +1560,7 @@ def revit_build_report(
         str,
         Field(
             validation_alias=AliasChoices("snapshots_dir", "snapshotsDir"),
-            description="Schema-v1 JSON snapshot directory on the MCP client.",
+            description="MCP-client directory of schema-v1 JSON snapshots.",
         ),
     ],
     output_path: Annotated[
@@ -1574,17 +1574,17 @@ def revit_build_report(
         str | None,
         Field(
             validation_alias=AliasChoices("previous_dir", "previousDir"),
-            description="Earlier snapshots matched by model title for the Changes sheet.",
+            description="Earlier snapshots, matched by model title (Changes sheet).",
         ),
     ] = None,
     findings: Annotated[
         list[dict[str, Any]] | None,
         Field(
-            description="Optional findings with model, severity, rule, element_ids (or elementIds), and recommendation."
+            description="Findings: model, severity, rule, element_ids (or elementIds), recommendation."
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Build a local Excel report from snapshots without contacting Revit."""
+    """Build local snapshot Excel reports without Revit."""
     if (blocked := policy_refusal("revit_build_report")) is not None:
         raise ToolError(blocked)
     from revit_model_mcp.snapshot_report import build_report
