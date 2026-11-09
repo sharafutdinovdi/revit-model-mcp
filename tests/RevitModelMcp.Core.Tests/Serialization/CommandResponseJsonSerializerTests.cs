@@ -11,6 +11,36 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task CaptureElements_SerializesBcfIdentityAndMetricCamera()
+    {
+        var capture = new ElementCaptureData
+        {
+            Components =
+            [
+                new CaptureComponent { AuthoringToolId = "2147483648", IfcGuid = "0000000000000000000000" },
+                new CaptureComponent { AuthoringToolId = "42" }
+            ],
+            Camera = new CaptureCamera
+            {
+                Position = [1, 2, 3],
+                Direction = [0, 0, -1],
+                Up = [0, 1, 0],
+                Scale = 10
+            }
+        };
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ElementCaptureData>.Ok("capture-elements", capture, 1)));
+        var data = json.RootElement.GetProperty("data");
+        var components = data.GetProperty("components");
+        await Assert.That(components[0].GetProperty("authoringToolId").GetString()).IsEqualTo("2147483648");
+        await Assert.That(components[0].GetProperty("ifcGuid").GetString()).IsEqualTo("0000000000000000000000");
+        await Assert.That(components[1].TryGetProperty("ifcGuid", out _)).IsFalse();
+        await Assert.That(components[1].GetProperty("originatingSystem").GetString()).IsEqualTo("Autodesk Revit");
+        await Assert.That(data.GetProperty("camera").GetProperty("scale").GetDouble()).IsEqualTo(10);
+        await Assert.That(data.GetProperty("camera").GetProperty("position")[2].GetDouble()).IsEqualTo(3);
+    }
+
+    [Test]
     public async Task ListSheets_SerializesAuditContractAndDiagnostics()
     {
         var diagnostics = new SkippedReadDiagnostics();

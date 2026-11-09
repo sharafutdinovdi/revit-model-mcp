@@ -242,6 +242,7 @@ EXPECTED_PARAMETERS = {
         "rules_inline",
         "compare_with",
         "save",
+        "capture_evidence",
         "timeout_seconds",
         "document",
         "snapshots_dir",

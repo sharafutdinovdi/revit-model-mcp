@@ -1,0 +1,14 @@
+BCF XML 2.1 schemas
+Copyright buildingSMART International Ltd.
+Creative Commons Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0)
+https://creativecommons.org/licenses/by-nd/4.0/
+Upstream licence: https://github.com/buildingSMART/BCF-XML/blob/main/LICENSE
+Source: https://github.com/buildingSMART/BCF-XML/tree/92fdcf4bfaa8f0576e7562730f341fc7781e2065/Schemas
+Commit: 92fdcf4bfaa8f0576e7562730f341fc7781e2065
+
+These test-only files are reproduced without modification.
+They are excluded from rewriting hooks and are not part of the runtime package.
+SHA-256 (original upstream bytes):
+15e9af22065870d93ad45431147748adc5b32ef830d6dfe7b4eb10cf5e6c4441  markup.xsd
+ab11687511d9595fc136bcec57b4f640f0e8364d913f9b54c8dc267a13c6f247  visinfo.xsd
+bb1d108e349423fef4a69ecc1648797e7e73a18ee994bcdf98f978a6a3adf899  version.xsd

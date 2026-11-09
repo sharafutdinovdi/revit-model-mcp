@@ -598,6 +598,41 @@ public sealed class ElementCaptureData
 
     [DataMember(Name = "mode")]
     public string Mode { get; set; } = "3d";
+
+    [DataMember(Name = "components")]
+    public List<CaptureComponent> Components { get; set; } = [];
+
+    [DataMember(Name = "camera", EmitDefaultValue = false)]
+    public CaptureCamera? Camera { get; set; }
+}
+
+[DataContract]
+public sealed class CaptureComponent
+{
+    [DataMember(Name = "authoringToolId")]
+    public string AuthoringToolId { get; set; } = string.Empty;
+
+    [DataMember(Name = "originatingSystem")]
+    public string OriginatingSystem { get; set; } = "Autodesk Revit";
+
+    [DataMember(Name = "ifcGuid", EmitDefaultValue = false)]
+    public string? IfcGuid { get; set; }
+}
+
+[DataContract]
+public sealed class CaptureCamera
+{
+    [DataMember(Name = "position")]
+    public double[] Position { get; set; } = [];
+
+    [DataMember(Name = "direction")]
+    public double[] Direction { get; set; } = [];
+
+    [DataMember(Name = "up")]
+    public double[] Up { get; set; } = [];
+
+    [DataMember(Name = "scale")]
+    public double Scale { get; set; }
 }
 
 [DataContract]

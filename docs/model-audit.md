@@ -170,7 +170,12 @@ Rules and Skipped retain the single-model report contracts.
 {"audit": "/reports/audit.json", "output": "/reports/review", "format": "both"}
 ```
 
-`format` accepts `xlsx`, `html` or `both`. The output stem gets the selected extensions. Parent directories must exist. Existing outputs are refused. HTML contains all content in one file and loads no external assets.
+`format` accepts `xlsx`, `html`, `both`, `bcf` or `all`.
+`both` writes XLSX and HTML; `all` also writes BCF 2.1.
+The output stem gets the selected extensions.
+Parent directories must exist.
+Existing outputs and evidence PNG files are refused.
+HTML contains all content in one file and loads no external assets.
 
 | Sheet or section | Content |
 | --- | --- |
@@ -182,4 +187,59 @@ Rules and Skipped retain the single-model report contracts.
 
 `audit.to_register_issues(result)` maps failed audit findings to `revit_issue_register` issues. It maps title directly, category from the pack, finding from measured value and threshold, severity directly, and requirement_source and requirement from reference. Review the project requirements before creating a register. The register's existing limits still apply.
 
-BCF and images are outside this slice.
+## Evidence images and BCF
+
+Set `capture_evidence=true` on `revit_model_audit` to capture images for non-passing findings with element IDs.
+Capture uses the existing `capture-elements` path over local or SSH transport and the audit's pinned process and document.
+Temporary Revit views roll back.
+Evaluation remains read-only.
+Capture runs after evaluation with a separate 210-second budget and at most 25 images, ordered by severity.
+Each capture uses at most 500 element IDs.
+The saved finding's `evidence` contains the base64 PNG, camera, component metadata, status and skipped diagnostics.
+Count limits, timeouts, transport failures, missing elements and skipped reads remain in that finding's evidence and the result's `skipped` and `skippedCount`.
+Capture failure does not discard a finding or change its assessment into a pass.
+Without capture, report generation remains entirely offline.
+
+HTML embeds PNG data URLs.
+XLSX links to new sibling `<output>.evidence-N.png` files; distribute these with the workbook.
+BCF embeds snapshots in topic folders with `markup.bcf` and `viewpoint.bcfv`.
+The BCF archive uses the `.bcfzip` extension.
+All non-passing findings become topics with title, description, severity priority and rule, severity and assessment labels.
+Missing snapshots and cameras are explicit in topic descriptions.
+No camera is fabricated for historical audits without camera evidence.
+Reports retain incomplete and not-assessed checks, not just failed rules.
+
+BCF 2.1 targets the common file exchange format.
+[BIMcollab Zoom explicitly supports reading and writing 2.1](https://helpcenter.bimcollab.com/en/articles/347383-why-can-t-others-read-the-bcf-files-i-create-with-bimcollab-zoom-application).
+[Revizto documents BCF file exchange](https://help.revizto.com/hc/en-us/articles/360001575975-Working-with-BCF-files), and [Solibri documents BCF collaboration](https://help.solibri.com/hc/en-us/sections/1500000775082-Collaboration-with-BCF).
+Version-specific import and camera behavior in those viewers remain pending workstation verification.
+Revit BCF add-in compatibility also requires an actual import test; no universal compatibility claim is made.
+BCF 3.0 is not required for this file exchange.
+
+Components include `OriginatingSystem` and `AuthoringToolId` with the Revit element ID.
+The add-in reads the existing `BuiltInParameter.IFC_GUID` without setting or generating values.
+Valid compressed IFC GUIDs also appear as `IfcGuid`.
+Absent GUIDs retain Revit identity; IFC-only viewers cannot match those components.
+The GUID must match the IFC loaded in the viewer.
+Camera coordinates use model-internal metres; external IFC transforms must match.
+The orthogonal camera frames the captured bounds with the capture view's direction and up vector.
+Model-level findings without element IDs have no component viewpoint.
+
+Official buildingSMART 2.1 XSD fixtures are vendored unchanged for offline validation tests only.
+The [fixture NOTICE](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/server/tests/fixtures/bcf-2.1/NOTICE) records source commit, SHA-256 values, attribution and CC BY-ND 4.0 terms.
+Rewriting hooks and formatters exclude these fixtures.
+They are excluded from runtime distributions.
+Only the tests use an XML schema validator; the BCF writer uses standard-library ZIP and XML.
+
+The `pre_issue_check`, `weekly_coordinator_report` and `subcontractor_model_acceptance` prompts cover the roadmap scenarios.
+They require agreed project rules, preserve incomplete results and generate reports with evidence.
+
+### Pending workstation verification
+
+1. Run an audit with failed element-based rules and `capture_evidence=true` on Revit 2022 and 2026.
+2. Confirm that temporary views disappear, the model remains unmodified, and captured components contain the original Revit IDs and stored IFC GUIDs.
+3. Run with unavailable snapshot transport or missing IDs and inspect per-finding and top-level skipped diagnostics.
+4. Build `format="all"` reports and inspect embedded HTML images and XLSX image links.
+5. Import the BCF with the matching IFC in BIMcollab Zoom, Revizto and Solibri, then import with a Revit BCF add-in against the source model.
+6. Confirm topic labels, snapshots, selection and camera framing; compare stored IFC GUIDs with the exported IFC and verify matching coordinate transforms.
+

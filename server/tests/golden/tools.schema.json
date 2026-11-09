@@ -535,7 +535,9 @@
         "enum": [
           "xlsx",
           "html",
-          "both"
+          "both",
+          "bcf",
+          "all"
         ],
         "type": "string"
       },
@@ -3631,6 +3633,10 @@
           }
         ],
         "default": null
+      },
+      "capture_evidence": {
+        "default": false,
+        "type": "boolean"
       },
       "compare_with": {
         "default": "previous",

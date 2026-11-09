@@ -390,11 +390,11 @@
     },
     {
       "name": "revit_model_audit",
-      "description": "Audit a live model or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. skipped means incomplete; skippedCount is the total skipped."
+      "description": "Audit live models or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: up to 25 images in 210 seconds; omissions per finding. skipped means incomplete; skippedCount is the total skipped."
     },
     {
       "name": "revit_audit_report",
-      "description": "Write new XLSX or self-contained HTML from local audit JSON. Server-side paths; existing files are refused."
+      "description": "Write server-side XLSX, embedded-image HTML or BCF 2.1 from audit JSON; all writes all formats. XLSX links sibling PNGs. Existing files are refused."
     },
     {
       "name": "revit_build_report",

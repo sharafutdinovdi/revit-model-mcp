@@ -410,6 +410,37 @@ def pre_issue_check() -> str:
         "first, revit_aggregate_elements second, and revit_query_elements only when rows "
         "are needed. Report pass, fail, or not assessed with evidence and completeness. "
         "Do not invent project requirements."
+        " Run revit_model_audit with the agreed project rules and capture_evidence=true. "
+        "Use revit_audit_report with format=all and a user-supplied output stem. "
+        "Never call a partial or not_assessed finding a pass."
+    )
+
+
+@mcp.prompt(
+    description="Build a weekly coordinator audit report with evidence and baseline deltas."
+)
+def weekly_coordinator_report() -> str:
+    return (
+        "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
+        "Confirm the model with revit_document_info and the agreed project rules. "
+        "Run revit_model_audit with compare_with=previous, capture_evidence=true and save=true. "
+        "Use revit_audit_report with format=all and a user-supplied output stem. "
+        "Summarize new, fixed and unchanged findings by severity. Report missing baselines, "
+        "partial evidence and not_assessed checks explicitly; they never prove a pass or fix."
+    )
+
+
+@mcp.prompt(description="Assess a subcontractor model against agreed acceptance requirements.")
+def subcontractor_model_acceptance() -> str:
+    return (
+        "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
+        "Confirm the subcontractor model with revit_document_info. Obtain agreed EIR or BEP "
+        "acceptance rules; do not invent project requirements or certify compliance. "
+        "Run revit_model_audit with those rules, compare_with=none and capture_evidence=true. "
+        "Use revit_audit_report with format=all and a user-supplied output stem. "
+        "List failed, partial and not_assessed checks separately with requirements, "
+        "element IDs and recommendations. Return BCF findings to the model author. "
+        "Incomplete checks prevent an unqualified acceptance."
     )
 
 
@@ -1405,12 +1436,13 @@ async def revit_model_audit(
     rules_inline: dict | None = None,
     compare_with: str = "previous",
     save: bool = True,
+    capture_evidence: bool = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
     snapshots_dir: str | None = None,
     batch_models: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Audit a live model or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed."""
+    """Audit live models or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: up to 25 images in 210 seconds; omissions per finding."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1448,6 +1480,33 @@ async def revit_model_audit(
         source = LiveReadSource(document, timeout_seconds, identity=identity)
         evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
+        if capture_evidence:
+            from revit_model_mcp.audit.evidence import capture_findings
+
+            async def capture(element_ids, output_path, capture_timeout):
+                process_token = _addressed_process_id.set(source.process_id)
+                validator_token = _audit_response_validator.set(source.validate_identity)
+                try:
+                    return await _execute(
+                        Job(
+                            "capture-elements",
+                            {
+                                "command": "capture-elements",
+                                "elementIds": element_ids,
+                                "pixelSize": 900,
+                                "paddingMm": 1500,
+                                "mode": "3d",
+                            },
+                            output_path,
+                        ),
+                        capture_timeout,
+                        source.document,
+                    )
+                finally:
+                    _audit_response_validator.reset(validator_token)
+                    _addressed_process_id.reset(process_token)
+
+            await capture_findings(findings, capture)
         return build_result(
             model_identity(identity["data"]),
             loaded,
@@ -1467,9 +1526,9 @@ async def revit_model_audit(
 def revit_audit_report(
     audit: str,
     output: str,
-    format: Literal["xlsx", "html", "both"] = "both",
+    format: Literal["xlsx", "html", "both", "bcf", "all"] = "both",
 ) -> dict[str, Any]:
-    """Write new XLSX or self-contained HTML from local audit JSON. Server-side paths; existing files are refused."""
+    """Write server-side XLSX, embedded-image HTML or BCF 2.1 from audit JSON; all writes all formats. XLSX links sibling PNGs. Existing files are refused."""
     from revit_model_mcp.audit.report import build_report
 
     if (blocked := policy_refusal("revit_audit_report")) is not None:

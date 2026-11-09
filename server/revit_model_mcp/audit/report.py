@@ -7,6 +7,8 @@ from pathlib import Path
 from openpyxl import Workbook
 
 from revit_model_mcp.atomic_write import write_new_file
+from revit_model_mcp.audit.bcf import write_bcf
+from revit_model_mcp.audit.evidence import image_bytes
 from revit_model_mcp.audit.result import redact_path
 from revit_model_mcp.workbook_style import _append, _header
 
@@ -20,6 +22,7 @@ HEADERS = [
     "Element IDs",
     "Recommendation",
     "Reference",
+    "Evidence",
 ]
 FIELDS = [
     "id",
@@ -31,6 +34,7 @@ FIELDS = [
     "element_ids",
     "recommendation",
     "reference",
+    "evidence",
 ]
 
 
@@ -57,7 +61,13 @@ def tables(result):
             ["Rules", result["rules"]],
             ["Summary", result["summary"]],
         ],
-        "Findings": [HEADERS, *[[text(f.get(k)) for k in FIELDS] for f in result["findings"]]],
+        "Findings": [
+            HEADERS,
+            *[
+                [text(f.get(k)) if k != "evidence" else "" for k in FIELDS]
+                for f in result["findings"]
+            ],
+        ],
     }
     if "deltas" in result:
         content["Deltas"] = [
@@ -80,8 +90,8 @@ def tables(result):
 
 
 def build_report(audit, output, format="both"):
-    if format not in ("xlsx", "html", "both"):
-        raise ValueError("format must be xlsx, html or both.")
+    if format not in ("xlsx", "html", "both", "bcf", "all"):
+        raise ValueError("format must be xlsx, html, both, bcf or all.")
     result = json.loads(Path(audit).expanduser().read_text(encoding="utf-8"))
     if result.get("schema") != 1 or not (
         isinstance(result.get("findings"), list)
@@ -89,14 +99,44 @@ def build_report(audit, output, format="both"):
     ):
         raise ValueError("Expected a schema 1 audit result.")
     base = Path(output).expanduser().absolute()
-    formats = ["xlsx", "html"] if format == "both" else [format]
-    targets = [base.with_suffix("." + extension) for extension in formats]
-    for target in targets:
+    formats = (
+        ["xlsx", "html", "bcf"]
+        if format == "all"
+        else ["xlsx", "html"]
+        if format == "both"
+        else [format]
+    )
+    targets = [
+        base.with_suffix(".bcfzip" if extension == "bcf" else "." + extension)
+        for extension in formats
+    ]
+    images = {
+        index: image
+        for index, finding in enumerate(result["findings"])
+        if (image := image_bytes(finding)) is not None
+    }
+    image_targets = (
+        {index: base.with_name(base.name + f".evidence-{index + 1}.png") for index in images}
+        if "xlsx" in formats
+        else {}
+    )
+    for target in [*targets, *image_targets.values()]:
         if target.exists() or target.is_symlink():
             raise ValueError(f"Local file already exists: {target}")
         if not target.parent.is_dir():
             raise ValueError("Output parent directory must exist.")
     content = tables(result)
+    for index, finding in enumerate(result["findings"]):
+        evidence = finding.get("evidence", {})
+        content["Findings"][index + 1][-1] = text(
+            {
+                key: value
+                for key, value in evidence.items()
+                if key not in ("png", "components", "camera")
+            }
+        )
+    for index, target in image_targets.items():
+        write_new_file(target, lambda stream, index=index: stream.write(images[index]))
     for extension, target in zip(formats, targets):
         if extension == "xlsx":
             workbook = Workbook()
@@ -106,7 +146,14 @@ def build_report(audit, output, format="both"):
                 for row in rows:
                     _append(sheet, [text(v) for v in row])
                 _header(sheet, [26] * len(rows[0]), filter_rows=True)
+                if title == "Findings":
+                    for index, image_target in image_targets.items():
+                        cell = sheet.cell(index + 2, len(HEADERS))
+                        cell.hyperlink = image_target.name
+                        cell.style = "Hyperlink"
             write_new_file(target, workbook.save)
+        elif extension == "bcf":
+            write_new_file(target, lambda stream: write_bcf(result, stream))
         else:
 
             def table(rows):
@@ -136,6 +183,15 @@ def build_report(audit, output, format="both"):
                                 ]
                             )
                         )
+                    for index, finding in enumerate(result["findings"]):
+                        if index in images:
+                            sections.append(
+                                "<figure><figcaption>"
+                                + html.escape(str(finding["id"]))
+                                + '</figcaption><img alt="Finding evidence" style="max-width:100%" src="data:image/png;base64,'
+                                + finding["evidence"]["png"]
+                                + '"></figure>'
+                            )
                 else:
                     sections.append(table(rows))
             document = (
@@ -144,4 +200,8 @@ def build_report(audit, output, format="both"):
                 + "</html>"
             )
             write_new_file(target, lambda stream: stream.write(document.encode("utf-8")))
-    return {"files": [redact_path(path) for path in targets]}
+    return {
+        "files": [redact_path(path) for path in [*targets, *image_targets.values()]],
+        "skipped": result.get("skipped", []),
+        "skippedCount": result.get("skippedCount", 0),
+    }
