@@ -4,7 +4,7 @@ description: "Model MCP tool reference with toolsets, arguments, response contra
 
 # Tool reference
 
-The default tool list contains 89 tools, about 26,973 tokens.
+The default tool list contains 89 tools, about 26,974 tokens.
 The `core,read` selection contains 22 tools, about 6,545 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
@@ -62,31 +62,31 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 9 | 7,319 | 1,829 |
-| `read` | 13 | 18,863 | 4,715 |
+| `core` | 9 | 7,291 | 1,822 |
+| `read` | 13 | 18,890 | 4,722 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
-| `views-sheets` | 22 | 25,742 | 6,435 |
+| `views-sheets` | 22 | 25,748 | 6,437 |
 | `family` | 5 | 8,774 | 2,193 |
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
 | `export` | 4 | 7,198 | 1,799 |
-| `batch` | 7 | 8,077 | 2,019 |
+| `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,893 | 26,973 |
-| `core,read` | 22 | 26,182 | 6,545 |
+| `all` (default) | 89 | 107,896 | 26,974 |
+| `core,read` | 22 | 26,181 | 6,545 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,893 | 26,973 | 108,050 |
-| `core,read` | 22 | 26,182 | 6,545 | 26,272 |
-| `preset:audit` | 28 | 31,061 | 7,765 | 31,157 |
-| `preset:edit` | 59 | 67,906 | 16,976 | 68,033 |
-| `preset:families` | 40 | 46,000 | 11,500 | 46,108 |
-| `preset:sheets` | 54 | 64,001 | 16,000 | 64,123 |
-| `preset:batch` | 46 | 52,501 | 13,125 | 52,615 |
+| `all` | 89 | 107,896 | 26,974 | 108,053 |
+| `core,read` | 22 | 26,181 | 6,545 | 26,271 |
+| `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
+| `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
+| `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
+| `preset:sheets` | 54 | 64,006 | 16,001 | 64,128 |
+| `preset:batch` | 46 | 52,498 | 13,124 | 52,612 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -153,7 +153,7 @@ Neither section opens worksets, checks out elements, synchronizes, nor starts a 
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
 | `revit_view_info` | `view` (name or decimal ID) | Inspect view template controls, display settings, hidden categories, worksets, filters, links and temporary modes. |
-| `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `output_path=null`, `document=null`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Local/SSH only. |
+| `revit_capture_elements` | `element_ids`, `pixel_size=1600`, `padding_mm=1500`, `mode="3d"`, `output_path=null`, `document=null`, `camera_coordinate_base="shared"`; no timeout arguments | Capture 1-500 model elements highlighted red in a temporary 3D or plan view. Returns PNG image content and local path; the view is rolled back. Camera uses shared coordinates by default, or `internal` for separately exported internal-origin IFC. Missing IDs set `partial` and skipped diagnostics. Local/SSH only. |
 | `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 32-4000 pixels (Revit rejects smaller images) on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
@@ -248,7 +248,8 @@ Coordinator location and link lists are capped at 100 without pagination; locati
 `pinned` and `viewSpecific` are true when any instance of the reported type qualifies.
 Parameter names resolve through `LookupParameter(name)`, which returns the first match by name; GUID and BuiltInParameter selection are unavailable.
 Paged reads that exceed their 60-second add-in budget return `partial:true` regardless of the client timeout. Family audit uses its own response budget and reports each attempted family.
-Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a complete result (`success:true`) and `output_path` is honored; the client/response timeout still applies.
+Image exports (`revit_export_view`, `revit_capture_elements`) are not cut at the 60-second budget: a written PNG produces a successful result (`success:true`) and `output_path` is honored; the client/response timeout still applies.
+Capture with missing or uncapturable IDs returns `partial:true`, retains `data.missingIds` and reports each omission through `skipped` and `skippedCount`.
 
 Offsets are zero-based row counts (at least 0); limits are positive row counts (at least 1). `revit_query_elements` and `revit_view_elements` clamp limits above 5000 to 5000.
 Lengths use mm, areas m2 and volumes m3 where metric fields are provided.

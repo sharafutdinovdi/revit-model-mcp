@@ -510,6 +510,25 @@ internal static class ReadCommandExecutor
                     throw new InvalidOperationException("The temporary snapshot view could not be prepared.");
             }
             var image = ViewImageExporter.Export(document, view, job.PixelSize, true, localTime);
+            var center = (bounds.Min + bounds.Max) / 2;
+            var diameter = bounds.Min.DistanceTo(bounds.Max);
+            var position = center + view.ViewDirection * diameter;
+            static double[] Coordinates(XYZ point) => [point.X, point.Y, point.Z];
+            var camera = new CaptureCamera
+            {
+                Position = Coordinates(position * 0.3048),
+                Direction = Coordinates(-view.ViewDirection),
+                Up = Coordinates(view.UpDirection),
+                Scale = diameter * 0.3048
+            };
+            if (job.CameraCoordinateBase == "shared")
+            {
+                // Project location maps shared coordinates to internal coordinates.
+                using var transform = document.ActiveProjectLocation.GetTotalTransform().Inverse;
+                static DatumPoint Point(XYZ point) => new(point.X, point.Y, point.Z);
+                camera = camera.Transform(new DatumTransform(Point(transform.Origin * 0.3048),
+                    Point(transform.BasisX), Point(transform.BasisY), Point(transform.BasisZ)), "shared");
+            }
             return new ElementCaptureData
             {
                 FileName = image.FileName,
@@ -518,7 +537,13 @@ internal static class ReadCommandExecutor
                 SizeBytes = image.SizeBytes,
                 ElementCount = elements.Count,
                 MissingIds = missing,
-                Mode = job.Mode
+                Mode = job.Mode,
+                Components = elements.Select(element => new CaptureComponent
+                {
+                    AuthoringToolId = RevitValueReader.GetId(element.Id).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    IfcGuid = element.get_Parameter(BuiltInParameter.IFC_GUID)?.AsString()
+                }).ToList(),
+                Camera = camera
             };
         }
         finally

@@ -17,7 +17,7 @@ Issues labeled `help wanted` are open to anyone; larger ones are tracked as `epi
 You do not need Revit or Windows for the Python server, the Core library, tests and documentation:
 
 ```sh
-cd server && uv run --with pytest pytest -q
+cd server && uv run --with pytest --with hypothesis --with lxml==6.1.3 pytest -q
 dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
 uv tool install pre-commit && pre-commit install
 pre-commit run --all-files
@@ -122,7 +122,7 @@ Run Python tests and package builds on Windows, macOS or Linux with Python 3.11+
 
 ```sh
 cd server
-uv run --with pytest pytest -q
+uv run --with pytest --with hypothesis --with lxml==6.1.3 pytest -q
 uvx ruff==0.17.3 check .
 uvx ruff==0.17.3 format --check .
 uv build
@@ -163,7 +163,7 @@ After changing tools, run `cd server && uv run python ../build/bundle_manifest.p
 The same tests compare `docs/tool-manifest.json` with the registry and check the policy tables behind it.
 After changing tools, also run `cd server && uv run python ../build/tool_manifest.py`; see [Tool manifest](docs/tool-manifest.md).
 A committed snapshot of every tool input schema (`server/tests/golden/tools.schema.json`: names, parameters, types, defaults and required) fails the Python tests when a schema changes.
-For a deliberate change, run `cd server && UPDATE_TOOL_SCHEMAS=1 uv run --with pytest pytest tests/test_tool_schemas.py` and commit the snapshot diff, so reviewers see the change.
+For a deliberate change, run `cd server && UPDATE_TOOL_SCHEMAS=1 uv run --with pytest --with hypothesis --with lxml==6.1.3 pytest tests/test_tool_schemas.py` and commit the snapshot diff, so reviewers see the change.
 A threaded fake HTTP server covers health, authentication, busy responses, job polling and PNG download.
 Core tests cover parsing, serialization, formatting, units and query processing.
 These tests do not require a live Revit model.

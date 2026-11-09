@@ -33,6 +33,13 @@ public sealed class SkippedReadDiagnostics
         if (Current is not null) result.Merge(Current);
         switch (data)
         {
+            case ElementCaptureData capture:
+                result.Merge(capture.MissingIds.Select(id => new SkippedRead
+                {
+                    What = $"element {id} capture",
+                    Reason = "Element is missing or has no capturable model bounding box."
+                }), capture.MissingIds.Count);
+                break;
             case ModelSnapshotData snapshot:
                 result.Merge(snapshot.Skipped, Current is null ? snapshot.SkippedCount : 0);
                 result.Count = Math.Max(result.Count, snapshot.SkippedCount);

@@ -74,14 +74,16 @@ public sealed class ControlJobParserTests
         await Assert.That(parsed.PixelSize).IsEqualTo(1600);
         await Assert.That(parsed.PaddingMm).IsEqualTo(1500);
         await Assert.That(parsed.Mode).IsEqualTo("3d");
+        await Assert.That(parsed.CameraCoordinateBase).IsEqualTo("shared");
         await Assert.That(parsed.TargetDocument).IsEqualTo("Model");
         await Assert.That(parsed.TargetProcessId).IsEqualTo(123);
         var plan = ControlJobParser.Parse("""
-            {"command":"capture-elements","elementIds":[10],"pixelSize":4000,"paddingMm":0,"mode":"plan"}
+            {"command":"capture-elements","elementIds":[10],"pixelSize":4000,"paddingMm":0,"mode":"plan","cameraCoordinateBase":"internal"}
             """);
         await Assert.That(plan.Kind).IsEqualTo(ControlJobKind.CaptureElements);
         await Assert.That(plan.Mode).IsEqualTo("plan");
         await Assert.That(plan.PaddingMm).IsEqualTo(0);
+        await Assert.That(plan.CameraCoordinateBase).IsEqualTo("internal");
     }
 
     [Test]
@@ -93,6 +95,7 @@ public sealed class ControlJobParserTests
             "\"elementIds\":[1],\"pixelSize\":0", "\"elementIds\":[1],\"pixelSize\":31", "\"elementIds\":[1],\"pixelSize\":4001",
             "\"elementIds\":[1],\"paddingMm\":-1", "\"elementIds\":[1],\"paddingMm\":20001",
             "\"elementIds\":[1],\"mode\":\"section\"",
+            "\"elementIds\":[1],\"cameraCoordinateBase\":\"project\"",
             "\"elementIds\":[1],\"mode\":\"\""
         })
         {

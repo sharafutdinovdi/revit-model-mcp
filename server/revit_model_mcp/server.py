@@ -410,6 +410,37 @@ def pre_issue_check() -> str:
         "first, revit_aggregate_elements second, and revit_query_elements only when rows "
         "are needed. Report pass, fail, or not assessed with evidence and completeness. "
         "Do not invent project requirements."
+        " Run revit_model_audit with the agreed project rules and capture_evidence=true. "
+        "Use revit_audit_report with format=all and a user-supplied output stem. "
+        "Never call a partial or not_assessed finding a pass."
+    )
+
+
+@mcp.prompt(
+    description="Build a weekly coordinator audit report with evidence and baseline deltas."
+)
+def weekly_coordinator_report() -> str:
+    return (
+        "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
+        "Confirm the model with revit_document_info and the agreed project rules. "
+        "Run revit_model_audit with compare_with=previous, capture_evidence=true and save=true. "
+        "Use revit_audit_report with format=all and a user-supplied output stem. "
+        "Summarize new, fixed and unchanged findings by severity. Report missing baselines, "
+        "partial evidence and not_assessed checks explicitly; they never prove a pass or fix."
+    )
+
+
+@mcp.prompt(description="Assess a subcontractor model against agreed acceptance requirements.")
+def subcontractor_model_acceptance() -> str:
+    return (
+        "Read-only workflow. Do not call action tools. Read revit://guides/coordinator. "
+        "Confirm the subcontractor model with revit_document_info. Obtain agreed EIR or BEP "
+        "acceptance rules; do not invent project requirements or certify compliance. "
+        "Run revit_model_audit with those rules, compare_with=none and capture_evidence=true. "
+        "Use revit_audit_report with format=all and a user-supplied output stem. "
+        "List failed, partial and not_assessed checks separately with requirements, "
+        "element IDs and recommendations. Return BCF findings to the model author. "
+        "Incomplete checks prevent an unqualified acceptance."
     )
 
 
@@ -798,7 +829,7 @@ async def revit_document_info(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read the active model's file name, Revit version, levels (elevations in mm), area schemes, worksets and view count."""
+    """Read model filename, Revit version, levels (mm), area schemes, worksets and view count."""
     return await _execute(Job.document_info(), timeout_seconds, document)
 
 
@@ -862,7 +893,7 @@ async def revit_model_snapshot(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Read a schema version 1 project snapshot for batch audits. Closed worksets can make the result incomplete."""
+    """Read schema-v1 project snapshots for batch audits; closed worksets can omit data."""
     return await _execute(
         Job(
             "model-snapshot",
@@ -1064,7 +1095,7 @@ async def revit_list_catalog(
     document: Document = None,
     offset: Annotated[int, Field(ge=0)] = 0,
 ) -> dict[str, Any]:
-    """List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets include counts, owner and open state. Ownership scans limit candidates and returns checked-out rows with nextOffset; no name_contains. Worksharing sections require a workshared model."""
+    """List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets: counts, owner, open state. Ownership: limit candidates, checked-out rows, nextOffset, no name_contains. Worksharing requires a workshared model."""
     return await _execute(
         Job.list_catalog(section, name_contains, limit, offset),
         timeout_seconds,
@@ -1238,8 +1269,9 @@ async def revit_capture_elements(
     mode: str = "3d",
     output_path: SaveTo = None,
     document: Document = None,
+    camera_coordinate_base: Literal["shared", "internal"] = "shared",
 ) -> CallToolResult:
-    """Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back."""
+    """Capture 1-500 elements as PNG (3d/plan, local/SSH); temporary view rolls back."""
     from revit_model_mcp.issue_register import validate_capture
 
     try:
@@ -1253,6 +1285,7 @@ async def revit_capture_elements(
                     "pixelSize": pixel_size,
                     "paddingMm": padding_mm,
                     "mode": mode,
+                    "cameraCoordinateBase": camera_coordinate_base,
                 },
                 output_path,
             ),
@@ -1405,12 +1438,14 @@ async def revit_model_audit(
     rules_inline: dict | None = None,
     compare_with: str = "previous",
     save: bool = True,
+    capture_evidence: bool = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
     snapshots_dir: str | None = None,
     batch_models: list[dict[str, Any]] | None = None,
+    camera_coordinate_base: Literal["shared", "internal"] = "shared",
 ) -> dict[str, Any]:
-    """Audit a live model or offline snapshots_dir with per-model history. batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed."""
+    """Audit live or offline snapshots_dir with per-model history. capture_evidence: 25 PNGs/210s."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1418,6 +1453,8 @@ async def revit_model_audit(
     from revit_model_mcp.audit.rules import load_rules
 
     try:
+        if capture_evidence and not save:
+            raise ValueError("capture_evidence requires save=true to preserve evidence images.")
         loaded = load_rules(rules, rules_inline)
         if snapshots_dir is not None:
             from revit_model_mcp.audit.batch import audit_snapshots
@@ -1448,7 +1485,35 @@ async def revit_model_audit(
         source = LiveReadSource(document, timeout_seconds, identity=identity)
         evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
-        return build_result(
+        if capture_evidence:
+            from revit_model_mcp.audit.evidence import capture_findings
+
+            async def capture(element_ids, output_path, capture_timeout):
+                process_token = _addressed_process_id.set(source.process_id)
+                validator_token = _audit_response_validator.set(source.validate_identity)
+                try:
+                    return await _execute(
+                        Job(
+                            "capture-elements",
+                            {
+                                "command": "capture-elements",
+                                "elementIds": element_ids,
+                                "pixelSize": 900,
+                                "paddingMm": 1500,
+                                "mode": "3d",
+                                "cameraCoordinateBase": camera_coordinate_base,
+                            },
+                            output_path,
+                        ),
+                        capture_timeout,
+                        source.document,
+                    )
+                finally:
+                    _audit_response_validator.reset(validator_token)
+                    _addressed_process_id.reset(process_token)
+
+            await capture_findings(findings, capture)
+        result = build_result(
             model_identity(identity["data"]),
             loaded,
             findings,
@@ -1456,6 +1521,16 @@ async def revit_model_audit(
             save,
             collected_at=identity["data"].get("collectedAtUtc"),
         )
+        response = {**result, "findings": []}
+        for finding in result["findings"]:
+            returned = dict(finding)
+            if evidence := finding.get("evidence"):
+                returned["evidence"] = {
+                    key: value for key, value in evidence.items() if key != "png"
+                }
+                returned["evidence"]["image"] = bool(evidence.get("png"))
+            response["findings"].append(returned)
+        return response
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 
@@ -1467,9 +1542,9 @@ async def revit_model_audit(
 def revit_audit_report(
     audit: str,
     output: str,
-    format: Literal["xlsx", "html", "both"] = "both",
+    format: Literal["xlsx", "html", "both", "bcf", "all"] = "both",
 ) -> dict[str, Any]:
-    """Write new XLSX or self-contained HTML from local audit JSON. Server-side paths; existing files are refused."""
+    """Write server-side XLSX, image-embedded HTML or BCF 2.1 from audit JSON; all selects all. XLSX links sibling PNGs. Refuse existing files."""
     from revit_model_mcp.audit.report import build_report
 
     if (blocked := policy_refusal("revit_audit_report")) is not None:
@@ -1489,7 +1564,7 @@ def revit_build_report(
         str,
         Field(
             validation_alias=AliasChoices("snapshots_dir", "snapshotsDir"),
-            description="Schema-v1 JSON snapshot directory on the MCP client.",
+            description="MCP-client directory of schema-v1 JSON snapshots.",
         ),
     ],
     output_path: Annotated[
@@ -1503,17 +1578,17 @@ def revit_build_report(
         str | None,
         Field(
             validation_alias=AliasChoices("previous_dir", "previousDir"),
-            description="Earlier snapshots matched by model title for the Changes sheet.",
+            description="Earlier snapshots, matched by model title (Changes sheet).",
         ),
     ] = None,
     findings: Annotated[
         list[dict[str, Any]] | None,
         Field(
-            description="Optional findings with model, severity, rule, element_ids (or elementIds), and recommendation."
+            description="Findings: model, severity, rule, element_ids (or elementIds), recommendation."
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Build a local Excel report from snapshots without contacting Revit."""
+    """Build local snapshot Excel reports without Revit."""
     if (blocked := policy_refusal("revit_build_report")) is not None:
         raise ToolError(blocked)
     from revit_model_mcp.snapshot_report import build_report

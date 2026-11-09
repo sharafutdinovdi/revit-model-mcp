@@ -54,7 +54,7 @@ For Python 3.11+ with uv, from the repository root:
 
 ```sh
 cd server
-uv run --with pytest pytest -q
+uv run --with pytest --with hypothesis --with lxml==6.1.3 pytest -q
 uvx ruff==0.17.3 check .
 uvx ruff==0.17.3 format --check .
 uv build
