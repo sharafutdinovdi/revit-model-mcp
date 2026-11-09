@@ -23,7 +23,9 @@ def snapshot(name="A", ids=(1, 2), collected="2026-09-30T12:00:00Z"):
     value = json.loads(FIXTURE.read_text())
     value["source"]["path"] = "models/" + name + ".rvt"
     value["collectedAtUtc"] = collected
-    value["passport"].update(title=name, centralPath=None, versionGuid="family-" + name)
+    value["passport"].update(
+        title=name, centralPath=None, versionGuid="version-" + name, lineageId="project-" + name
+    )
     value.update(skipped=[], skippedCount=0)
     value["parameterFill"]["rows"] = [
         {
@@ -84,6 +86,8 @@ def test_two_runs_store_history_and_compare_each_model(tmp_path, monkeypatch):
     assert first["summary"]["byDelta"] == {}
     a = snapshot(ids=(2, 3), collected="2026-10-01T12:00:00Z")
     b = snapshot("B", (), collected="2026-10-01T12:00:00Z")
+    a["passport"]["versionGuid"] = "new-version-A"
+    b["passport"]["versionGuid"] = "new-version-B"
     put(current, "a.json", a)
     put(current, "b.json", b)
     second = run(current)
@@ -151,20 +155,77 @@ def test_unavailable_and_incomplete_evidence_never_proves_fixes(tmp_path, monkey
     assert result["summary"]["byDelta"] == {}
 
 
-def test_equal_titles_do_not_merge_models_and_version_changes_have_no_delta(tmp_path, monkeypatch):
+def test_equal_titles_do_not_merge_models_and_lineage_changes_have_no_delta(tmp_path, monkeypatch):
     monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
     a, b = snapshot(), snapshot("B")
     b["passport"]["title"] = "A"
     put(tmp_path, "a.json", a)
     put(tmp_path, "b.json", b)
     run(tmp_path)
-    a["passport"]["versionGuid"] = "another-family"
+    a["passport"]["lineageId"] = "another-project"
     a["collectedAtUtc"] = b["collectedAtUtc"] = "2026-10-01T12:00:00Z"
     put(tmp_path, "b.json", b)
     put(tmp_path, "a.json", a)
     result = run(tmp_path)
     assert "deltas" not in result["models"][0]["audit"]
     assert result["models"][1]["summary"]["byDelta"] == {"unchanged": 2}
+
+
+def test_live_and_offline_audits_share_lineage_history(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
+    value = snapshot()
+    value["collectedAtUtc"] = "2026-09-29T12:00:00Z"
+    loaded = load_rules(
+        inline={
+            "schema": 1,
+            "name": "Review",
+            "rules": [
+                {
+                    "id": "warnings",
+                    "title": "Warnings",
+                    "severity": "major",
+                    "check": {"type": "model_health", "metric": "warnings_total"},
+                }
+            ],
+        }
+    )
+    channel = AsyncMock()
+    channel.execute.return_value = {
+        "success": True,
+        "data": value,
+        "responder": {"processId": 123, "documentName": "A", "documentPath": "models/A.rvt"},
+        "skipped": [],
+        "skippedCount": 0,
+    }
+    channel.execute.side_effect = [
+        channel.execute.return_value,
+        {
+            **channel.execute.return_value,
+            "data": {"counts": {"warnings": value["warnings"]["total"]}},
+        },
+    ]
+    with patch.object(server, "channel", channel):
+        live = asyncio.run(
+            server.revit_model_audit(
+                rules_inline={
+                    "schema": 1,
+                    "name": "Review",
+                    "rules": [
+                        {key: value for key, value in loaded["rules"][0].items() if key != "pack"}
+                    ],
+                },
+                compare_with="none",
+            )
+        )
+    assert live["model"]["lineageId"] == value["passport"]["lineageId"]
+    value["collectedAtUtc"] = "2026-09-30T12:00:00Z"
+    value["passport"]["versionGuid"] = "reopened-version"
+    put(tmp_path, "a.json", value)
+    offline = asyncio.run(audit_snapshots(str(tmp_path), loaded))
+    audit = offline["models"][0]["audit"]
+    assert audit["model"]["lineageId"] == live["model"]["lineageId"]
+    assert audit["summary"]["byDelta"] == {"unchanged": 1}
+    assert "comparison" not in audit["summary"]
 
 
 def test_redaction_covers_batch_rows_errors_and_history(tmp_path, monkeypatch):

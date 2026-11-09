@@ -895,7 +895,12 @@ async def test_redacted_fetch_preserves_distinct_live_history_keys(boundary, tmp
             "schemaVersion": 1,
             "collectedAtUtc": "2026-10-02T12:00:00Z",
             "source": {"path": path},
-            "passport": {"title": "Tower", "centralPath": path, "versionGuid": "family"},
+            "passport": {
+                "title": "Tower",
+                "centralPath": path,
+                "versionGuid": "family",
+                "lineageId": "project-" + str(index),
+            },
             "warnings": {"total": 250},
             "families": {"inPlace": 1},
             "skipped": [],

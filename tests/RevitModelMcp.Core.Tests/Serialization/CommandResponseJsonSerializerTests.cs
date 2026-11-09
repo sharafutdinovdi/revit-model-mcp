@@ -295,6 +295,7 @@ public sealed class CommandResponseJsonSerializerTests
             Passport = new ModelSnapshotPassport
             {
                 Title = "Model",
+                LineageId = "project-information-unique-id",
                 RevitServer = null,
                 Counts = new()
                 {
@@ -325,8 +326,9 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(data.GetProperty("source").EnumerateObject().Select(property => property.Name).Order().ToArray())
             .IsEquivalentTo(new[] { "path", "kind", "runtimeYear", "savedInYear", "upgradedInMemory" });
         await Assert.That(data.GetProperty("passport").EnumerateObject().Select(property => property.Name).Order().ToArray())
-            .IsEquivalentTo(new[] { "title", "isWorkshared", "centralPath", "numberOfSaves", "versionGuid",
+            .IsEquivalentTo(new[] { "title", "isWorkshared", "centralPath", "numberOfSaves", "versionGuid", "lineageId",
                 "basicFileInfoUsername", "fileLastWriteUtc", "fileSizeBytes", "revitServer", "counts", "worksets" });
+        await Assert.That(data.GetProperty("passport").GetProperty("lineageId").GetString()).IsEqualTo(snapshot.Passport.LineageId);
         await Assert.That(data.GetProperty("warnings").EnumerateObject().Select(property => property.Name).Order().ToArray())
             .IsEquivalentTo(new[] { "total", "groups" });
         await Assert.That(data.GetProperty("families").EnumerateObject().Select(property => property.Name).Order().ToArray())

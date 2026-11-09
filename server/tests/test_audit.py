@@ -31,6 +31,7 @@ MODEL = {
     "centralPath": r"C:\Private\Tower.rvt",
     "path": None,
     "versionGuid": "family-a",
+    "lineageId": "project-a",
 }
 RESPONDER = {"processId": 123, "documentName": "Tower", "documentPath": "Tower.rvt"}
 
@@ -693,7 +694,12 @@ def test_history_and_deltas(tmp_path, monkeypatch):
     monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path))
     rules = load_rules(inline=file())
     first = build_result(MODEL, rules, [finding()], evaluated_at="2026-01-01T00:00:00Z")
-    second = build_result(MODEL, rules, [finding(ids=[2, 3])], evaluated_at="2026-01-02T00:00:00Z")
+    second = build_result(
+        {**MODEL, "versionGuid": "new-version"},
+        rules,
+        [finding(ids=[2, 3])],
+        evaluated_at="2026-01-02T00:00:00Z",
+    )
     assert {d["element_id"]: d["status"] for d in second["deltas"]} == {
         "1": "fixed",
         "2": "unchanged",
@@ -708,10 +714,32 @@ def test_history_and_deltas(tmp_path, monkeypatch):
     )
     assert result["summary"]["rulesChanged"] and result["deltas"]
     assert result["savedTo"] is None
-    different = {**MODEL, "versionGuid": "another"}
+    different = {**MODEL, "lineageId": "another-project"}
     result = build_result(different, rules, [finding()], compare_with=first["savedTo"], save=False)
     assert "deltas" not in result and "different" in result["summary"]["comparison"]
     assert model_key(MODEL) != model_key({**MODEL, "centralPath": "other"})
+
+
+@pytest.mark.parametrize("missing", ["previous", "current", "both"])
+def test_legacy_history_has_no_assessed_deltas(tmp_path, monkeypatch, missing):
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path))
+    legacy = {key: value for key, value in MODEL.items() if key != "lineageId"}
+    rules = load_rules(inline=file())
+    build_result(
+        legacy if missing in ("previous", "both") else MODEL,
+        rules,
+        [finding()],
+        evaluated_at="2026-01-01T00:00:00Z",
+    )
+    result = build_result(
+        legacy if missing in ("current", "both") else MODEL,
+        rules,
+        [finding()],
+        evaluated_at="2026-01-02T00:00:00Z",
+        save=False,
+    )
+    assert "deltas" not in result
+    assert result["summary"]["comparison"] == "Model lineage is unavailable; deltas not assessed."
 
 
 @pytest.mark.parametrize(

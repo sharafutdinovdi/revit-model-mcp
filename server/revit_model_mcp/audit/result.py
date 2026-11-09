@@ -24,6 +24,7 @@ def model_identity(snapshot):
         "centralPath": passport.get("centralPath"),
         "path": snapshot.get("source", {}).get("path"),
         "versionGuid": passport.get("versionGuid"),
+        "lineageId": passport.get("lineageId"),
     }
 
 
@@ -52,12 +53,11 @@ def _keys(result):
 def compare(current, previous):
     """Match assessed findings. Incomplete evidence cannot prove a fix."""
     current["summary"]["rulesChanged"] = current["rules"]["sha256"] != previous["rules"]["sha256"]
-    if not current["model"].get("versionGuid") or current["model"]["versionGuid"] != previous[
-        "model"
-    ].get("versionGuid"):
-        current["summary"]["comparison"] = (
-            "Version family is unavailable or different; deltas not assessed."
-        )
+    if not current["model"].get("lineageId") or not previous["model"].get("lineageId"):
+        current["summary"]["comparison"] = "Model lineage is unavailable; deltas not assessed."
+        return
+    if current["model"]["lineageId"] != previous["model"]["lineageId"]:
+        current["summary"]["comparison"] = "Model lineage is different; deltas not assessed."
         return
     old, new = _keys(previous), _keys(current)
     current_rules = {f["id"]: f for f in current["findings"]}
@@ -143,14 +143,13 @@ def build_result(
                 collected is not None
                 and candidate_time is not None
                 and candidate_time < collected
-                and candidate["model"].get("versionGuid") == model.get("versionGuid")
                 and (previous is None or candidate_time > _collection_time(previous))
             ):
                 previous = candidate
     elif compare_with != "none":
         previous = json.loads(Path(compare_with).expanduser().read_text(encoding="utf-8"))
         if previous.get("model") != result["model"]:
-            # Compare title and paths independently of version-family validation.
+            # Compare title and paths independently of lineage validation.
             fields = ("title", "centralPath", "path")
             if any(previous["model"].get(k) != result["model"].get(k) for k in fields):
                 raise ValueError("Comparison audit belongs to another model.")
