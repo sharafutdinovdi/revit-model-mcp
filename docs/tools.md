@@ -4,8 +4,8 @@ description: "Model MCP tool reference with toolsets, arguments, response contra
 
 # Tool reference
 
-The default tool list contains 89 tools, about 26,944 tokens.
-The `core,read` selection contains 22 tools, about 6,564 tokens.
+The default tool list contains 89 tools, about 26,972 tokens.
+The `core,read` selection contains 22 tools, about 6,522 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
 confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
@@ -63,7 +63,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
 | `core` | 9 | 7,319 | 1,829 |
-| `read` | 13 | 18,688 | 4,672 |
+| `read` | 13 | 18,771 | 4,692 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
 | `views-sheets` | 22 | 25,742 | 6,435 |
@@ -73,20 +73,20 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `export` | 4 | 7,198 | 1,799 |
 | `batch` | 7 | 8,164 | 2,041 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,805 | 26,951 |
-| `core,read` | 22 | 26,007 | 6,501 |
+| `all` (default) | 89 | 107,888 | 26,972 |
+| `core,read` | 22 | 26,090 | 6,522 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,805 | 26,951 | 107,962 |
-| `core,read` | 22 | 26,007 | 6,501 | 26,097 |
-| `preset:audit` | 28 | 30,886 | 7,721 | 30,982 |
-| `preset:edit` | 59 | 67,731 | 16,932 | 67,858 |
-| `preset:families` | 40 | 45,825 | 11,456 | 45,933 |
-| `preset:sheets` | 54 | 63,826 | 15,956 | 63,948 |
-| `preset:batch` | 46 | 52,413 | 13,103 | 52,527 |
+| `all` | 89 | 107,888 | 26,972 | 108,045 |
+| `core,read` | 22 | 26,090 | 6,522 | 26,180 |
+| `preset:audit` | 28 | 30,969 | 7,742 | 31,065 |
+| `preset:edit` | 59 | 67,814 | 16,953 | 67,941 |
+| `preset:families` | 40 | 45,908 | 11,477 | 46,016 |
+| `preset:sheets` | 54 | 63,909 | 15,977 | 64,031 |
+| `preset:batch` | 46 | 52,496 | 13,124 | 52,610 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -114,6 +114,28 @@ The query filters shared by aggregation and queries are `categories`, `family`, 
 
 Every successful Revit-backed read result returns top-level `skipped` and `skippedCount`. Each skipped entry has `what` and `reason`. An empty list means no fields were omitted. A non-empty list means the answer is incomplete. The list keeps the first 100 entries; `skippedCount` reports the uncapped total. `revit_list_instances` returns `instances` with empty diagnostics. Model health uses this common shape instead of a nested metric/error list. Links status also keeps each link's `error` and mirrors it in `skipped`.
 
+### Worksets and ownership
+
+`revit_list_catalog(section="worksets")` returns user worksets with `id`, `name`, `count`, `owner` and `isOpen`.
+Both worksharing sections refuse non-workshared documents with an explicit error.
+Counts include loaded non-type elements only.
+The count scan examines at most 100,000 elements per request; further elements produce skipped diagnostics and counts become lower bounds.
+Closed worksets also produce skipped diagnostics; unloaded elements are unavailable.
+Workset pages apply `name_contains` before `offset` and `limit`.
+
+`section="ownership"` scans a page of loaded non-type element candidates, returning only checked-out elements with `id`, `name`, `worksetId`, `owner` and `checkoutStatus`.
+`total` counts candidates, not checked-out elements.
+Use `nextOffset` while `hasMore` is true, even when `items` is empty.
+The page calls `GetCheckoutStatus` for at most `limit` candidates and `GetWorksharingTooltipInfo` for owned candidates only, with at most 2,000 calls to each API per request.
+Candidate enumeration is O(N) with constant auxiliary memory; count aggregation retains O(W) workset counts.
+Pages follow collector order and require an unchanged model between requests.
+`name_contains` is refused for ownership.
+Per-element failures are skipped, not interpreted as unowned elements.
+Ownership reflects Revit's cached local worksharing state, not a fresh central-server lock query.
+Reported ownership may originate from workset ownership and does not prove individual borrowing.
+Neither section opens worksets, checks out elements, synchronizes, nor starts a transaction.
+
+
 | Tool | Arguments beyond the common read options | Purpose |
 | --- | --- | --- |
 | `revit_ping` | None | Check connectivity; returns `data:"pong"` and `readOnly: { enabled, source, setBy, setAtUtc }`. |
@@ -123,7 +145,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_document_info` | None | Read document, levels, area schemes and worksets. |
 | `revit_documents` | `include_linked=false` | List every open document in one Revit process, including background documents; linked documents are excluded by default. |
 | `revit_ui_state` | None | Read the active document and view, open UI views, up to 500 selected elements, and all open documents. |
-| `revit_list_catalog` | `section`, `name_contains=null`, `limit=200` (1 to 2000) | Discover names with a case-insensitive filter. Returns `total` before the limit and `hasMore`. |
+| `revit_list_catalog` | `section`, `name_contains=null`, `offset=0`, `limit=200` (1 to 2000) | Discover names with a case-insensitive filter. Returns `total`, `hasMore` and `nextOffset`. See [Worksets and ownership](#worksets-and-ownership). |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
 | `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
 | `revit_list_sheets` | `include_unplaced_views=true`, `offset=0`, `limit=200`, `document=null`; no timeout argument | Read sheets, title blocks, revisions, placed view IDs and unplaced views. |

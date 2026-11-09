@@ -3212,6 +3212,11 @@
         ],
         "default": null
       },
+      "offset": {
+        "default": 0,
+        "minimum": 0,
+        "type": "integer"
+      },
       "process_id": {
         "anyOf": [
           {

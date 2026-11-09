@@ -47,7 +47,14 @@ Categories and parameters resolve through `revit_list_catalog`. Use `builtin`, s
 | `sheets-and-views` | Missing title blocks, unplaced views, default view names. |
 | `iso19650-information` | Required description, Mark and classification code on walls and doors. These are review defaults. Replace them with project EIR or BEP requirements. They do not prove ISO 19650 compliance. |
 
-Checks include `parameter_filled`, `parameter_in`, `parameter_matches`, `name_matches`, `count`, `model_health`, `coordinates`, `sheets` and `worksets`. The last is validated but not assessed until #213 supplies a reader. Thresholds accept one of `max_count`, `max_percent`, or `min_percent`. Omitted thresholds allow zero findings. For parameter fill, use `min_percent`. For `coordinates` metric `link_offset_mm`, `max_count` is the tolerance in millimetres.
+Checks include `parameter_filled`, `parameter_in`, `parameter_matches`, `name_matches`, `count`, `model_health`, `coordinates`, `sheets` and `worksets`.
+The worksets check supports metric `closed` through the paged user-workset catalog.
+Non-workshared models and older add-ins without open-state metadata return `not_assessed`.
+Closed worksets and bounded count scans produce incomplete evidence and prevent a full-population pass.
+Thresholds accept one of `max_count`, `max_percent`, or `min_percent`.
+Omitted thresholds allow zero findings.
+For parameter fill, use `min_percent`.
+For `coordinates` metric `link_offset_mm`, `max_count` is the tolerance in millimetres.
 
 Threshold units are validated after inheritance, before any model read.
 `count`, `coordinates` and `worksets` accept only `max_count`.
@@ -110,4 +117,15 @@ Files are `<model key>/<UTC timestamp>.json`. The key hashes central path or sou
 
 `audit.to_register_issues(result)` maps failed audit findings to `revit_issue_register` issues. It maps title directly, category from the pack, finding from measured value and threshold, severity directly, and requirement_source and requirement from reference. Review the project requirements before creating a register. The register's existing limits still apply.
 
-Workset checks (#213), multi-model batch audits (#215), BCF and images are outside this slice.
+## Workstation verification
+
+Pending workstation verification on a workshared sample such as Snowdon in Revit 2026:
+
+1. Read `revit_list_catalog` with `section="worksets"`, `limit=1`, and successive `offset` values. Compare user worksets, owners, open states and loaded non-type element counts against Revit.
+2. Borrow a known element before reading. Read `section="ownership"` with `limit=2000` and follow every `nextOffset`. Confirm its id, checkout status and owner. Repeat with an element owned by another user.
+3. Relinquish the element in Revit and repeat the read. Confirm the cached status follows Revit's local worksharing state.
+4. Open the sample with a closed workset. Confirm skipped diagnostics and lower-bound counts; run the model-health audit and confirm the workset rule is not `passed`.
+5. Open a non-workshared project. Confirm both catalog sections refuse it and the worksets audit is `not_assessed`.
+6. On a model above 100,000 loaded non-type elements, confirm count-limit diagnostics. Confirm ownership pages invoke ownership reads for at most `limit` candidates and preserve continuation across pages with no owned elements.
+
+No read changes ownership, opens worksets or creates an Undo entry.

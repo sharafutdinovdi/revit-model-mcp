@@ -258,7 +258,7 @@
     },
     {
       "name": "revit_list_catalog",
-      "description": "List catalog names for one section: categories, family-types, levels, area-schemes, views, worksets, phases or parameters. name_contains filters names case-insensitively; limit bounds results (default 200, maximum 2000). Returns total before the limit and hasMore. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "List categories, family-types, levels, area-schemes, views, worksets, ownership, phases or parameters. Worksets include counts, owner and open state. Ownership scans limit candidates and returns checked-out rows with nextOffset; no name_contains. Worksharing sections require a workshared model. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {

@@ -273,11 +273,26 @@ class Evaluator:
             "threshold", {"min_percent": 100} if kind == "parameter_filled" else {"max_count": 0}
         )
         ids, partial = [], False
-        if kind in ("model_health", "coordinates", "sheets") and rule.get("scope"):
+        if kind in ("model_health", "coordinates", "sheets", "worksets") and rule.get("scope"):
             raise NotAssessed("This reader cannot honor an element scope.")
         if kind == "worksets":
-            raise NotAssessed("Worksets reader is not available in this slice (#213).")
-        if kind == "model_health":
+            if check.get("metric") != "closed":
+                raise NotAssessed("Only the closed worksets metric is supported.")
+            rows = []
+            for page in range(20):
+                data = await self.read(
+                    "revit_list_catalog", section="worksets", offset=page * 2000, limit=2000
+                )
+                items = data.get("items", [])
+                if any(type(row.get("isOpen")) is not bool for row in items):
+                    raise NotAssessed("Workset open state is unavailable on this add-in.")
+                rows.extend(items)
+                if not data.get("hasMore"):
+                    break
+            population = data.get("total", len(rows))
+            partial = bool(data.get("hasMore")) or population != len(rows)
+            measured = sum(not row["isOpen"] for row in rows)
+        elif kind == "model_health":
             metric = check["metric"]
             if metric == "unloaded_links":
                 data = await self.read("revit_links_status")
