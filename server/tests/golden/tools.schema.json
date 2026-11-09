@@ -794,6 +794,14 @@
       "readOnlyHint": false
     },
     "properties": {
+      "camera_coordinate_base": {
+        "default": "shared",
+        "enum": [
+          "shared",
+          "internal"
+        ],
+        "type": "string"
+      },
       "document": {
         "anyOf": [
           {
@@ -3633,6 +3641,14 @@
           }
         ],
         "default": null
+      },
+      "camera_coordinate_base": {
+        "default": "shared",
+        "enum": [
+          "shared",
+          "internal"
+        ],
+        "type": "string"
       },
       "capture_evidence": {
         "default": false,

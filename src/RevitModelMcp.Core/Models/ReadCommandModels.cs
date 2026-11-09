@@ -77,7 +77,7 @@ public sealed class CommandResponse<T>
     private void AddJobMetadata(StreamingContext context)
     {
         if (SkippedReadDiagnostics.Current is not null || Skipped is not null ||
-            Data is ModelSnapshotData or FamilyAuditData or ApiLookupResult)
+            Data is ModelSnapshotData or FamilyAuditData or ApiLookupResult or ElementCaptureData)
         {
             var diagnostics = SkippedReadDiagnostics.ForResponse(Data, Skipped, SkippedCount ?? 0);
             Skipped = diagnostics.Items;
@@ -633,6 +633,29 @@ public sealed class CaptureCamera
 
     [DataMember(Name = "scale")]
     public double Scale { get; set; }
+
+    [DataMember(Name = "coordinateBase")]
+    public string CoordinateBase { get; set; } = "internal";
+
+    public CaptureCamera Transform(DatumTransform transform, string coordinateBase)
+    {
+        if (transform is null) throw new ArgumentNullException(nameof(transform));
+        var position = transform.OfPoint(new DatumPoint(Position[0], Position[1], Position[2]));
+        double[] Rotate(double[] vector) =>
+        [
+            vector[0] * transform.BasisX.X + vector[1] * transform.BasisY.X + vector[2] * transform.BasisZ.X,
+            vector[0] * transform.BasisX.Y + vector[1] * transform.BasisY.Y + vector[2] * transform.BasisZ.Y,
+            vector[0] * transform.BasisX.Z + vector[1] * transform.BasisY.Z + vector[2] * transform.BasisZ.Z
+        ];
+        return new CaptureCamera
+        {
+            Position = [position.X, position.Y, position.Z],
+            Direction = Rotate(Direction),
+            Up = Rotate(Up),
+            Scale = Scale,
+            CoordinateBase = coordinateBase
+        };
+    }
 }
 
 [DataContract]

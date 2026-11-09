@@ -134,7 +134,7 @@
     },
     {
       "name": "revit_capture_elements",
-      "description": "Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back. skipped means incomplete; skippedCount is the total skipped."
+      "description": "Capture 1-500 elements as PNG (3d/plan, local/SSH); temporary view rolls back. skipped means incomplete; skippedCount is the total skipped."
     },
     {
       "name": "revit_export_view",
@@ -390,7 +390,7 @@
     },
     {
       "name": "revit_model_audit",
-      "description": "Audit live/snapshots_dir with per-model history; batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: 25 images/210s max, per-finding omissions. skipped means incomplete; skippedCount is the total skipped."
+      "description": "Audit live or offline snapshots_dir with per-model history. capture_evidence: 25 PNGs/210s. skipped means incomplete; skippedCount is the total skipped."
     },
     {
       "name": "revit_audit_report",

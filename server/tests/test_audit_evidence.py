@@ -195,8 +195,9 @@ def test_three_roadmap_prompts():
 
 @pytest.mark.parametrize("identity_changed", [False, True])
 @pytest.mark.parametrize("finding_count", [1, 25])
+@pytest.mark.parametrize("coordinate_base", ["shared", "internal"])
 def test_live_capture_pins_document_and_persists_outcome(
-    tmp_path, monkeypatch, identity_changed, finding_count
+    tmp_path, monkeypatch, identity_changed, finding_count, coordinate_base
 ):
     from revit_model_mcp.audit.evaluate import Evaluator
 
@@ -218,6 +219,7 @@ def test_live_capture_pins_document_and_persists_outcome(
 
     async def execute(job, timeout, document):
         assert job.command == "capture-elements"
+        assert job.payload["cameraCoordinateBase"] == coordinate_base
         assert document == "Tower.rvt"
         assert server._addressed_process_id.get() == 123
         identity = {**responder, "documentName": "Other"} if identity_changed else responder
@@ -232,6 +234,7 @@ def test_live_capture_pins_document_and_persists_outcome(
             rules_inline={"schema": 1, "name": "Review", "rules": []},
             compare_with="none",
             capture_evidence=True,
+            camera_coordinate_base=coordinate_base,
             document="Tower",
             process_id=123,
         )

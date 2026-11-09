@@ -224,8 +224,18 @@ The add-in reads the existing `BuiltInParameter.IFC_GUID` without setting or gen
 Valid compressed IFC GUIDs also appear as `IfcGuid`.
 Absent GUIDs retain Revit identity; IFC-only viewers cannot match those components.
 The GUID must match the IFC loaded in the viewer.
-Camera coordinates use model-internal metres; external IFC transforms must match.
+Camera positions and orthogonal scale use metres.
+`camera_coordinate_base="shared"` is the default for `revit_model_audit` and `revit_capture_elements`.
+It matches `revit_export(format="ifc")`, which leaves `SitePlacement` unset and uses the Autodesk IFC exporter's shared-coordinate default in Revit 2022-2027.
+The year-specific exporter sources initialize `SiteTransformation` to `Shared`: [2022](https://github.com/Autodesk/revit-ifc/blob/Release_22.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs), [2023](https://github.com/Autodesk/revit-ifc/blob/Release_23.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs), [2024](https://github.com/Autodesk/revit-ifc/blob/Release_24.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs), [2025](https://github.com/Autodesk/revit-ifc/blob/Release_25.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs), [2026](https://github.com/Autodesk/revit-ifc/blob/Release_26.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs) and [2027](https://github.com/Autodesk/revit-ifc/blob/Release_27.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs).
+Shared cameras apply the inverse active project location total transform to the internal position, direction and up vector.
+Translation applies only to the position; direction and up retain unit length.
 The orthogonal camera frames the captured bounds with the capture view's direction and up vector.
+No clipping planes are emitted.
+Set `camera_coordinate_base="internal"` when pairing evidence with an IFC exported separately using internal origin and project north.
+`revit_export` does not forward arbitrary `SitePlacement` options; passing `options={"SitePlacement":3}` does not select internal origin.
+Use the same active project location and coordinate base for capture and IFC export.
+Existing saved audits retain their original cameras; recapture evidence after changing the coordinate base or project location.
 Model-level findings without element IDs have no component viewpoint.
 
 Official buildingSMART 2.1 XSD fixtures are vendored unchanged for offline validation tests only.

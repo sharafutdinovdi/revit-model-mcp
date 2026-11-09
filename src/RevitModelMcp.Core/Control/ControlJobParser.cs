@@ -88,6 +88,7 @@ public sealed class ControlJobParseResult
     public IReadOnlyList<long> ElementIds { get; internal set; } = [];
     public double PaddingMm { get; internal set; } = 1500;
     public string Mode { get; internal set; } = "3d";
+    public string CameraCoordinateBase { get; internal set; } = "shared";
     public bool ZoomToFit { get; internal set; } = true;
     public string? TargetDocument { get; internal set; }
     public IReadOnlyList<ModelSnapshotParameterRule> ParameterRules { get; internal set; } = [];
@@ -401,11 +402,15 @@ public sealed class ControlJobParseResult
         var mode = job.Mode ?? "3d";
         if (mode is not ("3d" or "plan"))
             return Invalid(command, "mode must be 3d or plan.");
+        var coordinateBase = job.CameraCoordinateBase ?? "shared";
+        if (coordinateBase is not ("shared" or "internal"))
+            return Invalid(command, "cameraCoordinateBase must be shared or internal.");
         var result = Create(ControlJobKind.CaptureElements, command);
         result.ElementIds = job.ElementIds.Distinct().ToList();
         result.PixelSize = job.PixelSize ?? 1600;
         result.PaddingMm = padding;
         result.Mode = mode;
+        result.CameraCoordinateBase = coordinateBase;
         return result;
     }
 
@@ -599,6 +604,8 @@ public sealed partial class ControlJobContract
     public string? SourceName { get; set; }
     [DataMember(Name = "paddingMm")]
     public double? PaddingMm { get; set; }
+    [DataMember(Name = "cameraCoordinateBase")]
+    public string? CameraCoordinateBase { get; set; }
 
     [DataMember(Name = "pixelSize")]
     public int? PixelSize { get; set; }

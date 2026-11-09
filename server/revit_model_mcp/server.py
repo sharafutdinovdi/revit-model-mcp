@@ -1269,8 +1269,9 @@ async def revit_capture_elements(
     mode: str = "3d",
     output_path: SaveTo = None,
     document: Document = None,
+    camera_coordinate_base: Literal["shared", "internal"] = "shared",
 ) -> CallToolResult:
-    """Render a highlighted PNG that marks 1 to 500 elements, for issue evidence. Supports 3d or plan mode over local or SSH transport. The temporary view is rolled back."""
+    """Capture 1-500 elements as PNG (3d/plan, local/SSH); temporary view rolls back."""
     from revit_model_mcp.issue_register import validate_capture
 
     try:
@@ -1284,6 +1285,7 @@ async def revit_capture_elements(
                     "pixelSize": pixel_size,
                     "paddingMm": padding_mm,
                     "mode": mode,
+                    "cameraCoordinateBase": camera_coordinate_base,
                 },
                 output_path,
             ),
@@ -1441,8 +1443,9 @@ async def revit_model_audit(
     document: Document = None,
     snapshots_dir: str | None = None,
     batch_models: list[dict[str, Any]] | None = None,
+    camera_coordinate_base: Literal["shared", "internal"] = "shared",
 ) -> dict[str, Any]:
-    """Audit live/snapshots_dir with per-model history; batch_models takes revit_batch_fetch.models. Missing evidence is not_assessed. capture_evidence: 25 images/210s max, per-finding omissions."""
+    """Audit live or offline snapshots_dir with per-model history. capture_evidence: 25 PNGs/210s."""
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
@@ -1498,6 +1501,7 @@ async def revit_model_audit(
                                 "pixelSize": 900,
                                 "paddingMm": 1500,
                                 "mode": "3d",
+                                "cameraCoordinateBase": camera_coordinate_base,
                             },
                             output_path,
                         ),

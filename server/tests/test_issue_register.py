@@ -243,6 +243,25 @@ def test_capture_tool_returns_png_content(tmp_path):
         content.type == "image" and content.mime_type == "image/png" for content in result.content
     )
     assert execute.await_args.args[0].payload["mode"] == "plan"
+    assert execute.await_args.args[0].payload["cameraCoordinateBase"] == "shared"
+
+
+def test_capture_tool_forwards_internal_coordinate_base(tmp_path):
+    png = tmp_path / "internal.png"
+    Image.new("RGB", (2, 2), "red").save(png)
+    with patch.object(
+        server.channel,
+        "execute",
+        new=AsyncMock(return_value={"success": True, "data": {"localPath": str(png)}}),
+    ) as execute:
+        result = asyncio.run(
+            server.mcp.call_tool(
+                "revit_capture_elements",
+                {"element_ids": [1], "camera_coordinate_base": "internal"},
+            )
+        )
+    assert not result.is_error
+    assert execute.await_args.args[0].payload["cameraCoordinateBase"] == "internal"
 
 
 def test_capture_budget_preserves_register_and_skips_remaining(tmp_path):

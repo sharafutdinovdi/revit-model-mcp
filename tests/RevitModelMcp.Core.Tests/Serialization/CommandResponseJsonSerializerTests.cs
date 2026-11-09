@@ -11,6 +11,55 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task CaptureCamera_TransformsMetricPositionAndRotatesVectorsWithoutTranslation()
+    {
+        var camera = new CaptureCamera
+        {
+            Position = [10, 20, 30], Direction = [1, 0, 0], Up = [0, 1, 0], Scale = 40
+        };
+        var transform = new DatumTransform(new(417700, 78600, 5),
+            new(0, 1, 0), new(-1, 0, 0), new(0, 0, 1));
+        var shared = camera.Transform(transform, "shared");
+        await Assert.That(string.Join(",", shared.Position)).IsEqualTo("417680,78610,35");
+        await Assert.That(string.Join(",", shared.Direction)).IsEqualTo("0,1,0");
+        await Assert.That(string.Join(",", shared.Up)).IsEqualTo("-1,0,0");
+        await Assert.That(shared.Scale).IsEqualTo(40);
+        await Assert.That(shared.CoordinateBase).IsEqualTo("shared");
+        var internalCamera = camera.Transform(DatumTransform.Identity, "internal");
+        await Assert.That(string.Join(",", internalCamera.Position)).IsEqualTo("10,20,30");
+        await Assert.That(string.Join(",", internalCamera.Direction)).IsEqualTo("1,0,0");
+        await Assert.That(camera.Position[0]).IsEqualTo(10);
+    }
+
+    [Test]
+    public async Task CaptureElements_MixedMissingIdsSerializePartialDiagnostics()
+    {
+        var capture = new ElementCaptureData { ElementCount = 1, MissingIds = [999999999] };
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ElementCaptureData>.Ok("capture-elements", capture, 1)));
+        var response = json.RootElement;
+        await Assert.That(response.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(response.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+        await Assert.That(response.GetProperty("skipped")[0].GetProperty("what").GetString())
+            .IsEqualTo("element 999999999 capture");
+        await Assert.That(response.GetProperty("data").GetProperty("missingIds")[0].GetInt64()).IsEqualTo(999999999L);
+    }
+
+    [Test]
+    public async Task CaptureElements_MissingIdDiagnosticsRetainTotalBeyondDetailLimit()
+    {
+        var capture = new ElementCaptureData
+        {
+            ElementCount = 1, MissingIds = Enumerable.Range(1, 499).Select(id => (long)id).ToList()
+        };
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ElementCaptureData>.Ok("capture-elements", capture, 1)));
+        await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(499);
+        await Assert.That(json.RootElement.GetProperty("skipped").GetArrayLength()).IsEqualTo(100);
+    }
+
+    [Test]
     public async Task CaptureElements_SerializesBcfIdentityAndMetricCamera()
     {
         var capture = new ElementCaptureData
@@ -1081,7 +1130,13 @@ public sealed class CommandResponseJsonSerializerTests
         using var json = Parse(response);
         var data = json.RootElement.GetProperty("data");
 
-        await AssertSuccess(json.RootElement, "capture-elements");
+        await Assert.That(json.RootElement.GetProperty("command").GetString()).IsEqualTo("capture-elements");
+        await Assert.That(json.RootElement.GetProperty("success").GetBoolean()).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(json.RootElement.TryGetProperty("data", out _)).IsTrue();
+        await Assert.That(json.RootElement.TryGetProperty("elapsedMs", out _)).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(2);
+        await Assert.That(json.RootElement.GetProperty("skipped").GetArrayLength()).IsEqualTo(2);
         await Assert.That(data.GetProperty("fileName").GetString()).IsEqualTo("capture_20261004_120000_000.png");
         await Assert.That(data.GetProperty("width").GetInt32()).IsEqualTo(1600);
         await Assert.That(data.GetProperty("height").GetInt32()).IsEqualTo(900);
