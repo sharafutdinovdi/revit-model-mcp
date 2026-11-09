@@ -237,7 +237,12 @@ Findings are matched between the previous and the current audit of one model by 
 | fixed | The key was in the previous audit and is gone, and the rule ran and was assessed this time. |
 | unchanged | The key is in both. |
 
-A rule that was `not assessed` in either run produces no `fixed` entries, so a skipped read never looks like an improvement. A changed rule file hash is shown in the report header, because a new threshold changes results without a model change. Element ids are stable inside one model but not across a model rebuild; when `passport.versionGuid` history shows a different central model, the delta is not computed and the report says so.
+A rule that was `not assessed` in either run produces no `fixed` entries, so a skipped read never looks like an improvement.
+A changed rule file hash is shown in the report header, because a new threshold changes results without a model change.
+Element ids are stable inside one model but not across a model rebuild.
+Deltas require equal, nonempty `passport.lineageId` values from `ProjectInformation.UniqueId`; `versionGuid` is informational.
+Legacy history without lineage and different project lineages produce an explicit unassessed comparison.
+Live and offline audits retain the same snapshot lineage identity.
 
 The delta fits the existing `Changes` sheet of `revit_build_report` and adds counts per class and per severity.
 

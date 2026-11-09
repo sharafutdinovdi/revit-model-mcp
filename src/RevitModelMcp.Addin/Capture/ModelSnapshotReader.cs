@@ -87,6 +87,7 @@ internal static class ModelSnapshotReader
         ModelSnapshotData result, SkippedReadDiagnostics diagnostics)
     {
         var path = source.Path;
+        result.Passport.LineageId = Try("model lineage", () => document.ProjectInformation.UniqueId, diagnostics);
         if (document.IsWorkshared)
             result.Passport.CentralPath = Try("central path", () =>
                 ModelPathUtils.ConvertModelPathToUserVisiblePath(document.GetWorksharingCentralModelPath()), diagnostics);

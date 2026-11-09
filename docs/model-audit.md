@@ -101,7 +101,7 @@ Set `REVIT_MCP_AUDIT_DIR` to choose a history directory. Otherwise audits share 
 
 Files are `<model key>/<UTC timestamp>.json`. The key hashes central path or source path together with title. `REVIT_MCP_REDACT_PATHS` redacts stored model paths and returned paths. Files are created once and never overwritten. There is no automatic pruning.
 
-`compare_with="previous"` selects the latest strictly earlier `collectedAtUtc` for the same key and versionGuid family.
+`compare_with="previous"` selects the latest strictly earlier `collectedAtUtc` for the same key.
 `evaluatedAtUtc` records evaluation time, not evidence freshness.
 Offline results retain the snapshot collection time.
 Live results retain the initial snapshot collection time, or the evaluation time when that reader provides no collection time.
@@ -109,7 +109,14 @@ Missing, equal or later collection times cannot establish a baseline; deltas rem
 Older history files without collection timestamps are not eligible baselines.
 A result path selects an explicit baseline with the same collection-time requirement.
 `"none"` disables comparison.
-Missing or different version identity prevents deltas.
+Deltas require equal, nonempty `passport.lineageId` values, retained as `model.lineageId` in audit history.
+Snapshots use `ProjectInformation.UniqueId` as the lineage identity for live and batch collection.
+The Revit API reference defines `Element.UniqueId` as stable across upgrades and workset operations such as Save To Central.
+`WorksharingCentralGUID` is not used: the Revit 2022 API reference restricts it to Revit Server central models and documents an exception for file-based models.
+`versionGuid` remains informational and may differ between comparable collections.
+Missing lineage in legacy history or a different lineage produces an explicit `deltas not assessed` message.
+A rebuilt project with different Project Information identity cannot reuse the previous project's element findings.
+Copies retaining Project Information identity remain in the same lineage; separate paths retain separate history keys.
 Failed evidence is matched by rule id and element id; model-level findings use an empty element id.
 Deltas are `new`, `fixed` or `unchanged`.
 Missing, truncated or incomplete evidence cannot prove a fix.

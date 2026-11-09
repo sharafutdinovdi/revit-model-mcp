@@ -41,6 +41,7 @@ public sealed record ModelSnapshotPassport
     [DataMember(Name = "centralPath")] public string? CentralPath { get; set; }
     [DataMember(Name = "numberOfSaves")] public long? NumberOfSaves { get; set; }
     [DataMember(Name = "versionGuid")] public string? VersionGuid { get; set; }
+    [DataMember(Name = "lineageId")] public string? LineageId { get; set; }
     [DataMember(Name = "basicFileInfoUsername")] public string? BasicFileInfoUsername { get; set; }
     [DataMember(Name = "fileLastWriteUtc")] public string? FileLastWriteUtc { get; set; }
     [DataMember(Name = "fileSizeBytes")] public long? FileSizeBytes { get; set; }
