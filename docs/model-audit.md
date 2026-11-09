@@ -101,7 +101,20 @@ Set `REVIT_MCP_AUDIT_DIR` to choose a history directory. Otherwise audits share 
 
 Files are `<model key>/<UTC timestamp>.json`. The key hashes central path or source path together with title. `REVIT_MCP_REDACT_PATHS` redacts stored model paths and returned paths. Files are created once and never overwritten. There is no automatic pruning.
 
-`compare_with="previous"` finds the newest earlier result for the same key and versionGuid family. A result path selects an explicit baseline. `"none"` disables comparison. Missing or different version identity prevents deltas. Failed evidence is matched by rule id and element id; model-level findings use an empty element id. Deltas are `new`, `fixed` or `unchanged`. Missing, truncated or incomplete evidence cannot prove a fix. `not_assessed` never yields a fixed item. `summary.rulesChanged` flags a changed rules hash.
+`compare_with="previous"` selects the latest strictly earlier `collectedAtUtc` for the same key and versionGuid family.
+`evaluatedAtUtc` records evaluation time, not evidence freshness.
+Offline results retain the snapshot collection time.
+Live results retain the initial snapshot collection time, or the evaluation time when that reader provides no collection time.
+Missing, equal or later collection times cannot establish a baseline; deltas remain unassessed.
+Older history files without collection timestamps are not eligible baselines.
+A result path selects an explicit baseline with the same collection-time requirement.
+`"none"` disables comparison.
+Missing or different version identity prevents deltas.
+Failed evidence is matched by rule id and element id; model-level findings use an empty element id.
+Deltas are `new`, `fixed` or `unchanged`.
+Missing, truncated or incomplete evidence cannot prove a fix.
+`not_assessed` never yields a fixed item.
+`summary.rulesChanged` flags a changed rules hash.
 
 ## Batch snapshot audits
 
@@ -131,6 +144,10 @@ Invalid snapshots remain failed rows.
 An empty directory is accepted only with a nonempty inventory.
 
 Each assessed model uses the same rule evaluator, immutable history key and comparison as a live audit.
+Fetched snapshots contain a `historyKey` computed from the original model identity before path redaction.
+The offline audit uses this key for both model separation and history lookup.
+A snapshot without `historyKey` requires a model path with a directory.
+A basename-only identity without a key produces a failed model row with an explanatory reason.
 Batch comparison accepts `previous` or `none`.
 The previous result is selected independently for each model, not by model title.
 No baseline or unavailable version identity leaves deltas unassessed.

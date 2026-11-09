@@ -13,15 +13,16 @@ from openpyxl import load_workbook
 from revit_model_mcp import server
 from revit_model_mcp.audit.batch import audit_snapshots
 from revit_model_mcp.audit.report import build_report
-from revit_model_mcp.audit.result import model_identity, model_key
+from revit_model_mcp.audit.result import build_result, model_identity, model_key
 from revit_model_mcp.audit.rules import load_rules
 
 FIXTURE = Path(__file__).parent / "fixtures" / "snapshots" / "current" / "model-a.json"
 
 
-def snapshot(name="A", ids=(1, 2)):
+def snapshot(name="A", ids=(1, 2), collected="2026-09-30T12:00:00Z"):
     value = json.loads(FIXTURE.read_text())
-    value["source"]["path"] = name + ".rvt"
+    value["source"]["path"] = "models/" + name + ".rvt"
+    value["collectedAtUtc"] = collected
     value["passport"].update(title=name, centralPath=None, versionGuid="family-" + name)
     value.update(skipped=[], skippedCount=0)
     value["parameterFill"]["rows"] = [
@@ -81,8 +82,8 @@ def test_two_runs_store_history_and_compare_each_model(tmp_path, monkeypatch):
     first = run(current)
     assert first["summary"]["byStatus"] == {"failed": 2, "not_assessed": 2}
     assert first["summary"]["byDelta"] == {}
-    a = snapshot(ids=(2, 3))
-    b = snapshot("B", ())
+    a = snapshot(ids=(2, 3), collected="2026-10-01T12:00:00Z")
+    b = snapshot("B", (), collected="2026-10-01T12:00:00Z")
     put(current, "a.json", a)
     put(current, "b.json", b)
     second = run(current)
@@ -136,13 +137,14 @@ def test_unavailable_and_incomplete_evidence_never_proves_fixes(tmp_path, monkey
     monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
     put(tmp_path, "a.json", snapshot())
     run(tmp_path)
-    value = snapshot(ids=())
+    value = snapshot(ids=(), collected="2026-10-01T12:00:00Z")
     value.update(skipped=[{"what": "closed workset", "reason": "not loaded"}], skippedCount=1)
     put(tmp_path, "a.json", value)
     result = run(tmp_path)
     assert result["models"][0]["audit"]["findings"][0]["status"] == "partial"
     assert result["summary"]["byDelta"] == {}
     del value["parameterFill"]
+    value["collectedAtUtc"] = "2026-10-02T12:00:00Z"
     put(tmp_path, "a.json", value)
     result = run(tmp_path)
     assert result["summary"]["byStatus"] == {"not_assessed": 2}
@@ -157,6 +159,8 @@ def test_equal_titles_do_not_merge_models_and_version_changes_have_no_delta(tmp_
     put(tmp_path, "b.json", b)
     run(tmp_path)
     a["passport"]["versionGuid"] = "another-family"
+    a["collectedAtUtc"] = b["collectedAtUtc"] = "2026-10-01T12:00:00Z"
+    put(tmp_path, "b.json", b)
     put(tmp_path, "a.json", a)
     result = run(tmp_path)
     assert "deltas" not in result["models"][0]["audit"]
@@ -228,3 +232,81 @@ def test_tool_uses_no_transport_and_report_tool_accepts_batch(tmp_path, monkeypa
         asyncio.run(server.revit_model_audit(batch_models=[]))
     with pytest.raises(ToolError, match="live document"):
         asyncio.run(server.revit_model_audit(snapshots_dir=str(tmp_path), document="A"))
+
+
+def test_basename_only_snapshot_without_history_key_fails(tmp_path):
+    value = snapshot()
+    value["source"]["path"] = "A.rvt"
+    put(tmp_path, "a.json", value)
+    result = run(tmp_path, save=False)
+    assert result["models"][0]["status"] == "failed"
+    assert "no historyKey" in result["models"][0]["reason"]
+    assert result["summary"]["byStatus"] == {"not_assessed": 2}
+
+
+def test_offline_collection_predating_live_audit_cannot_prove_fixes(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
+    value = snapshot()
+    put(tmp_path, "a.json", value)
+    findings = run(tmp_path, save=False)["models"][0]["audit"]["findings"]
+    build_result(
+        model_identity(value),
+        rules(),
+        findings,
+        collected_at="2026-10-02T12:00:00Z",
+        evaluated_at="2026-10-02T12:01:00Z",
+    )
+    put(tmp_path, "a.json", snapshot(ids=()))
+    result = run(tmp_path)
+    audit = result["models"][0]["audit"]
+    assert audit["collectedAtUtc"] == value["collectedAtUtc"]
+    assert "deltas" not in audit
+    assert "not assessed" in audit["summary"]["comparison"]
+
+
+def test_history_selects_latest_earlier_collection_not_latest_evaluation(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
+    value = snapshot()
+    put(tmp_path, "a.json", value)
+    findings = run(tmp_path, save=False)["models"][0]["audit"]["findings"]
+    build_result(
+        model_identity(value),
+        rules(),
+        findings,
+        collected_at="2026-09-29T12:00:00Z",
+        evaluated_at="2026-10-02T12:00:00Z",
+    )
+    build_result(
+        model_identity(value),
+        rules(),
+        findings,
+        collected_at="2026-10-01T12:00:00Z",
+        evaluated_at="2026-10-03T12:00:00Z",
+    )
+    older = copy.deepcopy(findings)
+    older[0]["element_ids"] = [9]
+    build_result(
+        model_identity(value),
+        rules(),
+        older,
+        collected_at="2026-09-28T12:00:00Z",
+        evaluated_at="2026-10-04T12:00:00Z",
+    )
+    put(tmp_path, "a.json", snapshot(ids=(2, 3)))
+    result = run(tmp_path)
+    assert result["models"][0]["summary"]["byDelta"] == {"fixed": 1, "unchanged": 1, "new": 1}
+
+
+def test_equal_or_missing_collection_time_leaves_deltas_unassessed(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
+    put(tmp_path, "a.json", snapshot())
+    run(tmp_path)
+    value = snapshot(ids=())
+    put(tmp_path, "a.json", value)
+    assert "deltas" not in run(tmp_path)["models"][0]["audit"]
+    del value["collectedAtUtc"]
+    put(tmp_path, "a.json", value)
+    audit = run(tmp_path)["models"][0]["audit"]
+    assert audit["collectedAtUtc"] is None
+    assert "deltas" not in audit
+    assert "not assessed" in audit["summary"]["comparison"]

@@ -1448,7 +1448,14 @@ async def revit_model_audit(
         source = LiveReadSource(document, timeout_seconds, identity=identity)
         evaluator = Evaluator(source)
         findings = await evaluator.evaluate(loaded["rules"])
-        return build_result(model_identity(identity["data"]), loaded, findings, compare_with, save)
+        return build_result(
+            model_identity(identity["data"]),
+            loaded,
+            findings,
+            compare_with,
+            save,
+            collected_at=identity["data"].get("collectedAtUtc"),
+        )
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(str(error)) from error
 

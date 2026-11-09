@@ -16,6 +16,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp import batch
 from revit_model_mcp.artifact_download import save_batch_artifact
+from revit_model_mcp.audit.result import model_identity, model_key
 from revit_model_mcp.batch import register_batch
 from revit_model_mcp.revit_channel import RevitChannel, select_instance
 from revit_model_mcp.ssh_host import SshPowerShellHost, _fail_dead_supervisor
@@ -486,6 +487,7 @@ async def test_fetch_redacts_snapshot_file_without_changing_host_artifact(
         "schemaVersion": 1,
         "source": {"path": "A.rvt"},
         "passport": {"centralPath": "Central.rvt"},
+        "historyKey": model_key(model_identity(snapshot)),
     }
     assert b"models" not in local.read_bytes()
     assert host.artifacts[(run_id, "snapshot_0001.json")] == raw
@@ -497,7 +499,10 @@ async def test_fetch_redacts_snapshot_file_without_changing_host_artifact(
     )
     monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "0")
     unredacted = await tools["revit_batch_fetch"](run_id, str(tmp_path / "unredacted"))
-    assert json.loads(Path(unredacted["localPaths"][0]).read_text()) == snapshot
+    assert json.loads(Path(unredacted["localPaths"][0]).read_text()) == {
+        **snapshot,
+        "historyKey": model_key(model_identity(snapshot)),
+    }
     assert unredacted["models"][0]["path"] == r"C:\models\A.rvt"
 
 
@@ -867,3 +872,64 @@ async def test_batch_returns_retryable_transport_failure(
     assert result["retryable"] is True
     assert "Private" not in result["error"]
     assert not channel.jobs
+
+
+@pytest.mark.anyio
+async def test_redacted_fetch_preserves_distinct_live_history_keys(boundary, tmp_path, monkeypatch):
+    from revit_model_mcp.audit.batch import audit_snapshots
+    from revit_model_mcp.audit.evaluate import Evaluator, SnapshotReadSource
+    from revit_model_mcp.audit.result import build_result
+    from revit_model_mcp.audit.rules import load_rules
+
+    tools, host, _channel = boundary
+    history = tmp_path / "history"
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(history))
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    paths = [r"C:\one\Tower.rvt", r"C:\two\Tower.rvt"]
+    run_id = (await tools["revit_batch_start"](paths=paths))["runId"]
+    host.runs[run_id]["status"] = 2
+    loaded = load_rules("pack:model-health")
+    keys = []
+    for index, path in enumerate(paths):
+        value = {
+            "schemaVersion": 1,
+            "collectedAtUtc": "2026-10-02T12:00:00Z",
+            "source": {"path": path},
+            "passport": {"title": "Tower", "centralPath": path, "versionGuid": "family"},
+            "warnings": {"total": 250},
+            "families": {"inPlace": 1},
+            "skipped": [],
+            "skippedCount": 0,
+        }
+        identity = model_identity(value)
+        key = model_key(identity)
+        keys.append(key)
+        findings = await Evaluator(SnapshotReadSource(value)).evaluate(loaded["rules"])
+        build_result(
+            identity,
+            loaded,
+            findings,
+            collected_at="2026-10-01T12:00:00Z",
+            evaluated_at="2026-10-01T12:01:00Z",
+        )
+        name = f"snapshot_{index:04d}.json"
+        host.runs[run_id]["models"][index].update(status=2, snapshotFile=name)
+        host.artifacts[(run_id, name)] = json.dumps(value).encode()
+    assert keys[0] != keys[1]
+    fetched = await tools["revit_batch_fetch"](run_id, str(tmp_path / "snapshots"))
+    for key, local in zip(keys, fetched["localPaths"], strict=True):
+        value = json.loads(Path(local).read_text())
+        assert value["historyKey"] == key
+        assert value["source"]["path"] == "Tower.rvt"
+        assert value["passport"]["centralPath"] == "Tower.rvt"
+    result = await audit_snapshots(
+        str(tmp_path / "snapshots"),
+        loaded,
+        models=fetched["models"],
+    )
+    assert result["summary"]["byModelStatus"] == {"audited": 2}
+    for key, row in zip(keys, result["models"], strict=True):
+        assert row["summary"]["byDelta"]["unchanged"] == 2
+        assert len(list((history / key).glob("*.json"))) == 2
+    assert r"C:\one" not in json.dumps(result)
+    assert r"C:\two" not in json.dumps(result)

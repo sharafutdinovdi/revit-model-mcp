@@ -3,7 +3,7 @@
 import json
 from collections import Counter
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from revit_model_mcp.actions import redact_model_paths
 from revit_model_mcp.atomic_write import write_new_file
@@ -93,12 +93,27 @@ async def audit_snapshots(directory, rules, compare_with="previous", save=True, 
                 raise ValueError("Only snapshot schemaVersion 1 is supported.")
             source = SnapshotReadSource(snapshot)
             identity = model_identity(snapshot)
-            key = model_key(identity)
+            key = snapshot.get("historyKey")
+            if key is None:
+                path_identity = identity.get("centralPath") or identity.get("path") or ""
+                if PureWindowsPath(path_identity).parent == PureWindowsPath("."):
+                    raise ValueError(
+                        "Snapshot has no historyKey and no directory in its model path; stable history identity is unavailable."
+                    )
+                key = model_key(identity)
             if key in identities:
                 raise ValueError("Duplicate model identity in batch snapshots.")
             identities.add(key)
             findings = await Evaluator(source).evaluate(rules["rules"])
-            audit = build_result(identity, rules, findings, compare_with, save)
+            audit = build_result(
+                identity,
+                rules,
+                findings,
+                compare_with,
+                save,
+                history_key=key,
+                collected_at=snapshot.get("collectedAtUtc", ""),
+            )
             row.update(
                 model=audit["model"], status="audited", audit=audit, summary=audit["summary"]
             )
