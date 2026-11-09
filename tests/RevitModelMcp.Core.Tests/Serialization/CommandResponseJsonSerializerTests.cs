@@ -15,7 +15,10 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var camera = new CaptureCamera
         {
-            Position = [10, 20, 30], Direction = [1, 0, 0], Up = [0, 1, 0], Scale = 40
+            Position = [10, 20, 30],
+            Direction = [1, 0, 0],
+            Up = [0, 1, 0],
+            Scale = 40
         };
         var transform = new DatumTransform(new(417700, 78600, 5),
             new(0, 1, 0), new(-1, 0, 0), new(0, 0, 1));
@@ -50,7 +53,8 @@ public sealed class CommandResponseJsonSerializerTests
     {
         var capture = new ElementCaptureData
         {
-            ElementCount = 1, MissingIds = Enumerable.Range(1, 499).Select(id => (long)id).ToList()
+            ElementCount = 1,
+            MissingIds = Enumerable.Range(1, 499).Select(id => (long)id).ToList()
         };
         using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
             CommandResponse<ElementCaptureData>.Ok("capture-elements", capture, 1)));
