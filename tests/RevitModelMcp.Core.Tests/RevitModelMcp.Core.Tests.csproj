@@ -11,6 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="FsCheck" Version="3.3.2" />
     <PackageReference Include="TUnit" Version="1.81.10" />
   </ItemGroup>
 
