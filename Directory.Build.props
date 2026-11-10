@@ -3,6 +3,7 @@
     <Channel Condition="'$(Channel)' == ''">github</Channel>
     <DefineConstants Condition="'$(Channel)' == 'store'">$(DefineConstants);STORE_CHANNEL</DefineConstants>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <NuGetLockFilePath Condition="'$(MSBuildProjectName)' == 'RevitModelMcp.Addin'">$(MSBuildProjectDirectory)/packages.$(Configuration).lock.json</NuGetLockFilePath>
   </PropertyGroup>
   <!-- Shipped binaries carry one product name; SignPath enforces it as a file metadata restriction. -->
