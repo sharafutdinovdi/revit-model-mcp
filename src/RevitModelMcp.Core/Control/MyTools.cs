@@ -49,7 +49,32 @@ internal sealed record ToolDefinition
             throw new ArgumentException("Unicode Format characters are not allowed in tool definitions.");
     }
 
-    public string ApprovalBinding() => CodeSource.CodeHash(ToolJson.Serialize(this with { Created = "", Author = "" }));
+    public string ApprovalBinding() => CodeSource.CodeHash((this with { Created = "", Author = "" }).ApprovalPayload());
+
+    public string ApprovalPayload()
+    {
+        var builder = new StringBuilder();
+        builder.Append('{');
+        WriteMember("author", Author);
+        WriteMember("code", Code);
+        WriteMember("created", Created);
+        WriteMember("description", Description);
+        WriteMember("mode", Mode);
+        WriteMember("name", Name);
+        WriteMember("parameters", Parameters);
+        WriteMember("replacedRevision", ReplacedRevision);
+        WriteMember("revision", Revision);
+        WriteMember("testedRevitYears", TestedRevitYears);
+        return builder.Append('}').ToString();
+
+        void WriteMember(string name, object value)
+        {
+            if (builder.Length > 1) builder.Append(',');
+            CodeResultLimiter.WriteJson(builder, name);
+            builder.Append(':');
+            CodeResultLimiter.WriteJson(builder, value);
+        }
+    }
 }
 
 public static class ToolArguments
@@ -235,13 +260,15 @@ internal sealed class ToolStore(string directory)
         if (!Regex.IsMatch(revision, @"\A[a-f0-9]{64}\z")) throw new InvalidOperationException("revision not approved");
         var path = Path.Combine(folder, revision + ".json");
         if (new FileInfo(path).Length > MaxSourceBytes * 8) throw new InvalidOperationException("revision not approved");
-        var definition = ToolJson.Deserialize<ToolDefinition>(File.ReadAllText(path));
+        var payload = File.ReadAllText(path);
+        var definition = ToolJson.Deserialize<ToolDefinition>(payload);
         if (definition is null || definition.Code is null || definition.Name != name || definition.Revision != revision || ToolDefinition.Hash(definition.Code) != revision)
             throw new InvalidOperationException("revision not approved");
         var approvalPath = Path.Combine(folder, revision + ".approved");
         if (new FileInfo(approvalPath).Length != 44) throw new InvalidOperationException("revision not approved");
         var approval = File.ReadAllText(approvalPath);
-        if (approval != ApprovalSignature(definition)) throw new InvalidOperationException("revision not approved");
+        // The original JSON text binds legacy approvals independently of runtime escaping policies.
+        if (approval != ApprovalSignature(payload)) throw new InvalidOperationException("revision not approved");
         definition.Validate();
         return definition;
     }
@@ -266,8 +293,9 @@ internal sealed class ToolStore(string directory)
             keyFile.Write(key, 0, key.Length);
             keyFile.Flush(true);
         }
-        AtomicWrite(Path.Combine(folder, definition.Revision + ".json"), ToolJson.Serialize(definition));
-        AtomicWrite(Path.Combine(folder, definition.Revision + ".approved"), ApprovalSignature(definition));
+        var payload = definition.ApprovalPayload();
+        AtomicWrite(Path.Combine(folder, definition.Revision + ".json"), payload);
+        AtomicWrite(Path.Combine(folder, definition.Revision + ".approved"), ApprovalSignature(payload));
         AtomicWrite(Path.Combine(folder, "active"), definition.Revision);
         foreach (var old in Directory.GetFiles(folder, "*.json")
                      .Where(path => Path.GetFileNameWithoutExtension(path) != definition.Revision)
@@ -278,14 +306,14 @@ internal sealed class ToolStore(string directory)
         }
     }
 
-    private string ApprovalSignature(ToolDefinition definition)
+    private string ApprovalSignature(string payload)
     {
         var keyPath = Path.Combine(_directory, ".approval-key");
         if (new FileInfo(keyPath).Length != 32) throw new InvalidOperationException("revision not approved");
         var key = File.ReadAllBytes(keyPath);
         if (key.Length != 32) throw new InvalidOperationException("revision not approved");
         using var signature = new HMACSHA256(key);
-        return Convert.ToBase64String(signature.ComputeHash(Encoding.UTF8.GetBytes(ToolJson.Serialize(definition))));
+        return Convert.ToBase64String(signature.ComputeHash(Encoding.UTF8.GetBytes(payload)));
     }
 
     public void Delete(string name, string? expectedApprovalBinding = null)

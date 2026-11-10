@@ -214,3 +214,17 @@ To verify recovery in Revit 2022 and 2026:
 3. Close Rename and Settings with Escape; verify that the queued ping completes once after Revit becomes idle, then submit another ping and list-tools.
 4. Repeat with an overflow tool run from Settings, rename, built-in icon, valid PNG, rejected PNG imports, Show code and keyboard navigation before closing the dialogs.
 5. Compare with the earlier build using the same sequence and inspect request completion and Activity; a fresh heartbeat alone is not proof of working dispatch.
+
+## Approval across Revit versions
+
+Approval belongs to the Windows user's store, not to an individual Revit year or .NET runtime.
+All installed Revit versions need an add-in containing the cross-runtime approval fix.
+The HMAC uses the UTF-8 text stored in the revision file without reserializing the parsed definition.
+New saves use fixed member order, deterministic string escaping and invariant number formatting.
+The source revision hash and the existing store-local approval key are unchanged.
+Unmodified legacy revision files and their signatures remain valid, including files written with either .NET Framework control-character escape policy.
+Editing or reformatting a signed revision file requires source review and approval again; restoring the original signed file also restores its approval.
+
+Core tests pin the canonical UTF-8 payload hash, HMAC and confirmation binding to fixed vectors and exercise both legacy escaping policies.
+These tests execute on modern .NET.
+Workstation verification must save and approve a tool with multiline source and non-ASCII metadata in Revit 2026, list and run it in Revit 2022, then repeat in the reverse direction without changing the shared key or approving again.
