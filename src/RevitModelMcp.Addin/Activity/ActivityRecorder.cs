@@ -32,6 +32,7 @@ internal static class ActivityRecorder
             Time = DateTimeOffset.Now,
             ClientName = job.ClientName,
             Command = job.Command,
+            ToolName = job.Command == "run-tool" ? job.Action?.Name : null,
             Document = document?.Title ?? data?.Title ?? string.Empty,
             Summary = job.Command == "execute-code" && job.Action?.Code is string code
                 ? CodeActivitySummary(code, document?.PathName)

@@ -13,6 +13,8 @@ internal static class MyTools
     internal static ToolSession Session { get; } = new();
 
     internal static ToolStore Store { get; } = new(ToolStore.DefaultDirectory);
+    internal static ToolPresentationStore Presentation { get; } = new(System.IO.Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "tool-presentation"));
 
     internal static void PrepareRun(ActionJobContract action)
     {
@@ -101,6 +103,7 @@ internal static class MyTools
             return confirmation;
         }
         Store.Save(definition);
+        MyToolsRibbon.Refresh();
         return new ActionResultData { Tool = definition, Summary = $"Saved {definition.Name} ({definition.Revision})." };
     }
 
@@ -113,6 +116,8 @@ internal static class MyTools
             $"Needs confirmation to delete {name}.", "The tool changed. Review it again.");
         if (confirmation is not null) return confirmation;
         Store.Delete(name, binding);
+        Presentation.Delete(name);
+        MyToolsRibbon.Refresh();
         return new ActionResultData { Summary = $"Deleted saved tool {name}." };
     }
 }

@@ -50,7 +50,7 @@ internal static class ActionCommandExecutor
             ReadCommandReader.ReadResponder(application), job.CorrelationId).Write(response);
     }
 
-    public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt)
+    public static void Execute(UIApplication application, ControlJobParseResult job, DateTimeOffset startedAt, RibbonToolApproval? ribbonApproval = null)
     {
         ActivityPaneAutoShow.EnsureShown();
         if (job.Command is "save-tool" or "delete-tool" or "list-tools" or "get-tool")
@@ -132,6 +132,12 @@ internal static class ActionCommandExecutor
                 return;
             }
             if (job.Command == "run-tool") MyTools.PrepareRun(job.Action!);
+            if (ribbonApproval is not null)
+            {
+                if (job.Command != "run-tool" || job.Action?.ToolApprovalBinding != ribbonApproval.Binding ||
+                    job.Action.ToolRevision != ribbonApproval.Revision)
+                    throw new InvalidOperationException("The tool changed. Review it again before running.");
+            }
             document = job.Command is "execute-code" or "run-tool" && job.TargetDocument is null
                 ? application.ActiveUIDocument?.Document
                 : ResolveDocument(application, job.TargetDocument);
@@ -148,16 +154,16 @@ internal static class ActionCommandExecutor
             if (job.Command is "export" or "export-nwc") action.ConfirmOverwrites = true;
             if (job.Command is "execute-code" or "run-tool")
             {
-                if (action.ConfirmToken is not null || (job.Command == "run-tool"
+                if (ribbonApproval is null && (action.ConfirmToken is not null || (job.Command == "run-tool"
                     ? MyTools.Session.RequiresConfirmation(action.ToolName!, action.ToolRevision!, action.ToolMode, action.DryRun)
-                    : !action.DryRun))
+                    : !action.DryRun)))
                     data = ConfirmationStore.Gate(job.Command,
                         document is null ? "none" : DocumentConfirmationBinding.Identity(document.PathName, document.Title),
                         ToolArguments.ExecutionBinding(action), "", action.ConfirmToken,
                         action.ToolConfirmationText ?? $"Run C# code (SHA-256 {DocumentConfirmationBinding.CodeHash(action.Code!)[..12]}, {action.Code!.Length} characters, transaction {action.TransactionMode}) on '{document?.Title ?? "no document"}'. The code has full Revit API access and the user's file and network rights. Review it before confirming.",
                         action.ToolName is null ? "Needs confirmation to run C# code." : $"Needs confirmation to run {action.ToolName} ({action.ToolRevision}).",
                         "The confirmation state changed. Repeat the call without confirm_token to get a new one.");
-                if (job.Command == "run-tool" && data is null)
+                if (ribbonApproval is null && job.Command == "run-tool" && data is null)
                     MyTools.Session.Confirm(action.ToolName!, action.ToolRevision!);
                 if (data is null)
                 {
@@ -178,7 +184,8 @@ internal static class ActionCommandExecutor
                         }
                     }
                     using var dialogs = new CallDialogs(application, PublishDialog);
-                    data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId);
+                    data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId,
+                        ribbonSource: ribbonApproval is not null);
                     dialogs.Finish();
                     data.Dialogs = dialogs.Records.Count > 0 ? dialogs.Records.ToList() : null;
                 }
@@ -240,6 +247,7 @@ internal static class ActionCommandExecutor
             // A confirmation preview rolls its transactions back, so the previous undo entry stays on top.
             UndoTracker.Restore(changes.UndoStateAtStart);
         responder.ActiveDocument = ReadCommandReader.ReadResponder(application).ActiveDocument;
+        ribbonApproval?.Completed(response);
         CommandResponseFileWriter.Create(startedAt.LocalDateTime, job.Command,
             responder, job.CorrelationId).Write(response);
     }

@@ -12,6 +12,7 @@ using RevitModelMcp.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Policy;
 using Binding = System.Windows.Data.Binding;
+using ComboBox = System.Windows.Controls.ComboBox;
 using Grid = System.Windows.Controls.Grid;
 using TextBox = System.Windows.Controls.TextBox;
 using WpfControl = System.Windows.Controls.Control;
@@ -24,9 +25,10 @@ public sealed class MyToolsCommand : ExternalCommand
 {
     public override void Execute()
     {
-        var window = new MyToolsWindow();
+        var window = new MyToolsWindow(Application);
         new WindowInteropHelper(window).Owner = Application.MainWindowHandle;
-        window.ShowDialog();
+        try { window.ShowDialog(); }
+        finally { MyToolsRibbon.Refresh(); }
     }
 }
 
@@ -36,9 +38,15 @@ internal sealed class MyToolsWindow : Window
     private readonly TextBlock _status = new() { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
     private readonly Button _showCode = new() { Content = "Show code", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 4, 12, 4) };
     private readonly Button _delete = new() { Content = "Delete", MinWidth = 80, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 4, 12, 4) };
+    private readonly UIApplication _application;
+    private readonly Button _run = new() { Content = "Run" };
+    private readonly Button _rename = new() { Content = "Rename" };
+    private readonly Button _icon = new() { Content = "Icon" };
+    private readonly Button _visibility = new() { Content = "Hide from ribbon" };
 
-    internal MyToolsWindow()
+    internal MyToolsWindow(UIApplication application)
     {
+        _application = application;
         FollowTheme(this);
         Title = "My tools";
         Icon = AppDialog.LoadAppIcon();
@@ -52,6 +60,13 @@ internal sealed class MyToolsWindow : Window
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (var button in new[] { _run, _rename, _icon, _visibility })
+        {
+            button.MinWidth = 70;
+            button.Margin = new Thickness(0, 0, 8, 0);
+            button.Padding = new Thickness(12, 4, 12, 4);
+            buttons.Children.Add(button);
+        }
         buttons.Children.Add(_showCode);
         buttons.Children.Add(_delete);
         var close = new Button { Content = "Close", IsCancel = true, MinWidth = 80, Padding = new Thickness(12, 4, 12, 4) };
@@ -70,11 +85,15 @@ internal sealed class MyToolsWindow : Window
         _list.SelectionChanged += (_, _) => UpdateButtons();
         _showCode.Click += (_, _) => ShowCode();
         _delete.Click += (_, _) => Delete();
+        _run.Click += (_, _) => { if (_list.SelectedItem is Row row) RibbonToolRunner.Run(_application, row.Name, this); };
+        _rename.Click += (_, _) => Rename();
+        _icon.Click += (_, _) => ChooseIcon();
+        _visibility.Click += (_, _) => ChangePresentation(presentation => presentation with { Hidden = !presentation.Hidden });
         PreviewKeyDown += (_, args) => { if (args.Key == Key.Escape) Close(); };
         Loaded += (_, _) => Refresh();
     }
 
-    private static void FollowTheme(Window window)
+    internal static void FollowTheme(Window window)
     {
         var palette = new ResourceDictionary
         {
@@ -89,7 +108,7 @@ internal sealed class MyToolsWindow : Window
         ApplyTheme();
         window.SetResourceReference(BackgroundProperty, "SurfaceBrush");
         window.SetResourceReference(ForegroundProperty, "TextPrimaryBrush");
-        foreach (var controlType in new[] { typeof(Button), typeof(TextBox), typeof(DataGrid),
+        foreach (var controlType in new[] { typeof(Button), typeof(TextBox), typeof(ComboBox), typeof(CheckBox), typeof(DataGrid),
                      typeof(DataGridRow), typeof(DataGridCell), typeof(DataGridColumnHeader) })
         {
             var style = new Style(controlType);
@@ -144,6 +163,7 @@ internal sealed class MyToolsWindow : Window
         public string RevisionShort => Tool?.Revision[..12] ?? "not approved";
         public string Years => Tool is null ? "" : string.Join(", ", Tool.TestedRevitYears);
         public string Created => Tool?.Created ?? "";
+        public string Label => MyTools.Presentation.Get(Name).Label;
         public string Replacement => Tool is null || string.IsNullOrEmpty(Tool.ReplacedRevision)
             ? "" : $"Replaced {Tool.ReplacedRevision[..12]} on {Tool.Created}";
     }
@@ -158,7 +178,7 @@ internal sealed class MyToolsWindow : Window
             _list.ItemsSource = tools.Select(tool => new Row(tool.Name, tool)).Concat(invalid.Select(tool => new Row(tool.Name, null, tool.Reason))).ToList();
             _status.Text = tools.Count == 0 && invalid.Count == 0
                 ? "No saved tools yet. After a successful procedure, ask the AI app to save it as a tool. Review its code and confirm the save in the AI app."
-                : "Select a tool to review its source or delete it. Run tools through the AI app.";
+                : "Select a tool to run, review, customize or delete it. The ribbon shows up to 24 visible tools; all approved tools can run here.";
         }
         catch (Exception exception) { _status.Text = "Tools could not be loaded. " + exception.Message + " Review the local tools folder or ask the AI app to save the tool again."; }
         UpdateButtons();
@@ -168,6 +188,13 @@ internal sealed class MyToolsWindow : Window
     {
         _showCode.IsEnabled = _list.SelectedItem is Row { Tool: not null };
         _delete.IsEnabled = _list.SelectedItem is Row && !ActionCommandExecutor.ReadOnlyMode && PolicyProvider.Refusal("delete-tool") is null;
+        var valid = _list.SelectedItem is Row { Tool: not null };
+        _run.IsEnabled = valid && _application.ActiveUIDocument is not null;
+        _rename.IsEnabled = valid;
+        _icon.IsEnabled = valid;
+        _visibility.IsEnabled = valid;
+        if (_list.SelectedItem is Row row)
+            _visibility.Content = MyTools.Presentation.Get(row.Name).Hidden ? "Show on ribbon" : "Hide from ribbon";
     }
 
     private void ShowCode()
@@ -216,10 +243,137 @@ internal sealed class MyToolsWindow : Window
                     $"Delete {row.Name}?\n\nThis deletes the saved tool and all its revisions. Deletion cannot be undone.",
                     confirm: true, owner: this)) return;
             MyTools.Store.Delete(row.Name, binding);
+            MyTools.Presentation.Delete(row.Name);
             RevitModelMcp.Activity.ActivityRecorder.RecordSystemNotice($"Deleted saved tool {row.Name}.");
             Refresh();
         }
         catch (Exception exception) { _status.Text = "Tool could not be deleted. " + exception.Message; }
+    }
+
+    private void ChangePresentation(Func<ToolPresentation, ToolPresentation> change)
+    {
+        if (_list.SelectedItem is not Row { Tool: not null } row) return;
+        try
+        {
+            MyTools.Presentation.Save(row.Name, change(MyTools.Presentation.Get(row.Name)));
+            MyToolsRibbon.Refresh();
+            UpdateButtons();
+        }
+        catch (Exception exception) { _status.Text = exception.Message; }
+    }
+
+    private void Rename()
+    {
+        if (_list.SelectedItem is not Row row) return;
+        var dialog = new Window
+        {
+            Title = "Display label",
+            Icon = AppDialog.LoadAppIcon(),
+            Owner = this,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var root = new StackPanel { Margin = new Thickness(16) };
+        var input = new TextBox
+        {
+            Text = MyTools.Presentation.Get(row.Name).Label,
+            MaxLength = 80
+        };
+        System.Windows.Automation.AutomationProperties.SetName(input, "Display label");
+        root.Children.Add(input);
+        var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        root.Children.Add(error);
+        var save = new Button
+        {
+            Content = "Save",
+            IsDefault = true,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        save.Click += (_, _) =>
+        {
+            try
+            {
+                var presentation = MyTools.Presentation.Get(row.Name) with { Label = input.Text };
+                MyTools.Presentation.Save(row.Name, presentation);
+                MyToolsRibbon.Refresh();
+                dialog.Close();
+            }
+            catch (Exception exception) { error.Text = exception.Message; }
+        };
+        root.Children.Add(save);
+        dialog.Content = root;
+        FollowTheme(dialog);
+        dialog.Loaded += (_, _) => { input.Focus(); input.SelectAll(); };
+        dialog.PreviewKeyDown += (_, args) => { if (args.Key == Key.Escape) dialog.Close(); };
+        dialog.ShowDialog();
+    }
+
+    private void ChooseIcon()
+    {
+        if (_list.SelectedItem is not Row row) return;
+        var dialog = new Window
+        {
+            Title = "Tool icon",
+            Icon = AppDialog.LoadAppIcon(),
+            Owner = this,
+            Width = 420,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var root = new StackPanel { Margin = new Thickness(16) };
+        var choices = new ComboBox
+        {
+            ItemsSource = ToolPresentationStore.BuiltInIcons,
+            SelectedItem = MyTools.Presentation.Get(row.Name).Icon
+        };
+        System.Windows.Automation.AutomationProperties.SetName(choices, "Built-in icon");
+        root.Children.Add(choices);
+        var save = new Button
+        {
+            Content = "Use built-in icon",
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        save.Click += (_, _) =>
+        {
+            ChangePresentation(presentation => presentation with
+            {
+                Icon = (string)choices.SelectedItem,
+                SmallPng = "",
+                LargePng = ""
+            });
+            dialog.Close();
+        };
+        root.Children.Add(save);
+        var browse = new Button
+        {
+            Content = "Load PNG (up to 256 KB)",
+            Margin = new Thickness(0, 8, 0, 0)
+        };
+        var error = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        browse.Click += (_, _) =>
+        {
+            var picker = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "PNG image (*.png)|*.png",
+                CheckFileExists = true
+            };
+            if (picker.ShowDialog(dialog) != true) return;
+            try
+            {
+                var presentation = ToolIcons.Import(picker.FileName, MyTools.Presentation.Get(row.Name));
+                MyTools.Presentation.Save(row.Name, presentation);
+                MyToolsRibbon.Refresh();
+                dialog.Close();
+            }
+            catch (Exception exception) { error.Text = exception.Message; }
+        };
+        root.Children.Add(browse);
+        root.Children.Add(error);
+        dialog.Content = root;
+        FollowTheme(dialog);
+        dialog.PreviewKeyDown += (_, args) => { if (args.Key == Key.Escape) dialog.Close(); };
+        dialog.ShowDialog();
     }
 }
 

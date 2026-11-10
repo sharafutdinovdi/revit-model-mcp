@@ -245,6 +245,7 @@ public sealed class Application : ExternalApplication
         System.Windows.Threading.Dispatcher.CurrentDispatcher.UnhandledException -= OnDispatcherUnhandledException;
         PaneTheme.Changed -= RefreshRibbonImages;
         _ribbonButtons.Clear();
+        MyToolsRibbon.Dispose();
         _readOnlyRibbon?.Dispose();
         ActionCommandExecutor.ReadOnlyLock.Dispose();
         RibbonBranding.Detach();
@@ -318,11 +319,10 @@ public sealed class Application : ExternalApplication
             RibbonText.ConnectToolTip, RibbonText.ConnectDescription, HelpLinks.AddinHelpUrl);
         ConfigureRibbonButton(panel.AddPushButton<ShowActivityPaneCommand>(PaneText.RibbonButton), "Activity",
             RibbonText.ActivityToolTip, RibbonText.ActivityDescription, HelpLinks.AddinHelpUrl);
-        ConfigureRibbonButton(panel.AddPushButton<MyToolsCommand>("My tools"), "Mytools",
-            "Review and manage saved C# tools.",
-            "Open the saved tool list to review names, descriptions, modes, revisions and tested Revit years. " +
-            "Show code opens a read-only source viewer. Delete requires confirmation. " +
-            "Run tools through an AI app. Saved tools follow the ExecuteCode policy and workstation read-only lock.", HelpLinks.AddinHelpUrl);
+        var myTools = panel.AddPullDownButton("My tools");
+        ConfigureRibbonButton(myTools, "Mytools", "Run and manage approved saved C# tools.",
+            "Run a saved tool locally, or open Settings to review code and customize its ribbon button. Saved tools follow the ExecuteCode policy and workstation read-only lock.", HelpLinks.AddinHelpUrl);
+        MyToolsRibbon.Initialize(myTools);
         var items = panel.AddStackedItems(
             UrlButtonData<HelpCommand>("Help"),
             UrlButtonData<ReportIssueCommand>("Report issue"),
