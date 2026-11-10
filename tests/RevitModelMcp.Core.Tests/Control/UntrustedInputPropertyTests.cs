@@ -44,15 +44,15 @@ public sealed class UntrustedInputPropertyTests
             string[] commands = ["move", "copy", "execute-code", "create-wall", "view-elements", "query-elements", "set-read-only", "batch"];
             string[] fields = ["command", "elementIds", "dxMm", "count", "code", "offset", "limit", "enabled", "steps", "categories"];
             foreach (var command in commands)
-            foreach (var field in fields)
-            {
-                var job = new Dictionary<string, object?>
+                foreach (var field in fields)
                 {
-                    ["command"] = command
-                };
-                job[field] = values[(int)((uint)number % (uint)values.Length)];
-                if (!HasConsistentRefusal(ControlJobParser.Parse(JsonSerializer.Serialize(job)))) return false;
-            }
+                    var job = new Dictionary<string, object?>
+                    {
+                        ["command"] = command
+                    };
+                    job[field] = values[(int)((uint)number % (uint)values.Length)];
+                    if (!HasConsistentRefusal(ControlJobParser.Parse(JsonSerializer.Serialize(job)))) return false;
+                }
             return true;
         }));
 
@@ -98,20 +98,20 @@ public sealed class UntrustedInputPropertyTests
         Prop.ForAll<int, int>((offset, limit) =>
         {
             foreach (var candidateOffset in new[] { offset, int.MinValue, -1, 0, int.MaxValue })
-            foreach (var candidateLimit in new[] { limit, int.MinValue, 0, 1, 5000, 5001, int.MaxValue })
-            foreach (var command in new[] { "view-elements", "list-sheets", "schedule-data" })
-            {
-                var result = ParseContract(new ControlJobContract
-                {
-                    Command = command,
-                    View = "view",
-                    Offset = candidateOffset,
-                    Limit = candidateLimit
-                });
-                var valid = candidateOffset >= 0 && candidateLimit > 0 && (command == "view-elements" || candidateLimit <= 5000);
-                if ((result.Kind != ControlJobKind.Invalid) != valid) return false;
-                if (valid && (result.Offset != candidateOffset || result.Limit != Math.Min(candidateLimit, 5000))) return false;
-            }
+                foreach (var candidateLimit in new[] { limit, int.MinValue, 0, 1, 5000, 5001, int.MaxValue })
+                    foreach (var command in new[] { "view-elements", "list-sheets", "schedule-data" })
+                    {
+                        var result = ParseContract(new ControlJobContract
+                        {
+                            Command = command,
+                            View = "view",
+                            Offset = candidateOffset,
+                            Limit = candidateLimit
+                        });
+                        var valid = candidateOffset >= 0 && candidateLimit > 0 && (command == "view-elements" || candidateLimit <= 5000);
+                        if ((result.Kind != ControlJobKind.Invalid) != valid) return false;
+                        if (valid && (result.Offset != candidateOffset || result.Limit != Math.Min(candidateLimit, 5000))) return false;
+                    }
             return true;
         }));
 
