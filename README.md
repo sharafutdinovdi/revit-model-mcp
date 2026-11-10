@@ -253,8 +253,8 @@ Snapshots also let you audit models later without Revit running.
 ### My tools
 
 Successful C# procedures can be saved as named tools with validated parameters after explicit source review and confirmation.
-The **My tools** ribbon window lists approved revisions and supports **Show code** and confirmed deletion.
-MCP clients run saved tools through the same execution, read-only lock, and Undo pipeline as `revit_execute_code`.
+The **My tools** ribbon pulldown runs approved tools locally; **Settings** offers Run, Show code, display labels, icons, ribbon visibility and confirmed deletion.
+Local runs and MCP clients share the execution, read-only lock, policy and Undo pipeline; local review and MCP token confirmation remain independent.
 See [My tools](docs/my-tools.md) for saving, running, reviewing, deleting, and the security model.
 
 ### Prompts and skills

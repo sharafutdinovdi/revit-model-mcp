@@ -82,18 +82,41 @@ Long calls can return `status:running`; polling `revit_jobs` retrieves the origi
 A timeout or failed verification can follow a committed change.
 Resubmitting can repeat that change.
 
-## Ribbon and deletion
+## Ribbon and Settings
 
-The **My tools** ribbon button opens without a document.
-The static window has no animation and uses 0 ms transitions.
-Its list shows name, description, mode, short revision, tested Revit years, and Saved timestamp.
-Replacement rows show `Replaced <old hash> on <date>`.
-Invalid rows show `not approved` and allow deletion with confirmation.
+**My tools** is a pulldown on the Model MCP panel.
+Its first 24 visible approved tools have individual buttons with labels, icons, descriptions, modes, short revisions and tested years.
+Buttons are ordered by presentation order, then by the MCP tool name.
+Unused slots are hidden; overflow tools remain runnable in **Settings**.
+The pulldown refreshes at startup, after a save or deletion through MCP in this process, and after Settings closes.
+Each refresh reads the shared per-user store, including changes made by another Revit process.
+**Settings** remains available without a document; tool buttons require an active document.
+
+The first local run of a name and revision in each Revit process opens a review dialog with its mode, revision, saved timestamp, replaced revision and tested years.
+An untested running year, including an empty tested-years list, produces a warning.
+The ribbon review set is separate from the MCP token-confirmed set.
+A local approval never waives an MCP token, and an MCP token never waives the local review.
+
+Tools with parameters open a schema-generated form with required markers, descriptions and typed controls.
+Validation uses the same Core validator as `revit_run_tool` and identifies the parameter in errors.
+The form remembers the last validated arguments for the current Windows user.
+Transaction mode is `auto` by default; the parameter form also offers `group` for script-owned transactions.
+Action tools offer **Preview**, which rolls back Revit model changes and displays the result, and **Run (change model)**.
+Tools without parameters skip the form; action tools require a separate model-change confirmation.
+Read tools run with rollback.
+Execution displays a wait cursor and a status window.
+The result dialog shows success or failure, a summary and returned text, truncated for display with **Copy result**.
+
+Settings lists names, descriptions, modes, short revisions, tested years, saved timestamps and replacements.
+**Run**, **Show code**, **Rename**, **Icon** and **Hide from ribbon** apply to approved tools.
+Rename changes only the display label; the MCP name remains the identifier.
+Icons come from the built-in set or a decoded, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
+Imported icons are resized into 16 px and 32 px copies.
+Invalid rows show `not approved`, cannot run, and allow confirmed deletion.
 **Show code** opens a read-only source and parameter viewer.
-**Delete** uses a Revit confirmation dialog with No selected by default.
-Tools run through the MCP client; the ribbon has no run command.
-An empty list explains how to save the first tool.
-Load errors provide a message and a recovery action.
+**Delete** requires confirmation with No selected by default.
+The windows have no animation.
+An empty list explains how to save the first tool; load errors provide a recovery action.
 
 `revit_delete_tool(name)` returns a confirmation challenge.
 A confirmed repeat deletes the tool and all its revisions.
@@ -114,6 +137,15 @@ A changed source, signature, schema, mode, or pointer causes `revision not appro
 Copying revision files from another store does not approve them; saving through the confirmation flow is required.
 The local approval key remains in the per-user tools directory.
 
+Presentation lives separately under `%LOCALAPPDATA%\RevitModelMcp\tool-presentation\<name>.json`.
+It contains the display label, icon choice and resized PNG copies, hidden flag, sort order and last arguments.
+The default label replaces underscores with spaces and capitalizes the first letter.
+The default icon is selected deterministically from the built-in set by tool name.
+Presentation never changes an approved revision, its hash or its signature.
+Missing or corrupt presentation files use defaults and do not damage the approved catalog.
+Deleting a tool also deletes its presentation file.
+Last arguments can contain sensitive user data; they stay in the current user's local presentation file.
+
 Saved C# has full Revit API access and the Windows user's file and network rights.
 Neither read mode nor dry run is a sandbox for file or network operations.
 The approval files defend against accidental edits and unapproved imports, not an attacker who controls the Windows account and its approval key.
@@ -123,7 +155,7 @@ All saved tool commands inherit `ExecuteCode`, channel defaults, and restriction
 An administrator's policy cannot be lifted through chat or ribbon.
 Response path redaction preserves tool source, parameters, and description in save and get previews.
 Model paths elsewhere in responses remain redacted.
-Tool run audit lines record name, revision, and argument names without argument values.
+Tool run audit lines record name, revision, source (`ribbon` or `mcp`) and argument names without argument values.
 Validation rejects Unicode Format characters in source, names, descriptions, and parameter names.
 Saved source itself remains local user data and must not contain credentials.
 
@@ -138,8 +170,16 @@ Approval does not protect against a client that can already execute code in the 
 Internal `ToolStore` and `ToolDefinition` types prevent direct script calls through the Core assembly surface as defense in depth, not as a security guarantee.
 My tools use the same machine policy, workstation read-only lock, transport authentication, and execution gates as `execute_code`.
 
+A click in Revit is a local human action, not an MCP token exchange.
+It enters the same `run-tool` execution pipeline with approval/HMAC, active revision, argument validation, machine policy, store-channel rules, workstation lock, transaction ownership, named Undo and Activity gates.
+The revision is checked again after the local dialogs; replacing it during review refuses execution.
+The first-run review protects against unnoticed revision changes and untested Revit years.
+It does not prove that the source is safe or limit its capabilities.
+Saved C# retains full Revit API access and the Windows user's file, network and process rights.
+
 ## Verification
 
-Core tests cover normalized hashes, argument validation, approval binding, tamper refusal, persistence, atomic file cleanup, and catalog limits.
+Core tests cover normalized hashes, argument validation, approval binding, tamper refusal, persistence, atomic file cleanup, catalog limits, presentation defaults and corruption, slot assignment, form validation, independent session confirmations and refusal mapping.
 Python tests cover schemas, confirmation forwarding, annotations, and policy refusals.
-Live verification happens on a Revit workstation: compile-only save, typed parameters, action confirmation, one named Undo entry, Activity, summaries, rollback, lock enforcement, zero-document ribbon availability, keyboard focus, and both icon themes.
+Workstation verification covers ribbon refresh across processes, all slot commands, zero-document Settings, review warnings, typed controls, previews, transaction modes, one named Undo entry, named Activity rows, audit source, result copying, lock and policy enforcement, PNG decoding, keyboard focus and both icon themes.
+Run this checklist in Revit 2022 and 2026 at minimum; API and UI behavior on other supported years requires workstation verification.
