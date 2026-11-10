@@ -22,11 +22,14 @@ Floating version ranges can resolve to other versions during a future restore.
 | System.Reflection.Metadata | 8.0.0 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/system.reflection.metadata/8.0.0/system.reflection.metadata.nuspec) |
 | Microsoft.CodeAnalysis.Analyzers | 3.3.4 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/microsoft.codeanalysis.analyzers/3.3.4/microsoft.codeanalysis.analyzers.nuspec) |
 | TUnit | 1.72.10 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/tunit/1.72.10/tunit.nuspec) |
+| FsCheck | 3.3.2 | BSD-3-Clause, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/fscheck/3.3.2/fscheck.nuspec) |
+| FSharp.Core | 5.0.2 | MIT, [NuGet metadata](https://api.nuget.org/v3-flatcontainer/fsharp.core/5.0.2/fsharp.core.nuspec) |
 
 Microsoft.CodeAnalysis.CSharp compiles the code of `revit_execute_code` inside the add-in.
 It and its runtime dependencies ship next to the add-in assembly and are excluded from ILRepack.
 Microsoft.CodeAnalysis.Analyzers is a build-time analyzer package; it is listed because the restore resolves it.
 Versions come from the R26 package lock file.
+FsCheck and its FSharp.Core dependency are used only by the Core property tests.
 
 The Revit API packages include a Nice3point MIT license file.
 The inspected Revit API packages contain reference assemblies under `ref/`, with no runtime assets.
