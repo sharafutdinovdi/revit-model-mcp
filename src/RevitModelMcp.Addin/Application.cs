@@ -98,6 +98,7 @@ public sealed class Application : ExternalApplication
             return result is ExternalEventRequest.Accepted or ExternalEventRequest.Pending;
         }, _controlChannel.Scheduler.MarkWaiting);
         _eventHandler.Attach(_requestQueue);
+        Application.Idling += OnControlIdling;
         NwcPathValidator.ConfigureTrustedNetworkRoots([]);
         HttpSettings? httpSettings = null;
         string? httpSettingsError = null;
@@ -272,6 +273,7 @@ public sealed class Application : ExternalApplication
         _httpChannel?.Dispose();
         _httpChannel = null;
         Application.DialogBoxShowing -= _controlChannel.OnDialog;
+        Application.Idling -= OnControlIdling;
         _controlChannel.Shutdown();
         _externalEvent?.Dispose();
         _externalEvent = null;
@@ -490,6 +492,13 @@ public sealed class Application : ExternalApplication
     {
         ConfirmationStore.DocumentChanged(args.GetDocument());
         UndoTracker.OnDocumentChanged(args);
+    }
+
+    private void OnControlIdling(object? sender, IdlingEventArgs args)
+    {
+        // An accepted wake-up is not an execution receipt; Idling also services pending requests.
+        if (_requestQueue?.HasPendingRequest == true && sender is UIApplication application)
+            _eventHandler?.Execute(application);
     }
 
     private void RequestExecution()

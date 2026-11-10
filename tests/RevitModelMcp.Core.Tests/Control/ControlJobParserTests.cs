@@ -941,6 +941,78 @@ public sealed class ControlJobParserTests
         await Assert.That(parsed.ClientId).IsEqualTo("client-1");
     }
 
+    [Test]
+    public async Task ExternalEventQueue_IdleRecoveryDrainsUndeliveredAcceptedWakeupOnce()
+    {
+        var raises = 0;
+        var executions = 0;
+        var queue = new ExternalEventRequestQueue(() => raises++);
+        queue.Request();
+        queue.Request();
+        await Assert.That(raises).IsEqualTo(1);
+        await Assert.That(queue.HasPendingRequest).IsTrue();
+
+        // Revit Idling services the request after a modal command returns without its native callback.
+        if (queue.HasPendingRequest) queue.Execute(() => executions++, _ => { });
+        await Assert.That(queue.HasPendingRequest).IsFalse();
+
+        // The delayed native callback must not replay the completed request.
+        queue.Execute(() => executions++, _ => { });
+        await Assert.That(executions).IsEqualTo(1);
+        queue.Request();
+        if (queue.HasPendingRequest) queue.Execute(() => executions++, _ => { });
+        await Assert.That(executions).IsEqualTo(2);
+        await Assert.That(raises).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task ExternalEventQueue_FailedRaiseRemainsRecoverableOnIdle()
+    {
+        var queue = new ExternalEventRequestQueue(() => throw new InvalidOperationException("Wake-up failed."));
+        await Assert.That(() => queue.Request()).Throws<InvalidOperationException>();
+        await Assert.That(queue.HasPendingRequest).IsTrue();
+        var executions = 0;
+        queue.Execute(() => executions++, _ => { });
+        await Assert.That(executions).IsEqualTo(1);
+        await Assert.That(queue.HasPendingRequest).IsFalse();
+    }
+
+    [Test]
+    public async Task ExternalEventQueue_IdleRecoveryDoesNotReenterRunningHandler()
+    {
+        var queue = new ExternalEventRequestQueue(() => { });
+        var executions = 0;
+        queue.Request();
+        queue.Execute(() =>
+        {
+            executions++;
+            queue.Request();
+            if (queue.HasPendingRequest) queue.Execute(() => executions++, _ => { });
+        }, _ => { });
+        await Assert.That(executions).IsEqualTo(1);
+        await Assert.That(queue.HasPendingRequest).IsTrue();
+        queue.Execute(() => executions++, _ => { });
+        await Assert.That(executions).IsEqualTo(2);
+        await Assert.That(queue.HasPendingRequest).IsFalse();
+    }
+
+    [Test]
+    public async Task ExternalEventQueue_ErrorReportingFailureReleasesExecutionGate()
+    {
+        var queue = new ExternalEventRequestQueue(() => { });
+        queue.Request();
+        await Assert.That(() => queue.Execute(() =>
+        {
+            queue.Request();
+            throw new InvalidOperationException("Handler failed.");
+        }, _ => throw new InvalidOperationException("Reporting failed."))).Throws<InvalidOperationException>();
+        await Assert.That(queue.HasPendingRequest).IsTrue();
+        var executions = 0;
+        queue.Execute(() => executions++, _ => { });
+        await Assert.That(executions).IsEqualTo(1);
+        await Assert.That(queue.HasPendingRequest).IsFalse();
+    }
+
     private sealed record TestView(long Id, string Name, string? SheetNumber = null, string Type = "FloorPlan",
         string? Collection = null);
 }

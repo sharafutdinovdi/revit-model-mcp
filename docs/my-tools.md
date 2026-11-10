@@ -199,3 +199,18 @@ Run the following workstation checklist in Revit 2022 and 2026 at minimum; other
 5. Check rename, Move up/down, hide/show, default and custom icons, oversized or corrupt stored/imported PNG rejection before pixel decoding, keyboard order, both themes and no animation.
 6. Delete through MCP and Settings without prior presentation data, then with locked or read-only presentation data; verify successful deletion, a neutral note without local paths, and immediate ribbon refresh.
 7. Check named Activity rows, one named Undo entry, audit source without argument values, result copying and truncation, and wait feedback during long execution.
+
+## Queued requests after local dialogs
+
+MCP requests can remain queued while a modal Revit command is open.
+Pending requests also use Revit's Idling API context after the command returns.
+The same execution guard services native ExternalEvent callbacks and idle recovery; a delayed callback cannot replay an already serviced request.
+An exception while raising a native wake-up does not discard the pending request.
+
+To verify recovery in Revit 2022 and 2026:
+
+1. Start a fresh session and confirm that MCP ping and list-tools complete.
+2. Open My tools Settings, then Rename, and submit an MCP ping while the dialog remains open.
+3. Close Rename and Settings with Escape; verify that the queued ping completes once after Revit becomes idle, then submit another ping and list-tools.
+4. Repeat with an overflow tool run from Settings, rename, built-in icon, valid PNG, rejected PNG imports, Show code and keyboard navigation before closing the dialogs.
+5. Compare with the earlier build using the same sequence and inspect request completion and Activity; a fresh heartbeat alone is not proof of working dispatch.
