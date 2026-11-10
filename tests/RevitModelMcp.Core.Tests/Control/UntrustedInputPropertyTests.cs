@@ -37,13 +37,19 @@ public sealed class UntrustedInputPropertyTests
     public void ArbitraryJsonValuesDoNotEscapeTheParser() => CheckProperty(
         Prop.ForAll<string, int>((text, number) =>
         {
-            object?[] values = [null, text, number, true, new[] { text }, new { value = text }, new[] { number }];
+            object?[] values = [null, text, number, true, new[] { text }, new
+            {
+                value = text
+            }, new[] { number }];
             string[] commands = ["move", "copy", "execute-code", "create-wall", "view-elements", "query-elements", "set-read-only", "batch"];
             string[] fields = ["command", "elementIds", "dxMm", "count", "code", "offset", "limit", "enabled", "steps", "categories"];
             foreach (var command in commands)
             foreach (var field in fields)
             {
-                var job = new Dictionary<string, object?> { ["command"] = command };
+                var job = new Dictionary<string, object?>
+                {
+                    ["command"] = command
+                };
                 job[field] = values[(int)((uint)number % (uint)values.Length)];
                 if (!HasConsistentRefusal(ControlJobParser.Parse(JsonSerializer.Serialize(job)))) return false;
             }
@@ -56,8 +62,11 @@ public sealed class UntrustedInputPropertyTests
         {
             var job = new ControlJobContract
             {
-                Command = "view-elements", View = "view:" + view.Get,
-                Offset = offset.Get, Limit = limit.Get, CorrelationId = view.Get
+                Command = "view-elements",
+                View = "view:" + view.Get,
+                Offset = offset.Get,
+                Limit = limit.Get,
+                CorrelationId = view.Get
             };
             var result = ParseContract(job);
             return result.Kind == ControlJobKind.ViewElements && result.View == job.View!.Trim()
@@ -71,8 +80,12 @@ public sealed class UntrustedInputPropertyTests
         {
             var job = new ControlJobContract
             {
-                Command = "move", ElementIds = [elementId.Get], DxMm = distance / 10.0,
-                DyMm = -distance / 10.0, DzMm = 0, DryRun = dryRun
+                Command = "move",
+                ElementIds = [elementId.Get],
+                DxMm = distance / 10.0,
+                DyMm = -distance / 10.0,
+                DzMm = 0,
+                DryRun = dryRun
             };
             var result = ParseContract(job);
             return result.Kind == ControlJobKind.Action && result.Action is { } action
@@ -90,7 +103,10 @@ public sealed class UntrustedInputPropertyTests
             {
                 var result = ParseContract(new ControlJobContract
                 {
-                    Command = command, View = "view", Offset = candidateOffset, Limit = candidateLimit
+                    Command = command,
+                    View = "view",
+                    Offset = candidateOffset,
+                    Limit = candidateLimit
                 });
                 var valid = candidateOffset >= 0 && candidateLimit > 0 && (command == "view-elements" || candidateLimit <= 5000);
                 if ((result.Kind != ControlJobKind.Invalid) != valid) return false;
@@ -105,7 +121,10 @@ public sealed class UntrustedInputPropertyTests
         {
             var result = ActionJobParser.Parse("copy", new ControlJobContract
             {
-                ElementIds = [1], DxMm = 1, DyMm = 0, Count = candidate
+                ElementIds = [1],
+                DxMm = 1,
+                DyMm = 0,
+                Count = candidate
             });
             return (result.Kind == ControlJobKind.Action) == (candidate is >= 1 and <= 100);
         })));
@@ -116,7 +135,9 @@ public sealed class UntrustedInputPropertyTests
         {
             var result = ActionJobParser.Parse("move", new ControlJobContract
             {
-                ElementIds = [1], DxMm = candidate, DyMm = 0
+                ElementIds = [1],
+                DxMm = candidate,
+                DyMm = 0
             });
             return (result.Kind == ControlJobKind.Action) == double.IsFinite(candidate);
         })));
@@ -150,7 +171,10 @@ public sealed class UntrustedInputPropertyTests
             foreach (var path in new[] { $"C:\\{directoryName}\\nested\\{fileName}", $"C:/{directoryName}/nested/{fileName}",
                 $"\\\\server\\{directoryName}\\{fileName}", $"RSN://server/{directoryName}/{fileName}" })
             {
-                var json = JsonSerializer.Serialize(new { path });
+                var json = JsonSerializer.Serialize(new
+                {
+                    path
+                });
                 var redacted = CommandResponseJsonSerializer.RedactPaths(json);
                 using var document = JsonDocument.Parse(redacted);
                 if (document.RootElement.GetProperty("path").GetString() != fileName
@@ -219,7 +243,12 @@ public sealed class UntrustedInputPropertyTests
     public void PolicyFlagsRoundTrip() => CheckProperty(
         Prop.ForAll<bool, bool, bool>((readOnly, redactPaths, httpEnabled) =>
         {
-            var policy = MachinePolicy.ParseJson(JsonSerializer.Serialize(new { readOnly, redactPaths, httpEnabled }));
+            var policy = MachinePolicy.ParseJson(JsonSerializer.Serialize(new
+            {
+                readOnly,
+                redactPaths,
+                httpEnabled
+            }));
             return !policy.Unreadable && policy.ReadOnly == readOnly && policy.RedactPaths == redactPaths && policy.HttpEnabled == httpEnabled;
         }));
 
@@ -230,7 +259,10 @@ public sealed class UntrustedInputPropertyTests
     {
         using var stream = new MemoryStream();
         new DataContractJsonSerializer(typeof(ControlJobContract),
-            new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true }).WriteObject(stream, job);
+            new DataContractJsonSerializerSettings
+            {
+                UseSimpleDictionaryFormat = true
+            }).WriteObject(stream, job);
         return ControlJobParser.Parse(Encoding.UTF8.GetString(stream.ToArray()));
     }
 
