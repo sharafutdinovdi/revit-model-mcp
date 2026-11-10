@@ -196,7 +196,7 @@ public sealed class ToolParameterForm
         {
             var field = Fields.FirstOrDefault(candidate => candidate.Name == pair.Key)
                 ?? throw new ArgumentException($"args.{pair.Key}: unknown parameter.");
-            if (pair.Value is null) continue;
+            if (pair.Value is null || field.Choices.Count == 0 && string.IsNullOrWhiteSpace(pair.Value)) continue;
             object value;
             if (field.Type == "string") value = pair.Value;
             else if (field.Type == "boolean" && bool.TryParse(pair.Value, out var boolean)) value = boolean;

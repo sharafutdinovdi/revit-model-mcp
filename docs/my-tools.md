@@ -99,6 +99,8 @@ A local approval never waives an MCP token, and an MCP token never waives the lo
 
 Tools with parameters open a schema-generated form with required markers, descriptions and typed controls.
 Validation uses the same Core validator as `revit_run_tool` and identifies the parameter in errors.
+An empty or whitespace-only text box is omitted from arguments; a required field then reports its missing parameter name before execution.
+Optional blank text boxes and enum fields without a selection are also omitted.
 The form remembers the last validated arguments for the current Windows user.
 Transaction mode is stored per tool with default `auto`; **Transaction** in Settings toggles `auto` and `group`.
 The parameter form preselects the stored mode and remembers a changed selection on execution.

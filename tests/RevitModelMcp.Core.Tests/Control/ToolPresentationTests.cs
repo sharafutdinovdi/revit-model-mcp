@@ -328,4 +328,78 @@ public sealed class ToolPresentationTests
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
+
+    [Test]
+    [Arguments("string", "")]
+    [Arguments("string", " \t ")]
+    [Arguments("integer", "")]
+    [Arguments("integer", " \t ")]
+    [Arguments("number", "")]
+    [Arguments("number", " \t ")]
+    public async Task Form_BlankRequiredTextFieldsReportMissingParameter(string type, string text)
+    {
+        var schema = """{"type":"object","properties":{"value":{"type":"PRIMITIVE"}},"required":["value"]}""".Replace("PRIMITIVE", type);
+        var form = new ToolParameterForm(schema);
+        var error = "";
+        try { form.Validate(new Dictionary<string, string?> { ["value"] = text }); }
+        catch (ArgumentException exception) { error = exception.Message; }
+        await Assert.That(error).IsEqualTo("args.value: required parameter is missing.");
+    }
+
+    [Test]
+    [Arguments("")]
+    [Arguments(" \t ")]
+    public async Task Form_BlankOptionalTextFieldsAreOmitted(string text)
+    {
+        var form = new ToolParameterForm(Schema);
+        var arguments = form.Validate(new Dictionary<string, string?>
+        {
+            ["count"] = "1",
+            ["label"] = text,
+            ["size"] = text,
+            ["choice"] = null
+        });
+        var validated = ToolArguments.Validate(Schema, arguments);
+        await Assert.That(validated.Count).IsEqualTo(1);
+        await Assert.That(validated.ContainsKey("count")).IsTrue();
+    }
+
+    [Test]
+    public async Task Form_UnselectedRequiredEnumReportsMissingParameter()
+    {
+        var schema = """{"type":"object","properties":{"choice":{"type":"string","enum":["one","two"]}},"required":["choice"]}""";
+        var form = new ToolParameterForm(schema);
+        var error = "";
+        try { form.Validate(new Dictionary<string, string?> { ["choice"] = null }); }
+        catch (ArgumentException exception) { error = exception.Message; }
+        await Assert.That(error).IsEqualTo("args.choice: required parameter is missing.");
+    }
+
+    [Test]
+    [Arguments("number")]
+    [Arguments("integer")]
+    public async Task Form_NonnumericTextReportsParameterBeforeExecution(string type)
+    {
+        var schema = """{"type":"object","properties":{"amount":{"type":"PRIMITIVE"}}}""".Replace("PRIMITIVE", type);
+        var form = new ToolParameterForm(schema);
+        var error = "";
+        try { form.Validate(new Dictionary<string, string?> { ["amount"] = "not a number" }); }
+        catch (ArgumentException exception) { error = exception.Message; }
+        await Assert.That(error).IsEqualTo($"args.amount: expected {type}.");
+    }
+
+    [Test]
+    [Arguments("string")]
+    [Arguments("number")]
+    [Arguments("integer")]
+    public async Task Form_BlankOptionalPrimitiveTextFieldsAreOmitted(string type)
+    {
+        var schema = """{"type":"object","properties":{"value":{"type":"PRIMITIVE"}}}""".Replace("PRIMITIVE", type);
+        var form = new ToolParameterForm(schema);
+        foreach (var text in new[] { "", " \t " })
+        {
+            var arguments = form.Validate(new Dictionary<string, string?> { ["value"] = text });
+            await Assert.That(ToolArguments.Validate(schema, arguments).Count).IsEqualTo(0);
+        }
+    }
 }

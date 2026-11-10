@@ -264,7 +264,7 @@ internal sealed class ToolParametersWindow : Window
                 {
                     ComboBox combo => combo.SelectedItem is null ? null : Convert.ToString(combo.SelectedItem, CultureInfo.InvariantCulture),
                     CheckBox check => check.IsChecked?.ToString(),
-                    TextBox text => text.Text.Length == 0 && model.Fields.Single(field => field.Name == pair.Key).Type != "string" ? null : text.Text,
+                    TextBox text => text.Text,
                     _ => null
                 });
                 var arguments = model.Validate(values);
