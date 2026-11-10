@@ -100,7 +100,9 @@ A local approval never waives an MCP token, and an MCP token never waives the lo
 Tools with parameters open a schema-generated form with required markers, descriptions and typed controls.
 Validation uses the same Core validator as `revit_run_tool` and identifies the parameter in errors.
 The form remembers the last validated arguments for the current Windows user.
-Transaction mode is `auto` by default; the parameter form also offers `group` for script-owned transactions.
+Transaction mode is stored per tool with default `auto`; **Transaction** in Settings toggles `auto` and `group`.
+The parameter form preselects the stored mode and remembers a changed selection on execution.
+Tools without parameters also use the stored mode, including `group` for script-owned transactions.
 Action tools offer **Preview**, which rolls back Revit model changes and displays the result, and **Run (change model)**.
 Tools without parameters skip the form; action tools require a separate model-change confirmation.
 Read tools run with rollback.
@@ -109,9 +111,11 @@ The result dialog shows success or failure, a summary and returned text, truncat
 
 Settings lists names, descriptions, modes, short revisions, tested years, saved timestamps and replacements.
 **Run**, **Show code**, **Rename**, **Icon** and **Hide from ribbon** apply to approved tools.
+**Move up** and **Move down** change presentation order and are reachable by keyboard.
 Rename changes only the display label; the MCP name remains the identifier.
 Icons come from the built-in set or a decoded, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
 Imported icons are resized into 16 px and 32 px copies.
+Stored and imported PNG dimensions are checked before full pixel decoding.
 Invalid rows show `not approved`, cannot run, and allow confirmed deletion.
 **Show code** opens a read-only source and parameter viewer.
 **Delete** requires confirmation with No selected by default.
@@ -138,13 +142,16 @@ Copying revision files from another store does not approve them; saving through 
 The local approval key remains in the per-user tools directory.
 
 Presentation lives separately under `%LOCALAPPDATA%\RevitModelMcp\tool-presentation\<name>.json`.
-It contains the display label, icon choice and resized PNG copies, hidden flag, sort order and last arguments.
+It contains the display label, icon choice and resized PNG copies, hidden flag, sort order, transaction mode and last arguments.
 The default label replaces underscores with spaces and capitalizes the first letter.
 The default icon is selected deterministically from the built-in set by tool name.
 Presentation never changes an approved revision, its hash or its signature.
 Missing or corrupt presentation files use defaults and do not damage the approved catalog.
-Deleting a tool also deletes its presentation file.
-Last arguments can contain sensitive user data; they stay in the current user's local presentation file.
+Deleting a tool also attempts to delete its presentation file.
+A missing presentation file or folder is harmless; a locked or read-only file leaves a neutral cleanup note without changing the successful tool-deletion result.
+The ribbon refreshes after deletion even when presentation cleanup cannot finish.
+Labels and last used arguments are stored unencrypted in the Windows user's profile.
+Secrets do not belong in tool arguments or display labels.
 
 Saved C# has full Revit API access and the Windows user's file and network rights.
 Neither read mode nor dry run is a sandbox for file or network operations.
@@ -181,5 +188,12 @@ Saved C# retains full Revit API access and the Windows user's file, network and 
 
 Core tests cover normalized hashes, argument validation, approval binding, tamper refusal, persistence, atomic file cleanup, catalog limits, presentation defaults and corruption, slot assignment, form validation, independent session confirmations and refusal mapping.
 Python tests cover schemas, confirmation forwarding, annotations, and policy refusals.
-Workstation verification covers ribbon refresh across processes, all slot commands, zero-document Settings, review warnings, typed controls, previews, transaction modes, one named Undo entry, named Activity rows, audit source, result copying, lock and policy enforcement, PNG decoding, keyboard focus and both icon themes.
-Run this checklist in Revit 2022 and 2026 at minimum; API and UI behavior on other supported years requires workstation verification.
+Run the following workstation checklist in Revit 2022 and 2026 at minimum; other supported years also require workstation verification.
+
+1. Check all 24 slot commands, hidden and overflow tools, zero-document Settings, and refresh after MCP save/delete, Settings close and changes in another Revit process.
+2. Check first-use revision review, tested-year warnings, independent MCP tokens and ribbon review, and confirmation of every action run.
+3. Check typed fields, named validation errors, remembered arguments, Preview rollback, and stored `auto`/`group` modes both with and without a parameter form.
+4. Check workstation lock, `ExecuteCode=off`, `ToolDeny` for `run-tool`, ToolAllow and the store-channel administrator rule on both paths.
+5. Check rename, Move up/down, hide/show, default and custom icons, oversized or corrupt stored/imported PNG rejection before pixel decoding, keyboard order, both themes and no animation.
+6. Delete through MCP and Settings without prior presentation data, then with locked or read-only presentation data; verify successful deletion, a neutral note without local paths, and immediate ribbon refresh.
+7. Check named Activity rows, one named Undo entry, audit source without argument values, result copying and truncation, and wait feedback during long execution.

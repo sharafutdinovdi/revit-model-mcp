@@ -25,7 +25,7 @@ The add-in rereads both stores about every ten seconds, so a change applies with
 | `ReadOnly` | DWORD 0 or 1 | boolean | `1` refuses every action tool. Read tools are not affected. |
 | `ToolDeny` | REG_MULTI_SZ | array of strings | Tool names that are refused. |
 | `ToolAllow` | REG_MULTI_SZ | array of strings | Tool names that are allowed. Empty or absent means all tools. |
-| `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` refuses C# execution. In the store channel only machine policy `confirm` enables C#, including dry runs and process-model code steps. User settings are ignored. Committed code uses a client token handshake. |
+| `ExecuteCode` | REG_SZ `off` or `confirm` | string | `off` disables C# execution through MCP and the ribbon. In the store channel only machine policy `confirm` enables C#, including dry runs and process-model code steps. User settings are ignored. MCP code uses the client token handshake; ribbon runs use local revision review and action confirmation. |
 | `UpdateMode` | REG_SZ `off`, `notify` or `auto` | string | `off` makes no update request. `notify` only shows a notice. `auto` installs a per-user update. An unknown value makes the whole policy [unreadable](#unreadable-policy-fails-closed). See [automatic updates](../updates.md#modes). |
 | `TrustedNetworkRoots` | REG_MULTI_SZ | array of strings | UNC roots (`\\server\share`) that export, save and open may use. A configured list replaces the per-user list, including an empty list. |
 | `LogDir` | REG_SZ | string | Folder for the add-in log and `activity.log`. |
@@ -38,7 +38,7 @@ The add-in rereads both stores about every ten seconds, so a change applies with
 A policy that exists but cannot be trusted never means "no policy". If the add-in cannot read the registry key or `policy.json` (a read error, a file lock, a file that is empty or not valid JSON, a value of the wrong type, an unknown `ExecuteCode` or `UpdateMode` value, a number out of range, or a known name that appears twice), or if the file or its folder fails the [ownership check](#the-policy-folder), the whole policy turns into the fail-closed state:
 
 - `ReadOnly=1`: every action tool is refused.
-- `ExecuteCode=off`: `revit_execute_code` and code in `revit_process_models` are refused.
+- `ExecuteCode=off`: `revit_execute_code`, saved tools through MCP and the ribbon, and code in `revit_process_models` are refused.
 - `UpdateMode=off`: no update request.
 - `HttpEnabled=0`: the HTTP listener stays off, whatever the settings file or `REVIT_MCP_HTTP_ENABLED` say.
 
@@ -199,9 +199,18 @@ Unreadable or untrusted policy fails closed.
 The user `settings.json` value cannot enable code in the store channel.
 The same gate applies to `revit_run_tool`, including read mode and dry runs, and to code steps in `revit_process_models`.
 My tools commands also retain ExecuteCode, ToolAllow, ToolDeny, and fail-closed policy checks.
+Ribbon runs do not use the client token handshake.
+A person at the workstation reviews the revision in a Revit dialog on first use per session and confirms each action run.
+All other execution gates are identical.
+`ExecuteCode=off` disables both paths, and `ToolDeny` for `run-tool` disables both paths.
+There is no separate switch for local runs only.
+The store-channel machine-policy rule applies equally to both paths.
+Display labels and last used arguments are stored unencrypted in the user's profile; secrets do not belong in tool arguments or labels.
 Saving and deleting tools change the local saved-tool store; listing and reviewing tools do not execute C# or change that store.
 The workstation read-only lock still refuses save, delete, and run commands.
 A C# rollback covers Revit transactions, not file, network, or process effects.
 `revit_ping` reports `executeCodeSource` as `policy` or `store-default`.
 
-confirm_token is a two-step handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog. The token does not prove human approval.
+For MCP requests, `confirm_token` is a two-step handshake with the AI app.
+The AI app is expected to show the action; the token does not prove human approval.
+Ribbon runs use Revit dialogs instead of this handshake.

@@ -194,7 +194,12 @@ Compare and align grids and levels with linked models, inspect links and shared 
 
 Edit elements, families, views and sheets.
 Committed transactional model edits create one named Undo entry.
-High-risk calls use a client token handshake.
+High-risk MCP calls use a client token handshake.
+Ribbon runs do not use the client token handshake: a person at the workstation reviews the revision in a Revit dialog on first use per session and confirms action runs.
+All other execution gates are identical.
+`ExecuteCode=off` or `ToolDeny` for `run-tool` disables both saved-tool paths; there is no separate switch for local runs only.
+The same machine-policy rule applies in the store channel.
+Labels and last used arguments are stored unencrypted in the user's profile; secrets do not belong in tool arguments or labels.
 See [safety](#safety).
 
 <details markdown="1">
@@ -280,7 +285,7 @@ Install these folders with the same copy or ZIP procedure.
 
 - **Actions are on by default.** The workstation read-only lock refuses ordinary actions across clients and running Revit versions for the Windows user. Enable it with the Read-only ribbon button or `revit_set_read_only`. Chat unlock requires explicit confirmation. Action tools stay listed. User locks return `errorCode: "read_only"`; enforced machine policy returns `policy_blocked`. Policy overrides the user lock. See [actions](docs/actions.md#read-only-mode).
 - **One Undo entry per transactional model edit.** Committed edits appear in Revit's Undo list and the Activity pane with a summary. Session operations, saves, synchronization, exports, and link removal have separate limits. Link removal cannot be undone. `revit_undo_last` works only while the latest Revit change remains eligible; temporary isolation also makes it ineligible.
-- **Confirmation tokens.** Tokens guard saves, synchronization, committed C#, real link removal, saved-tool saves and deletions, first saved-tool runs per Revit session, and every committed action-mode saved-tool run. Conditional gates cover destructive closes, large deletions, existing-file overwrites, and batch writes or code. See [confirmation exceptions](docs/actions.md#confirmation-tokens-for-irreversible-actions) for dry runs and detached documents. The first call changes nothing and returns confirmation text. The AI app returns the token on retry. Tokens are single use and expire after five minutes.
+- **Confirmation tokens.** For MCP calls, tokens guard saves, synchronization, committed C#, real link removal, saved-tool saves and deletions, first saved-tool runs per Revit session, and every committed action-mode saved-tool run. Conditional gates cover destructive closes, large deletions, existing-file overwrites, and batch writes or code. See [confirmation exceptions](docs/actions.md#confirmation-tokens-for-irreversible-actions) for dry runs and detached documents. The first call changes nothing and returns confirmation text. The AI app returns the token on retry. Tokens are single use and expire after five minutes. Ribbon runs use local revision review and action confirmation instead of MCP tokens.
 - **Dry runs.** Model-changing tools such as `revit_move`, `revit_delete`, `revit_run_actions`, `revit_export`, and `revit_process_models` accept `dry_run` to preview the result without committing it.
   The first saved-tool run per name and revision in each Revit process still requires confirmation for read mode and dry runs.
   Execution tokens bind `dry_run` intent; a preview token cannot authorize a commit.
