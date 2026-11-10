@@ -50,9 +50,10 @@ internal static class RibbonToolRunner
                 parameters.ShowDialog();
                 return;
             }
+            var transactionMode = MyTools.Presentation.Get(name).TransactionMode;
             if (tool.Mode == "action" && !AppDialog.Show("Run saved tool",
-                    $"Run {name} and change the active model?", confirm: true, owner: owner)) return;
-            Execute(application, tool, "{}", false, "auto", owner);
+                    $"Run {name} and change the active model?\nTransaction mode: {transactionMode}.", confirm: true, owner: owner)) return;
+            Execute(application, tool, "{}", false, transactionMode, owner);
         }
         catch (Exception exception)
         {
@@ -64,7 +65,11 @@ internal static class RibbonToolRunner
     {
         ToolArguments.Validate(tool.Parameters, arguments);
         var presentation = MyTools.Presentation.Get(tool.Name);
-        MyTools.Presentation.Save(tool.Name, presentation with { LastArguments = arguments });
+        MyTools.Presentation.Save(tool.Name, presentation with
+        {
+            LastArguments = arguments,
+            TransactionMode = transaction
+        });
         var job = ActionJobParser.Parse("run-tool", new ControlJobContract
         {
             Name = tool.Name,
@@ -237,7 +242,7 @@ internal sealed class ToolParametersWindow : Window
         var transaction = new ComboBox
         {
             ItemsSource = new[] { "auto", "group" },
-            SelectedIndex = 0
+            SelectedItem = MyTools.Presentation.Get(tool.Name).TransactionMode
         };
         root.Children.Add(transaction);
         var error = new TextBlock

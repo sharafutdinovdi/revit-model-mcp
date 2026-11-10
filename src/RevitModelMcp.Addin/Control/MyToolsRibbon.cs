@@ -109,9 +109,10 @@ internal static class ToolIcons
             try
             {
                 using var stream = new MemoryStream(Convert.FromBase64String(png));
-                var decoder = new PngBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-                var image = decoder.Frames[0];
-                if (image.PixelWidth != size || image.PixelHeight != size) throw new ArgumentException("Stored PNG dimensions are invalid.");
+                var decoder = new PngBitmapDecoder(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+                var frame = decoder.Frames[0];
+                if (frame.PixelWidth != size || frame.PixelHeight != size) throw new ArgumentException("Stored PNG dimensions are invalid.");
+                var image = new WriteableBitmap(frame);
                 image.Freeze();
                 return image;
             }

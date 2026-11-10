@@ -34,7 +34,13 @@ public sealed class MyToolsCommand : ExternalCommand
 
 internal sealed class MyToolsWindow : Window
 {
-    private readonly DataGrid _list = new() { AutoGenerateColumns = false, IsReadOnly = true, SelectionMode = DataGridSelectionMode.Single };
+    private readonly DataGrid _list = new()
+    {
+        AutoGenerateColumns = false,
+        IsReadOnly = true,
+        SelectionMode = DataGridSelectionMode.Single,
+        CanUserSortColumns = false
+    };
     private readonly TextBlock _status = new() { Margin = new Thickness(0, 8, 0, 8), TextWrapping = TextWrapping.Wrap };
     private readonly Button _showCode = new() { Content = "Show code", MinWidth = 100, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 4, 12, 4) };
     private readonly Button _delete = new() { Content = "Delete", MinWidth = 80, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 4, 12, 4) };
@@ -43,6 +49,9 @@ internal sealed class MyToolsWindow : Window
     private readonly Button _rename = new() { Content = "Rename" };
     private readonly Button _icon = new() { Content = "Icon" };
     private readonly Button _visibility = new() { Content = "Hide from ribbon" };
+    private readonly Button _moveUp = new() { Content = "Move up" };
+    private readonly Button _moveDown = new() { Content = "Move down" };
+    private readonly Button _transaction = new() { Content = "Transaction: auto" };
 
     internal MyToolsWindow(UIApplication application)
     {
@@ -59,8 +68,8 @@ internal sealed class MyToolsWindow : Window
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        foreach (var button in new[] { _run, _rename, _icon, _visibility })
+        var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (var button in new[] { _run, _rename, _icon, _visibility, _moveUp, _moveDown, _transaction })
         {
             button.MinWidth = 70;
             button.Margin = new Thickness(0, 0, 8, 0);
@@ -89,6 +98,12 @@ internal sealed class MyToolsWindow : Window
         _rename.Click += (_, _) => Rename();
         _icon.Click += (_, _) => ChooseIcon();
         _visibility.Click += (_, _) => ChangePresentation(presentation => presentation with { Hidden = !presentation.Hidden });
+        _moveUp.Click += (_, _) => Move(-1);
+        _moveDown.Click += (_, _) => Move(1);
+        _transaction.Click += (_, _) => ChangePresentation(presentation => presentation with
+        {
+            TransactionMode = presentation.TransactionMode == "auto" ? "group" : "auto"
+        });
         PreviewKeyDown += (_, args) => { if (args.Key == Key.Escape) Close(); };
         Loaded += (_, _) => Refresh();
     }
@@ -175,7 +190,9 @@ internal sealed class MyToolsWindow : Window
         {
             if (PolicyProvider.Refusal("list-tools") is string refusal) throw new InvalidOperationException(refusal);
             var tools = MyTools.Store.List(out var invalid);
-            _list.ItemsSource = tools.Select(tool => new Row(tool.Name, tool)).Concat(invalid.Select(tool => new Row(tool.Name, null, tool.Reason))).ToList();
+            _list.ItemsSource = tools.OrderBy(tool => MyTools.Presentation.Get(tool.Name).Order)
+                .ThenBy(tool => tool.Name, StringComparer.Ordinal).Select(tool => new Row(tool.Name, tool))
+                .Concat(invalid.Select(tool => new Row(tool.Name, null, tool.Reason))).ToList();
             _status.Text = tools.Count == 0 && invalid.Count == 0
                 ? "No saved tools yet. After a successful procedure, ask the AI app to save it as a tool. Review its code and confirm the save in the AI app."
                 : "Select a tool to run, review, customize or delete it. The ribbon shows up to 24 visible tools; all approved tools can run here.";
@@ -193,8 +210,15 @@ internal sealed class MyToolsWindow : Window
         _rename.IsEnabled = valid;
         _icon.IsEnabled = valid;
         _visibility.IsEnabled = valid;
+        _moveUp.IsEnabled = valid && _list.SelectedIndex > 0;
+        _moveDown.IsEnabled = valid && _list.SelectedIndex < _list.Items.Count - 1;
+        _transaction.IsEnabled = valid;
         if (_list.SelectedItem is Row row)
-            _visibility.Content = MyTools.Presentation.Get(row.Name).Hidden ? "Show on ribbon" : "Hide from ribbon";
+        {
+            var presentation = MyTools.Presentation.Get(row.Name);
+            _visibility.Content = presentation.Hidden ? "Show on ribbon" : "Hide from ribbon";
+            _transaction.Content = "Transaction: " + presentation.TransactionMode;
+        }
     }
 
     private void ShowCode()
@@ -243,9 +267,12 @@ internal sealed class MyToolsWindow : Window
                     $"Delete {row.Name}?\n\nThis deletes the saved tool and all its revisions. Deletion cannot be undone.",
                     confirm: true, owner: this)) return;
             MyTools.Store.Delete(row.Name, binding);
-            MyTools.Presentation.Delete(row.Name);
-            RevitModelMcp.Activity.ActivityRecorder.RecordSystemNotice($"Deleted saved tool {row.Name}.");
+            var note = MyTools.Presentation.Delete(row.Name);
+            MyToolsRibbon.Refresh();
+            var summary = $"Deleted saved tool {row.Name}." + (note is null ? "" : " " + note);
+            RevitModelMcp.Activity.ActivityRecorder.RecordSystemNotice(summary);
             Refresh();
+            _status.Text = summary;
         }
         catch (Exception exception) { _status.Text = "Tool could not be deleted. " + exception.Message; }
     }
@@ -258,6 +285,20 @@ internal sealed class MyToolsWindow : Window
             MyTools.Presentation.Save(row.Name, change(MyTools.Presentation.Get(row.Name)));
             MyToolsRibbon.Refresh();
             UpdateButtons();
+        }
+        catch (Exception exception) { _status.Text = exception.Message; }
+    }
+
+    private void Move(int direction)
+    {
+        if (_list.SelectedItem is not Row { Tool: not null } row) return;
+        try
+        {
+            var names = MyTools.Store.List().Select(tool => tool.Name).ToArray();
+            if (!MyTools.Presentation.Move(names, row.Name, direction)) return;
+            Refresh();
+            _list.SelectedItem = _list.Items.Cast<Row>().FirstOrDefault(candidate => candidate.Name == row.Name);
+            MyToolsRibbon.Refresh();
         }
         catch (Exception exception) { _status.Text = exception.Message; }
     }

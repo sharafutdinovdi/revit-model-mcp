@@ -17,6 +17,7 @@ public sealed record ToolPresentation
     [DataMember] public string LastArguments { get; init; } = "{}";
     [DataMember] public string SmallPng { get; init; } = "";
     [DataMember] public string LargePng { get; init; } = "";
+    [DataMember] public string TransactionMode { get; init; } = "auto";
 }
 
 public sealed class ToolPresentationStore(string directory)
@@ -43,6 +44,9 @@ public sealed class ToolPresentationStore(string directory)
             var path = Path.Combine(directory, name + ".json");
             if (!File.Exists(path) || new FileInfo(path).Length > 1024 * 1024) return fallback;
             var presentation = ToolJson.Deserialize<ToolPresentation>(File.ReadAllText(path));
+            if (presentation is null) return fallback;
+            if (string.IsNullOrEmpty(presentation.TransactionMode))
+                presentation = presentation with { TransactionMode = "auto" };
             Validate(presentation);
             return presentation;
         }
@@ -76,10 +80,41 @@ public sealed class ToolPresentationStore(string directory)
         }
     }
 
-    public void Delete(string name)
+    public string? Delete(string name)
     {
         ToolStore.ValidateName(name);
-        File.Delete(Path.Combine(directory, name + ".json"));
+        try
+        {
+            var path = Path.Combine(directory, name + ".json");
+            if (File.Exists(path)) File.Delete(path);
+            return null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException or ArgumentException or NotSupportedException)
+        {
+            return "Some local presentation data could not be removed.";
+        }
+    }
+
+    public bool Move(IReadOnlyCollection<string> names, string name, int direction)
+    {
+        if (names is null) throw new ArgumentNullException(nameof(names));
+        if (direction is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(direction));
+        ToolStore.ValidateName(name);
+        var presentations = names.Distinct(StringComparer.Ordinal).ToDictionary(candidate => candidate, Get, StringComparer.Ordinal);
+        var ordered = presentations.Keys.OrderBy(candidate => presentations[candidate].Order)
+            .ThenBy(candidate => candidate, StringComparer.Ordinal).ToList();
+        var index = ordered.IndexOf(name);
+        if (index < 0 || index + direction < 0 || index + direction >= ordered.Count) return false;
+        var neighbor = ordered[index + direction];
+        ordered[index + direction] = name;
+        ordered[index] = neighbor;
+        for (var position = 0; position < ordered.Count; position++)
+        {
+            var current = ordered[position];
+            if (presentations[current].Order != position)
+                Save(current, presentations[current] with { Order = position });
+        }
+        return true;
     }
 
     public static void Validate(ToolPresentation presentation)
@@ -90,6 +125,7 @@ public sealed class ToolPresentationStore(string directory)
             throw new ArgumentException("Display label must contain 1 to 80 characters.");
         if (presentation.Label.Any(char.IsControl)) throw new ArgumentException("Display label cannot contain control characters.");
         if (!BuiltInIcons.Contains(presentation.Icon)) throw new ArgumentException("Choose a built-in icon.");
+        if (presentation.TransactionMode is not ("auto" or "group")) throw new ArgumentException("Transaction mode must be auto or group.");
         if (presentation.LastArguments is null || Encoding.UTF8.GetByteCount(presentation.LastArguments) > 65536)
             throw new ArgumentException("Last arguments exceed 64 KB.");
         using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(presentation.LastArguments), XmlDictionaryReaderQuotas.Max);

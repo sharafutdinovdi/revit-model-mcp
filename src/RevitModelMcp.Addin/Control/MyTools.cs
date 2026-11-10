@@ -116,8 +116,11 @@ internal static class MyTools
             $"Needs confirmation to delete {name}.", "The tool changed. Review it again.");
         if (confirmation is not null) return confirmation;
         Store.Delete(name, binding);
-        Presentation.Delete(name);
+        var note = Presentation.Delete(name);
         MyToolsRibbon.Refresh();
-        return new ActionResultData { Summary = $"Deleted saved tool {name}." };
+        return new ActionResultData
+        {
+            Summary = $"Deleted saved tool {name}." + (note is null ? "" : " " + note)
+        };
     }
 }

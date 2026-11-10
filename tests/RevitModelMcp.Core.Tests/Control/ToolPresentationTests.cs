@@ -2,6 +2,7 @@ using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Policy;
 using RevitModelMcp.Core.Updates;
+using TUnit.Core.Enums;
 
 namespace RevitModelMcp.Core.Tests.Control;
 
@@ -16,6 +17,7 @@ public sealed class ToolPresentationTests
     {
         await Assert.That(ToolPresentationStore.Defaults("count_walls").Label).IsEqualTo("Count walls");
         await Assert.That(ToolPresentationStore.Defaults("count_walls").Icon).IsEqualTo(ToolPresentationStore.Defaults("count_walls").Icon);
+        await Assert.That(ToolPresentationStore.Defaults("count_walls").TransactionMode).IsEqualTo("auto");
         var icons = Enumerable.Range(0, 40).Select(index => ToolPresentationStore.Defaults("tool_" + index).Icon).Distinct().ToArray();
         await Assert.That(icons.Length > 1).IsTrue();
         await Assert.That(icons.All(ToolPresentationStore.BuiltInIcons.Contains)).IsTrue();
@@ -34,6 +36,7 @@ public sealed class ToolPresentationTests
                 Icon = "Help",
                 Hidden = true,
                 Order = 8,
+                TransactionMode = "group",
                 LastArguments = "{\"count\":2}",
                 SmallPng = Convert.ToBase64String([1, 2, 3]),
                 LargePng = Convert.ToBase64String([4, 5, 6])
@@ -231,5 +234,98 @@ public sealed class ToolPresentationTests
             Command = "run-tool",
             ToolName = "color_missing_parameter"
         })).IsEqualTo("Ran color_missing_parameter");
+    }
+
+    [Test]
+    public async Task Delete_WithoutPresentationOrDirectorySucceeds()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var store = new ToolPresentationStore(directory);
+        await Assert.That(store.Delete("my_tool")).IsNull();
+        await Assert.That(Directory.Exists(directory)).IsFalse();
+    }
+
+    [Test]
+    [RunOn(OS.Windows)]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Delete_LockedOrReadOnlyPresentationDoesNotFailToolDeletion(bool locked)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        var presentationDirectory = Path.Combine(directory, "tool-presentation");
+        var path = Path.Combine(presentationDirectory, "my_tool.json");
+        try
+        {
+            var tools = new ToolStore(Path.Combine(directory, "tools"));
+            var presentation = new ToolPresentationStore(presentationDirectory);
+            tools.Save(new ToolDefinition
+            {
+                Name = "my_tool",
+                Description = "A saved tool",
+                Parameters = Schema,
+                Code = ToolDefinition.Normalize("return 1;"),
+                Revision = ToolDefinition.Hash("return 1;")
+            });
+            presentation.Save("my_tool", ToolPresentationStore.Defaults("my_tool"));
+            if (!locked) File.SetAttributes(path, FileAttributes.ReadOnly);
+            using (var handle = locked ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None) : null)
+            {
+                tools.Delete("my_tool");
+                var note = presentation.Delete("my_tool");
+                await Assert.That(tools.List().Count).IsEqualTo(0);
+                await Assert.That(note).IsEqualTo("Some local presentation data could not be removed.");
+                await Assert.That(note!.Contains(directory)).IsFalse();
+            }
+        }
+        finally
+        {
+            if (File.Exists(path)) File.SetAttributes(path, FileAttributes.Normal);
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public async Task ExistingPresentation_WithoutTransactionModeDefaultsToAuto()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "my_tool.json"),
+                """{"Label":"Legacy label","Icon":"Mytools","Hidden":false,"Order":0,"LastArguments":"{}","SmallPng":"","LargePng":""}""");
+            var presentation = new ToolPresentationStore(directory).Get("my_tool");
+            await Assert.That(presentation.Label).IsEqualTo("Legacy label");
+            await Assert.That(presentation.TransactionMode).IsEqualTo("auto");
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Test]
+    public async Task Move_PersistsOrderAndPreservesOtherPresentationFields()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new ToolPresentationStore(directory);
+            var names = new[] { "tool_a", "tool_b", "tool_c" };
+            var customized = ToolPresentationStore.Defaults("tool_b") with
+            {
+                Label = "Hidden tool",
+                Hidden = true,
+                TransactionMode = "group"
+            };
+            store.Save("tool_b", customized);
+            await Assert.That(store.Move(names, "tool_c", -1)).IsTrue();
+            await Assert.That(store.Move(names, "tool_a", 1)).IsTrue();
+            await Assert.That(store.Move(names, "tool_c", -1)).IsFalse();
+            await Assert.That(store.Move(names, "tool_b", 1)).IsFalse();
+            await Assert.That(string.Join(",", ToolRibbonSlots.Assign(names, store.Get))).IsEqualTo("tool_c,tool_a");
+            var stored = store.Get("tool_b");
+            await Assert.That(stored with { Order = 0 }).IsEqualTo(customized);
+            store.Save("tool_b", stored with { Hidden = false });
+            await Assert.That(string.Join(",", ToolRibbonSlots.Assign(names, store.Get))).IsEqualTo("tool_c,tool_a,tool_b");
+            await Assert.That(() => store.Save("tool_a", ToolPresentationStore.Defaults("tool_a") with { TransactionMode = "none" })).Throws<ArgumentException>();
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
 }
