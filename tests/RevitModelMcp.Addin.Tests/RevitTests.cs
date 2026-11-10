@@ -350,7 +350,7 @@ public sealed class RevitTests : RevitApiUiTest
             });
             created = Application.Documents.Cast<Document>().Single(document => document.PathName == path);
             await Assert.That(result.Path).IsEqualTo(path);
-            await Assert.That(result.Saved).IsEqualTo((bool?)true);
+            await Assert.That(result.Saved).IsTrue();
             await Assert.That(File.Exists(path)).IsTrue();
             documents = Invoke<IReadOnlyList<InstanceDocument>>(typeof(RevitModelMcp.Application),
                 discovery, "ReadDocuments", (object?)null);
