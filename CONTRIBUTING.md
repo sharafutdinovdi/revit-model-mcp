@@ -93,6 +93,7 @@ pre-commit run --all-files
 
 The hooks apply Ruff 0.17.3 fixes and formatting, verify C# formatting, lint workflows, and check file endings, whitespace, YAML and JSON.
 The C# hook sets `Configuration=Debug.R26` and `DeployAddin=false` and runs once when C# files change.
+C# compiler and analyzer warnings fail the build in every configuration, and Ruff violations fail CI.
 Full solution formatting requires Windows.
 On macOS and Linux, the hook prints a notice and exits successfully; Windows PR CI verifies C# formatting.
 Review hook edits and stage them before committing again.
