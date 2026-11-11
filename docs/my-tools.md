@@ -115,7 +115,7 @@ Settings lists names, descriptions, modes, short revisions, tested years, saved 
 **Run**, **Show code**, **Rename**, **Icon** and **Hide from ribbon** apply to approved tools.
 **Move up** and **Move down** change presentation order and are reachable by keyboard.
 Rename changes only the display label; the MCP name remains the identifier.
-Icons come from the built-in set or a decoded, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
+Icons use the default script icon or an imported, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
 Imported icons are resized into 16 px and 32 px copies.
 Stored and imported PNG dimensions are checked before full pixel decoding.
 Invalid rows show `not approved`, cannot run, and allow confirmed deletion.
@@ -144,9 +144,8 @@ Copying revision files from another store does not approve them; saving through 
 The local approval key remains in the per-user tools directory.
 
 Presentation lives separately under `%LOCALAPPDATA%\RevitModelMcp\tool-presentation\<name>.json`.
-It contains the display label, icon choice and resized PNG copies, hidden flag, sort order, transaction mode and last arguments.
+It contains the display label, resized PNG copies, hidden flag, sort order, transaction mode and last arguments.
 The default label replaces underscores with spaces and capitalizes the first letter.
-The default icon is selected deterministically from the built-in set by tool name.
 Presentation never changes an approved revision, its hash or its signature.
 Missing or corrupt presentation files use defaults and do not damage the approved catalog.
 Deleting a tool also attempts to delete its presentation file.
@@ -212,7 +211,7 @@ To verify recovery in Revit 2022 and 2026:
 1. Start a fresh session and confirm that MCP ping and list-tools complete.
 2. Open My tools Settings, then Rename, and submit an MCP ping while the dialog remains open.
 3. Close Rename and Settings with Escape; verify that the queued ping completes once after Revit becomes idle, then submit another ping and list-tools.
-4. Repeat with an overflow tool run from Settings, rename, built-in icon, valid PNG, rejected PNG imports, Show code and keyboard navigation before closing the dialogs.
+4. Repeat with an overflow tool run from Settings, rename, default icon, valid PNG, rejected PNG imports, Show code and keyboard navigation before closing the dialogs.
 5. Compare with the earlier build using the same sequence and inspect request completion and Activity; a fresh heartbeat alone is not proof of working dispatch.
 
 ## Approval across Revit versions

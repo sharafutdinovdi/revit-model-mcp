@@ -11,7 +11,6 @@ namespace RevitModelMcp.Core.Control;
 public sealed record ToolPresentation
 {
     [DataMember] public string Label { get; init; } = "";
-    [DataMember] public string Icon { get; init; } = "Mytools";
     [DataMember] public bool Hidden { get; init; }
     [DataMember] public int Order { get; init; }
     [DataMember] public string LastArguments { get; init; } = "{}";
@@ -22,17 +21,13 @@ public sealed record ToolPresentation
 
 public sealed class ToolPresentationStore(string directory)
 {
-    public static IReadOnlyList<string> BuiltInIcons { get; } = Array.AsReadOnly(new[] { "Mytools", "Activity", "Settings", "Help", "Connect", "About" });
-
     public static ToolPresentation Defaults(string name)
     {
         ToolStore.ValidateName(name);
         var label = name.Replace('_', ' ');
-        var hash = ToolDefinition.Hash(name);
         return new ToolPresentation
         {
-            Label = char.ToUpperInvariant(label[0]) + label[1..],
-            Icon = BuiltInIcons[Convert.ToInt32(hash[..4], 16) % BuiltInIcons.Count]
+            Label = char.ToUpperInvariant(label[0]) + label[1..]
         };
     }
 
@@ -124,7 +119,6 @@ public sealed class ToolPresentationStore(string directory)
         if (string.IsNullOrWhiteSpace(presentation.Label) || presentation.Label.Length > 80)
             throw new ArgumentException("Display label must contain 1 to 80 characters.");
         if (presentation.Label.Any(char.IsControl)) throw new ArgumentException("Display label cannot contain control characters.");
-        if (!BuiltInIcons.Contains(presentation.Icon)) throw new ArgumentException("Choose a built-in icon.");
         if (presentation.TransactionMode is not ("auto" or "group")) throw new ArgumentException("Transaction mode must be auto or group.");
         if (presentation.LastArguments is null || Encoding.UTF8.GetByteCount(presentation.LastArguments) > 65536)
             throw new ArgumentException("Last arguments exceed 64 KB.");
