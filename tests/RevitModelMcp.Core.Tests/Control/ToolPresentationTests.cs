@@ -15,11 +15,65 @@ public sealed class ToolPresentationTests
     [Test]
     public async Task Defaults_HaveReadableLabelsAutoTransactionModeAndNoStoredPng()
     {
-        var presentation = ToolPresentationStore.Defaults("count_walls");
+        var presentation = ToolPresentationStore.Defaults("count_walls", null);
         await Assert.That(presentation.Label).IsEqualTo("Count walls");
         await Assert.That(presentation.TransactionMode).IsEqualTo("auto");
         await Assert.That(presentation.SmallPng).IsEqualTo("");
         await Assert.That(presentation.LargePng).IsEqualTo("");
+    }
+
+    [Test]
+    public async Task Store_UsesSchemaTitleUntilPresentationOverridesIt()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new ToolPresentationStore(directory);
+            var title = ToolArguments.Title("""{"type":"object","title":" Color by System parameter "}""");
+            await Assert.That(ToolPresentationStore.Defaults("color_by_system", title).Label).IsEqualTo("Color by System parameter");
+            await Assert.That(store.Get("color_by_system", title).Label).IsEqualTo("Color by System parameter");
+            store.Save("color_by_system", store.Get("color_by_system", title) with { Hidden = true });
+            var saved = store.Get("color_by_system", "Changed schema title");
+            await Assert.That(saved.Label).IsEqualTo("Color by System parameter");
+            await Assert.That(saved.Hidden).IsTrue();
+            store.Save("color_by_system", saved with { Label = "Renamed tool" });
+            await Assert.That(store.Get("color_by_system", title).Label).IsEqualTo("Renamed tool");
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Test]
+    [Arguments(null, "required parameter is missing.")]
+    [Arguments("wrong", "expected integer.")]
+    [Arguments("0", "below minimum.")]
+    [Arguments("11", "above maximum.")]
+    [Arguments("3", "value is not in enum.")]
+    public async Task Form_UsesPropertyTitleInLabelsAndValidation(string? value, string message)
+    {
+        var form = new ToolParameterForm("""
+            {"type":"object","properties":{"count":{"type":"integer","title":" Wall count ","minimum":1,"maximum":10,"enum":[1,2]},"other":{"type":"string"}},"required":["count"]}
+            """);
+        await Assert.That(form.Fields[0].Label).IsEqualTo("Wall count");
+        await Assert.That(form.Fields[0].Name).IsEqualTo("count");
+        await Assert.That(form.Fields[1].Label).IsEqualTo("other");
+        var error = "";
+        try { form.Validate(new Dictionary<string, string?> { ["count"] = value }); }
+        catch (ArgumentException exception) { error = exception.Message; }
+        await Assert.That(error).IsEqualTo("args.Wall count: " + message);
+        var json = form.Validate(new Dictionary<string, string?> { ["count"] = "2" });
+        await Assert.That(json).IsEqualTo("{\"count\":2}");
+    }
+
+    [Test]
+    public async Task Form_StringLengthErrorUsesPropertyTitle()
+    {
+        var form = new ToolParameterForm("""
+            {"type":"object","properties":{"label":{"type":"string","title":"Display text","maxLength":2}}}
+            """);
+        var error = "";
+        try { form.Validate(new Dictionary<string, string?> { ["label"] = "long" }); }
+        catch (ArgumentException exception) { error = exception.Message; }
+        await Assert.That(error).IsEqualTo("args.Display text: exceeds maxLength.");
     }
 
     [Test]
@@ -29,7 +83,7 @@ public sealed class ToolPresentationTests
         try
         {
             var store = new ToolPresentationStore(directory);
-            var presentation = ToolPresentationStore.Defaults("my_tool") with
+            var presentation = ToolPresentationStore.Defaults("my_tool", null) with
             {
                 Label = "My renamed tool",
                 Hidden = true,
@@ -40,11 +94,11 @@ public sealed class ToolPresentationTests
                 LargePng = Convert.ToBase64String([4, 5, 6])
             };
             store.Save("my_tool", presentation);
-            await Assert.That(store.Get("my_tool")).IsEqualTo(presentation);
+            await Assert.That(store.Get("my_tool", null)).IsEqualTo(presentation);
             await Assert.That(Directory.GetFiles(directory, "*.tmp").Length).IsEqualTo(0);
             store.Delete("my_tool");
             store.Delete("my_tool");
-            await Assert.That(store.Get("my_tool")).IsEqualTo(ToolPresentationStore.Defaults("my_tool"));
+            await Assert.That(store.Get("my_tool", null)).IsEqualTo(ToolPresentationStore.Defaults("my_tool", null));
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
@@ -59,7 +113,7 @@ public sealed class ToolPresentationTests
             File.WriteAllText(Path.Combine(directory, "my_tool.json"), """
                 {"Label":"Legacy label","Icon":"Help","Hidden":true,"Order":3,"LastArguments":"{}","SmallPng":"","LargePng":"","TransactionMode":"group"}
                 """);
-            var presentation = new ToolPresentationStore(directory).Get("my_tool");
+            var presentation = new ToolPresentationStore(directory).Get("my_tool", null);
             await Assert.That(presentation.Label).IsEqualTo("Legacy label");
             await Assert.That(presentation.Hidden).IsTrue();
             await Assert.That(presentation.Order).IsEqualTo(3);
@@ -81,10 +135,10 @@ public sealed class ToolPresentationTests
         try
         {
             var store = new ToolPresentationStore(directory);
-            await Assert.That(store.Get("my_tool")).IsEqualTo(ToolPresentationStore.Defaults("my_tool"));
+            await Assert.That(store.Get("my_tool", null)).IsEqualTo(ToolPresentationStore.Defaults("my_tool", null));
             Directory.CreateDirectory(directory);
             File.WriteAllText(Path.Combine(directory, "my_tool.json"), corrupt);
-            await Assert.That(store.Get("my_tool")).IsEqualTo(ToolPresentationStore.Defaults("my_tool"));
+            await Assert.That(store.Get("my_tool", null)).IsEqualTo(ToolPresentationStore.Defaults("my_tool", null));
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
@@ -96,13 +150,13 @@ public sealed class ToolPresentationTests
     [Arguments("bad\nlabel")]
     public async Task Labels_RejectInvalidText(string label)
     {
-        await Assert.That(() => ToolPresentationStore.Validate(ToolPresentationStore.Defaults("my_tool") with { Label = label })).Throws<ArgumentException>();
+        await Assert.That(() => ToolPresentationStore.Validate(ToolPresentationStore.Defaults("my_tool", null) with { Label = label })).Throws<ArgumentException>();
     }
 
     [Test]
     public async Task Presentation_RejectsInvalidPngArgumentsAndOversizeLabels()
     {
-        var defaults = ToolPresentationStore.Defaults("my_tool");
+        var defaults = ToolPresentationStore.Defaults("my_tool", null);
         await Assert.That(() => ToolPresentationStore.Validate(defaults with { SmallPng = "not base64" })).Throws<FormatException>();
         await Assert.That(() => ToolPresentationStore.Validate(defaults with { Label = new string('x', 81) })).Throws<ArgumentException>();
         await Assert.That(() => ToolPresentationStore.Validate(defaults with { LastArguments = "[]" })).Throws<ArgumentException>();
@@ -127,7 +181,7 @@ public sealed class ToolPresentationTests
             };
             tools.Save(definition);
             var binding = tools.Get("my_tool").ApprovalBinding();
-            presentation.Save("my_tool", ToolPresentationStore.Defaults("my_tool") with { Label = "Another label", Hidden = true });
+            presentation.Save("my_tool", ToolPresentationStore.Defaults("my_tool", null) with { Label = "Another label", Hidden = true });
             await Assert.That(tools.Get("my_tool").ApprovalBinding()).IsEqualTo(binding);
             await Assert.That(tools.Get("my_tool").Revision).IsEqualTo(definition.Revision);
             await Assert.That(tools.List(out var invalid).Count).IsEqualTo(1);
@@ -140,7 +194,7 @@ public sealed class ToolPresentationTests
     public async Task Slots_AreStableOrderedHideToolsAndLimitOverflow()
     {
         var names = Enumerable.Range(0, 30).Select(index => "tool_" + index.ToString("D2")).ToArray();
-        ToolPresentation Presentation(string name) => ToolPresentationStore.Defaults(name) with
+        ToolPresentation Presentation(string name) => ToolPresentationStore.Defaults(name, null) with
         {
             Order = name == "tool_29" ? -1 : 0,
             Hidden = name == "tool_00"
@@ -286,7 +340,7 @@ public sealed class ToolPresentationTests
                 Code = ToolDefinition.Normalize("return 1;"),
                 Revision = ToolDefinition.Hash("return 1;")
             });
-            presentation.Save("my_tool", ToolPresentationStore.Defaults("my_tool"));
+            presentation.Save("my_tool", ToolPresentationStore.Defaults("my_tool", null));
             if (!locked) File.SetAttributes(path, FileAttributes.ReadOnly);
             using (var handle = locked ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None) : null)
             {
@@ -313,7 +367,7 @@ public sealed class ToolPresentationTests
             Directory.CreateDirectory(directory);
             File.WriteAllText(Path.Combine(directory, "my_tool.json"),
                 """{"Label":"Legacy label","Icon":"Mytools","Hidden":false,"Order":0,"LastArguments":"{}","SmallPng":"","LargePng":""}""");
-            var presentation = new ToolPresentationStore(directory).Get("my_tool");
+            var presentation = new ToolPresentationStore(directory).Get("my_tool", null);
             await Assert.That(presentation.Label).IsEqualTo("Legacy label");
             await Assert.That(presentation.TransactionMode).IsEqualTo("auto");
         }
@@ -328,23 +382,24 @@ public sealed class ToolPresentationTests
         {
             var store = new ToolPresentationStore(directory);
             var names = new[] { "tool_a", "tool_b", "tool_c" };
-            var customized = ToolPresentationStore.Defaults("tool_b") with
+            var customized = ToolPresentationStore.Defaults("tool_b", null) with
             {
                 Label = "Hidden tool",
                 Hidden = true,
                 TransactionMode = "group"
             };
             store.Save("tool_b", customized);
-            await Assert.That(store.Move(names, "tool_c", -1)).IsTrue();
-            await Assert.That(store.Move(names, "tool_a", 1)).IsTrue();
-            await Assert.That(store.Move(names, "tool_c", -1)).IsFalse();
-            await Assert.That(store.Move(names, "tool_b", 1)).IsFalse();
-            await Assert.That(string.Join(",", ToolRibbonSlots.Assign(names, store.Get))).IsEqualTo("tool_c,tool_a");
-            var stored = store.Get("tool_b");
+            await Assert.That(store.Move(names, "tool_c", -1, _ => "Schema label")).IsTrue();
+            await Assert.That(store.Move(names, "tool_a", 1, _ => "Schema label")).IsTrue();
+            await Assert.That(store.Move(names, "tool_c", -1, _ => "Schema label")).IsFalse();
+            await Assert.That(store.Move(names, "tool_b", 1, _ => "Schema label")).IsFalse();
+            await Assert.That(string.Join(",", ToolRibbonSlots.Assign(names, name => store.Get(name, "Schema label")))).IsEqualTo("tool_c,tool_a");
+            var stored = store.Get("tool_b", "Schema label");
             await Assert.That(stored with { Order = 0 }).IsEqualTo(customized);
             store.Save("tool_b", stored with { Hidden = false });
-            await Assert.That(string.Join(",", ToolRibbonSlots.Assign(names, store.Get))).IsEqualTo("tool_c,tool_a,tool_b");
-            await Assert.That(() => store.Save("tool_a", ToolPresentationStore.Defaults("tool_a") with { TransactionMode = "none" })).Throws<ArgumentException>();
+            await Assert.That(string.Join(",", ToolRibbonSlots.Assign(names, name => store.Get(name, "Schema label")))).IsEqualTo("tool_c,tool_a,tool_b");
+            await Assert.That(() => store.Save("tool_a", ToolPresentationStore.Defaults("tool_a", null) with { TransactionMode = "none" })).Throws<ArgumentException>();
+            await Assert.That(store.Get("tool_a", null).Label).IsEqualTo("Schema label");
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }

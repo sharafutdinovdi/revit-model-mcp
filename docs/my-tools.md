@@ -13,6 +13,8 @@ The `code` toolset contains the saved tool commands.
 After a successful multi-step or C# procedure, the agent offers once to save it as a parameterized tool.
 Saving requires the user's explicit yes.
 The agent chooses a name matching `^[a-z][a-z0-9_]{2,47}$`, a description, a parameter schema, and mode `read` or `action`.
+The name remains the internal identifier.
+An optional root `title` in the parameter schema supplies the default button label.
 The optional `tested_revit_years` records years actually verified by the author, from 2022 through 2027.
 An empty list claims no tested years.
 
@@ -32,8 +34,9 @@ Parameters are available through `ctx.Args` as `string`, `long`, `double`, and `
   "description": "Count walls whose name contains a supplied label.",
   "parameters": {
     "type": "object",
+    "title": "Count matching walls",
     "properties": {
-      "label": { "type": "string", "maxLength": 100 }
+      "label": { "type": "string", "title": "Wall name contains", "maxLength": 100 }
     },
     "required": ["label"],
     "additionalProperties": false
@@ -45,10 +48,14 @@ Parameters are available through `ctx.Args` as `string`, `long`, `double`, and `
 ```
 
 The schema supports an object with primitive `string`, `number`, `integer`, and `boolean` properties.
-Property rules support `description`, `enum`, `minimum`, `maximum`, and `maxLength` where applicable.
-The root supports `required` and `additionalProperties:false`.
+Supported root keywords are `type`, `title`, `properties`, `required`, and `additionalProperties`.
+Supported property keywords are `type`, `title`, `description`, `enum`, `minimum`, `maximum`, and `maxLength`.
+The root type must be `object`; `additionalProperties`, when supplied, must be `false`.
+Root and property titles must contain 1 to 80 characters after trimming, without control or Unicode Format characters.
+A property `title` labels its form field; argument keys remain the property names.
 Nested objects, arrays, references, patterns, defaults, and other schema keywords are rejected.
-Unknown arguments, missing required arguments, type mismatches, and violated bounds report the parameter name.
+Unsupported keyword errors name the offending keywords and list the supported keywords.
+Unknown arguments report the parameter name; missing required arguments, type mismatches, and violated bounds report its title when present.
 Integer arguments must fit `Int64`.
 Schemas and argument objects are limited to 64 KB UTF-8 each.
 Source is limited to 256 KB UTF-8, and the active catalog holds at most 200 tools.
@@ -98,8 +105,8 @@ The ribbon review set is separate from the MCP token-confirmed set.
 A local approval never waives an MCP token, and an MCP token never waives the local review.
 
 Tools with parameters open a schema-generated form with required markers, descriptions and typed controls.
-Validation uses the same Core validator as `revit_run_tool` and identifies the parameter in errors.
-An empty or whitespace-only text box is omitted from arguments; a required field then reports its missing parameter name before execution.
+Validation uses the same Core validator as `revit_run_tool` and identifies the field by its title or parameter name in errors.
+An empty or whitespace-only text box is omitted from arguments; a required field then reports its missing field label before execution.
 Optional blank text boxes and enum fields without a selection are also omitted.
 The form remembers the last validated arguments for the current Windows user.
 Transaction mode is stored per tool with default `auto`; **Transaction** in Settings toggles `auto` and `group`.
@@ -114,7 +121,7 @@ The result dialog shows success or failure, a summary and returned text, truncat
 Settings lists names, descriptions, modes, short revisions, tested years, saved timestamps and replacements.
 **Run**, **Show code**, **Rename**, **Icon** and **Hide from ribbon** apply to approved tools.
 **Move up** and **Move down** change presentation order and are reachable by keyboard.
-Rename changes only the display label; the MCP name remains the identifier.
+Rename changes only the display label and overrides the root title; the MCP name remains the identifier.
 Icons use the default script icon or an imported, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
 Imported icons are resized into 16 px and 32 px copies.
 Stored and imported PNG dimensions are checked before full pixel decoding.
@@ -145,7 +152,9 @@ The local approval key remains in the per-user tools directory.
 
 Presentation lives separately under `%LOCALAPPDATA%\RevitModelMcp\tool-presentation\<name>.json`.
 It contains the display label, resized PNG copies, hidden flag, sort order, transaction mode and last arguments.
-The default label replaces underscores with spaces and capitalizes the first letter.
+The default label uses the schema root `title` when present; otherwise, it replaces underscores in the internal name with spaces and capitalizes the first letter.
+An existing presentation label takes precedence over the root title.
+Saving a presentation change, such as visibility or order, preserves the current label.
 Presentation never changes an approved revision, its hash or its signature.
 Missing or corrupt presentation files use defaults and do not damage the approved catalog.
 Deleting a tool also attempts to delete its presentation file.

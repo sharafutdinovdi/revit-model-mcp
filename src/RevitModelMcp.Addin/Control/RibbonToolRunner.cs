@@ -30,13 +30,14 @@ internal static class RibbonToolRunner
             if (refusal is not null) throw new InvalidOperationException(refusal);
             if (application.ActiveUIDocument is null) throw new InvalidOperationException("No active Revit document.");
             var tool = MyTools.Store.Get(name);
+            var presentation = MyTools.Presentation.Get(tool.Name, ToolArguments.Title(tool.Parameters));
             if (Session.RequiresReview(tool.Name, tool.Revision))
             {
                 var year = int.Parse(application.Application.VersionNumber, CultureInfo.InvariantCulture);
                 var warning = tool.TestedRevitYears.Contains(year) ? "" : $"\n\nWARNING: this tool has not been tested in Revit {year}.";
                 var replaced = string.IsNullOrEmpty(tool.ReplacedRevision) ? "None" : tool.ReplacedRevision[..12];
                 if (!AppDialog.Show("Review saved tool",
-                        $"Tool: {tool.Name}\nMode: {tool.Mode}\nRevision: {tool.Revision[..12]}\nSaved: {tool.Created}\nReplaced revision: {replaced}\nTested Revit years: {(tool.TestedRevitYears.Length == 0 ? "None" : string.Join(", ", tool.TestedRevitYears))}{warning}\n\nSaved C# has full Revit API access and your file and network rights. Read mode and Preview are not a sandbox. Review the source in Settings before approving. Approve this revision for this Revit session?",
+                        $"Tool: {presentation.Label} ({tool.Name})\nMode: {tool.Mode}\nRevision: {tool.Revision[..12]}\nSaved: {tool.Created}\nReplaced revision: {replaced}\nTested Revit years: {(tool.TestedRevitYears.Length == 0 ? "None" : string.Join(", ", tool.TestedRevitYears))}{warning}\n\nSaved C# has full Revit API access and your file and network rights. Read mode and Preview are not a sandbox. Review the source in Settings before approving. Approve this revision for this Revit session?",
                         confirm: true, owner: owner)) return;
                 Session.Confirm(tool.Name, tool.Revision);
             }
@@ -50,9 +51,9 @@ internal static class RibbonToolRunner
                 parameters.ShowDialog();
                 return;
             }
-            var transactionMode = MyTools.Presentation.Get(name).TransactionMode;
+            var transactionMode = presentation.TransactionMode;
             if (tool.Mode == "action" && !AppDialog.Show("Run saved tool",
-                    $"Run {name} and change the active model?\nTransaction mode: {transactionMode}.", confirm: true, owner: owner)) return;
+                    $"Run {presentation.Label} and change the active model?\nTransaction mode: {transactionMode}.", confirm: true, owner: owner)) return;
             Execute(application, tool, "{}", false, transactionMode, owner);
         }
         catch (Exception exception)
@@ -64,7 +65,7 @@ internal static class RibbonToolRunner
     private static void Execute(UIApplication application, ToolDefinition tool, string arguments, bool preview, string transaction, Window? owner)
     {
         ToolArguments.Validate(tool.Parameters, arguments);
-        var presentation = MyTools.Presentation.Get(tool.Name);
+        var presentation = MyTools.Presentation.Get(tool.Name, ToolArguments.Title(tool.Parameters));
         MyTools.Presentation.Save(tool.Name, presentation with
         {
             LastArguments = arguments,
@@ -93,7 +94,7 @@ internal static class RibbonToolRunner
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             Content = new TextBlock
             {
-                Text = $"Running {tool.Name}. Please wait for the result. Revit model operations run on the main thread.",
+                Text = $"Running {presentation.Label}. Please wait for the result. Revit model operations run on the main thread.",
                 Margin = new Thickness(20),
                 TextWrapping = TextWrapping.Wrap
             }
@@ -182,7 +183,8 @@ internal sealed class ToolParametersWindow : Window
 {
     internal ToolParametersWindow(ToolDefinition tool, ToolParameterForm model, Action<string, bool, string, Window> execute)
     {
-        Title = "Run " + tool.Name;
+        var presentation = MyTools.Presentation.Get(tool.Name, ToolArguments.Title(tool.Parameters));
+        Title = "Run " + presentation.Label;
         Icon = AppDialog.LoadAppIcon();
         Width = 520;
         MaxHeight = SystemParameters.WorkArea.Height * 0.85;
@@ -192,13 +194,13 @@ internal sealed class ToolParametersWindow : Window
         var root = new StackPanel { Margin = new Thickness(16) };
         var controls = new Dictionary<string, FrameworkElement>();
         IReadOnlyDictionary<string, object> previous;
-        try { previous = ToolArguments.Validate(tool.Parameters, MyTools.Presentation.Get(tool.Name).LastArguments); }
+        try { previous = ToolArguments.Validate(tool.Parameters, presentation.LastArguments); }
         catch (ArgumentException) { previous = new Dictionary<string, object>(); }
         foreach (var field in model.Fields)
         {
             root.Children.Add(new TextBlock
             {
-                Text = field.Name + (field.Required ? " *" : ""),
+                Text = field.Label + (field.Required ? " *" : ""),
                 Margin = new Thickness(0, 8, 0, 4)
             });
             previous.TryGetValue(field.Name, out var saved);
@@ -225,7 +227,7 @@ internal sealed class ToolParametersWindow : Window
                 MaxLength = field.MaxLength ?? 0
             };
             input.ToolTip = field.Description;
-            System.Windows.Automation.AutomationProperties.SetName(input, field.Name);
+            System.Windows.Automation.AutomationProperties.SetName(input, field.Label);
             controls.Add(field.Name, input);
             root.Children.Add(input);
             root.Children.Add(new TextBlock
@@ -242,7 +244,7 @@ internal sealed class ToolParametersWindow : Window
         var transaction = new ComboBox
         {
             ItemsSource = new[] { "auto", "group" },
-            SelectedItem = MyTools.Presentation.Get(tool.Name).TransactionMode
+            SelectedItem = presentation.TransactionMode
         };
         root.Children.Add(transaction);
         var error = new TextBlock

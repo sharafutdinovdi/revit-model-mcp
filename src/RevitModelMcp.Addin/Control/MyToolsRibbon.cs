@@ -64,14 +64,15 @@ internal static class MyToolsRibbon
         try
         {
             var tools = MyTools.Store.List();
-            _names = ToolRibbonSlots.Assign(tools.Select(tool => tool.Name), MyTools.Presentation.Get);
+            var titles = tools.ToDictionary(tool => tool.Name, tool => ToolArguments.Title(tool.Parameters));
+            _names = ToolRibbonSlots.Assign(tools.Select(tool => tool.Name), name => MyTools.Presentation.Get(name, titles[name]));
             for (var index = 0; index < Buttons.Count; index++)
             {
                 var button = Buttons[index];
                 button.Visible = index < _names.Count;
                 if (!button.Visible) continue;
                 var tool = tools.Single(candidate => candidate.Name == _names[index]);
-                var presentation = MyTools.Presentation.Get(tool.Name);
+                var presentation = MyTools.Presentation.Get(tool.Name, titles[tool.Name]);
                 button.ItemText = presentation.Label;
                 button.ToolTip = tool.Description;
                 button.LongDescription = $"{tool.Mode}; revision {tool.Revision[..12]}; tested Revit years: {string.Join(", ", tool.TestedRevitYears)}. Saved C# has full Revit API and user rights.";

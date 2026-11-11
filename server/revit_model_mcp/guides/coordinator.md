@@ -278,6 +278,8 @@ After a successful multi-step or C# procedure requested by the user, offer once 
 Do not offer again after a refusal or save automatically.
 This offer does not authorize any action during a read-only coordinator workflow.
 Only after the user's yes, prepare the C# source, description, mode, and a simple parameter schema and call `revit_save_tool`.
+When the user gives a human-readable button name, keep a short snake_case `name` matching `^[a-z][a-z0-9_]{2,47}$` and put the human name in `parameters.title`.
+A property `title` labels a form field without changing its argument key.
 Show the full returned source, schema, revision hash, mode, and confirmation text.
 Repeat the identical call with `confirm_token` only after the user explicitly confirms the reviewed definition.
 Never save without the user's yes or infer approval from a successful execution.
