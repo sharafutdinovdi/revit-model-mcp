@@ -13,14 +13,13 @@ public sealed class ToolPresentationTests
         """;
 
     [Test]
-    public async Task Defaults_HaveReadableLabelsAndStableVariedIcons()
+    public async Task Defaults_HaveReadableLabelsAutoTransactionModeAndNoStoredPng()
     {
-        await Assert.That(ToolPresentationStore.Defaults("count_walls").Label).IsEqualTo("Count walls");
-        await Assert.That(ToolPresentationStore.Defaults("count_walls").Icon).IsEqualTo(ToolPresentationStore.Defaults("count_walls").Icon);
-        await Assert.That(ToolPresentationStore.Defaults("count_walls").TransactionMode).IsEqualTo("auto");
-        var icons = Enumerable.Range(0, 40).Select(index => ToolPresentationStore.Defaults("tool_" + index).Icon).Distinct().ToArray();
-        await Assert.That(icons.Length > 1).IsTrue();
-        await Assert.That(icons.All(ToolPresentationStore.BuiltInIcons.Contains)).IsTrue();
+        var presentation = ToolPresentationStore.Defaults("count_walls");
+        await Assert.That(presentation.Label).IsEqualTo("Count walls");
+        await Assert.That(presentation.TransactionMode).IsEqualTo("auto");
+        await Assert.That(presentation.SmallPng).IsEqualTo("");
+        await Assert.That(presentation.LargePng).IsEqualTo("");
     }
 
     [Test]
@@ -33,7 +32,6 @@ public sealed class ToolPresentationTests
             var presentation = ToolPresentationStore.Defaults("my_tool") with
             {
                 Label = "My renamed tool",
-                Icon = "Help",
                 Hidden = true,
                 Order = 8,
                 TransactionMode = "group",
@@ -47,6 +45,28 @@ public sealed class ToolPresentationTests
             store.Delete("my_tool");
             store.Delete("my_tool");
             await Assert.That(store.Get("my_tool")).IsEqualTo(ToolPresentationStore.Defaults("my_tool"));
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    [Test]
+    public async Task Store_LoadsLegacyPresentationAndIgnoresIconMember()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.WriteAllText(Path.Combine(directory, "my_tool.json"), """
+                {"Label":"Legacy label","Icon":"Help","Hidden":true,"Order":3,"LastArguments":"{}","SmallPng":"","LargePng":"","TransactionMode":"group"}
+                """);
+            var presentation = new ToolPresentationStore(directory).Get("my_tool");
+            await Assert.That(presentation.Label).IsEqualTo("Legacy label");
+            await Assert.That(presentation.Hidden).IsTrue();
+            await Assert.That(presentation.Order).IsEqualTo(3);
+            await Assert.That(presentation.TransactionMode).IsEqualTo("group");
+            await Assert.That(presentation.LastArguments).IsEqualTo("{}");
+            await Assert.That(presentation.SmallPng).IsEqualTo("");
+            await Assert.That(presentation.LargePng).IsEqualTo("");
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
     }
@@ -80,10 +100,10 @@ public sealed class ToolPresentationTests
     }
 
     [Test]
-    public async Task Presentation_RejectsInvalidIconArgumentsAndOversizeLabels()
+    public async Task Presentation_RejectsInvalidPngArgumentsAndOversizeLabels()
     {
         var defaults = ToolPresentationStore.Defaults("my_tool");
-        await Assert.That(() => ToolPresentationStore.Validate(defaults with { Icon = "../foreign" })).Throws<ArgumentException>();
+        await Assert.That(() => ToolPresentationStore.Validate(defaults with { SmallPng = "not base64" })).Throws<FormatException>();
         await Assert.That(() => ToolPresentationStore.Validate(defaults with { Label = new string('x', 81) })).Throws<ArgumentException>();
         await Assert.That(() => ToolPresentationStore.Validate(defaults with { LastArguments = "[]" })).Throws<ArgumentException>();
     }

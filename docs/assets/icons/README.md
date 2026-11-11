@@ -27,3 +27,4 @@ The build-only dependencies are declared in the renderer's script header.
 | About | ![About, light](about-light.svg) | ![About, dark](about-dark.svg) |
 | Update | ![Update, light](update-light.svg) | ![Update, dark](update-dark.svg) |
 | Settings | ![Settings, light](settings-light.svg) | ![Settings, dark](settings-dark.svg) |
+| Script | ![Script, light](script-light.svg) | ![Script, dark](script-dark.svg) |

@@ -118,11 +118,11 @@ internal static class ToolIcons
             }
             catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException or FileFormatException)
             {
-                // Presentation files are not approved code. A damaged icon uses the built-in fallback.
+                // Presentation files are not approved code. A damaged icon uses the default fallback.
             }
         }
         var suffix = PaneTheme.IsDark ? "-dark" : "";
-        var fallback = new BitmapImage(new Uri($"pack://application:,,,/RevitModelMcp;component/Resources/Icons/{presentation.Icon}{size}{suffix}.png"));
+        var fallback = new BitmapImage(new Uri($"pack://application:,,,/RevitModelMcp;component/Resources/Icons/Script{size}{suffix}.png"));
         fallback.Freeze();
         return fallback;
     }

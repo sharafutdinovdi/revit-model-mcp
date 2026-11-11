@@ -363,23 +363,15 @@ internal sealed class MyToolsWindow : Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
         var root = new StackPanel { Margin = new Thickness(16) };
-        var choices = new ComboBox
-        {
-            ItemsSource = ToolPresentationStore.BuiltInIcons,
-            SelectedItem = MyTools.Presentation.Get(row.Name).Icon
-        };
-        System.Windows.Automation.AutomationProperties.SetName(choices, "Built-in icon");
-        root.Children.Add(choices);
         var save = new Button
         {
-            Content = "Use built-in icon",
+            Content = "Use default icon",
             Margin = new Thickness(0, 12, 0, 0)
         };
         save.Click += (_, _) =>
         {
             ChangePresentation(presentation => presentation with
             {
-                Icon = (string)choices.SelectedItem,
                 SmallPng = "",
                 LargePng = ""
             });
