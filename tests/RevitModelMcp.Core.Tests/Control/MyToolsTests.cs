@@ -117,6 +117,31 @@ public sealed class MyToolsTests
     }
 
     [Test]
+    [Arguments("{}", "required parameter is missing.")]
+    [Arguments("{\"count\":\"wrong\"}", "expected integer.")]
+    [Arguments("{\"count\":0}", "below minimum.")]
+    [Arguments("{\"count\":11}", "above maximum.")]
+    [Arguments("{\"count\":3}", "value is not in enum.")]
+    [Arguments("{\"count\":9223372036854775808}", "integer must fit Int64.")]
+    public async Task Arguments_ErrorsKeepPropertyKeysWhenTitlesArePresent(string json, string message)
+    {
+        var schema = """
+            {"type":"object","properties":{"count":{"type":"integer","title":"Wall count","minimum":1,"maximum":10,"enum":[1,2]}},"required":["count"]}
+            """;
+        await Assert.That(Capture(() => ToolArguments.Validate(schema, json))).IsEqualTo("args.count: " + message);
+    }
+
+    [Test]
+    public async Task Arguments_StringLengthErrorsKeepPropertyKeysWhenTitlesArePresent()
+    {
+        var schema = """
+            {"type":"object","properties":{"label":{"type":"string","title":"Display text","maxLength":2}}}
+            """;
+        await Assert.That(Capture(() => ToolArguments.Validate(schema, """{"label":"long"}""")))
+            .IsEqualTo("args.label: exceeds maxLength.");
+    }
+
+    [Test]
     [Arguments("{\"type\":\"array\"}")]
     [Arguments("{\"type\":\"object\",\"additionalProperties\":true}")]
     [Arguments("{\"type\":\"object\",\"required\":[\"missing\"]}")]

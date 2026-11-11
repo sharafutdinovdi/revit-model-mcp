@@ -55,7 +55,8 @@ Root and property titles must contain 1 to 80 characters after trimming, without
 A property `title` labels its form field; argument keys remain the property names.
 Nested objects, arrays, references, patterns, defaults, and other schema keywords are rejected.
 Unsupported keyword errors name the offending keywords and list the supported keywords.
-Unknown arguments report the parameter name; missing required arguments, type mismatches, and violated bounds report its title when present.
+MCP argument errors report the parameter name, including missing required arguments, type mismatches, and violated bounds.
+The ribbon parameter form reports the field label, using its title when present.
 Integer arguments must fit `Int64`.
 Schemas and argument objects are limited to 64 KB UTF-8 each.
 Source is limited to 256 KB UTF-8, and the active catalog holds at most 200 tools.

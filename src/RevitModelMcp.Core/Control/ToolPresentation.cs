@@ -203,7 +203,7 @@ public sealed class ToolParameterForm
             arguments.Add(pair.Key, value);
         }
         var json = CodeResultLimiter.ToJson(arguments);
-        ToolArguments.Validate(_schema, json);
+        ToolArguments.Validate(_schema, json, useFieldLabels: true);
         return json;
     }
 }

@@ -207,7 +207,10 @@ public static class ToolArguments
         return typed;
     }
 
-    public static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson)
+    public static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson) =>
+        Validate(schemaJson, argsJson, useFieldLabels: false);
+
+    internal static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson, bool useFieldLabels)
     {
         ValidateSchema(schemaJson);
         var schema = Members(Parse(schemaJson));
@@ -217,8 +220,12 @@ public static class ToolArguments
             foreach (var item in required.Elements())
                 if (!args.ContainsKey(item.Value))
                 {
-                    var rules = Members(properties[item.Value]);
-                    var label = rules.TryGetValue("title", out var title) ? title.Value.Trim() : item.Value;
+                    var label = item.Value;
+                    if (useFieldLabels)
+                    {
+                        var rules = Members(properties[item.Value]);
+                        if (rules.TryGetValue("title", out var title)) label = title.Value.Trim();
+                    }
                     throw new ArgumentException($"args.{label}: required parameter is missing.");
                 }
         var result = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -226,7 +233,7 @@ public static class ToolArguments
         {
             if (!properties.TryGetValue(argument.Key, out var rules)) throw new ArgumentException($"args.{argument.Key}: unknown parameter.");
             var parameterRules = Members(rules);
-            var label = parameterRules.TryGetValue("title", out var title) ? title.Value.Trim() : argument.Key;
+            var label = useFieldLabels && parameterRules.TryGetValue("title", out var title) ? title.Value.Trim() : argument.Key;
             result[argument.Key] = ValidateValue(label, argument.Value, parameterRules, true);
         }
         return result;
