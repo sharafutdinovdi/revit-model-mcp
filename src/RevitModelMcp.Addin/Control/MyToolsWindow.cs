@@ -178,7 +178,8 @@ internal sealed class MyToolsWindow : Window
         public string RevisionShort => Tool?.Revision[..12] ?? "not approved";
         public string Years => Tool is null ? "" : string.Join(", ", Tool.TestedRevitYears);
         public string Created => Tool?.Created ?? "";
-        public string Label => MyTools.Presentation.Get(Name).Label;
+        public string? SchemaTitle => Tool is null ? null : ToolArguments.Title(Tool.Parameters);
+        public string Label => MyTools.Presentation.Get(Name, SchemaTitle).Label;
         public string Replacement => Tool is null || string.IsNullOrEmpty(Tool.ReplacedRevision)
             ? "" : $"Replaced {Tool.ReplacedRevision[..12]} on {Tool.Created}";
     }
@@ -190,7 +191,7 @@ internal sealed class MyToolsWindow : Window
         {
             if (PolicyProvider.Refusal("list-tools") is string refusal) throw new InvalidOperationException(refusal);
             var tools = MyTools.Store.List(out var invalid);
-            _list.ItemsSource = tools.OrderBy(tool => MyTools.Presentation.Get(tool.Name).Order)
+            _list.ItemsSource = tools.OrderBy(tool => MyTools.Presentation.Get(tool.Name, ToolArguments.Title(tool.Parameters)).Order)
                 .ThenBy(tool => tool.Name, StringComparer.Ordinal).Select(tool => new Row(tool.Name, tool))
                 .Concat(invalid.Select(tool => new Row(tool.Name, null, tool.Reason))).ToList();
             _status.Text = tools.Count == 0 && invalid.Count == 0
@@ -215,7 +216,7 @@ internal sealed class MyToolsWindow : Window
         _transaction.IsEnabled = valid;
         if (_list.SelectedItem is Row row)
         {
-            var presentation = MyTools.Presentation.Get(row.Name);
+            var presentation = MyTools.Presentation.Get(row.Name, row.SchemaTitle);
             _visibility.Content = presentation.Hidden ? "Show on ribbon" : "Hide from ribbon";
             _transaction.Content = "Transaction: " + presentation.TransactionMode;
         }
@@ -230,7 +231,7 @@ internal sealed class MyToolsWindow : Window
             var tool = MyTools.Store.Get(row.Name);
             var viewer = new Window
             {
-                Title = "Show code: " + row.Name,
+                Title = "Show code: " + row.Label,
                 Icon = AppDialog.LoadAppIcon(),
                 Owner = this,
                 Width = 850,
@@ -263,13 +264,14 @@ internal sealed class MyToolsWindow : Window
             if (ActionCommandExecutor.ReadOnlyMode) throw new InvalidOperationException(PolicyProvider.ReadOnlyMessage);
             if (PolicyProvider.Refusal("delete-tool") is string refusal) throw new InvalidOperationException(refusal);
             var binding = MyTools.Store.DeletionBinding(row.Name);
+            var label = row.Label;
             if (!AppDialog.Show("My tools",
-                    $"Delete {row.Name}?\n\nThis deletes the saved tool and all its revisions. Deletion cannot be undone.",
+                    $"Delete {label}?\n\nThis deletes the saved tool and all its revisions. Deletion cannot be undone.",
                     confirm: true, owner: this)) return;
             MyTools.Store.Delete(row.Name, binding);
             var note = MyTools.Presentation.Delete(row.Name);
             MyToolsRibbon.Refresh();
-            var summary = $"Deleted saved tool {row.Name}." + (note is null ? "" : " " + note);
+            var summary = $"Deleted saved tool {label}." + (note is null ? "" : " " + note);
             RevitModelMcp.Activity.ActivityRecorder.RecordSystemNotice(summary);
             Refresh();
             _status.Text = summary;
@@ -282,7 +284,7 @@ internal sealed class MyToolsWindow : Window
         if (_list.SelectedItem is not Row { Tool: not null } row) return;
         try
         {
-            MyTools.Presentation.Save(row.Name, change(MyTools.Presentation.Get(row.Name)));
+            MyTools.Presentation.Save(row.Name, change(MyTools.Presentation.Get(row.Name, row.SchemaTitle)));
             MyToolsRibbon.Refresh();
             UpdateButtons();
         }
@@ -294,8 +296,8 @@ internal sealed class MyToolsWindow : Window
         if (_list.SelectedItem is not Row { Tool: not null } row) return;
         try
         {
-            var names = MyTools.Store.List().Select(tool => tool.Name).ToArray();
-            if (!MyTools.Presentation.Move(names, row.Name, direction)) return;
+            var titles = MyTools.Store.List().ToDictionary(tool => tool.Name, tool => ToolArguments.Title(tool.Parameters));
+            if (!MyTools.Presentation.Move(titles.Keys.ToArray(), row.Name, direction, name => titles[name])) return;
             Refresh();
             _list.SelectedItem = _list.Items.Cast<Row>().FirstOrDefault(candidate => candidate.Name == row.Name);
             MyToolsRibbon.Refresh();
@@ -318,7 +320,7 @@ internal sealed class MyToolsWindow : Window
         var root = new StackPanel { Margin = new Thickness(16) };
         var input = new TextBox
         {
-            Text = MyTools.Presentation.Get(row.Name).Label,
+            Text = MyTools.Presentation.Get(row.Name, row.SchemaTitle).Label,
             MaxLength = 80
         };
         System.Windows.Automation.AutomationProperties.SetName(input, "Display label");
@@ -335,7 +337,7 @@ internal sealed class MyToolsWindow : Window
         {
             try
             {
-                var presentation = MyTools.Presentation.Get(row.Name) with { Label = input.Text };
+                var presentation = MyTools.Presentation.Get(row.Name, row.SchemaTitle) with { Label = input.Text };
                 MyTools.Presentation.Save(row.Name, presentation);
                 MyToolsRibbon.Refresh();
                 dialog.Close();
@@ -394,7 +396,7 @@ internal sealed class MyToolsWindow : Window
             if (picker.ShowDialog(dialog) != true) return;
             try
             {
-                var presentation = ToolIcons.Import(picker.FileName, MyTools.Presentation.Get(row.Name));
+                var presentation = ToolIcons.Import(picker.FileName, MyTools.Presentation.Get(row.Name, row.SchemaTitle));
                 MyTools.Presentation.Save(row.Name, presentation);
                 MyToolsRibbon.Refresh();
                 dialog.Close();

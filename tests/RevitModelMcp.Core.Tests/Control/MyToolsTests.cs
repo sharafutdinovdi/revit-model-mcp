@@ -117,6 +117,31 @@ public sealed class MyToolsTests
     }
 
     [Test]
+    [Arguments("{}", "required parameter is missing.")]
+    [Arguments("{\"count\":\"wrong\"}", "expected integer.")]
+    [Arguments("{\"count\":0}", "below minimum.")]
+    [Arguments("{\"count\":11}", "above maximum.")]
+    [Arguments("{\"count\":3}", "value is not in enum.")]
+    [Arguments("{\"count\":9223372036854775808}", "integer must fit Int64.")]
+    public async Task Arguments_ErrorsKeepPropertyKeysWhenTitlesArePresent(string json, string message)
+    {
+        var schema = """
+            {"type":"object","properties":{"count":{"type":"integer","title":"Wall count","minimum":1,"maximum":10,"enum":[1,2]}},"required":["count"]}
+            """;
+        await Assert.That(Capture(() => ToolArguments.Validate(schema, json))).IsEqualTo("args.count: " + message);
+    }
+
+    [Test]
+    public async Task Arguments_StringLengthErrorsKeepPropertyKeysWhenTitlesArePresent()
+    {
+        var schema = """
+            {"type":"object","properties":{"label":{"type":"string","title":"Display text","maxLength":2}}}
+            """;
+        await Assert.That(Capture(() => ToolArguments.Validate(schema, """{"label":"long"}""")))
+            .IsEqualTo("args.label: exceeds maxLength.");
+    }
+
+    [Test]
     [Arguments("{\"type\":\"array\"}")]
     [Arguments("{\"type\":\"object\",\"additionalProperties\":true}")]
     [Arguments("{\"type\":\"object\",\"required\":[\"missing\"]}")]
@@ -128,6 +153,67 @@ public sealed class MyToolsTests
     public async Task Schema_RejectsUnsupportedOrInconsistentRules(string schema)
     {
         await Assert.That(Capture(() => ToolArguments.ValidateSchema(schema)).Length > 0).IsTrue();
+    }
+
+    [Test]
+    public async Task Schema_AcceptsTitlesAndTrimsRootTitle()
+    {
+        var schema = """{"type":"object","title":" Color by System parameter ","properties":{"count":{"type":"integer","title":" Wall count "}}}""";
+        ToolArguments.ValidateSchema(schema);
+        await Assert.That(ToolArguments.Title(schema)).IsEqualTo("Color by System parameter");
+        await Assert.That(ToolArguments.Title(Schema)).IsNull();
+        ToolArguments.ValidateSchema(CodeResultLimiter.ToJson(new Dictionary<string, object>
+        {
+            ["type"] = "object",
+            ["title"] = " " + new string('x', 80) + " "
+        }));
+    }
+
+    [Test]
+    [Arguments("\"\"")]
+    [Arguments("\"   \"")]
+    [Arguments("\"bad\\nlabel\"")]
+    [Arguments("\"\\tlabel\"")]
+    [Arguments("\"bad\\u200blabel\"")]
+    [Arguments("42")]
+    [Arguments("true")]
+    [Arguments("null")]
+    [Arguments("[]")]
+    [Arguments("{}")]
+    [Arguments("\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"")]
+    public async Task Schema_RejectsInvalidTitlesAtBothLevels(string title)
+    {
+        await Assert.That(Capture(() => ToolArguments.ValidateSchema(
+            "{\"type\":\"object\",\"title\":" + title + "}")))
+            .IsEqualTo("parameters.title must be 1 to 80 characters of text.");
+        await Assert.That(Capture(() => ToolArguments.ValidateSchema(
+            "{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\",\"title\":" + title + "}}}")))
+            .IsEqualTo("parameters.count.title must be 1 to 80 characters of text.");
+    }
+
+    [Test]
+    [Arguments("{\"type\":\"object\",\"default\":{}}", "parameters: unsupported schema keyword \"default\". Supported: type, title, properties, required, additionalProperties.")]
+    [Arguments("{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\",\"default\":1}}}", "parameters.count: unsupported schema keyword \"default\". Supported: type, title, description, enum, minimum, maximum, maxLength.")]
+    [Arguments("{\"type\":\"object\",\"pattern\":\".*\",\"default\":{},\"$schema\":\"url\"}", "parameters: unsupported schema keyword \"$schema\", \"default\", \"pattern\". Supported: type, title, properties, required, additionalProperties.")]
+    [Arguments("{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\",\"pattern\":\".*\",\"default\":1}}}", "parameters.count: unsupported schema keyword \"default\", \"pattern\". Supported: type, title, description, enum, minimum, maximum, maxLength.")]
+    public async Task Schema_ListsUnsupportedAndSupportedKeywords(string schema, string expected)
+    {
+        await Assert.That(Capture(() => ToolArguments.ValidateSchema(schema))).IsEqualTo(expected);
+    }
+
+    [Test]
+    public async Task Schema_BoundsAndSanitizesUnsupportedKeywordMessages()
+    {
+        var schema = new Dictionary<string, object> { ["type"] = "object" };
+        for (var index = 0; index < 10; index++)
+            schema[index + new string('x', 1000) + "\n\u200b"] = true;
+        var error = Capture(() => ToolArguments.ValidateSchema(CodeResultLimiter.ToJson(schema)));
+        await Assert.That(error.Length < 400).IsTrue();
+        await Assert.That(error).Contains(", ...");
+        await Assert.That(error.Any(char.IsControl)).IsFalse();
+        await Assert.That(Capture(() => ToolArguments.ValidateSchema(
+            "{\"type\":\"object\",\"bad\\n\\u200bkeyword\":true}")))
+            .Contains("\"bad??keyword\"");
     }
 
     [Test]

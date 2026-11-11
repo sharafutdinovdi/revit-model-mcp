@@ -21,19 +21,19 @@ public sealed record ToolPresentation
 
 public sealed class ToolPresentationStore(string directory)
 {
-    public static ToolPresentation Defaults(string name)
+    public static ToolPresentation Defaults(string name, string? title)
     {
         ToolStore.ValidateName(name);
         var label = name.Replace('_', ' ');
         return new ToolPresentation
         {
-            Label = char.ToUpperInvariant(label[0]) + label[1..]
+            Label = title ?? char.ToUpperInvariant(label[0]) + label[1..]
         };
     }
 
-    public ToolPresentation Get(string name)
+    public ToolPresentation Get(string name, string? title)
     {
-        var fallback = Defaults(name);
+        var fallback = Defaults(name, title);
         try
         {
             var path = Path.Combine(directory, name + ".json");
@@ -90,12 +90,14 @@ public sealed class ToolPresentationStore(string directory)
         }
     }
 
-    public bool Move(IReadOnlyCollection<string> names, string name, int direction)
+    public bool Move(IReadOnlyCollection<string> names, string name, int direction, Func<string, string?> title)
     {
         if (names is null) throw new ArgumentNullException(nameof(names));
+        if (title is null) throw new ArgumentNullException(nameof(title));
         if (direction is not (-1 or 1)) throw new ArgumentOutOfRangeException(nameof(direction));
         ToolStore.ValidateName(name);
-        var presentations = names.Distinct(StringComparer.Ordinal).ToDictionary(candidate => candidate, Get, StringComparer.Ordinal);
+        var presentations = names.Distinct(StringComparer.Ordinal).ToDictionary(candidate => candidate,
+            candidate => Get(candidate, title(candidate)), StringComparer.Ordinal);
         var ordered = presentations.Keys.OrderBy(candidate => presentations[candidate].Order)
             .ThenBy(candidate => candidate, StringComparer.Ordinal).ToList();
         var index = ordered.IndexOf(name);
@@ -147,7 +149,7 @@ public static class ToolRibbonSlots
     }
 }
 
-public sealed record ToolParameterField(string Name, string Type, string Description, bool Required,
+public sealed record ToolParameterField(string Name, string Label, string Type, string Description, bool Required,
     IReadOnlyList<object> Choices, string? Minimum, string? Maximum, int? MaxLength);
 
 public sealed class ToolParameterForm
@@ -164,6 +166,7 @@ public sealed class ToolParameterForm
         var required = root.Element("required")?.Elements().Select(item => item.Value).ToArray() ?? [];
         Fields = root.Element("properties")?.Elements().Select(property => new ToolParameterField(
             (string?)property.Attribute("item") ?? property.Name.LocalName,
+            property.Element("title")?.Value.Trim() ?? (string?)property.Attribute("item") ?? property.Name.LocalName,
             property.Element("type")!.Value,
             property.Element("description")?.Value ?? "",
             required.Contains((string?)property.Attribute("item") ?? property.Name.LocalName),
@@ -196,11 +199,11 @@ public sealed class ToolParameterForm
             else if (field.Type == "boolean" && bool.TryParse(pair.Value, out var boolean)) value = boolean;
             else if (field.Type == "integer" && long.TryParse(pair.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var integer)) value = integer;
             else if (field.Type == "number" && double.TryParse(pair.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) && !double.IsNaN(number) && !double.IsInfinity(number)) value = number;
-            else throw new ArgumentException($"args.{pair.Key}: expected {field.Type}.");
+            else throw new ArgumentException($"args.{field.Label}: expected {field.Type}.");
             arguments.Add(pair.Key, value);
         }
         var json = CodeResultLimiter.ToJson(arguments);
-        ToolArguments.Validate(_schema, json);
+        ToolArguments.Validate(_schema, json, useFieldLabels: true);
         return json;
     }
 }

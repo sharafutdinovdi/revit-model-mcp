@@ -100,11 +100,36 @@ public static class ToolArguments
         catch (ArgumentException) { throw new ArgumentException("Duplicate JSON properties are not allowed."); }
     }
 
+    public static string? Title(string schemaJson) =>
+        Members(Parse(schemaJson)).TryGetValue("title", out var title) ? title.Value.Trim() : null;
+
+    private static void ValidateTitle(Dictionary<string, XElement> rules, string path)
+    {
+        if (!rules.TryGetValue("title", out var title)) return;
+        var message = $"{path}.title must be 1 to 80 characters of text.";
+        if (Kind(title) != "string" || title.Value.Trim().Length is < 1 or > 80 || title.Value.Any(char.IsControl))
+            throw new ArgumentException(message);
+        try { ToolDefinition.RejectFormat(title.Value); }
+        catch (ArgumentException) { throw new ArgumentException(message); }
+    }
+
+    private static void ValidateKeywords(Dictionary<string, XElement> rules, string path, string[] supported)
+    {
+        var unsupported = rules.Keys.Except(supported, StringComparer.Ordinal).OrderBy(keyword => keyword, StringComparer.Ordinal).ToArray();
+        if (unsupported.Length == 0) return;
+        static string SingleLine(string text) => string.Concat(text.Select(character =>
+            char.IsControl(character) || char.GetUnicodeCategory(character) is UnicodeCategory.Format or
+                UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator ? '?' : character));
+        var keywords = unsupported.Take(5).Select(keyword =>
+            CodeResultLimiter.ToJson(SingleLine(keyword.Length > 40 ? keyword[..40] : keyword)));
+        throw new ArgumentException($"{SingleLine(path)}: unsupported schema keyword {string.Join(", ", keywords)}{(unsupported.Length > 5 ? ", ..." : "")}. Supported: {string.Join(", ", supported)}.");
+    }
+
     public static void ValidateSchema(string json)
     {
         var schema = Members(Parse(json));
-        if (schema.Keys.Except(["type", "properties", "required", "additionalProperties"]).Any())
-            throw new ArgumentException("parameters contains unsupported schema keywords.");
+        ValidateKeywords(schema, "parameters", ["type", "title", "properties", "required", "additionalProperties"]);
+        ValidateTitle(schema, "parameters");
         if (!schema.TryGetValue("type", out var type) || type.Value != "object" || Kind(type) != "string")
             throw new ArgumentException("parameters.type must be object.");
         if (schema.TryGetValue("additionalProperties", out var additional) &&
@@ -115,8 +140,8 @@ public static class ToolArguments
         {
             ToolDefinition.RejectFormat(property.Key);
             var rules = Members(property.Value);
-            if (rules.Keys.Except(["type", "description", "enum", "minimum", "maximum", "maxLength"]).Any())
-                throw new ArgumentException($"parameters.{property.Key}: unsupported schema keyword.");
+            ValidateKeywords(rules, $"parameters.{property.Key}", ["type", "title", "description", "enum", "minimum", "maximum", "maxLength"]);
+            ValidateTitle(rules, $"parameters.{property.Key}");
             if (!rules.TryGetValue("type", out var primitive) || Kind(primitive) != "string" ||
                 primitive.Value is not ("string" or "number" or "integer" or "boolean"))
                 throw new ArgumentException($"parameters.{property.Key}: type must be string, number, integer or boolean.");
@@ -182,7 +207,10 @@ public static class ToolArguments
         return typed;
     }
 
-    public static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson)
+    public static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson) =>
+        Validate(schemaJson, argsJson, useFieldLabels: false);
+
+    internal static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson, bool useFieldLabels)
     {
         ValidateSchema(schemaJson);
         var schema = Members(Parse(schemaJson));
@@ -190,12 +218,23 @@ public static class ToolArguments
         var args = Members(Parse(argsJson));
         if (schema.TryGetValue("required", out var required))
             foreach (var item in required.Elements())
-                if (!args.ContainsKey(item.Value)) throw new ArgumentException($"args.{item.Value}: required parameter is missing.");
+                if (!args.ContainsKey(item.Value))
+                {
+                    var label = item.Value;
+                    if (useFieldLabels)
+                    {
+                        var rules = Members(properties[item.Value]);
+                        if (rules.TryGetValue("title", out var title)) label = title.Value.Trim();
+                    }
+                    throw new ArgumentException($"args.{label}: required parameter is missing.");
+                }
         var result = new Dictionary<string, object>(StringComparer.Ordinal);
         foreach (var argument in args)
         {
             if (!properties.TryGetValue(argument.Key, out var rules)) throw new ArgumentException($"args.{argument.Key}: unknown parameter.");
-            result[argument.Key] = ValidateValue(argument.Key, argument.Value, Members(rules), true);
+            var parameterRules = Members(rules);
+            var label = useFieldLabels && parameterRules.TryGetValue("title", out var title) ? title.Value.Trim() : argument.Key;
+            result[argument.Key] = ValidateValue(label, argument.Value, parameterRules, true);
         }
         return result;
     }
