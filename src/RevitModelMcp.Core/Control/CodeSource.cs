@@ -82,7 +82,7 @@ public static class CodeResultLimiter
         return builder.ToString();
     }
 
-    private static void WriteJson(StringBuilder builder, object? value)
+    internal static void WriteJson(StringBuilder builder, object? value)
     {
         switch (value)
         {
@@ -101,7 +101,7 @@ public static class CodeResultLimiter
                         case '\r': builder.Append("\\r"); break;
                         case '\t': builder.Append("\\t"); break;
                         default:
-                            if (character < ' ') builder.Append("\\u").Append(((int)character).ToString("x4"));
+                            if (character < ' ') builder.Append("\\u").Append(((int)character).ToString("x4", CultureInfo.InvariantCulture));
                             else builder.Append(character);
                             break;
                     }

@@ -43,6 +43,14 @@ public static class ActivityTitleBuilder
     {
         if (entry is null) throw new ArgumentNullException(nameof(entry));
         if (entry.Command == "system-notice") return entry.Summary;
+        if (entry.Command == "run-tool" && entry.ToolName is string toolName)
+            return entry.State switch
+            {
+                "failed" => $"Failed {toolName}",
+                "running" or "queued" => $"Running {toolName}",
+                _ when entry.DryRun => $"Previewed {toolName}",
+                _ => $"Ran {toolName}"
+            };
         var count = entry.ActionCount ?? entry.ChangedCount + entry.CreatedCount + entry.DeletedCount;
         return entry.State switch
         {

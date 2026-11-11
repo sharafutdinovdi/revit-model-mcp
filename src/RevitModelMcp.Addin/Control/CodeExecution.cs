@@ -117,7 +117,7 @@ internal static class CodeExecution
     [ThreadStatic] private static ActionCommandExecutor.ActionFailures? _currentFailures;
 
     public static ActionResultData Execute(UIApplication application, Document? document, UIDocument? uiDocument,
-        ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId, bool compileOnly = false)
+        ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId, bool compileOnly = false, bool ribbonSource = false)
     {
         var stopwatch = Stopwatch.StartNew();
         var code = action.Code ?? throw new ArgumentException("code is required.");
@@ -138,7 +138,7 @@ internal static class CodeExecution
             result.Warning = "The script owns transactions and document lifecycle. Undo is not guaranteed.";
         if (!compileOnly) WriteAudit(code, clientName, document?.Title, document?.PathName, action.TransactionMode, jobId);
         if (!compileOnly && action.ToolName is not null)
-            PluginLog.Info(ToolSession.AuditText(action.ToolName, action.ToolRevision!, action.Args.Keys));
+            PluginLog.Info(ToolSession.AuditText(action.ToolName, action.ToolRevision!, action.Args.Keys) + (ribbonSource ? "; source=ribbon" : "; source=mcp"));
         var key = action.ToolRevision is null ? CodeSource.CacheKey(code, action.TransactionMode) : ToolSession.CacheKey(action.ToolRevision) + ":" + action.TransactionMode;
         if (!Cache.TryGet(key, out var compiled) || compileOnly)
         {

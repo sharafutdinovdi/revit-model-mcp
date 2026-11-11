@@ -166,13 +166,23 @@ Report vulnerabilities through the private advisory form or the email address in
 
 ## My tools
 
-Saved tools use the same policy gates as `execute_code`, including machine policy, workstation read-only lock, and transport authentication.
-The first run of every tool name and revision hash requires a `confirm_token` in each Revit session, including read mode and dry runs.
+Saved tools use the same execution gates as `execute_code`, including machine policy and the workstation read-only lock.
+MCP requests also require transport authentication.
+The first MCP run of every tool name and revision hash requires a `confirm_token` in each Revit session, including read mode and dry runs.
 The confirmation shows name, mode, short revision hash, saved timestamp, replaced hash when present, and validated arguments truncated to 300 characters.
 The confirmed set exists only in Revit process memory, keyed by name and revision hash.
-After confirmation, read mode and dry runs execute without another token for that revision in that session.
-Action runs that commit changes still require per-call confirmation.
+After MCP confirmation, read mode and dry runs execute without another token for that revision in that session.
+MCP action runs that commit changes still require per-call confirmation.
 Execution tokens bind preview versus commit intent; changing `dry_run` consumes and rejects the mismatched token.
+
+Ribbon runs do not use the client token handshake.
+A person at the workstation reviews the revision in a Revit dialog on first use per session and confirms each action run.
+Ribbon and MCP session confirmations are independent; all other execution gates are identical.
+`ExecuteCode=off` disables both paths, and `ToolDeny` for `run-tool` disables both paths.
+There is no separate policy switch for local runs only.
+In the store channel the same machine-policy `ExecuteCode=confirm` rule applies to both paths.
+Display labels and last used arguments are stored unencrypted in the Windows user's profile.
+Secrets do not belong in tool arguments or display labels.
 
 The [contract evidence](../actions.md#contract-evidence) links the maintained implementations for lock atomicity, write-new files, diagnostics, routing identity, request outcome recovery, dialogs and progress.
 
@@ -182,5 +192,5 @@ A signed revision alone does not grant session confirmation.
 Approval does not protect against a client that can already execute code in the current session.
 `execute_code` dry runs retain their existing semantics: Revit model rollback does not sandbox file or network operations.
 Internal Core `ToolStore` and `ToolDefinition` types block direct script calls as defense in depth, not as a security guarantee.
-Tool run audits contain name, revision, and argument names without argument values.
+Tool run audits contain name, revision, source and argument names without argument values.
 Response redaction preserves saved tool source, parameter schema, and description in previews while redacting model paths elsewhere.

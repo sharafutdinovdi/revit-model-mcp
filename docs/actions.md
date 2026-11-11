@@ -716,8 +716,10 @@ The [batch collector](batch.md) uses a separate worker with an add-in read-only 
 [My tools](my-tools.md) reuses the C# execution pipeline with validated `ctx.Args` parameters.
 `revit_save_tool` compiles without execution and requires confirmation before storing the approved revision.
 `revit_run_tool` validates its revision and arguments before execution.
-The first run in each Revit session requires the token handshake, including read mode and dry runs.
-Every committed action-mode run also requires the handshake; read-mode runs always roll back model transactions.
+The first MCP run in each Revit session requires the token handshake, including read mode and dry runs.
+Every committed MCP action-mode run also requires the handshake; read-mode runs always roll back model transactions.
+The **My tools** ribbon runs through the same execution gates with independent local revision review and model-change confirmation.
+Its parameter form offers Preview and Run; Settings also runs approved overflow or hidden tools.
 The token does not prove human approval, and rollback does not undo C# file, network, or process effects.
 In the store channel only machine policy `ExecuteCode=confirm` enables saved C#, including read mode and dry runs.
 Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.

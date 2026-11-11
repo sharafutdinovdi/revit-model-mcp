@@ -29,6 +29,7 @@ public sealed class ActivityEntry
     [DataMember(Name = "time")] public DateTimeOffset Time { get; set; }
     [DataMember(Name = "clientName")] public string ClientName { get; set; } = "unknown";
     [DataMember(Name = "command")] public string Command { get; set; } = string.Empty;
+    [DataMember(Name = "toolName", EmitDefaultValue = false)] public string? ToolName { get; set; }
     [DataMember(Name = "document")] public string Document { get; set; } = string.Empty;
     [DataMember(Name = "state")] public string State { get; set; } = "done";
     [DataMember(Name = "summary")] public string Summary { get; set; } = string.Empty;

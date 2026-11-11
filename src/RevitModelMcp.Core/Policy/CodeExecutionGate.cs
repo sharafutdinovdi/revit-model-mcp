@@ -18,7 +18,7 @@ public enum CodeExecutionSource
 /// <summary>The effective state of revit_execute_code and process_models code steps.</summary>
 public sealed record CodeExecutionState(bool Enabled, CodeExecutionSource Source)
 {
-    /// <summary>The value shown in ping: "confirm" (enabled, every committed run uses a client handshake) or "off".</summary>
+    /// <summary>The value shown in ping: "confirm" enables code with MCP tokens or local ribbon review and action confirmation; "off" disables both paths.</summary>
     public string Value => Enabled ? "confirm" : "off";
 }
 

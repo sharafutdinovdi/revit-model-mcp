@@ -251,6 +251,11 @@ public sealed class ExternalEventRequestQueue
         _markWaiting = markWaiting;
         _delay = delay ?? (static interval => Task.Delay(interval));
     }
+    public bool HasPendingRequest
+    {
+        get { lock (_sync) return _requested && !_executing; }
+    }
+
     public void Request()
     {
         var shouldRaise = false;
@@ -275,7 +280,7 @@ public sealed class ExternalEventRequestQueue
     {
         lock (_sync)
         {
-            if (_executing)
+            if (_executing || !_requested)
             {
                 return;
             }
@@ -309,34 +314,21 @@ public sealed class ExternalEventRequestQueue
 
     private void RaisePendingRequest()
     {
-        try
+        if (_raise()) return;
+        lock (_sync)
         {
-            if (!_raise())
-            {
-                lock (_sync)
-                {
-                    if (_retryScheduled) return;
-                    _retryScheduled = true;
-                }
-                _ = _delay(TimeSpan.FromMilliseconds(100)).ContinueWith(_ =>
-                {
-                    lock (_sync) _retryScheduled = false;
-                    lock (_sync)
-                    {
-                        if (!_requested || _executing) return;
-                    }
-                    RaisePendingRequest();
-                }, TaskScheduler.Default);
-            }
+            if (_retryScheduled) return;
+            _retryScheduled = true;
         }
-        catch
+        _ = _delay(TimeSpan.FromMilliseconds(100)).ContinueWith(_ =>
         {
+            lock (_sync) _retryScheduled = false;
             lock (_sync)
             {
-                _requested = false;
+                if (!_requested || _executing) return;
             }
-            throw;
-        }
+            RaisePendingRequest();
+        }, TaskScheduler.Default);
     }
 
     private void MarkWaitingIfDelayed()
