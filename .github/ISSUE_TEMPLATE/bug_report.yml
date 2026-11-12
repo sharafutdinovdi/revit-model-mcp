@@ -12,6 +12,7 @@ body:
         - '2024'
         - '2025'
         - '2026'
+        - '2027'
         - Not applicable (server only)
     validations:
       required: true
@@ -27,7 +28,7 @@ body:
     id: installation
     attributes:
       label: How installed
-      description: State whether the add-in came from a release ZIP, CI artifact or source build, and how the Python server was installed.
+      description: State whether the add-in came from a release MSI, release ZIP, CI artifact or source build, and how the Python server was installed.
     validations:
       required: true
   - type: dropdown
@@ -38,6 +39,7 @@ body:
         - HTTP (loopback or LAN)
         - HTTP through an SSH tunnel
         - SSH file channel
+        - Local (REVIT_MCP_HOST=local)
         - Not applicable or unknown
     validations:
       required: true

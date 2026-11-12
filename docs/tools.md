@@ -377,9 +377,9 @@ Cycles, nesting of 128 levels, colliding dictionary keys after string conversion
 | Tool | Purpose |
 | --- | --- |
 | `revit_model_audit` | Read one addressed model or evaluate a local snapshot directory against local YAML or JSON rules, inline rules or a builtin pack. Save immutable per-model results and compare with earlier results. Toolset: `read`. |
-| `revit_audit_report` | Build new XLSX and self-contained HTML files from a local single-model or batch audit result without Revit. Toolset: `batch`. |
+| `revit_audit_report` | Build new XLSX, self-contained HTML and BCF 2.1 files from a local audit result without Revit. BCF requires a single-model result. Toolset: `batch`. |
 
-See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html` or `both`).
+See [Model audit](model-audit.md) for rule examples, packs, evidence limits, statuses, history paths and report columns. `revit_model_audit` accepts `rules`, `rules_inline`, `compare_with="previous"`, `save=true`, `timeout_seconds`, `document` and `process_id`. `revit_audit_report` accepts `audit`, `output` and `format="both"` (`xlsx`, `html`, `both`, `bcf` or `all`). `both` writes XLSX and HTML; `all` also writes BCF 2.1. Batch results accept only `xlsx`, `html` and `both`.
 
 For offline batch evaluation, pass `snapshots_dir` and optionally `batch_models` from the complete `revit_batch_fetch.models` inventory.
 No Revit transport is used in this mode; `document` and `process_id` are rejected.

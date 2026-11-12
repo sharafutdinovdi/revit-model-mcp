@@ -15,7 +15,7 @@ Paste this prompt into a local installation agent:
 Install Model MCP for Revit from https://github.com/sharafutdinovdi/revit-model-mcp. Follow docs/agent-install.md exactly.
 ```
 
-[One-command agent install](agent-install.md) includes checksum verification, client registration, and diagnostics.
+[Agent installation guide](agent-install.md) covers the published MSI, checksum verification, client registration, and diagnostics.
 
 ## Guides
 
