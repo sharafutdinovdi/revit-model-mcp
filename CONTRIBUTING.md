@@ -17,7 +17,7 @@ Issues labeled `help wanted` are open to anyone; larger ones are tracked as `epi
 You do not need Revit or Windows for the Python server, the Core library, tests and documentation:
 
 ```sh
-cd server && uv run --with pytest --with hypothesis --with lxml==6.1.3 pytest -q
+uv run --directory server --with pytest --with hypothesis --with lxml==6.1.3 pytest -q
 dotnet test --project tests/RevitModelMcp.Core.Tests/RevitModelMcp.Core.Tests.csproj
 uv tool install pre-commit && pre-commit install
 pre-commit run --all-files
