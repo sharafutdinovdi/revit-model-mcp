@@ -6,6 +6,86 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v2.0.0...v2.1.0) (2026-11-12)
+
+
+### Features
+
+* **addin:** name a tool button with a schema title ([#433](https://github.com/sharafutdinovdi/revit-model-mcp/issues/433)) ([0458437](https://github.com/sharafutdinovdi/revit-model-mcp/commit/04584379c0374cfb099ff39a6e03a37ea46e98fc))
+* **addin:** run saved tools from the Revit ribbon ([#431](https://github.com/sharafutdinovdi/revit-model-mcp/issues/431)) ([b3512cd](https://github.com/sharafutdinovdi/revit-model-mcp/commit/b3512cd60261e5516771f3b589784d9ae0c17d31)), closes [#430](https://github.com/sharafutdinovdi/revit-model-mcp/issues/430)
+* **audit:** embed evidence and export BCF findings ([#425](https://github.com/sharafutdinovdi/revit-model-mcp/issues/425)) ([aebc118](https://github.com/sharafutdinovdi/revit-model-mcp/commit/aebc1181bcb85d2e506ac54a136b9f0b18547120)), closes [#216](https://github.com/sharafutdinovdi/revit-model-mcp/issues/216)
+* **audit:** read worksets and paged element ownership ([#423](https://github.com/sharafutdinovdi/revit-model-mcp/issues/423)) ([a3e5b61](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a3e5b617bd808435abb88f490d162784a0ceabea)), closes [#213](https://github.com/sharafutdinovdi/revit-model-mcp/issues/213)
+* install and verify with one command for AI agents ([#348](https://github.com/sharafutdinovdi/revit-model-mcp/issues/348)) ([4578f6a](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4578f6a0fb64fcf680fd427cd1b883d42c3c7579))
+* **server:** audit snapshot batches with per-model history ([#424](https://github.com/sharafutdinovdi/revit-model-mcp/issues/424)) ([62a8a52](https://github.com/sharafutdinovdi/revit-model-mcp/commit/62a8a524ed655a21cc642d8463a0d5237308b535)), closes [#215](https://github.com/sharafutdinovdi/revit-model-mcp/issues/215)
+* **toolsets:** add task presets and measured schema costs ([#381](https://github.com/sharafutdinovdi/revit-model-mcp/issues/381)) ([8a68732](https://github.com/sharafutdinovdi/revit-model-mcp/commit/8a687323b1af4ef26c41d89f9ab213b87dc3ef4d))
+
+
+### Bug Fixes
+
+* **actions:** verify deletions without reading deleted elements ([#402](https://github.com/sharafutdinovdi/revit-model-mcp/issues/402)) ([4737433](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4737433bbc32e5ff126556bba3d2da1f03d5dfe2))
+* **activity:** replace the running title when an operation completes ([#411](https://github.com/sharafutdinovdi/revit-model-mcp/issues/411)) ([5554593](https://github.com/sharafutdinovdi/revit-model-mcp/commit/55545938a8587540d38304d68b837524ba93ea95))
+* **addin:** dispose curve and collector wrappers in view readers ([#396](https://github.com/sharafutdinovdi/revit-model-mcp/issues/396)) ([2264fa7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2264fa7b1edaee19f32006bc20657acd4ee6094e))
+* **addin:** fall back to an existing 3D view when no plan can show the elements ([#419](https://github.com/sharafutdinovdi/revit-model-mcp/issues/419)) ([12ca1c7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/12ca1c74c96b0bca7af43f22a7741eec022a1b92))
+* **addin:** give saved tools their own default icon ([#432](https://github.com/sharafutdinovdi/revit-model-mcp/issues/432)) ([77d7753](https://github.com/sharafutdinovdi/revit-model-mcp/commit/77d7753db1aa1f5c02f7429fe07057c5a4a63ce9))
+* **addin:** guard the batch dialog handler against exceptions and slow regexes ([#397](https://github.com/sharafutdinovdi/revit-model-mcp/issues/397)) ([0de5656](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0de5656d644b0e1e4754f607f1e2fadeb2662c91))
+* **addin:** keep accepted CAD joins when preflight needs more rounds ([#407](https://github.com/sharafutdinovdi/revit-model-mcp/issues/407)) ([961db97](https://github.com/sharafutdinovdi/revit-model-mcp/commit/961db978b4a9aceec2951a7d26747ade47bf7544))
+* **addin:** keep document identity safe after documents close ([#410](https://github.com/sharafutdinovdi/revit-model-mcp/issues/410)) ([7ff9c7d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/7ff9c7d7f0f7f1f64815aeadbcd1b7bc21d076de))
+* **addin:** keep My tools buttons visible ([476a4b5](https://github.com/sharafutdinovdi/revit-model-mcp/commit/476a4b5e94d49b0ec0ad2e39e2145258e49d21be))
+* **addin:** keep the requested crop in plan captures ([#403](https://github.com/sharafutdinovdi/revit-model-mcp/issues/403)) ([86a49cb](https://github.com/sharafutdinovdi/revit-model-mcp/commit/86a49cb9be84a23f87d1f9dfa026754ce1f9e284))
+* **addin:** keep the save reminder from blocking queued jobs ([#418](https://github.com/sharafutdinovdi/revit-model-mcp/issues/418)) ([dce6bca](https://github.com/sharafutdinovdi/revit-model-mcp/commit/dce6bca75fc58a702ff4fa6f20cd01dc0a048f95))
+* **addin:** load product icons before opening windows ([#350](https://github.com/sharafutdinovdi/revit-model-mcp/issues/350)) ([4079dfe](https://github.com/sharafutdinovdi/revit-model-mcp/commit/4079dfe33fd6c2693dc23cd0f0e0ba365a826403))
+* **addin:** never block the Revit thread when showing elements ([#414](https://github.com/sharafutdinovdi/revit-model-mcp/issues/414)) ([e7ed57d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e7ed57d9cbb595789d71c706243e1392ef418710))
+* **audit:** keep scope, units and document identity in findings ([#372](https://github.com/sharafutdinovdi/revit-model-mcp/issues/372)) ([6b4207d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6b4207df6f0786cc7bd592d1dad26fc025ea3f5d))
+* **documents:** close owned documents after lifecycle failures ([#385](https://github.com/sharafutdinovdi/revit-model-mcp/issues/385)) ([0e53590](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0e53590e551f87c0e2245e6d4e1f794a345233e8))
+* **exec:** collect failures and expose blocked dialogs ([#378](https://github.com/sharafutdinovdi/revit-model-mcp/issues/378)) ([b4a9b43](https://github.com/sharafutdinovdi/revit-model-mcp/commit/b4a9b43f4a2d4e1ba2605e452a0c104882933daf))
+* **exec:** preserve large results and report truncation explicitly ([#375](https://github.com/sharafutdinovdi/revit-model-mcp/issues/375)) ([6a61ea0](https://github.com/sharafutdinovdi/revit-model-mcp/commit/6a61ea0579763719eaf3f544ccaffcb507b426da))
+* **exec:** protect and report every document a script touches ([#383](https://github.com/sharafutdinovdi/revit-model-mcp/issues/383)) ([e13dafb](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e13dafb829d5109f53ef33faa75a022c5fb17dfb))
+* **files:** never replace an existing file in the write-new fallback ([#384](https://github.com/sharafutdinovdi/revit-model-mcp/issues/384)) ([8d8ea02](https://github.com/sharafutdinovdi/revit-model-mcp/commit/8d8ea022b7d15b06c0805b5dd0abb656f6a16e7b))
+* **http:** resolve document IDs in Revit instead of against the health title ([#413](https://github.com/sharafutdinovdi/revit-model-mcp/issues/413)) ([a6c6302](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a6c63027da9fbdf7a226a56113631cc1307d1bf4))
+* **install:** update each Revit year atomically and print a summary ([#400](https://github.com/sharafutdinovdi/revit-model-mcp/issues/400)) ([c8210c7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/c8210c769f48553b0d25100a4cc94ccbb2d5f11e))
+* **lock:** make workstation unlock atomic across Revit processes ([#379](https://github.com/sharafutdinovdi/revit-model-mcp/issues/379)) ([23665f4](https://github.com/sharafutdinovdi/revit-model-mcp/commit/23665f40995e2d90eaf0c39c713aa40cf495e114))
+* **lock:** share the lock file safely on Windows ([#394](https://github.com/sharafutdinovdi/revit-model-mcp/issues/394)) ([d1d1413](https://github.com/sharafutdinovdi/revit-model-mcp/commit/d1d1413e5fa659f8bc963a69bc0618d5c113e029))
+* **progress:** keep notifications monotonic and off the result path ([#374](https://github.com/sharafutdinovdi/revit-model-mcp/issues/374)) ([60eab4a](https://github.com/sharafutdinovdi/revit-model-mcp/commit/60eab4a35a24d0424aecbc78ddae44eb20c5f117))
+* **reads:** propagate coverage omissions to response diagnostics ([#376](https://github.com/sharafutdinovdi/revit-model-mcp/issues/376)) ([63de1e6](https://github.com/sharafutdinovdi/revit-model-mcp/commit/63de1e6359c1488f82f8b90b2744f6932a1c2cde))
+* **routing:** keep process and document identity end to end ([#386](https://github.com/sharafutdinovdi/revit-model-mcp/issues/386)) ([0402a18](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0402a18a99e52eab02522c55d63794d0033eb425))
+* **server:** require an exact target for actions when several Revit processes run ([#421](https://github.com/sharafutdinovdi/revit-model-mcp/issues/421)) ([0f3bd46](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0f3bd46bb005f63b98f5044501ce71ce4fe5b048))
+* **ssh:** select batch processes like other tools ([#417](https://github.com/sharafutdinovdi/revit-model-mcp/issues/417)) ([1ec059d](https://github.com/sharafutdinovdi/revit-model-mcp/commit/1ec059d6c282043ea2a99da7ad9f9bc6326c4578))
+* **startup:** report transport availability and contain lock failures ([#377](https://github.com/sharafutdinovdi/revit-model-mcp/issues/377)) ([616c476](https://github.com/sharafutdinovdi/revit-model-mcp/commit/616c47696a24501d7762de93fa72b3ec306b7ae7))
+* **tests:** pass the in-Revit regression run on Revit 2022 and 2027 ([#422](https://github.com/sharafutdinovdi/revit-model-mcp/issues/422)) ([f335afb](https://github.com/sharafutdinovdi/revit-model-mcp/commit/f335afbdbb26220ab374d7068ca1fdb880a68e8f))
+* **tests:** run in-Revit tests on the installed Revit runtime ([#392](https://github.com/sharafutdinovdi/revit-model-mcp/issues/392)) ([7acad44](https://github.com/sharafutdinovdi/revit-model-mcp/commit/7acad449f2a3a55058b6416cd5519dbd64b3d551))
+* **tools:** bind confirmation tokens to dry-run intent ([#371](https://github.com/sharafutdinovdi/revit-model-mcp/issues/371)) ([adcde88](https://github.com/sharafutdinovdi/revit-model-mcp/commit/adcde883d35aa895d8ddb5c214ab4d87efc95cf1))
+* **tools:** route saved-tool catalog calls without a model target ([#391](https://github.com/sharafutdinovdi/revit-model-mcp/issues/391)) ([0a782d7](https://github.com/sharafutdinovdi/revit-model-mcp/commit/0a782d7ddfdc5a2cfd0a493c6678e63bb9bfb685))
+* **transport:** recover action outcomes without running them twice ([#387](https://github.com/sharafutdinovdi/revit-model-mcp/issues/387)) ([15bbc53](https://github.com/sharafutdinovdi/revit-model-mcp/commit/15bbc53287255688252ff98a6104d12f85fe7dfd))
+* **winget:** add package moniker after review ([#345](https://github.com/sharafutdinovdi/revit-model-mcp/issues/345)) ([2d92857](https://github.com/sharafutdinovdi/revit-model-mcp/commit/2d928571b48083feb264fa1c73b57664a4d49497))
+* **winget:** clear the expected lookup failure before submission ([#342](https://github.com/sharafutdinovdi/revit-model-mcp/issues/342)) ([e730a43](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e730a4335f61663c16aad102a3c96aebfabb94a2))
+* **winget:** submit current schemas through GitHub ([#343](https://github.com/sharafutdinovdi/revit-model-mcp/issues/343)) ([ed11ac8](https://github.com/sharafutdinovdi/revit-model-mcp/commit/ed11ac81a9def5bef4ba07d8d6efaacfce07991c))
+* **winget:** use manifest schema 1.28.0 ([#340](https://github.com/sharafutdinovdi/revit-model-mcp/issues/340)) ([e6ac562](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e6ac5629dc8e0360d54f2eff7c2f71d9fa177097))
+
+
+### Performance
+
+* **ssh:** reuse verified process generations and back off polling ([#382](https://github.com/sharafutdinovdi/revit-model-mcp/issues/382)) ([487f681](https://github.com/sharafutdinovdi/revit-model-mcp/commit/487f681d5f0712a03a80164a826db5b3012081ca))
+
+
+### Documentation
+
+* add best practices and download badges ([#429](https://github.com/sharafutdinovdi/revit-model-mcp/issues/429)) ([99d72c0](https://github.com/sharafutdinovdi/revit-model-mcp/commit/99d72c01f41ce6f2dad052703305478d82b32ed9))
+* correct stale setup, template and reference details ([#434](https://github.com/sharafutdinovdi/revit-model-mcp/issues/434)) ([be74eed](https://github.com/sharafutdinovdi/revit-model-mcp/commit/be74eed972818e5e98866ce3a883c933b1cdad25))
+* improve AI discovery with guides and structured metadata ([#349](https://github.com/sharafutdinovdi/revit-model-mcp/issues/349)) ([a15de74](https://github.com/sharafutdinovdi/revit-model-mcp/commit/a15de743bdb150e1e7f4ea69f8939fe402f06aa3))
+* **install:** point to available installers until the script ships ([#373](https://github.com/sharafutdinovdi/revit-model-mcp/issues/373)) ([61e379f](https://github.com/sharafutdinovdi/revit-model-mcp/commit/61e379fbf5d0b5f43126b8c6da8f9ed333094f04))
+* reconcile safety and workflow contracts ([#398](https://github.com/sharafutdinovdi/revit-model-mcp/issues/398)) ([80a94b2](https://github.com/sharafutdinovdi/revit-model-mcp/commit/80a94b2538bb40e1e5acb29975ab1444491d1d77))
+* refresh README and tool reference for 2.0 ([#347](https://github.com/sharafutdinovdi/revit-model-mcp/issues/347)) ([9e8f729](https://github.com/sharafutdinovdi/revit-model-mcp/commit/9e8f729adcfb14c7f35871cf3db5603c4fb2c096))
+* state negotiated MCP versions and the client identity source ([#399](https://github.com/sharafutdinovdi/revit-model-mcp/issues/399)) ([e760d70](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e760d70dceb504842ca140a831c1d7aa2357a2a0))
+* **validation:** record Revit 2022 and 2025 startup timings ([#412](https://github.com/sharafutdinovdi/revit-model-mcp/issues/412)) ([9acfe83](https://github.com/sharafutdinovdi/revit-model-mcp/commit/9acfe8373c60817afa32ef761de683bcfc51c792))
+
+
+### Dependencies
+
+* **deps:** Bump TUnit from 1.78.0 to 1.81.10 ([#405](https://github.com/sharafutdinovdi/revit-model-mcp/issues/405)) ([f32a4d8](https://github.com/sharafutdinovdi/revit-model-mcp/commit/f32a4d833e97e401732327bd71633245b91913a3))
+* **deps:** refresh npm, Actions, Python and NuGet dependencies ([#401](https://github.com/sharafutdinovdi/revit-model-mcp/issues/401)) ([76c6cc1](https://github.com/sharafutdinovdi/revit-model-mcp/commit/76c6cc1cea23730abee20994bc39e05ea76de888))
+* **deps:** update pydantic to 2.14.3 ([#416](https://github.com/sharafutdinovdi/revit-model-mcp/issues/416)) ([fbf2392](https://github.com/sharafutdinovdi/revit-model-mcp/commit/fbf2392bbd5cd2afac042af6a2d9e2cb2f2c8a11))
+* **deps:** update Ruff to 0.17.3 and server runtime packages ([#408](https://github.com/sharafutdinovdi/revit-model-mcp/issues/408)) ([e766f92](https://github.com/sharafutdinovdi/revit-model-mcp/commit/e766f9241cb58fddaede7429f729d7282571fa5f))
+
 ## [2.0.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v1.0.0...v2.0.0) (2026-11-03)
 
 
