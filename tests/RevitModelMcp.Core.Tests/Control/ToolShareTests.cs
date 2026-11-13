@@ -243,6 +243,21 @@ public sealed class ToolShareTests
     }
 
     [Test]
+    public async Task DuplicateLocalTermsPreserveTheFirstKindAndCountEachOccurrenceOnce()
+    {
+        var share = Share() with { Code = "Share check model and SHARE CHECK MODEL" };
+        var result = share.FindPrivateData([
+            ("model or project name", "Share check model"),
+            ("model or project name", "  SHARE CHECK MODEL  "),
+            ("other name", "share check model")
+        ]);
+        await Assert.That(result.TotalCount).IsEqualTo(2);
+        await Assert.That(result.Findings.Count).IsEqualTo(2);
+        await Assert.That(result.Findings.All(finding => finding.Kind == "model or project name" && finding.Field == "code")).IsTrue();
+        await Assert.That(result.Incomplete).IsFalse();
+    }
+
+    [Test]
     public async Task OrdinaryToolTextHasNoFindings()
     {
         var share = Share() with

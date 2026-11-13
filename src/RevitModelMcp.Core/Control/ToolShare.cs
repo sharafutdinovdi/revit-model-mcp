@@ -204,11 +204,13 @@ internal sealed record ToolShare
             ("web address", @"https?://[^\s""<>]{1,2048}"),
             ("email address", @"(?<![a-z0-9.!#$%&'*+/=?^_`{|}~-])[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[a-z0-9-]{1,63}(?:\.[a-z0-9-]{1,63}){1,10}")
         };
+        var distinctTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (kind, term) in localTerms ?? [])
         {
             if (stopwatch.Elapsed >= budget) return new PrivateData(findings, total, Incomplete: true);
             var trimmed = term.Trim();
-            if (trimmed.Length >= 4) patterns.Add((kind, @"(?<![\p{L}\p{N}_])" + Regex.Escape(trimmed) + @"(?![\p{L}\p{N}_])"));
+            if (trimmed.Length >= 4 && distinctTerms.Add(trimmed))
+                patterns.Add((kind, @"(?<![\p{L}\p{N}_])" + Regex.Escape(trimmed) + @"(?![\p{L}\p{N}_])"));
         }
         try
         {
