@@ -52,6 +52,8 @@ internal sealed class MyToolsWindow : Window
     private readonly Button _moveUp = new() { Content = "Move up" };
     private readonly Button _moveDown = new() { Content = "Move down" };
     private readonly Button _transaction = new() { Content = "Transaction: auto" };
+    private readonly Button _export = new() { Content = "Export" };
+    private readonly Button _import = new() { Content = "Import" };
 
     internal MyToolsWindow(UIApplication application)
     {
@@ -69,7 +71,7 @@ internal sealed class MyToolsWindow : Window
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var buttons = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
-        foreach (var button in new[] { _run, _rename, _icon, _visibility, _moveUp, _moveDown, _transaction })
+        foreach (var button in new[] { _run, _rename, _icon, _visibility, _moveUp, _moveDown, _transaction, _export, _import })
         {
             button.MinWidth = 70;
             button.Margin = new Thickness(0, 0, 8, 0);
@@ -94,6 +96,8 @@ internal sealed class MyToolsWindow : Window
         _list.SelectionChanged += (_, _) => UpdateButtons();
         _showCode.Click += (_, _) => ShowCode();
         _delete.Click += (_, _) => Delete();
+        _export.Click += (_, _) => Export();
+        _import.Click += (_, _) => Import();
         _run.Click += (_, _) => { if (_list.SelectedItem is Row row) RibbonToolRunner.Run(_application, row.Name, this); };
         _rename.Click += (_, _) => Rename();
         _icon.Click += (_, _) => ChooseIcon();
@@ -195,7 +199,7 @@ internal sealed class MyToolsWindow : Window
                 .ThenBy(tool => tool.Name, StringComparer.Ordinal).Select(tool => new Row(tool.Name, tool))
                 .Concat(invalid.Select(tool => new Row(tool.Name, null, tool.Reason))).ToList();
             _status.Text = tools.Count == 0 && invalid.Count == 0
-                ? "No saved tools yet. After a successful procedure, ask the AI app to save it as a tool. Review its code and confirm the save in the AI app."
+                ? "No saved tools yet. After a successful procedure, ask the AI app to save it as a tool. Review its code and confirm the save in the AI app. You can also import a shared tool file."
                 : "Select a tool to run, review, customize or delete it. The ribbon shows up to 24 visible tools; all approved tools can run here.";
         }
         catch (Exception exception) { _status.Text = "Tools could not be loaded. " + exception.Message + " Review the local tools folder or ask the AI app to save the tool again."; }
@@ -207,6 +211,8 @@ internal sealed class MyToolsWindow : Window
         _showCode.IsEnabled = _list.SelectedItem is Row { Tool: not null };
         _delete.IsEnabled = _list.SelectedItem is Row && !ActionCommandExecutor.ReadOnlyMode && PolicyProvider.Refusal("delete-tool") is null;
         var valid = _list.SelectedItem is Row { Tool: not null };
+        _export.IsEnabled = valid && PolicyProvider.Refusal("get-tool") is null;
+        _import.IsEnabled = !ActionCommandExecutor.ReadOnlyMode && PolicyProvider.Refusal("save-tool") is null;
         _run.IsEnabled = valid && _application.ActiveUIDocument is not null;
         _rename.IsEnabled = valid;
         _icon.IsEnabled = valid;
@@ -277,6 +283,28 @@ internal sealed class MyToolsWindow : Window
             _status.Text = summary;
         }
         catch (Exception exception) { _status.Text = "Tool could not be deleted. " + exception.Message; }
+    }
+
+    private void Export()
+    {
+        if (_list.SelectedItem is not Row { Tool: not null } row) return;
+        try { _status.Text = ToolShareDialogs.Export(_application, this, row.Name); }
+        catch (Exception exception) { _status.Text = "Tool could not be exported. " + exception.Message; }
+    }
+
+    private void Import()
+    {
+        try
+        {
+            var result = ToolShareDialogs.Import(_application, this);
+            if (result.Name is not null)
+            {
+                Refresh();
+                _list.SelectedItem = _list.Items.Cast<Row>().FirstOrDefault(row => row.Name == result.Name);
+            }
+            _status.Text = result.Status;
+        }
+        catch (Exception exception) { _status.Text = "Tool could not be imported. " + exception.Message; }
     }
 
     private void ChangePresentation(Func<ToolPresentation, ToolPresentation> change)

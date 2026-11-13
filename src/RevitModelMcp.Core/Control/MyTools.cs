@@ -378,7 +378,7 @@ internal sealed class ToolStore(string directory)
         }
     }
 
-    private static void AtomicWrite(string path, string text)
+    internal static void AtomicWrite(string path, string text)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

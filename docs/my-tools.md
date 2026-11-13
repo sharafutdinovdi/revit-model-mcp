@@ -120,7 +120,8 @@ Execution displays a wait cursor and a status window.
 The result dialog shows success or failure, a summary and returned text, truncated for display with **Copy result**.
 
 Settings lists names, descriptions, modes, short revisions, tested years, saved timestamps and replacements.
-**Run**, **Show code**, **Rename**, **Icon** and **Hide from ribbon** apply to approved tools.
+**Run**, **Export**, **Show code**, **Rename**, **Icon** and **Hide from ribbon** apply to approved tools.
+**Import** accepts a shared tool file even with an empty list or no open document.
 **Move up** and **Move down** change presentation order and are reachable by keyboard.
 Rename changes only the display label and overrides the root title; the MCP name remains the identifier.
 Icons use the default script icon or an imported, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
@@ -130,11 +131,57 @@ Invalid rows show `not approved`, cannot run, and allow confirmed deletion.
 **Show code** opens a read-only source and parameter viewer.
 **Delete** requires confirmation with No selected by default.
 The windows have no animation.
-An empty list explains how to save the first tool; load errors provide a recovery action.
+An empty list explains how to save or import the first tool; load errors provide a recovery action.
 
 `revit_delete_tool(name)` returns a confirmation challenge.
 A confirmed repeat deletes the tool and all its revisions.
 Deletion cannot be undone in Revit.
+
+
+## Share a tool
+
+**Export** in Settings writes the selected approved tool to `<name>.mcptool.json`.
+Export follows `get-tool` policy and remains available under the workstation read-only lock.
+The export warning lists possible file paths, web addresses, email addresses, local user or computer names, and open model or project names embedded in the tool text.
+The scan is a heuristic, not a privacy guarantee; the author still reads the label, description, parameters and source before sharing.
+Both dialogs report an unfinished scan explicitly; export still requires confirmation when the scan cannot finish.
+Cancel is the default when the warning appears.
+
+**Import** follows `save-tool` policy and the workstation read-only lock.
+The review shows the editable tool name, metadata, full source, parameters and fingerprint before anything is saved.
+A name collision replaces the active revision; changing the tool name imports a separate tool.
+If the installed revision changes during review, import refuses the save.
+Compilation happens only after the user presses **Import**, without executing the source.
+Import signs a new save with the importing Windows user's local approval key and preserves existing visibility, order and remembered arguments.
+The first local run still requires revision review, and the first MCP run still requires its independent confirmation token.
+Imported C# retains the Windows user's file, network and Revit API rights.
+Import only code that has been read or comes from a trusted author.
+
+The version 1 file is one flat UTF-8 JSON object without a BOM.
+Import tolerates a leading UTF-8 BOM and files up to 4 MB.
+
+| Member | Type | Content |
+| --- | --- | --- |
+| `format` | string | `revit-model-mcp/tool` |
+| `formatVersion` | number | `1` |
+| `name` | string | Tool identifier |
+| `label` | string | Display label |
+| `description` | string | Tool description |
+| `mode` | string | `read` or `action` |
+| `testedRevitYears` | array of numbers | Distinct ascending years |
+| `transaction` | string | `auto` or `group` |
+| `parameters` | string | JSON schema text |
+| `code` | string | Normalized source |
+| `icon16` | string | Base64 16x16 PNG or empty |
+| `icon32` | string | Base64 32x32 PNG or empty |
+| `fingerprint` | string | Lowercase SHA-256 of canonical exported values |
+
+Both icons are present or both are empty; stored PNG headers are checked before pixel decoding.
+The file never contains remembered arguments, hidden flags, presentation order, author, creation dates, revision history, approval signatures or the approval key.
+Hard-coded private data in exported text is still part of the file.
+The fingerprint checks integrity and permits comparison between people; it is not a signature and does not authenticate the author.
+Its canonical payload contains every other member in ordinal alphabetical order with deterministic JSON escaping and no whitespace.
+File whitespace, escaping, BOM and line endings do not affect that fingerprint.
 
 ## Storage and security
 
@@ -148,7 +195,7 @@ Lock acquisition retries for up to two seconds and then reports `My tools store 
 The revision hash covers source normalized to LF line endings with outer whitespace removed and one final newline.
 Approval also covers metadata and schema with a store-local HMAC signature.
 A changed source, signature, schema, mode, or pointer causes `revision not approved` at run time.
-Copying revision files from another store does not approve them; saving through the confirmation flow is required.
+Copying revision files from another store does not approve them; use Settings import with source review or the MCP save confirmation flow.
 The local approval key remains in the per-user tools directory.
 
 Presentation lives separately under `%LOCALAPPDATA%\RevitModelMcp\tool-presentation\<name>.json`.
@@ -187,6 +234,8 @@ Approval does not protect against a client that can already execute code in the 
 `execute_code` dry-run semantics remain unchanged; rollback covers Revit model changes and does not sandbox file or network access.
 Internal `ToolStore` and `ToolDefinition` types prevent direct script calls through the Core assembly surface as defense in depth, not as a security guarantee.
 My tools use the same machine policy, workstation read-only lock, transport authentication, and execution gates as `execute_code`.
+Import review is the only barrier against a hostile shared file.
+The fingerprint does not authenticate its source or limit the imported code's rights.
 
 A click in Revit is a local human action, not an MCP token exchange.
 It enters the same `run-tool` execution pipeline with approval/HMAC, active revision, argument validation, machine policy, store-channel rules, workstation lock, transaction ownership, named Undo and Activity gates.
@@ -197,7 +246,7 @@ Saved C# retains full Revit API access and the Windows user's file, network and 
 
 ## Verification
 
-Core tests cover normalized hashes, argument validation, approval binding, tamper refusal, persistence, atomic file cleanup, catalog limits, presentation defaults and corruption, slot assignment, form validation, independent session confirmations and refusal mapping.
+Core tests cover normalized hashes, argument validation, approval binding, tamper refusal, persistence, atomic file cleanup, catalog limits, presentation defaults and corruption, slot assignment, form validation, independent session confirmations, refusal mapping, cross-store sharing, canonical fingerprints, malformed share refusals and private-data scan limits.
 Python tests cover schemas, confirmation forwarding, annotations, and policy refusals.
 Run the following workstation checklist in Revit 2022 and 2026 at minimum; other supported years also require workstation verification.
 
@@ -208,6 +257,10 @@ Run the following workstation checklist in Revit 2022 and 2026 at minimum; other
 5. Check rename, Move up/down, hide/show, default and custom icons, oversized or corrupt stored/imported PNG rejection before pixel decoding, keyboard order, both themes and no animation.
 6. Delete through MCP and Settings without prior presentation data, then with locked or read-only presentation data; verify successful deletion, a neutral note without local paths, and immediate ribbon refresh.
 7. Check named Activity rows, one named Undo entry, audit source without argument values, result copying and truncation, and wait feedback during long execution.
+8. Export under one Revit year and Windows user, then import under another year and user; check source, parameters, icons and local approval.
+9. Check identical-content import, name collision replacement, rename during import, and refusal when the installed revision changes during review.
+10. Check locked import refusal, locked export, `save-tool` and `get-tool` policy refusals, broken or oversized files, and invalid icons.
+11. Check the untested-year warning, compile errors after Import, cancellation without compilation, and independent first-run local review and MCP confirmation after import.
 
 ## Queued requests after local dialogs
 
