@@ -202,6 +202,8 @@ My tools commands also retain ExecuteCode, ToolAllow, ToolDeny, and fail-closed 
 Ribbon runs do not use the client token handshake.
 A person at the workstation reviews the revision in a Revit dialog on first use per session and confirms each action run.
 All other execution gates are identical.
+Settings import is a local action gated by `save-tool` policy and the workstation read-only lock.
+Settings export follows `get-tool` policy and remains available while locked.
 `ExecuteCode=off` disables both paths, and `ToolDeny` for `run-tool` disables both paths.
 There is no separate switch for local runs only.
 The store-channel machine-policy rule applies equally to both paths.

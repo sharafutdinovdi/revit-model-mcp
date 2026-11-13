@@ -428,5 +428,5 @@ The saved tool commands belong to the `code` toolset.
 List and get carry `readOnlyHint`; save and delete require confirmation, and run follows the saved mode and `execute_code` confirmation flow.
 Every saved tool command is unavailable wherever `execute_code` is disabled.
 The **My tools** ribbon also runs approved procedures locally, with a parameter form, local revision review and action confirmation.
-Settings manages display labels, icons and ribbon visibility independently of approved revisions.
+Settings exports and imports reviewed shared tool files and manages display labels, icons and ribbon visibility independently of approved revisions.
 Local clicks use the same execution gates and do not waive MCP token confirmation.

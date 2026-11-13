@@ -178,6 +178,9 @@ Execution tokens bind preview versus commit intent; changing `dry_run` consumes 
 Ribbon runs do not use the client token handshake.
 A person at the workstation reviews the revision in a Revit dialog on first use per session and confirms each action run.
 Ribbon and MCP session confirmations are independent; all other execution gates are identical.
+Settings import is a local action gated by `save-tool` policy and the workstation read-only lock; export follows `get-tool` policy and remains available while locked.
+Import requires source review and local approval, without pre-confirming either first-run review path.
+The shared file fingerprint checks integrity, not authorship.
 `ExecuteCode=off` disables both paths, and `ToolDeny` for `run-tool` disables both paths.
 There is no separate policy switch for local runs only.
 In the store channel the same machine-policy `ExecuteCode=confirm` rule applies to both paths.
