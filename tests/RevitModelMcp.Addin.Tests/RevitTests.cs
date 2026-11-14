@@ -1026,9 +1026,41 @@ public sealed class RevitTests : RevitApiUiTest
     // Readers and executors remain internal; reflection avoids changing the shipped API for tests.
     private static T Invoke<T>(Type type, object? instance, string method, params object?[] arguments)
     {
-        var member = type.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Single(candidate => candidate.Name == method && candidate.GetParameters().Length == arguments.Length);
-        try { return (T)member.Invoke(instance, arguments)!; }
+        var methods = type.GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+            .Where(candidate => candidate.Name == method).ToArray();
+        var candidates = methods.Where(candidate => candidate.GetParameters().Length == arguments.Length).ToArray();
+        if (candidates.Length == 0)
+        {
+            candidates = methods.Where(candidate =>
+            {
+                var parameters = candidate.GetParameters();
+                return parameters.Length > arguments.Length &&
+                    parameters.Skip(arguments.Length).All(parameter => parameter.IsOptional && parameter.HasDefaultValue);
+            }).ToArray();
+        }
+        if (candidates.Length != 1)
+        {
+            var signatures = methods.Length == 0 ? "<none>" : string.Join("; ", methods.Select(candidate => candidate.ToString()));
+            throw new InvalidOperationException(
+                $"Cannot resolve {type.FullName}.{method} with {arguments.Length} arguments: {candidates.Length} matching methods. Signatures found: {signatures}");
+        }
+        var member = candidates[0];
+        var memberParameters = member.GetParameters();
+        var invocationArguments = arguments;
+        if (memberParameters.Length > arguments.Length)
+        {
+            invocationArguments = new object?[memberParameters.Length];
+            Array.Copy(arguments, invocationArguments, arguments.Length);
+            for (var index = arguments.Length; index < memberParameters.Length; index++)
+                invocationArguments[index] = memberParameters[index].DefaultValue;
+        }
+        try
+        {
+            var result = (T)member.Invoke(instance, invocationArguments)!;
+            if (!ReferenceEquals(invocationArguments, arguments))
+                Array.Copy(invocationArguments, arguments, arguments.Length);
+            return result;
+        }
         catch (TargetInvocationException exception) when (exception.InnerException is not null)
         {
             ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
