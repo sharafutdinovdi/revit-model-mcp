@@ -8,6 +8,7 @@ import functools
 import inspect
 import json
 import os
+import re
 import sys
 import tempfile
 from importlib.resources import files
@@ -907,6 +908,37 @@ async def revit_model_snapshot(
     )
 
 
+def _local_file_error(error: Exception, *values: str | None) -> str:
+    """Keep local file diagnostics useful without exposing their directories."""
+    from revit_model_mcp.audit.result import redact_path
+
+    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
+        return str(error)
+    if isinstance(error, OSError) and error.filename is not None:
+        names = [redact_path(error.filename)]
+        if error.filename2 is not None:
+            names.append(redact_path(error.filename2))
+        return f"{error.strerror}: {' -> '.join(names)}"
+    message = str(error)
+    paths = set()
+    for value in values:
+        if value is None:
+            continue
+        path = Path(value).expanduser().absolute()
+        paths.update(
+            (str(value), str(path), str(path.resolve()), str(path.parent.resolve() / path.name))
+        )
+    for path in sorted(paths, key=len, reverse=True):
+        if path:
+            message = message.replace(path, redact_path(path))
+    message = re.sub(
+        r"(?<![\w/])/(?:[^\s'\"<>:]+/)*[^\s'\"<>:]+",
+        lambda match: redact_path(match.group()),
+        message,
+    )
+    return redact_model_paths({"error": message})["error"]
+
+
 @addressed_tool
 async def revit_model_health(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
@@ -931,7 +963,7 @@ async def revit_model_health(
 
             target = validate_health_path(output_path)
     except (OSError, ValueError) as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(_local_file_error(error, output_path)) from error
     health = await _execute(
         Job("model-health", {"command": "model-health"}),
         timeout_seconds,
@@ -993,14 +1025,15 @@ async def revit_model_health(
                         f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
                     )
                     warnings.append(f"Warning group {index + 1}: {notes[index]}")
-            return {
-                **health,
-                "workbook": write_health_workbook(
-                    str(target), health, groups, snapshots, notes, warnings
-                ),
-            }
+            workbook = write_health_workbook(
+                str(target), health, groups, snapshots, notes, warnings
+            )
+            from revit_model_mcp.audit.result import redact_path
+
+            workbook["path"] = redact_path(workbook["path"])
+            return {**health, "workbook": workbook}
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(_local_file_error(error, output_path)) from error
 
 
 @addressed_tool
@@ -1532,7 +1565,7 @@ async def revit_model_audit(
             response["findings"].append(returned)
         return response
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(_local_file_error(error, rules, snapshots_dir, compare_with)) from error
 
 
 @mcp.tool(
@@ -1552,7 +1585,7 @@ def revit_audit_report(
     try:
         return build_report(audit, output, format)
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(_local_file_error(error, audit, output)) from error
 
 
 @mcp.tool(
@@ -1684,9 +1717,13 @@ async def revit_issue_register(
                         f"Snapshot unavailable: {str(error) or 'capture time budget exhausted'}"
                     )
                     warnings.append(f"{issue['id']}: {notes[index]}")
-            return write_register(str(target), project, issues, snapshots, notes, warnings)
+            result = write_register(str(target), project, issues, snapshots, notes, warnings)
+            from revit_model_mcp.audit.result import redact_path
+
+            result["path"] = redact_path(result["path"])
+            return result
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(str(error)) from error
+        raise ToolError(_local_file_error(error, output_path)) from error
 
 
 LEGACY_READ_ONLY_VARIABLE = "REVIT_MCP_READ_ONLY"
