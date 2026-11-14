@@ -97,3 +97,37 @@ def test_snapshot_existing_resolved_parent(tmp_path, monkeypatch, redact):
         server.revit_build_report(str(snapshots), str(alias / "report.xlsx"))
     expected = "report.xlsx" if redact else str(parent.resolve() / "report.xlsx")
     assert str(caught.value) == f"Local file already exists: {expected}"
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ("[]", "root must be an object"),
+        ('{"schema": true, "findings": []}', "schema 1"),
+        ('{"schema": 1, "findings": []}', "missing field: model"),
+        ('{"schema": 1, "findings": [false]}', "invalid field types"),
+        ("[" * 10000 + "0" + "]" * 10000, "nested too deeply"),
+        ("{", "Invalid audit JSON"),
+    ],
+)
+def test_invalid_audit_json(tmp_path, content, message):
+    source = tmp_path / "invalid.json"
+    source.write_text(content)
+    with pytest.raises(ToolError, match=message):
+        server.revit_audit_report(str(source), str(tmp_path / "report"))
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["invalid.json"]
+
+
+@pytest.mark.parametrize("format", ["json", "yaml"])
+def test_deep_rule_files(tmp_path, format):
+    source = tmp_path / f"rules.{format}"
+    source.write_text("[" * 10000 + ("0" if format == "json" else "value") + "]" * 10000)
+    with pytest.raises(ToolError, match="Rule or audit history data is nested too deeply"):
+        asyncio.run(server.revit_model_audit(rules=str(source), save=False))
+
+
+def test_boolean_rule_schema_rejected():
+    with pytest.raises(ToolError, match="not of type 'integer'"):
+        asyncio.run(server.revit_model_audit(
+            rules_inline={"schema": True, "name": "Invalid", "rules": []}, save=False
+        ))

@@ -93,7 +93,9 @@ def build_report(audit, output, format="both"):
     if format not in ("xlsx", "html", "both", "bcf", "all"):
         raise ValueError("format must be xlsx, html, both, bcf or all.")
     result = json.loads(Path(audit).expanduser().read_text(encoding="utf-8"))
-    if result.get("schema") != 1 or not (
+    if not isinstance(result, dict):
+        raise ValueError("Audit JSON root must be an object.")
+    if type(result.get("schema")) is not int or result["schema"] != 1 or not (
         isinstance(result.get("findings"), list)
         or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
     ):

@@ -1564,6 +1564,8 @@ async def revit_model_audit(
                 returned["evidence"]["image"] = bool(evidence.get("png"))
             response["findings"].append(returned)
         return response
+    except RecursionError as error:
+        raise ToolError("Rule or audit history data is nested too deeply.") from error
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
         raise ToolError(_local_file_error(error, rules, snapshots_dir, compare_with)) from error
 
@@ -1584,6 +1586,14 @@ def revit_audit_report(
         raise ToolError(blocked)
     try:
         return build_report(audit, output, format)
+    except RecursionError as error:
+        raise ToolError("Audit JSON is nested too deeply.") from error
+    except json.JSONDecodeError as error:
+        raise ToolError(f"Invalid audit JSON at line {error.lineno}.") from error
+    except KeyError as error:
+        raise ToolError(f"Audit result is missing field: {error.args[0]}.") from error
+    except (AttributeError, TypeError) as error:
+        raise ToolError("Audit result contains invalid field types.") from error
     except (OSError, ValueError, TypeError) as error:
         raise ToolError(_local_file_error(error, audit, output)) from error
 
