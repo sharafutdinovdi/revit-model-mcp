@@ -1,11 +1,13 @@
+using System.Diagnostics;
+
 namespace RevitModelMcp.Core.Control;
 
-public sealed class ControlExecutionDeferral(Func<DateTimeOffset>? clock = null)
+public sealed class ControlExecutionDeferral(Func<long>? clock = null)
 {
-    private static readonly TimeSpan MaximumDeferral = TimeSpan.FromSeconds(2);
-    private readonly Func<DateTimeOffset> _clock = clock ?? (() => DateTimeOffset.UtcNow);
+    private static readonly long MaximumDeferralTicks = 2 * Stopwatch.Frequency;
+    private readonly Func<long> _clock = clock ?? Stopwatch.GetTimestamp;
     private string? _deferredJobId;
-    private DateTimeOffset _deferredSince;
+    private long _deferredSince;
     private Func<string, string, bool>? _canExecute;
 
     public ScheduledJob? TakeNext(JobScheduler scheduler, bool fromIdling)
@@ -22,11 +24,11 @@ public sealed class ControlExecutionDeferral(Func<DateTimeOffset>? clock = null)
     {
         if (ControlExecutionPolicy.CanExecuteFromIdling(command)) return true;
         var now = _clock();
-        if (_deferredJobId != jobId)
+        if (_deferredJobId != jobId || now < _deferredSince)
         {
             _deferredJobId = jobId;
             _deferredSince = now;
         }
-        return now - _deferredSince >= MaximumDeferral;
+        return now - _deferredSince >= MaximumDeferralTicks;
     }
 }
