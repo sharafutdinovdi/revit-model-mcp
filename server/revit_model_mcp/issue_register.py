@@ -12,6 +12,7 @@ from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from revit_model_mcp.atomic_write import write_new_file
+from revit_model_mcp.audit.result import redact_path
 from revit_model_mcp.workbook_style import (
     ACCENT,
     BORDER,
@@ -65,7 +66,7 @@ def validate_register(output_path, project, issues, pixel_size=900):
         raise ValueError("output_path must have a .xlsx extension.")
     target = Path(output_path).expanduser().absolute()
     if target.exists() or target.is_symlink():
-        raise ValueError(f"output_path already exists: {target}")
+        raise ValueError(f"output_path already exists: {redact_path(target)}")
     if not isinstance(project, dict):
         raise ValueError("project must be an object.")
     for field in ("name", "model", "reviewer", "client", "stage", "date"):
@@ -373,7 +374,7 @@ def write_register(
         write_new_file(target, workbook.save)
     except ValueError as error:
         if target.exists() or target.is_symlink():
-            raise ValueError(f"output_path already exists: {target}") from error
+            raise ValueError(f"output_path already exists: {redact_path(target)}") from error
         raise
     except OSError as error:
         raise ValueError(f"Cannot save report: {error}") from error

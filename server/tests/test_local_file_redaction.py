@@ -1,13 +1,15 @@
 import asyncio
 import errno
 import json
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
-from revit_model_mcp import server
+from revit_model_mcp import health_workbook, issue_register, server, snapshot_report
+from revit_model_mcp.audit import report, rules
 
 CURRENT = Path(__file__).parent / "fixtures" / "snapshots" / "current"
 RULES = {"schema": 1, "name": "Empty", "rules": []}
@@ -254,15 +256,15 @@ def test_unknown_home_does_not_replace_original_file_error(tmp_path, monkeypatch
     assert (str(tmp_path) in str(caught.value)) is not redact
 
 
-@pytest.mark.parametrize("prefix", ["", " ", "'", '"', ":", "=", "[", "]", "(", "{"])
-def test_relative_paths_replace_only_at_token_start(tmp_path, monkeypatch, prefix):
-    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+@pytest.mark.parametrize("redact", [False, True])
+def test_relative_argument_does_not_damage_ordinary_text(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
     monkeypatch.chdir(tmp_path)
-    error = ValueError(f"{prefix}out/r; about/ and about/out/r stay unchanged.")
-    with patch("revit_model_mcp.audit.report.build_report", side_effect=error):
+    message = "Cannot save report: about/ and about/out/r stay unchanged."
+    with patch("revit_model_mcp.audit.report.build_report", side_effect=ValueError(message)):
         with pytest.raises(ToolError) as caught:
             server.revit_audit_report("audit.json", "out/r")
-    assert str(caught.value) == f"{prefix}r; about/ and about/out/r stay unchanged."
+    assert str(caught.value) == message
 
 
 def test_fallback_retains_wrapper_and_os_error_context(tmp_path, monkeypatch):
@@ -275,4 +277,131 @@ def test_fallback_retains_wrapper_and_os_error_context(tmp_path, monkeypatch):
     with patch("revit_model_mcp.issue_register.write_register", side_effect=error):
         with pytest.raises(ToolError) as caught:
             asyncio.run(server.revit_issue_register(str(parent / "report.xlsx"), {}, ISSUES))
-    assert str(caught.value) == "Cannot save report: Permission denied: .report.xlsx.tmp"
+    assert str(caught.value) == "Cannot save report: Permission denied: report.xlsx"
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("tool", ["audit", "rules", "register", "health", "snapshot"])
+@pytest.mark.parametrize("style", ["drive", "unc"])
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("second_filename", [False, True])
+def test_os_errors_use_fields_not_repr(
+    tmp_path, monkeypatch, redact, tool, style, as_bytes, second_filename
+):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    filename = (
+        r"C:\Projects\Client X 秘密\.report.xlsx.tmp"
+        if style == "drive"
+        else r"\\server\share\Client X 秘密\.report.xlsx.tmp"
+    )
+    other = r"\\other\archive\Private 秘密\report.xlsx" if second_filename else None
+    if as_bytes:
+        filename = os.fsencode(filename)
+        other = os.fsencode(other) if other is not None else None
+    failure = PermissionError(errno.EACCES, "Permission denied", filename, None, other)
+    operations = {
+        "audit": (report.Path, "read_text"),
+        "rules": (rules.Path, "read_text"),
+        "register": (issue_register, "write_new_file"),
+        "health": (health_workbook, "write_new_file"),
+        "snapshot": (snapshot_report, "write_new_file"),
+    }
+    module, operation = operations[tool]
+    target = str(tmp_path / "report.xlsx")
+    execute = AsyncMock(
+        side_effect=[
+            {"success": True, "data": {"counts": {}}},
+            {"success": True, "data": {"groups": []}},
+        ]
+    )
+    with (
+        patch.object(module, operation, side_effect=failure),
+        patch.object(server, "_execute", execute),
+    ):
+        with pytest.raises(ToolError) as caught:
+            if tool == "audit":
+                server.revit_audit_report(str(tmp_path / "audit.json"), target)
+            elif tool == "rules":
+                asyncio.run(
+                    server.revit_model_audit(rules=str(tmp_path / "rules.yaml"), save=False)
+                )
+            elif tool == "register":
+                asyncio.run(server.revit_issue_register(target, {}, ISSUES))
+            elif tool == "health":
+                asyncio.run(server.revit_model_health(output_path=target))
+            else:
+                server.revit_build_report(str(CURRENT), target)
+    message = str(caught.value)
+    if redact:
+        detail = "Permission denied: .report.xlsx.tmp"
+        if second_filename:
+            detail += " -> report.xlsx"
+        expected = detail if tool in ("audit", "rules") else "Cannot save report: " + detail
+        assert message == expected
+        assert "Client X" not in message and "Private" not in message
+        assert "秘密" not in message
+        assert "[Errno" not in message
+    else:
+        if tool in ("audit", "rules"):
+            expected = str(failure)
+        elif tool == "snapshot":
+            expected = f"Cannot save report: Permission denied: {filename}"
+        else:
+            expected = f"Cannot save report: {failure}"
+        assert message == expected
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_derived_relative_report_name_is_displayed_at_source(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    monkeypatch.chdir(tmp_path)
+    Path("audit.json").write_text(json.dumps(AUDIT))
+    Path("out").mkdir()
+    Path("out/r.xlsx").touch()
+    with pytest.raises(ToolError) as caught:
+        server.revit_audit_report("audit.json", "out/r", "xlsx")
+    expected = "r.xlsx" if redact else str(tmp_path / "out" / "r.xlsx")
+    assert str(caught.value) == f"Local file already exists: {expected}"
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_known_repr_escaped_path_is_redacted(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    path = r"\\server\share\Client X 秘密\a.json"
+    message = f"Local file already exists: {path!r}"
+    with patch.object(report, "build_report", side_effect=ValueError(message)):
+        with pytest.raises(ToolError) as caught:
+            server.revit_audit_report(path, str(tmp_path / "report"))
+    if redact:
+        assert str(caught.value) == "Local file already exists: 'a.json'"
+        assert "Client X" not in str(caught.value)
+        assert "秘密" not in str(caught.value)
+    else:
+        assert str(caught.value) == message
+
+
+def test_fallback_does_not_choose_between_unrelated_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    parent = tmp_path / "sensitive parent 秘密"
+    parent.mkdir()
+    message = "Cannot save report: sensitive parent 秘密/extra/file.tmp"
+    with patch.object(report, "build_report", side_effect=ValueError(message)):
+        with pytest.raises(ToolError) as caught:
+            server.revit_audit_report(str(parent / "audit.json"), str(parent / "report.xlsx"))
+    assert str(caught.value) == "Cannot save report: local file path withheld"
+    assert "sensitive parent" not in str(caught.value)
+    assert "秘密" not in str(caught.value)
+
+
+def test_fallback_uses_longest_full_path_from_original_error(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    parent = tmp_path / "sensitive parent 秘密"
+    parent.mkdir()
+    target = parent / "r.xlsx"
+    message = f"Cannot save report: {target}; sensitive parent 秘密/extra/file.tmp"
+    with patch.object(report, "build_report", side_effect=ValueError(message)):
+        with pytest.raises(ToolError) as caught:
+            server.revit_audit_report(str(parent / "audit.json"), str(target))
+    assert str(caught.value) == "Cannot save report: r.xlsx"
+    assert "sensitive parent" not in str(caught.value)
+    assert "秘密" not in str(caught.value)

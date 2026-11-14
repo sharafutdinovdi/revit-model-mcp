@@ -149,7 +149,7 @@ def build_report(audit, output, format="both"):
     )
     for target in [*targets, *image_targets.values()]:
         if target.exists() or target.is_symlink():
-            raise ValueError(f"Local file already exists: {target}")
+            raise ValueError(f"Local file already exists: {redact_path(target)}")
         if not target.parent.is_dir():
             raise ValueError("Output parent directory must exist.")
     content = tables(result)

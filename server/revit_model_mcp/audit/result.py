@@ -36,19 +36,18 @@ def model_key(model):
 
 
 def redact_path(path):
-    return (
-        PureWindowsPath(str(path)).name if env_flag("REVIT_MCP_REDACT_PATHS", False) else str(path)
-    )
+    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
+        return str(path)
+    value = os.fsdecode(path) if isinstance(path, bytes) else str(path)
+    return PureWindowsPath(value).name or value
 
 
 def local_file_error(error: Exception, *values: str | None) -> str:
-    """Redact known paths and filenames retained by wrapped OS errors."""
+    """Render OS failures from fields and hide known local paths in other diagnostics."""
     if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return str(error)
-    paths = set()
-    pending = [error]
-    seen = set()
-    os_errors = []
+    paths = [value for value in values if value is not None]
+    pending, seen, os_messages, os_errors = [error], set(), {}, []
     while pending:
         current = pending.pop()
         if id(current) in seen:
@@ -56,80 +55,104 @@ def local_file_error(error: Exception, *values: str | None) -> str:
         seen.add(id(current))
         if isinstance(current, OSError):
             os_errors.append(current)
-            for filename in (current.filename, current.filename2):
-                if filename is not None:
-                    paths.add(os.fsdecode(filename))
+            filenames = [
+                os.fsdecode(filename)
+                for filename in (current.filename, current.filename2)
+                if filename is not None
+            ]
+            paths.extend(filenames)
+            detail = current.strerror or (
+                current.args[0]
+                if current.args and isinstance(current.args[0], str)
+                else "Local file operation failed"
+            )
+            rendered = str(detail)
+            if filenames:
+                rendered += ": " + " -> ".join(redact_path(filename) for filename in filenames)
+            os_messages[str(current)] = rendered
         pending.extend(
             item for item in (current.__cause__, current.__context__) if item is not None
         )
-    paths.update(value for value in values if value is not None)
-    for value in tuple(paths):
-        try:
-            path = Path(value).expanduser().absolute()
-            paths.update((str(path), str(Path(value).expanduser())))
-            paths.update((str(path.resolve()), str(path.parent.resolve() / path.name)))
-        except (OSError, RuntimeError):
-            pass
-    replacements = {}
-    folders = set()
+    original = str(error)
+    message = os_messages[original] if isinstance(error, OSError) else original
+    for source in sorted(os_messages, key=len, reverse=True):
+        if source:
+            message = message.replace(source, os_messages[source])
+
+    replacements, full_paths, parents, names = {}, {}, {}, {}
     for value in paths:
-        path = PureWindowsPath(value)
-        folders.update(path.parts[:-1])
-        if path.name and value.strip("."):
-            replacements[value] = path.name
-        parent = str(path.parent)
-        if parent not in (".", "\\", "/"):
-            for separator in ("/", "\\"):
-                prefix = parent.replace("\\", separator).rstrip(separator) + separator
-                replacements[prefix] = ""
-        if value.strip(".") and value.rstrip("/\\"):
-            for separator in ("/", "\\"):
-                replacements[value.rstrip("/\\") + separator] = ""
-    message = str(error)
-    token_separators = "\"':=[]{}()"
-    for path in sorted(replacements, key=len, reverse=True):
-        offset = 0
-        while (index := message.find(path, offset)) >= 0:
-            if index == 0 or message[index - 1].isspace() or message[index - 1] in token_separators:
-                replacement = replacements[path]
-                message = message[:index] + replacement + message[index + len(path) :]
-                offset = index + len(replacement)
+        windows = PureWindowsPath(value)
+        variants = {value}
+        identity = value
+        try:
+            expanded = Path(value).expanduser()
+            if expanded.is_absolute():
+                resolved = expanded.resolve()
+                variants.update(
+                    (str(expanded), str(resolved), str(expanded.parent.resolve() / expanded.name))
+                )
+                identity = str(resolved)
+            elif not windows.drive:
+                # Relative values are only safe as an exact diagnostic payload.
+                context, delimiter, payload = message.rpartition(": ")
+                if delimiter and payload == value:
+                    message = context + delimiter + redact_path(value)
+                continue
             else:
-                offset = index + len(path)
-    remaining_path = False
+                variants.update((str(windows), windows.as_posix()))
+                identity = windows.as_posix().casefold()
+        except (OSError, RuntimeError):
+            if not windows.drive and not Path(value).is_absolute():
+                continue
+        names.setdefault(identity, windows.name)
+        for variant in variants:
+            path = PureWindowsPath(variant)
+            if not path.name or (not path.drive and not Path(variant).is_absolute()):
+                continue
+            full_paths[variant] = (identity, path.name)
+            replacements[variant] = path.name
+            for separator in ("/", "\\"):
+                parent = str(path.parent).replace("\\", separator).rstrip(separator)
+                if parent:
+                    replacements[parent + separator] = ""
+                    parents.setdefault(parent + separator, set()).add(identity)
+                    folder = path.parent.name
+                    if folder:
+                        for fragment in (folder + separator, separator + folder):
+                            parents.setdefault(fragment, set()).add(identity)
+                replacements[variant.rstrip("/\\") + separator] = ""
+    for key, replacement in tuple(replacements.items()):
+        if "\\" in key:
+            escaped = repr(key)[1:-1]
+            replacements[escaped] = replacement
+            if key in full_paths:
+                full_paths[escaped] = full_paths[key]
+    for key, owners in tuple(parents.items()):
+        if "\\" in key:
+            parents.setdefault(repr(key)[1:-1], set()).update(owners)
+    for key in sorted(replacements, key=len, reverse=True):
+        message = message.replace(key, replacements[key])
     message = redact_model_paths({"error": message})["error"]
-    for folder in folders:
-        if not folder.strip("/\\"):
-            continue
-        for separator in ("/", "\\"):
-            for fragment in (folder + separator, separator + folder):
-                offset = 0
-                while (index := message.find(fragment, offset)) >= 0:
-                    if (
-                        index == 0
-                        or message[index - 1].isspace()
-                        or message[index - 1] in token_separators
-                    ):
-                        remaining_path = True
-                    offset = index + len(fragment)
-    if remaining_path:
+    if any(parent in message for parent in parents):
         context, delimiter, _ = message.partition(":")
-        if (
-            not delimiter
-            or "/" in context
-            or "\\" in context
-            or any(folder in context for folder in folders if folder.strip("/\\"))
-        ):
+        if not delimiter or "/" in context or "\\" in context:
             context = "Local file operation failed"
-        if os_errors:
-            cause = os_errors[0]
-            filename = cause.filename or next((value for value in values if value), "file")
-            detail = f"{cause.strerror or 'Local file operation failed'}: {redact_path(filename)}"
-            message = f"{context}: {detail}" if error is not cause else detail
+        matches = [key for key in full_paths if key in original]
+        filename = ""
+        if matches:
+            filename = full_paths[max(matches, key=len)][1]
         else:
-            filename = next((value for value in reversed(values) if value), "file")
-            message = f"{context}: {redact_path(filename)}"
-    return redact_model_paths({"error": message})["error"]
+            owners = set().union(
+                *(owners for parent, owners in parents.items() if parent in original)
+            )
+            if len(owners) == 1:
+                filename = names[next(iter(owners))]
+        detail = os_errors[0].strerror if os_errors else None
+        detail = detail or "local file path withheld"
+        if filename:
+            detail = (detail + ": " if os_errors else "") + filename
+        message = f"{context}: {detail}"
+    return message
 
 
 def _keys(result):
