@@ -8,7 +8,6 @@ import functools
 import inspect
 import json
 import os
-import re
 import sys
 import tempfile
 from importlib.resources import files
@@ -908,37 +907,6 @@ async def revit_model_snapshot(
     )
 
 
-def _local_file_error(error: Exception, *values: str | None) -> str:
-    """Keep local file diagnostics useful without exposing their directories."""
-    from revit_model_mcp.audit.result import redact_path
-
-    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
-        return str(error)
-    if isinstance(error, OSError) and error.filename is not None:
-        names = [redact_path(error.filename)]
-        if error.filename2 is not None:
-            names.append(redact_path(error.filename2))
-        return f"{error.strerror}: {' -> '.join(names)}"
-    message = str(error)
-    paths = set()
-    for value in values:
-        if value is None:
-            continue
-        path = Path(value).expanduser().absolute()
-        paths.update(
-            (str(value), str(path), str(path.resolve()), str(path.parent.resolve() / path.name))
-        )
-    for path in sorted(paths, key=len, reverse=True):
-        if path:
-            message = message.replace(path, redact_path(path))
-    message = re.sub(
-        r"(?<![\w/])/(?:[^\s'\"<>:]+/)*[^\s'\"<>:]+",
-        lambda match: redact_path(match.group()),
-        message,
-    )
-    return redact_model_paths({"error": message})["error"]
-
-
 @addressed_tool
 async def revit_model_health(
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
@@ -963,7 +931,9 @@ async def revit_model_health(
 
             target = validate_health_path(output_path)
     except (OSError, ValueError) as error:
-        raise ToolError(_local_file_error(error, output_path)) from error
+        from revit_model_mcp.audit.result import local_file_error
+
+        raise ToolError(local_file_error(error, output_path)) from error
     health = await _execute(
         Job("model-health", {"command": "model-health"}),
         timeout_seconds,
@@ -1035,7 +1005,9 @@ async def revit_model_health(
             workbook["path"] = redact_path(workbook["path"])
             return {**health, "workbook": workbook}
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(_local_file_error(error, output_path)) from error
+        from revit_model_mcp.audit.result import local_file_error
+
+        raise ToolError(local_file_error(error, output_path)) from error
 
 
 @addressed_tool
@@ -1484,7 +1456,7 @@ async def revit_model_audit(
     from jsonschema import ValidationError
 
     from revit_model_mcp.audit.evaluate import Evaluator, LiveReadSource, NotAssessed
-    from revit_model_mcp.audit.result import build_result, model_identity
+    from revit_model_mcp.audit.result import build_result, local_file_error, model_identity
     from revit_model_mcp.audit.rules import load_rules
 
     try:
@@ -1569,7 +1541,7 @@ async def revit_model_audit(
     except RecursionError as error:
         raise ToolError("Rule or audit history data is nested too deeply.") from error
     except (OSError, ValueError, TypeError, ValidationError, TimeoutError, NotAssessed) as error:
-        raise ToolError(_local_file_error(error, rules, snapshots_dir, compare_with)) from error
+        raise ToolError(local_file_error(error, rules, snapshots_dir, compare_with)) from error
 
 
 @mcp.tool(
@@ -1583,6 +1555,7 @@ def revit_audit_report(
 ) -> dict[str, Any]:
     """Write server-side XLSX, image-embedded HTML or BCF 2.1 from audit JSON; all selects all. XLSX links sibling PNGs. Refuse existing files."""
     from revit_model_mcp.audit.report import build_report
+    from revit_model_mcp.audit.result import local_file_error
 
     if (blocked := policy_refusal("revit_audit_report")) is not None:
         raise ToolError(blocked)
@@ -1591,13 +1564,17 @@ def revit_audit_report(
     except RecursionError as error:
         raise ToolError("Audit JSON is nested too deeply.") from error
     except json.JSONDecodeError as error:
-        raise ToolError(f"Invalid audit JSON at line {error.lineno}.") from error
+        detail = (
+            f"Invalid audit JSON in {Path(audit).name}: {error.msg} "
+            f"(line {error.lineno}, column {error.colno})."
+        )
+        raise ToolError(detail) from error
     except KeyError as error:
         raise ToolError(f"Audit result is missing field: {error.args[0]}.") from error
-    except (AttributeError, TypeError) as error:
+    except AttributeError as error:
         raise ToolError("Audit result contains invalid field types.") from error
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(_local_file_error(error, audit, output)) from error
+        raise ToolError(local_file_error(error, audit, output)) from error
 
 
 @mcp.tool(
@@ -1636,7 +1613,7 @@ def revit_build_report(
     """Build local snapshot Excel reports without Revit."""
     if (blocked := policy_refusal("revit_build_report")) is not None:
         raise ToolError(blocked)
-    from revit_model_mcp.audit.result import redact_path
+    from revit_model_mcp.audit.result import local_file_error, redact_path
     from revit_model_mcp.snapshot_report import build_report
 
     try:
@@ -1645,7 +1622,7 @@ def revit_build_report(
         return result
     except (OSError, ValueError, TypeError) as error:
         raise ToolError(
-            _local_file_error(error, snapshots_dir, previous_dir, output_path)
+            local_file_error(error, snapshots_dir, previous_dir, output_path)
         ) from error
 
 
@@ -1670,6 +1647,7 @@ async def revit_issue_register(
     """Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused."""
     if (blocked := policy_refusal("revit_issue_register")) is not None:
         raise ToolError(blocked)
+    from revit_model_mcp.audit.result import local_file_error
     from revit_model_mcp.issue_register import (
         snapshot_indices,
         validate_register,
@@ -1726,7 +1704,7 @@ async def revit_issue_register(
             result["path"] = redact_path(result["path"])
             return result
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(_local_file_error(error, output_path)) from error
+        raise ToolError(local_file_error(error, output_path)) from error
 
 
 LEGACY_READ_ONLY_VARIABLE = "REVIT_MCP_READ_ONLY"

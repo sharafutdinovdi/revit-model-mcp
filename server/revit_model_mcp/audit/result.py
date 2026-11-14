@@ -41,6 +41,67 @@ def redact_path(path):
     )
 
 
+def local_file_error(error: Exception, *values: str | None) -> str:
+    """Redact known paths and filenames retained by wrapped OS errors."""
+    if not env_flag("REVIT_MCP_REDACT_PATHS", False):
+        return str(error)
+    paths = set()
+    pending = [error]
+    seen = set()
+    os_errors = []
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, OSError):
+            os_errors.append(current)
+            for filename in (current.filename, current.filename2):
+                if filename is not None:
+                    paths.add(os.fsdecode(filename))
+        pending.extend(
+            item for item in (current.__cause__, current.__context__) if item is not None
+        )
+    paths.update(value for value in values if value is not None)
+    for value in tuple(paths):
+        path = Path(value).expanduser().absolute()
+        paths.update((str(path), str(Path(value).expanduser())))
+        try:
+            paths.update((str(path.resolve()), str(path.parent.resolve() / path.name)))
+        except (OSError, RuntimeError):
+            pass
+    replacements = {}
+    folders = set()
+    for value in paths:
+        path = PureWindowsPath(value)
+        folders.update(path.parts[:-1])
+        if path.name and value.strip("."):
+            replacements[value] = path.name
+        parent = str(path.parent)
+        if parent not in (".", "\\", "/"):
+            for separator in ("/", "\\"):
+                prefix = parent.replace("\\", separator).rstrip(separator) + separator
+                replacements[prefix] = ""
+        if value.strip(".") and value.rstrip("/\\"):
+            for separator in ("/", "\\"):
+                replacements[value.rstrip("/\\") + separator] = ""
+    message = str(error)
+    for path in sorted(replacements, key=len, reverse=True):
+        message = message.replace(path, replacements[path])
+    if any(
+        folder.strip("/\\") and (folder + separator in message or separator + folder in message)
+        for folder in folders
+        for separator in ("/", "\\")
+    ):
+        if os_errors:
+            cause = os_errors[0]
+            filename = cause.filename or next((value for value in values if value), "file")
+            return f"{cause.strerror or 'Local file operation failed'}: {redact_path(filename)}"
+        filename = next((value for value in reversed(values) if value), "file")
+        return f"Local file operation failed: {redact_path(filename)}"
+    return message
+
+
 def _keys(result):
     return {
         (f["id"], str(element)): f
