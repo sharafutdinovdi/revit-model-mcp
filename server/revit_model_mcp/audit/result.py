@@ -39,7 +39,10 @@ def redact_path(path):
     if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return str(path)
     value = os.fsdecode(path) if isinstance(path, bytes) else str(path)
-    return PureWindowsPath(value).name or value
+    path = PureWindowsPath(value)
+    if path.name:
+        return path.name
+    return "" if path.drive.startswith("\\\\") and path.drive.strip("/\\.") else value
 
 
 def local_file_error(error: Exception, *values: str | None) -> str:

@@ -405,3 +405,99 @@ def test_fallback_uses_longest_full_path_from_original_error(tmp_path, monkeypat
     assert str(caught.value) == "Cannot save report: r.xlsx"
     assert "sensitive parent" not in str(caught.value)
     assert "秘密" not in str(caught.value)
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("root", [r"\\fs01\Client Share", "//fs01/Client Share"])
+@pytest.mark.parametrize("trailing", [False, True])
+@pytest.mark.parametrize("exists", [False, True])
+def test_unc_share_root_diagnostics_do_not_disclose_host(
+    tmp_path, monkeypatch, redact, root, trailing, exists
+):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    if trailing:
+        root += "\\" if root.startswith("\\") else "/"
+    with (
+        patch.object(snapshot_report.Path, "is_dir", return_value=exists),
+        patch.object(snapshot_report.Path, "glob", return_value=[]),
+    ):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(root, str(tmp_path / "b.xlsx"))
+    reason = (
+        "Snapshot directory contains no JSON files"
+        if exists
+        else "Snapshot directory does not exist or is not a directory"
+    )
+    display = "" if redact else str(Path(root))
+    assert str(caught.value) == f"{reason}: {display}"
+    if redact:
+        assert "fs01" not in str(caught.value)
+        assert "Client Share" not in str(caught.value)
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("trailing", [False, True])
+@pytest.mark.parametrize("as_bytes", [False, True])
+@pytest.mark.parametrize("tool", ["audit", "rules"])
+def test_unc_share_root_os_error_does_not_disclose_host(
+    tmp_path, monkeypatch, redact, trailing, as_bytes, tool
+):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    root = r"\\fs01\Client Share" + ("\\" if trailing else "")
+    filename = os.fsencode(root) if as_bytes else root
+    failure = OSError(53, "The network path was not found", filename)
+    with patch.object(Path, "read_text", side_effect=failure):
+        with pytest.raises(ToolError) as caught:
+            if tool == "audit":
+                server.revit_audit_report(root, str(tmp_path / "report"))
+            else:
+                asyncio.run(server.revit_model_audit(rules=root, save=False))
+    expected = "The network path was not found: " if redact else str(failure)
+    assert str(caught.value) == expected
+    if redact:
+        assert "fs01" not in str(caught.value)
+        assert "Client Share" not in str(caught.value)
+
+
+@pytest.mark.parametrize("directory", [".", "/", "//", "/./", "C:\\"])
+def test_nameless_directory_without_host_keeps_only_root_text(tmp_path, monkeypatch, directory):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    with (
+        patch.object(snapshot_report.Path, "is_dir", return_value=True),
+        patch.object(snapshot_report.Path, "glob", return_value=[]),
+    ):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(directory, str(tmp_path / "report.xlsx"))
+    assert str(caught.value) == f"Snapshot directory contains no JSON files: {Path(directory)}"
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("publication", ["link", "rename"])
+def test_audit_report_publication_race_displays_derived_filename(
+    tmp_path, monkeypatch, redact, publication
+):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    monkeypatch.chdir(tmp_path)
+    Path("audit.json").write_text(json.dumps(AUDIT))
+    Path("out").mkdir()
+    target = tmp_path / "out" / "r.xlsx"
+
+    def conflict(source, destination):
+        destination.write_bytes(b"concurrent file")
+        raise FileExistsError(errno.EEXIST, "File exists")
+
+    with (
+        patch("revit_model_mcp.atomic_write.os.link") as link,
+        patch("revit_model_mcp.atomic_write._rename_new_file", side_effect=conflict),
+    ):
+        link.side_effect = (
+            conflict if publication == "link" else OSError(errno.EXDEV, "Cross-device link")
+        )
+        with pytest.raises(ToolError) as caught:
+            server.revit_audit_report("audit.json", "out/r", "xlsx")
+    display = "r.xlsx" if redact else str(target)
+    expected = f"Local file already exists: {display}"
+    assert str(caught.value) == expected
+    assert str(caught.value.__cause__) == expected
+    assert target.read_bytes() == b"concurrent file"
+    assert list(target.parent.iterdir()) == [target]
