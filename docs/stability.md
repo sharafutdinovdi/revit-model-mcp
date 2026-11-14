@@ -42,6 +42,12 @@ A breaking change to anything in the first list needs a major release.
 
 I keep session document IDs stable while a document remains open. Closing family or project documents removes their cached IDs on the next discovery refresh without reading native members of closed documents. Document discovery and subsequent project creation remain available after those closures.
 
+## View activation
+
+Commands that can switch the active view or document run through the external event callback, not the Idling fallback. Deferred jobs retain their queue position and existing cancellation and completion rules. Finished jobs record `ExecutionPath='externalEvent'` or `ExecutionPath='idling'` in the existing add-in log.
+
+If Revit temporarily refuses a synchronous view change, the command fails with a message inviting the caller to repeat the call. It does not report a successful view change. View activation remains synchronous: zoom and the success response follow the completed switch, not an asynchronous view-change request.
+
 ## How it is enforced
 
 A test snapshots the schemas of every registered tool: names, parameters, types, defaults and required status.
