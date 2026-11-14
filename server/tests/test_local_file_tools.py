@@ -128,9 +128,11 @@ def test_deep_rule_files(tmp_path, format):
 
 def test_boolean_rule_schema_rejected():
     with pytest.raises(ToolError, match="not of type 'integer'"):
-        asyncio.run(server.revit_model_audit(
-            rules_inline={"schema": True, "name": "Invalid", "rules": []}, save=False
-        ))
+        asyncio.run(
+            server.revit_model_audit(
+                rules_inline={"schema": True, "name": "Invalid", "rules": []}, save=False
+            )
+        )
 
 
 @pytest.mark.parametrize("failed_command", ["model-health", "list-warnings"])
@@ -138,9 +140,11 @@ def test_health_workbook_preserves_transport_failure(tmp_path, failed_command):
     from revit_model_mcp.errors import unavailable
 
     failure = unavailable(failed_command, "Connection refused")
-    responses = [failure] if failed_command == "model-health" else [
-        {"success": True, "data": {"counts": {}}}, failure
-    ]
+    responses = (
+        [failure]
+        if failed_command == "model-health"
+        else [{"success": True, "data": {"counts": {}}}, failure]
+    )
     execute = AsyncMock(side_effect=responses)
     target = tmp_path / "health.xlsx"
     with patch.object(server, "_execute", execute):
@@ -148,3 +152,46 @@ def test_health_workbook_preserves_transport_failure(tmp_path, failed_command):
     assert result == failure
     assert execute.await_count == len(responses)
     assert not target.exists()
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_audit_existing_output_redaction(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    source = tmp_path / "audit.json"
+    source.write_text(json.dumps(audit_result()))
+    target = tmp_path / "report.xlsx"
+    target.touch()
+    with pytest.raises(ToolError) as caught:
+        server.revit_audit_report(str(source), str(target), "xlsx")
+    expected = target.name if redact else str(target)
+    assert str(caught.value) == f"Local file already exists: {expected}"
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("operation", ["compare", "save"])
+def test_audit_history_errors_redacted(tmp_path, monkeypatch, redact, operation):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", str(tmp_path / "history"))
+    snapshot = {
+        "schemaVersion": 1,
+        "passport": {"title": "Tower", "centralPath": "Tower.rvt", "versionGuid": "family-a"},
+        "source": {"path": "Tower.rvt"},
+    }
+    channel = AsyncMock()
+    channel.execute.return_value = {
+        "success": True,
+        "data": snapshot,
+        "responder": {"processId": 123, "documentName": "Tower", "documentPath": "Tower.rvt"},
+    }
+    baseline = tmp_path / "private baseline.json"
+    if operation == "save":
+        (tmp_path / "history").touch()
+    with patch.object(server, "channel", channel), pytest.raises(ToolError) as caught:
+        asyncio.run(
+            server.revit_model_audit(
+                rules_inline={"schema": 1, "name": "Empty", "rules": []},
+                compare_with=str(baseline) if operation == "compare" else "none",
+                save=operation == "save",
+            )
+        )
+    assert (str(tmp_path) in str(caught.value)) is not redact

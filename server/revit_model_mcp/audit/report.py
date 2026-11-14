@@ -95,9 +95,13 @@ def build_report(audit, output, format="both"):
     result = json.loads(Path(audit).expanduser().read_text(encoding="utf-8"))
     if not isinstance(result, dict):
         raise ValueError("Audit JSON root must be an object.")
-    if type(result.get("schema")) is not int or result["schema"] != 1 or not (
-        isinstance(result.get("findings"), list)
-        or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
+    if (
+        type(result.get("schema")) is not int
+        or result["schema"] != 1
+        or not (
+            isinstance(result.get("findings"), list)
+            or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
+        )
     ):
         raise ValueError("Expected a schema 1 audit result.")
     is_batch = result.get("kind") == "batch_audit"
