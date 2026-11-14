@@ -1632,18 +1632,9 @@ def revit_build_report(
         result["outputPath"] = redact_path(result["outputPath"])
         return result
     except (OSError, ValueError, TypeError) as error:
-        message = str(error)
-        if env_flag("REVIT_MCP_REDACT_PATHS", False):
-            paths = {
-                str(path)
-                for value in (snapshots_dir, previous_dir, output_path)
-                if value is not None
-                for path in (value, Path(value).expanduser().absolute())
-            }
-            paths.add(str(Path(output_path).expanduser().absolute().parent))
-            for path in sorted(paths, key=len, reverse=True):
-                message = message.replace(path, redact_path(path))
-        raise ToolError(redact_model_paths({"error": message})["error"]) from error
+        raise ToolError(
+            _local_file_error(error, snapshots_dir, previous_dir, output_path)
+        ) from error
 
 
 @addressed_tool

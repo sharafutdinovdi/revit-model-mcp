@@ -80,3 +80,20 @@ def test_local_file_success_paths(tmp_path, monkeypatch, redact, tool):
         paths = [result["workbook"]["path"]]
     assert paths == [target.name if redact else str(target)]
     assert target.is_file()
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_snapshot_existing_resolved_parent(tmp_path, monkeypatch, redact):
+    from pathlib import Path
+
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", str(int(redact)))
+    parent = tmp_path / "private" / "tmp"
+    parent.mkdir(parents=True)
+    alias = tmp_path / "tmp"
+    alias.symlink_to(parent, target_is_directory=True)
+    (parent / "report.xlsx").touch()
+    snapshots = Path(__file__).parent / "fixtures" / "snapshots" / "current"
+    with pytest.raises(ToolError) as caught:
+        server.revit_build_report(str(snapshots), str(alias / "report.xlsx"))
+    expected = "report.xlsx" if redact else str(parent.resolve() / "report.xlsx")
+    assert str(caught.value) == f"Local file already exists: {expected}"
