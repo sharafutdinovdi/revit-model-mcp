@@ -80,13 +80,13 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,896 | 26,974 | 108,053 |
+| `all` | 89 | 107,895 | 26,973 | 108,052 |
 | `core,read` | 22 | 26,181 | 6,545 | 26,271 |
 | `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
 | `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
 | `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
-| `preset:sheets` | 54 | 64,006 | 16,001 | 64,128 |
-| `preset:batch` | 46 | 52,498 | 13,124 | 52,612 |
+| `preset:sheets` | 54 | 64,005 | 16,001 | 64,127 |
+| `preset:batch` | 46 | 52,497 | 13,124 | 52,611 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.

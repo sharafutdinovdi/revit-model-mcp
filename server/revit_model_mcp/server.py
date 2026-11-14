@@ -1622,7 +1622,12 @@ async def revit_issue_register(
     ],
     project: dict[str, Any],
     issues: list[dict[str, Any]],
-    pixel_size: PixelSize = 900,
+    pixel_size: Annotated[
+        PixelSize,
+        Field(
+            description="PNG size in pixels along the fitted dimension, 32 to 4000 (default 900); Revit rejects smaller images."
+        ),
+    ] = 900,
     document: Document = None,
 ) -> dict[str, Any]:
     """Write a new local .xlsx issue register with element snapshots and review documents. Takes 1 to 60 issues; captures at most 25 snapshots (by severity) within a 210-second budget, and failed snapshots become cell notes. Snapshots need local or SSH transport. Existing output files are refused."""
