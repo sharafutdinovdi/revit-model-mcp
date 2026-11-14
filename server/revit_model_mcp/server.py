@@ -1591,12 +1591,25 @@ def revit_build_report(
     """Build local snapshot Excel reports without Revit."""
     if (blocked := policy_refusal("revit_build_report")) is not None:
         raise ToolError(blocked)
+    from revit_model_mcp.audit.result import redact_path
     from revit_model_mcp.snapshot_report import build_report
 
     try:
-        return build_report(snapshots_dir, output_path, previous_dir, findings)
+        result = build_report(snapshots_dir, output_path, previous_dir, findings)
+        result["outputPath"] = redact_path(result["outputPath"])
+        return result
     except (OSError, ValueError, TypeError) as error:
-        raise ToolError(str(error)) from error
+        message = str(error)
+        if env_flag("REVIT_MCP_REDACT_PATHS", False):
+            paths = {
+                str(path)
+                for value in (snapshots_dir, previous_dir, output_path)
+                if value is not None
+                for path in (value, Path(value).expanduser().absolute())
+            }
+            for path in sorted(paths, key=len, reverse=True):
+                message = message.replace(path, redact_path(path))
+        raise ToolError(redact_model_paths({"error": message})["error"]) from error
 
 
 @addressed_tool

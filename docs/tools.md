@@ -175,7 +175,7 @@ Neither section opens worksets, checks out elements, synchronizes, nor starts a 
 | `revit_batch_fetch` | `run_id`, `output_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=null` (grids and levels), `name_map=null` (no renames), `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
 | `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. Unavailable snapshots appear in `skipped` and `skippedCount`. |
-| `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
+| `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. With path redaction enabled, errors and the returned `outputPath` omit parent directories. |
 
 ### Pinned elements
 
