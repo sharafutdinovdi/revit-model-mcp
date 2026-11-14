@@ -233,3 +233,39 @@ def test_mcp_report_result_redacts_output_path(tmp_path, monkeypatch, redact):
     result = server.revit_build_report(str(CURRENT), str(output))
     assert result["outputPath"] == ("report.xlsx" if redact else str(output))
     assert output.is_file()
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize(
+    "filename",
+    [
+        r"C:\Users\name\Private\out.xlsx",
+        r"C:\Users\name\Private\.out.xlsx.ab12",
+        "/Users/name/Private/out.xlsx",
+        "/Users/name/Private/.out.xlsx.ab12",
+    ],
+)
+def test_mcp_save_error_redacts_explicit_filename(tmp_path, monkeypatch, redact, filename):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    error = PermissionError(13, "Permission denied", filename)
+    with patch("revit_model_mcp.snapshot_report.write_new_file", side_effect=error):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(str(CURRENT), str(tmp_path / "out.xlsx"))
+    basename = filename.replace("\\", "/").rsplit("/", 1)[1]
+    expected = basename if redact else filename
+    message = str(caught.value)
+    assert message == f"Cannot save report: Permission denied: {expected}"
+    if redact:
+        assert all(component not in message for component in ("C:", "Users", "name", "Private"))
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_mcp_save_error_without_filename_preserves_message(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    with patch(
+        "revit_model_mcp.snapshot_report.write_new_file",
+        side_effect=OSError("Atomic no-replace publication is unavailable"),
+    ):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(str(CURRENT), str(tmp_path / "out.xlsx"))
+    assert str(caught.value) == "Cannot save report: Atomic no-replace publication is unavailable"

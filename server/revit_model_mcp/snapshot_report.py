@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import IllegalCharacterError
 
 from revit_model_mcp.atomic_write import write_new_file
+from revit_model_mcp.audit.result import redact_path
 
 HEADERS = {
     "Summary": [
@@ -295,5 +296,10 @@ def build_report(
             raise ValueError(f"Local file already exists: {target}") from error
         raise
     except OSError as error:
-        raise ValueError(f"Cannot save report: {error}") from error
+        detail = (
+            f"{error.strerror}: {redact_path(error.filename)}"
+            if error.filename is not None
+            else str(error)
+        )
+        raise ValueError(f"Cannot save report: {detail}") from error
     return {"outputPath": str(target), "snapshotCount": len(current), "sheets": names}

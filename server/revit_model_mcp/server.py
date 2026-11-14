@@ -1607,6 +1607,7 @@ def revit_build_report(
                 if value is not None
                 for path in (value, Path(value).expanduser().absolute())
             }
+            paths.add(str(Path(output_path).expanduser().absolute().parent))
             for path in sorted(paths, key=len, reverse=True):
                 message = message.replace(path, redact_path(path))
         raise ToolError(redact_model_paths({"error": message})["error"]) from error
