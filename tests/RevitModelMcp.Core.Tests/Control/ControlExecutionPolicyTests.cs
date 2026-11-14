@@ -38,13 +38,13 @@ public sealed class ControlExecutionPolicyTests
         scheduler.Submit(readId, "second", "Second", "document-info", "{}");
         scheduler.MarkWaiting();
 
-        await Assert.That(scheduler.TakeNext(ControlExecutionPolicy.CanExecuteFromIdling)).IsNull();
+        await Assert.That(scheduler.TakeNext((_, command) => ControlExecutionPolicy.CanExecuteFromIdling(command))).IsNull();
         await Assert.That(scheduler.Status(activationId)!.State).IsEqualTo(JobState.WaitingRevit);
         await Assert.That(scheduler.Status(readId)!.State).IsEqualTo(JobState.WaitingRevit);
         await Assert.That(scheduler.TakeNext()!.JobId).IsEqualTo(activationId);
         await Assert.That(scheduler.TakeNext()).IsNull();
         scheduler.Complete(activationId, "{}", true);
-        await Assert.That(scheduler.TakeNext(ControlExecutionPolicy.CanExecuteFromIdling)!.JobId).IsEqualTo(readId);
+        await Assert.That(scheduler.TakeNext((_, command) => ControlExecutionPolicy.CanExecuteFromIdling(command))!.JobId).IsEqualTo(readId);
     }
 
     [Test]
@@ -59,7 +59,7 @@ public sealed class ControlExecutionPolicyTests
         requests.Request();
         requests.Execute(() =>
         {
-            if (scheduler.TakeNext(ControlExecutionPolicy.CanExecuteFromIdling) is not null) executions++;
+            if (scheduler.TakeNext((_, command) => ControlExecutionPolicy.CanExecuteFromIdling(command)) is not null) executions++;
             if (scheduler.HasPending) requests.Request();
         }, exception => throw new InvalidOperationException("Unexpected dispatch failure.", exception));
         await Assert.That(raises).IsEqualTo(2);
@@ -85,7 +85,7 @@ public sealed class ControlExecutionPolicyTests
         var scheduler = new JobScheduler();
         var jobId = Guid.NewGuid().ToString("N");
         scheduler.Submit(jobId, "client", "Client", "activate-view", "{}");
-        await Assert.That(scheduler.TakeNext(ControlExecutionPolicy.CanExecuteFromIdling)).IsNull();
+        await Assert.That(scheduler.TakeNext((_, command) => ControlExecutionPolicy.CanExecuteFromIdling(command))).IsNull();
         await Assert.That(scheduler.Cancel(jobId, "client", false).Cancelled).IsTrue();
         await Assert.That(scheduler.TakeNext()).IsNull();
     }
