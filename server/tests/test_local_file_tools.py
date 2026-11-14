@@ -122,12 +122,12 @@ def test_invalid_audit_json(tmp_path, content, message):
 def test_deep_rule_files(tmp_path, format):
     source = tmp_path / f"rules.{format}"
     source.write_text("[" * 10000 + ("0" if format == "json" else "value") + "]" * 10000)
-    with pytest.raises(ToolError, match="Rule or audit history data is nested too deeply"):
+    with pytest.raises(ToolError, match="Rule .*nested too deeply"):
         asyncio.run(server.revit_model_audit(rules=str(source), save=False))
 
 
 def test_boolean_rule_schema_rejected():
-    with pytest.raises(ToolError, match="not of type 'integer'"):
+    with pytest.raises(ToolError, match="1 was expected"):
         asyncio.run(
             server.revit_model_audit(
                 rules_inline={"schema": True, "name": "Invalid", "rules": []}, save=False

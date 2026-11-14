@@ -93,6 +93,15 @@ def build_report(audit, output, format="both"):
     if format not in ("xlsx", "html", "both", "bcf", "all"):
         raise ValueError("format must be xlsx, html, both, bcf or all.")
     result = json.loads(Path(audit).expanduser().read_text(encoding="utf-8"))
+    pending = [(result, 0)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > 100:
+            raise ValueError("Audit JSON is nested too deeply (maximum 100 levels).")
+        if isinstance(value, dict):
+            pending.extend((item, depth + 1) for item in value.values())
+        elif isinstance(value, list):
+            pending.extend((item, depth + 1) for item in value)
     if not isinstance(result, dict):
         raise ValueError("Audit JSON root must be an object.")
     if (
