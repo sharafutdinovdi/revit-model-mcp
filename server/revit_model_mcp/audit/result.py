@@ -64,9 +64,9 @@ def local_file_error(error: Exception, *values: str | None) -> str:
         )
     paths.update(value for value in values if value is not None)
     for value in tuple(paths):
-        path = Path(value).expanduser().absolute()
-        paths.update((str(path), str(Path(value).expanduser())))
         try:
+            path = Path(value).expanduser().absolute()
+            paths.update((str(path), str(Path(value).expanduser())))
             paths.update((str(path.resolve()), str(path.parent.resolve() / path.name)))
         except (OSError, RuntimeError):
             pass
@@ -86,20 +86,50 @@ def local_file_error(error: Exception, *values: str | None) -> str:
             for separator in ("/", "\\"):
                 replacements[value.rstrip("/\\") + separator] = ""
     message = str(error)
+    token_separators = "\"':=[]{}()"
     for path in sorted(replacements, key=len, reverse=True):
-        message = message.replace(path, replacements[path])
-    if any(
-        folder.strip("/\\") and (folder + separator in message or separator + folder in message)
-        for folder in folders
-        for separator in ("/", "\\")
-    ):
+        offset = 0
+        while (index := message.find(path, offset)) >= 0:
+            if index == 0 or message[index - 1].isspace() or message[index - 1] in token_separators:
+                replacement = replacements[path]
+                message = message[:index] + replacement + message[index + len(path) :]
+                offset = index + len(replacement)
+            else:
+                offset = index + len(path)
+    remaining_path = False
+    message = redact_model_paths({"error": message})["error"]
+    for folder in folders:
+        if not folder.strip("/\\"):
+            continue
+        for separator in ("/", "\\"):
+            for fragment in (folder + separator, separator + folder):
+                offset = 0
+                while (index := message.find(fragment, offset)) >= 0:
+                    if (
+                        index == 0
+                        or message[index - 1].isspace()
+                        or message[index - 1] in token_separators
+                    ):
+                        remaining_path = True
+                    offset = index + len(fragment)
+    if remaining_path:
+        context, delimiter, _ = message.partition(":")
+        if (
+            not delimiter
+            or "/" in context
+            or "\\" in context
+            or any(folder in context for folder in folders if folder.strip("/\\"))
+        ):
+            context = "Local file operation failed"
         if os_errors:
             cause = os_errors[0]
             filename = cause.filename or next((value for value in values if value), "file")
-            return f"{cause.strerror or 'Local file operation failed'}: {redact_path(filename)}"
-        filename = next((value for value in reversed(values) if value), "file")
-        return f"Local file operation failed: {redact_path(filename)}"
-    return message
+            detail = f"{cause.strerror or 'Local file operation failed'}: {redact_path(filename)}"
+            message = f"{context}: {detail}" if error is not cause else detail
+        else:
+            filename = next((value for value in reversed(values) if value), "file")
+            message = f"{context}: {redact_path(filename)}"
+    return redact_model_paths({"error": message})["error"]
 
 
 def _keys(result):
