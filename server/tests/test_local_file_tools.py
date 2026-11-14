@@ -37,7 +37,11 @@ def test_local_file_errors(tmp_path, monkeypatch, redact, tool):
         else:
             asyncio.run(server.revit_model_audit(rules=str(tmp_path / "missing.yaml")))
     message = str(caught.value)
-    assert (str(tmp_path) in message) is not redact
+    if redact:
+        assert tmp_path.name not in message
+        assert tmp_path.parent.name not in message
+    else:
+        assert any(form in message for form in (str(tmp_path), repr(str(tmp_path))[1:-1]))
     assert ("missing" if tool in ("audit", "rules") else target.name) in message
 
 
@@ -90,7 +94,10 @@ def test_snapshot_existing_resolved_parent(tmp_path, monkeypatch, redact):
     parent = tmp_path / "private" / "tmp"
     parent.mkdir(parents=True)
     alias = tmp_path / "tmp"
-    alias.symlink_to(parent, target_is_directory=True)
+    try:
+        alias.symlink_to(parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable on this filesystem")
     (parent / "report.xlsx").touch()
     snapshots = Path(__file__).parent / "fixtures" / "snapshots" / "current"
     with pytest.raises(ToolError) as caught:
@@ -194,4 +201,10 @@ def test_audit_history_errors_redacted(tmp_path, monkeypatch, redact, operation)
                 save=operation == "save",
             )
         )
-    assert (str(tmp_path) in str(caught.value)) is not redact
+    assert isinstance(caught.value.__cause__, OSError)
+    message = str(caught.value)
+    if redact:
+        assert tmp_path.name not in message
+        assert tmp_path.parent.name not in message
+    else:
+        assert any(form in message for form in (str(tmp_path), repr(str(tmp_path))[1:-1]))

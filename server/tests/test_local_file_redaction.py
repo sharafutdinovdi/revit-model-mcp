@@ -1,6 +1,7 @@
 import asyncio
 import errno
 import json
+import ntpath
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -9,7 +10,7 @@ import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from revit_model_mcp import health_workbook, issue_register, server, snapshot_report
-from revit_model_mcp.audit import report, rules
+from revit_model_mcp.audit import report, result, rules
 
 CURRENT = Path(__file__).parent / "fixtures" / "snapshots" / "current"
 RULES = {"schema": 1, "name": "Empty", "rules": []}
@@ -55,12 +56,26 @@ def test_permission_errors_redact_known_paths(tmp_path, monkeypatch, redact, too
         monkeypatch.chdir(tmp_path)
         given = name
     elif variant == "tilde":
-        monkeypatch.setenv("HOME", str(tmp_path))
+        drive, home = ntpath.splitdrive(str(tmp_path))
+        for variable, value in (
+            ("HOME", str(tmp_path)),
+            ("USERPROFILE", str(tmp_path)),
+            ("HOMEDRIVE", drive),
+            ("HOMEPATH", home),
+        ):
+            monkeypatch.setenv(variable, value)
         given = "~/" + name
+        assert ntpath.normpath(ntpath.expanduser(given)) == ntpath.normpath(str(parent))
     elif variant == "symlink":
         alias = tmp_path / "sensitive alias"
-        alias.symlink_to(parent, target_is_directory=True)
+        try:
+            alias.symlink_to(parent, target_is_directory=True)
+        except OSError:
+            pytest.skip("Directory symlinks are unavailable on this filesystem")
         given = str(alias)
+    expanded = Path(given).expanduser().absolute()
+    assert expanded.is_relative_to(tmp_path.absolute())
+    assert expanded.resolve() == parent.resolve()
     target = given + "/report.xlsx"
     monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", given + "/history")
     channel = AsyncMock()
@@ -78,33 +93,56 @@ def test_permission_errors_redact_known_paths(tmp_path, monkeypatch, redact, too
             {"success": True, "data": {"groups": []}},
         ]
     )
-    parent.chmod(0o555)
-    try:
-        with patch.object(server, "channel", channel), patch.object(server, "_execute", execute):
-            with pytest.raises(ToolError) as caught:
-                if tool == "audit":
-                    server.revit_audit_report(given + "/audit.json", target)
-                elif tool == "register":
-                    asyncio.run(server.revit_issue_register(target, {}, ISSUES))
-                elif tool == "model_audit":
-                    asyncio.run(
-                        server.revit_model_audit(rules=given + "/rules.json", compare_with="none")
-                    )
-                elif tool == "health":
-                    asyncio.run(server.revit_model_health(output_path=target))
-                else:
-                    server.revit_build_report(str(CURRENT), target)
-    finally:
-        parent.chmod(0o755)
+    failures = []
+
+    def deny_write(destination, writer):
+        assert destination.resolve().is_relative_to(tmp_path.resolve())
+        filename = destination.with_name(f".{destination.name}.denied")
+        failure = PermissionError(errno.EACCES, "Permission denied", str(filename))
+        failures.append(failure)
+        raise failure
+
+    modules = {
+        "audit": report,
+        "register": issue_register,
+        "model_audit": result,
+        "health": health_workbook,
+        "snapshot": snapshot_report,
+    }
+    with (
+        patch.object(modules[tool], "write_new_file", side_effect=deny_write) as write,
+        patch.object(server, "channel", channel),
+        patch.object(server, "_execute", execute),
+    ):
+        with pytest.raises(ToolError) as caught:
+            if tool == "audit":
+                server.revit_audit_report(given + "/audit.json", target)
+            elif tool == "register":
+                asyncio.run(server.revit_issue_register(target, {}, ISSUES))
+            elif tool == "model_audit":
+                asyncio.run(
+                    server.revit_model_audit(rules=given + "/rules.json", compare_with="none")
+                )
+            elif tool == "health":
+                asyncio.run(server.revit_model_health(output_path=target))
+            else:
+                server.revit_build_report(str(CURRENT), target)
+    write.assert_called_once()
+    failure = failures[0]
+    cause = caught.value.__cause__
+    assert cause is failure or cause.__cause__ is failure
     message = str(caught.value)
     assert "Permission denied" in message
     if redact:
         assert name not in message
         assert "sensitive alias" not in message
         assert str(tmp_path) not in message
+        assert tmp_path.name not in message
+        assert tmp_path.parent.name not in message
         assert "report.xlsx" in message or tool == "model_audit"
     else:
-        assert message == str(caught.value.__cause__)
+        assert message == str(cause)
+        assert any(form in message for form in (failure.filename, repr(failure.filename)[1:-1]))
         assert name in message or "sensitive alias" in message
 
 
@@ -251,9 +289,14 @@ def test_unknown_home_does_not_replace_original_file_error(tmp_path, monkeypatch
     with pytest.raises(ToolError) as caught:
         server.revit_audit_report(str(source), "~revit_model_mcp_missing_user_4a1b/r")
     assert isinstance(caught.value.__cause__, FileNotFoundError)
-    assert "No such file or directory" in str(caught.value)
+    assert caught.value.__cause__.filename == str(source)
     assert "none.json" in str(caught.value)
-    assert (str(tmp_path) in str(caught.value)) is not redact
+    message = str(caught.value)
+    if redact:
+        assert tmp_path.name not in message
+        assert tmp_path.parent.name not in message
+    else:
+        assert any(form in message for form in (str(tmp_path), repr(str(tmp_path))[1:-1]))
 
 
 @pytest.mark.parametrize("redact", [False, True])
