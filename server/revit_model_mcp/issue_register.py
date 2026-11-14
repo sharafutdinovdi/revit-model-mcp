@@ -291,6 +291,7 @@ def write_register(
     _append(register, HEADERS)
     _append(elements, ["Issue ID", "Element ID"])
     snapshot_count = 0
+    skipped_snapshots = []
     for index, issue in enumerate(issues):
         ids = issue["element_ids"]
         _append(
@@ -327,6 +328,7 @@ def write_register(
         if issue["status"] == "Open":
             register.cell(row, 10).fill = PatternFill("solid", fgColor="FCE4E4")
         register.row_dimensions[row].height = 60
+        captured = False
         if index in snapshots and index not in skipped:
             try:
                 image = _snapshot(snapshots[index])
@@ -338,10 +340,15 @@ def write_register(
             if image is not None:
                 _box_image(register, image, row, 2)
                 snapshot_count += 1
+                captured = True
         elif ids and issue["snapshot"] != "none" and index not in notes:
             message = "Snapshot unavailable: no image supplied"
             register.cell(row, 2, message)
             warnings.append(f"{issue['id']}: {message}")
+        if ids and issue["snapshot"] != "none" and not captured:
+            skipped_snapshots.append(
+                {"what": f"{issue['id']} snapshot", "reason": register.cell(row, 2).value}
+            )
         for element_id in ids:
             _append(elements, [issue["id"], element_id])
     _header(register, [9, 52, 32, 11, 20, 16, 40, 46, 36, 10, 16, 11, 9, 24], filter_rows=True)
@@ -375,5 +382,7 @@ def write_register(
         "issueCount": len(issues),
         "snapshotCount": snapshot_count,
         "bySeverity": totals,
+        "skipped": skipped_snapshots,
+        "skippedCount": len(skipped_snapshots),
         "warnings": warnings,
     }
