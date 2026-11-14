@@ -87,7 +87,8 @@ public static class ToolArguments
     private static XElement Parse(string json)
     {
         if (Encoding.UTF8.GetByteCount(json) > 65536) throw new ArgumentException("parameters or args exceed 64 KB.");
-        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json), XmlDictionaryReaderQuotas.Max);
+        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json),
+            new XmlDictionaryReaderQuotas { MaxDepth = 8, MaxStringContentLength = 65536, MaxArrayLength = 65536 });
         return XElement.Load(reader);
     }
 
@@ -130,7 +131,7 @@ public static class ToolArguments
         var schema = Members(Parse(json));
         ValidateKeywords(schema, "parameters", ["type", "title", "properties", "required", "additionalProperties"]);
         ValidateTitle(schema, "parameters");
-        if (!schema.TryGetValue("type", out var type) || type.Value != "object" || Kind(type) != "string")
+        if (!schema.TryGetValue("type", out var type) || Kind(type) != "string" || type.Value != "object")
             throw new ArgumentException("parameters.type must be object.");
         if (schema.TryGetValue("additionalProperties", out var additional) &&
             (Kind(additional) != "boolean" || additional.Value != "false"))
@@ -251,6 +252,9 @@ internal sealed class ToolStore(string directory)
     {
         if (name is null || !Regex.IsMatch(name, @"\A[a-z][a-z0-9_]{2,47}\z"))
             throw new ArgumentException("name must match ^[a-z][a-z0-9_]{2,47}$.");
+        if (name is "con" or "prn" or "aux" or "nul" ||
+            Regex.IsMatch(name, @"\A(?:com|lpt)[1-9]\z"))
+            throw new ArgumentException("Tool name must not be a reserved Windows device name.");
     }
 
     public IReadOnlyList<ToolDefinition> List() => List(out _);
@@ -378,7 +382,7 @@ internal sealed class ToolStore(string directory)
         }
     }
 
-    private static void AtomicWrite(string path, string text)
+    internal static void AtomicWrite(string path, string text)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

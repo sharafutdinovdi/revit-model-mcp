@@ -142,6 +142,31 @@ public sealed class MyToolsTests
     }
 
     [Test]
+    public async Task Schema_RefusesExcessiveDepthWithinByteLimit()
+    {
+        var schema = "{\"type\":" + new string('[', 30000) + "0" + new string(']', 30000) + "}";
+        await Assert.That(Encoding.UTF8.GetByteCount(schema) < 65536).IsTrue();
+        await Assert.That(() => ToolArguments.ValidateSchema(schema)).Throws<System.Xml.XmlException>();
+        await Assert.That(() => (Definition() with { Parameters = schema }).Validate()).Throws<System.Xml.XmlException>();
+    }
+
+    [Test]
+    public async Task Arguments_RefuseExcessiveDepthWithinByteLimit()
+    {
+        var arguments = "{\"count\":" + new string('[', 30000) + "0" + new string(']', 30000) + "}";
+        await Assert.That(Encoding.UTF8.GetByteCount(arguments) < 65536).IsTrue();
+        await Assert.That(() => ToolArguments.Validate(Schema, arguments)).Throws<System.Xml.XmlException>();
+    }
+
+    [Test]
+    public async Task Schema_AcceptsPrimitiveEnumsWithinDepthQuota()
+    {
+        ToolArguments.ValidateSchema(Schema);
+        var arguments = ToolArguments.Validate(Schema, """{"count":1,"label":"test"}""");
+        await Assert.That(arguments["label"]).IsEqualTo("test");
+    }
+
+    [Test]
     [Arguments("{\"type\":\"array\"}")]
     [Arguments("{\"type\":\"object\",\"additionalProperties\":true}")]
     [Arguments("{\"type\":\"object\",\"required\":[\"missing\"]}")]
@@ -225,6 +250,47 @@ public sealed class MyToolsTests
     public async Task Definition_RejectsUnsafeNames(string name)
     {
         await Assert.That(Capture(() => Definition(name).Validate())).Contains("name must match");
+    }
+
+    [Test]
+    [Arguments("con")]
+    [Arguments("prn")]
+    [Arguments("aux")]
+    [Arguments("nul")]
+    [Arguments("com1")]
+    [Arguments("com2")]
+    [Arguments("com3")]
+    [Arguments("com4")]
+    [Arguments("com5")]
+    [Arguments("com6")]
+    [Arguments("com7")]
+    [Arguments("com8")]
+    [Arguments("com9")]
+    [Arguments("lpt1")]
+    [Arguments("lpt2")]
+    [Arguments("lpt3")]
+    [Arguments("lpt4")]
+    [Arguments("lpt5")]
+    [Arguments("lpt6")]
+    [Arguments("lpt7")]
+    [Arguments("lpt8")]
+    [Arguments("lpt9")]
+    public async Task Definition_RejectsReservedWindowsDeviceNames(string name)
+    {
+        await Assert.That(Capture(() => Definition(name).Validate())).Contains("reserved Windows device name");
+    }
+
+    [Test]
+    [Arguments("console")]
+    [Arguments("com0")]
+    [Arguments("com10")]
+    [Arguments("lpt0")]
+    [Arguments("lpt10")]
+    [Arguments("nul_tool")]
+    public async Task Definition_AcceptsNamesSimilarToReservedDevices(string name)
+    {
+        Definition(name).Validate();
+        await Assert.That(Definition(name).Name).IsEqualTo(name);
     }
 
     [Test]
