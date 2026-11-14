@@ -95,6 +95,7 @@ It shows the display label, tool identifier, mode, saved date, short revision, r
 An untested running year, including an empty tested-years list, produces a warning.
 **View code** opens a read-only source viewer with metadata and **Copy code**.
 **Approve and run** continues; **Cancel** stops.
+Returning to a transaction setting that was already reviewed for the same revision in this Revit process does not ask again.
 The ribbon review set is separate from the MCP token-confirmed set.
 A local approval never waives an MCP token, and an MCP token never waives the local review.
 
@@ -113,6 +114,9 @@ Execution displays a wait cursor and a status window.
 The result window shows **Done**, **Preview finished. Nothing was changed.** or **Failed**, followed by the summary.
 It shows the returned value and log when present, truncated for display with **Copy result**.
 
+![Run form of an action tool with one text input, Preview and Run](screenshots/my-tools-run-form.png)
+![Result window of a read tool with the returned value and Copy result](screenshots/my-tools-result.png)
+
 ## Ribbon and settings
 
 **My tools** is a pulldown on the Model MCP panel.
@@ -122,6 +126,8 @@ Unused slots are hidden; overflow tools remain runnable in **Settings**.
 The pulldown refreshes at startup, after a save or deletion through MCP in this process, and after Settings closes.
 Each refresh reads the shared per-user store, including changes made by another Revit process.
 **Settings** remains available without a document; tool buttons require an active document.
+
+![My tools pulldown on the Model MCP ribbon panel with six saved tools and Settings](screenshots/my-tools-ribbon.png)
 
 **Settings** shows one list of every saved tool.
 The top bar contains search, **Import…** and **Export…**.
@@ -134,6 +140,8 @@ Other valid tools follow by label; invalid tools appear last with a reason.
 A click on a row expands its description, inputs, read or action mode, saved date and **View code**.
 **View code** opens a read-only source viewer with metadata and **Copy code**.
 
+![Settings list of saved tools with one row expanded and one tool off the ribbon](screenshots/my-tools-list.png)
+
 The **⋯** button or a right click opens **Run…**, **Edit…**, **Export…** and **Delete…**.
 Ribbon tools also have **Move up** and **Move down**.
 **Edit…** opens **Edit tool** with a label of 1 to 80 characters, **Load PNG…**, **Use default** and **The tool manages its own transactions**.
@@ -143,6 +151,9 @@ The default transaction mode is `auto`.
 Icons use the default script icon or an imported, single-frame PNG of at most 256 KB and 1024 pixels per dimension.
 Imported icons are resized into 16 px and 32 px copies.
 Stored and imported PNG dimensions are checked before full pixel decoding.
+
+![Actions menu of a ribbon tool with Run, Edit, Export, Move up, Move down and Delete](screenshots/my-tools-menu.png)
+![Edit tool dialog with the label, icon buttons and the transaction checkbox](screenshots/my-tools-edit.png)
 
 `Ctrl+F` focuses search; `Esc` clears a nonempty search.
 On a focused row, `F2` opens **Edit tool**, `Delete` requests deletion, `Alt+Up` and `Alt+Down` move ribbon tools, and the menu key opens actions.
@@ -199,6 +210,8 @@ Approval data is not transferred.
 The first local run of an unreviewed name and revision still requires review, and the first MCP run still requires its independent confirmation token.
 Imported C# retains the Windows user's file, network and Revit API rights.
 Import only code that has been read or comes from a trusted author.
+
+![Import review listing one new tool and one that replaces an existing tool](screenshots/my-tools-import.png)
 
 The version 1 file is one flat UTF-8 JSON object without a BOM.
 Import tolerates a leading UTF-8 BOM and files up to 4 MB.
