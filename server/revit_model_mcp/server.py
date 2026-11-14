@@ -970,13 +970,15 @@ async def revit_model_health(
         document,
     )
 
-    if target is None:
+    if target is None or health.get("success") is False:
         return health
     warning_result = await _execute(
         Job.list_warnings(None, True),
         timeout_seconds,
         document,
     )
+    if warning_result.get("success") is False:
+        return warning_result
     groups = warning_result["data"]["groups"]
     selected = sorted(range(len(groups)), key=lambda i: groups[i]["count"], reverse=True)[:5]
     snapshots, notes, warnings = {}, {}, []

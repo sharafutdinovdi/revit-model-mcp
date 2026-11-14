@@ -131,3 +131,20 @@ def test_boolean_rule_schema_rejected():
         asyncio.run(server.revit_model_audit(
             rules_inline={"schema": True, "name": "Invalid", "rules": []}, save=False
         ))
+
+
+@pytest.mark.parametrize("failed_command", ["model-health", "list-warnings"])
+def test_health_workbook_preserves_transport_failure(tmp_path, failed_command):
+    from revit_model_mcp.errors import unavailable
+
+    failure = unavailable(failed_command, "Connection refused")
+    responses = [failure] if failed_command == "model-health" else [
+        {"success": True, "data": {"counts": {}}}, failure
+    ]
+    execute = AsyncMock(side_effect=responses)
+    target = tmp_path / "health.xlsx"
+    with patch.object(server, "_execute", execute):
+        result = asyncio.run(server.revit_model_health(output_path=str(target)))
+    assert result == failure
+    assert execute.await_count == len(responses)
+    assert not target.exists()
