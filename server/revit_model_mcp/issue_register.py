@@ -26,6 +26,12 @@ from revit_model_mcp.workbook_style import (
 )
 
 SEVERITIES = ("critical", "major", "minor", "info")
+ISSUE_REQUIRED_TEXT_FIELDS = ("title", "category", "finding", "severity")
+ISSUE_ITEM_CONTRACT = (
+    f"Each issue needs {', '.join(ISSUE_REQUIRED_TEXT_FIELDS[:-1])} "
+    f"and {ISSUE_REQUIRED_TEXT_FIELDS[-1]} "
+    f"({', '.join(SEVERITIES[:-1])} or {SEVERITIES[-1]})."
+)
 SNAPSHOT_LIMIT = 25
 HEADERS = [
     "ID",
@@ -108,9 +114,12 @@ def validate_register(output_path, project, issues, pixel_size=900):
         item = dict(issue)
         for field, value in item.items():
             check_text(value, f"{prefix}.{field}")
-        for field in ("title", "category", "finding", "severity"):
+        for field in ISSUE_REQUIRED_TEXT_FIELDS:
             if not isinstance(item.get(field), str) or not item[field].strip():
-                raise ValueError(f"{prefix}.{field} is required and must be a non-blank string.")
+                raise ValueError(
+                    f"{prefix}.{field} is required and must be a non-blank string. "
+                    + ISSUE_ITEM_CONTRACT
+                )
         for field in (
             "id",
             "requirement_source",
@@ -123,7 +132,9 @@ def validate_register(output_path, project, issues, pixel_size=900):
             if field in item and not isinstance(item[field], str):
                 raise ValueError(f"{prefix}.{field} must be a string.")
         if item["severity"] not in SEVERITIES:
-            raise ValueError(f"{prefix}.severity must be critical, major, minor or info.")
+            raise ValueError(
+                f"{prefix}.severity must be critical, major, minor or info. " + ISSUE_ITEM_CONTRACT
+            )
         item.setdefault("id", f"ISS-{index + 1:03d}")
         if not item["id"].strip() or item["id"] in identifiers:
             raise ValueError(f"{prefix}.id must be non-blank and unique.")
