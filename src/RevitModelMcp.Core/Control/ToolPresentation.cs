@@ -210,8 +210,8 @@ public sealed class ToolParameterForm
 
 public sealed class ToolRibbonSession
 {
-    private readonly HashSet<string> _confirmed = new(StringComparer.Ordinal);
-    public bool RequiresReview(string name, string revision) => !_confirmed.Contains(name + ":" + revision);
-    public void Confirm(string name, string revision) => _confirmed.Add(name + ":" + revision);
+    private readonly HashSet<(string ApprovalBinding, string Transaction)> _confirmed = [];
+    public bool RequiresReview(string approvalBinding, string transaction) => !_confirmed.Contains((approvalBinding, transaction));
+    public void Confirm(string approvalBinding, string transaction) => _confirmed.Add((approvalBinding, transaction));
     public static string? Refusal(bool locked, string lockMessage, string? policyRefusal) => locked ? lockMessage : policyRefusal;
 }
