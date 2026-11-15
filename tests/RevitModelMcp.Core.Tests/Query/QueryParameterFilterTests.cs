@@ -7,6 +7,61 @@ namespace RevitModelMcp.Core.Tests.Query;
 public sealed class QueryParameterFilterTests
 {
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FilterResolution_RefusesUnknownNamesWithTheOriginalMessage(bool hasCandidates)
+    {
+        var original = Assert.Throws<ArgumentException>(() => QueryParameterValidator.Resolve("Lenght", ["Length"]));
+        var exception = Assert.Throws<ArgumentException>(() =>
+            QueryParameterValidator.ValidateFilterResolution("Lenght", hasCandidates, false, () => ["Length"]));
+        await Assert.That(exception.Message).IsEqualTo(original.Message);
+        await Assert.That(exception.ParamName).IsEqualTo(original.ParamName);
+    }
+
+    [Test]
+    public async Task FilterResolution_RefusesKnownNamesAbsentFromNonemptyCandidates()
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+            QueryParameterValidator.ValidateFilterResolution("Width", true, false, () => ["Width"]));
+        await Assert.That(exception.Message).StartsWith(
+            "Parameter 'Width' was not found on the queried elements or their types. Use list-catalog with section=parameters to see available names.");
+        await Assert.That(exception.ParamName).IsEqualTo("requested");
+    }
+
+    [Test]
+    public async Task FilterResolution_AllowsKnownNamesWithEmptyCandidates()
+    {
+        var validations = 0;
+        QueryParameterValidator.ValidateFilterResolution("Width", false, false, () =>
+        {
+            validations++;
+            return ["Width"];
+        });
+        await Assert.That(validations).IsEqualTo(1);
+    }
+
+    [Test]
+    public void FilterResolution_AllowsNamesResolvedOnAnyQueriedCategory()
+    {
+        QueryParameterValidator.ValidateFilterResolution("Width", true, true,
+            () => throw new InvalidOperationException("A resolved filter does not need model-wide validation."));
+    }
+
+    [Test]
+    [Arguments("CURVE_ELEM_LENGTH", true)]
+    [Arguments("curve_elem_length", true)]
+    [Arguments("ALTERNATIVE_LENGTH", true)]
+    [Arguments("Length", false)]
+    [Arguments("123456", false)]
+    [Arguments("-1004005", false)]
+    [Arguments("+123456", false)]
+    public async Task BuiltInAlias_AcceptsOnlyDefinedNames(string requested, bool expected)
+    {
+        var aliases = new HashSet<string>(["CURVE_ELEM_LENGTH", "ALTERNATIVE_LENGTH"], StringComparer.OrdinalIgnoreCase);
+        await Assert.That(QueryParameterSemantics.IsDefinedAlias(requested, aliases)).IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task NamedSources_UsesAllMatchingInstanceParametersBeforeTypeParameters()
     {
         var instance = new[] { (Name: "Length", Id: -1004005), (Name: "Length", Id: 42), (Name: "Width", Id: 43) };

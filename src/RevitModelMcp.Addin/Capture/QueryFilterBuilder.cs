@@ -28,8 +28,7 @@ internal static class QueryFilterBuilder
         var parameters = QueryParameterResolver.Resolve(document,
             requestedFields.Where(field => !ElementFieldReader.IsBuiltInField(field)), structuralCollector);
         var filterParameters = QueryParameterResolver.ResolveFilters(document,
-            parameterSpecs.Select(filter => filter.Parameter), structuralCollector, filters.Categories);
-        var unresolved = filterParameters.Values.Any(descriptors => descriptors.Count == 0);
+            parameterSpecs.Select(filter => filter.Parameter), structuralCollector);
         // Revit's HasValue rule does not read parameters from element types.
         var parameterFilters = parameterSpecs
             .Where(filter => filter.Operator != ParameterOperator.NotEmpty && filterParameters[filter.Parameter].Count > 0)
@@ -52,8 +51,8 @@ internal static class QueryFilterBuilder
                 var collector = Apply(
                     viewId is null ? new FilteredElementCollector(document) : new FilteredElementCollector(document, viewId),
                     allFilters);
-                if (!unresolved && valueFilters.Count == 0 && pinnedFilters.Count == 0) return collector;
-                var excluded = collector.Where(element => unresolved || valueFilters.Any(filter =>
+                if (valueFilters.Count == 0 && pinnedFilters.Count == 0) return collector;
+                var excluded = collector.Where(element => valueFilters.Any(filter =>
                     !QueryParameterSemantics.MatchesValueState(
                         filterParameters[filter.Parameter].Select(descriptor => HasParameterValue(element, descriptor)),
                         filter.Operator))

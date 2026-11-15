@@ -15,10 +15,12 @@ internal static class QueryParameterResolver
 {
     private static readonly Lazy<(Dictionary<string, BuiltInParameter> Names,
         Dictionary<BuiltInParameter, (string Name, int Order)> Details)> BuiltIns = new(CreateBuiltInCache);
+    private static readonly HashSet<string> BuiltInAliasNames =
+        new(Enum.GetNames(typeof(BuiltInParameter)), StringComparer.OrdinalIgnoreCase);
 
     public static Dictionary<string, IReadOnlyList<QueryParameterDescriptor>> ResolveFilters(
         Document document, IEnumerable<string> requestedNames,
-        Func<FilteredElementCollector> candidateCollector, IReadOnlyList<string> categories)
+        Func<FilteredElementCollector> candidateCollector)
     {
         var requested = requestedNames.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         var candidates = requested.ToDictionary(name => name,
@@ -26,16 +28,15 @@ internal static class QueryParameterResolver
         if (requested.Length == 0)
             return new Dictionary<string, IReadOnlyList<QueryParameterDescriptor>>(StringComparer.OrdinalIgnoreCase);
         var builtInIds = requested.ToDictionary(name => name,
-            name => Enum.TryParse<BuiltInParameter>(name, true, out var builtIn) ? (long?)builtIn : null,
+            name => QueryParameterSemantics.IsDefinedAlias(name, BuiltInAliasNames) &&
+                    Enum.TryParse<BuiltInParameter>(name, true, out var builtIn) ? (long?)builtIn : null,
             StringComparer.OrdinalIgnoreCase);
         var typeParameters = new Dictionary<ElementId, Parameter[]>();
-        var resolvedByCategory = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var hasCandidates = false;
         using var collector = candidateCollector();
         foreach (var element in collector)
         {
-            var category = element.Category?.Name ?? "<uncategorized>";
-            if (!resolvedByCategory.TryGetValue(category, out var resolved))
-                resolvedByCategory.Add(category, resolved = new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+            hasCandidates = true;
             var instanceParameters = element.Parameters.Cast<Parameter>().ToArray();
             IEnumerable<Parameter> ReadTypeParameters()
             {
@@ -52,7 +53,6 @@ internal static class QueryParameterResolver
                 var sources = QueryParameterSemantics.ResolveNamedSources(
                     instanceParameters, ReadTypeParameters, parameter => QueryParameterSemantics.MatchesParameterName(
                         name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInIds[name]));
-                if (sources.Count > 0) resolved.Add(name);
                 foreach (var parameter in sources)
                 {
                     if (candidates[name].ContainsKey(parameter.Id)) continue;
@@ -66,15 +66,10 @@ internal static class QueryParameterResolver
                 }
             }
         }
-        if (resolvedByCategory.Count == 0)
-            resolvedByCategory.Add(string.Join(", ", categories), new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-        foreach (var category in resolvedByCategory)
         foreach (var name in requested)
-        {
-            if (!category.Value.Contains(name))
-                PluginLog.Skipped($"category {category.Key} parameter filter {name}",
-                    new InvalidOperationException($"Parameter '{name}' was not found on the queried elements or their types."));
-        }
+            QueryParameterValidator.ValidateFilterResolution(
+                name, hasCandidates, candidates[name].Count > 0,
+                () => Resolve(document, [name], candidateCollector).Keys);
         return candidates.ToDictionary(pair => pair.Key,
             pair => (IReadOnlyList<QueryParameterDescriptor>)pair.Value.Values.ToArray(), StringComparer.OrdinalIgnoreCase);
     }

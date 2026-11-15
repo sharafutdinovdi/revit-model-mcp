@@ -38,6 +38,17 @@ public static class QueryParameterValidator
         }
     }
 
+    public static void ValidateFilterResolution(
+        string requested, bool hasCandidates, bool resolved, Func<IEnumerable<string>> modelWideNames)
+    {
+        if (resolved) return;
+        Resolve(requested, modelWideNames());
+        if (hasCandidates)
+            throw new ArgumentException(
+                $"Parameter '{requested}' was not found on the queried elements or their types. Use list-catalog with section=parameters to see available names.",
+                nameof(requested));
+    }
+
     public static string Resolve(string requested, IEnumerable<string> available)
     {
         if (IsBuiltInField(requested)) return BuiltInFields.First(name =>
@@ -97,6 +108,9 @@ public static class QueryParameterSemantics
     {
         return instanceParameter ?? typeParameter();
     }
+
+    public static bool IsDefinedAlias(string requested, ISet<string> definedNames) =>
+        definedNames.Contains(requested);
 
     public static bool MatchesParameterName(
         string requested, string? name, long id, long? builtInId) =>
