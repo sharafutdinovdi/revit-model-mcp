@@ -10,6 +10,7 @@ internal sealed class QueryParameterDescriptor
     public QueryParameterKind Kind { get; set; }
     public ForgeTypeId? DataType { get; set; }
     public bool HasTypeSource { get; set; }
+    public Definition? Definition { get; set; }
 }
 
 internal static class QueryParameterResolver
@@ -85,13 +86,15 @@ internal static class QueryParameterResolver
                             existing.HasTypeSource |= fromType;
                             continue;
                         }
+                        var definition = parameter.Definition;
                         candidates[name].Add(parameter.Id, new QueryParameterDescriptor
                         {
                             Name = name,
                             Id = parameter.Id,
                             Kind = QueryParameterSemantics.ResolveKind(null, false, parameter.StorageType.ToString()),
-                            DataType = parameter.Definition.GetDataType(),
-                            HasTypeSource = fromType
+                            DataType = definition.GetDataType(),
+                            HasTypeSource = fromType,
+                            Definition = definition
                         });
                     }
                 }

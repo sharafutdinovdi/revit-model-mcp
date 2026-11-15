@@ -54,9 +54,11 @@ internal static class QueryFilterBuilder
                     viewId is null ? new FilteredElementCollector(document) : new FilteredElementCollector(document, viewId),
                     allFilters);
                 if (valueFilters.Count == 0 && pinnedFilters.Count == 0) return collector;
+                var typeStates = new Dictionary<(ElementId TypeId, ElementId ParameterId), bool?>();
+                var typeElements = new Dictionary<ElementId, Element?>();
                 var excluded = collector.Where(element => valueFilters.Any(filter =>
                     !QueryParameterSemantics.MatchesValueState(
-                        ReadParameterValueStates(element, filterParameters[filter.Parameter]),
+                        ReadParameterValueStates(element, filterParameters[filter.Parameter], typeStates, typeElements),
                         filter.Operator))
                     || pinnedFilters.Any(filter => !QueryParameterValidator.MatchesPinned(element.Pinned, filter)))
                     .Select(element => element.Id).ToList();
@@ -67,13 +69,36 @@ internal static class QueryFilterBuilder
     }
 
     private static IEnumerable<bool?> ReadParameterValueStates(
-        Element element, IReadOnlyList<QueryParameterDescriptor> descriptors)
+        Element element, IReadOnlyList<QueryParameterDescriptor> descriptors,
+        IDictionary<(ElementId TypeId, ElementId ParameterId), bool?> typeStates,
+        IDictionary<ElementId, Element?> typeElements)
     {
-        var sources = QueryParameterSemantics.ResolveNamedSources(
-            element.Parameters.Cast<Parameter>(),
-            () => element.Document.GetElement(element.GetTypeId())?.Parameters.Cast<Parameter>() ?? [],
-            parameter => descriptors.Any(descriptor => descriptor.Id == parameter.Id));
-        return sources.Select(parameter => (bool?)HasParameterValue(parameter));
+        var hasInstance = false;
+        foreach (var descriptor in descriptors)
+        {
+            var parameter = ReadParameterById(element, descriptor);
+            if (parameter is null) continue;
+            hasInstance = true;
+            yield return HasParameterValue(parameter);
+        }
+        if (hasInstance) yield break;
+        var typeId = element.GetTypeId();
+        foreach (var descriptor in descriptors)
+        {
+            var key = (typeId, descriptor.Id);
+            if (!typeStates.TryGetValue(key, out var state))
+            {
+                if (!typeElements.TryGetValue(typeId, out var type))
+                {
+                    type = element.Document.GetElement(typeId);
+                    typeElements.Add(typeId, type);
+                }
+                var parameter = type is null ? null : ReadParameterById(type, descriptor);
+                state = parameter is null ? null : HasParameterValue(parameter);
+                typeStates.Add(key, state);
+            }
+            yield return state;
+        }
     }
 
     private static bool HasParameterValue(Parameter parameter)
@@ -82,6 +107,15 @@ internal static class QueryFilterBuilder
         return QueryParameterSemantics.HasValue(parameter.HasValue, parameter.StorageType.ToString(),
             parameter.StorageType == StorageType.String ? parameter.AsString() : null,
             parameter.StorageType == StorageType.ElementId ? RevitValueReader.GetId(parameter.AsElementId()) : null);
+    }
+
+    private static Parameter? ReadParameterById(Element element, QueryParameterDescriptor descriptor)
+    {
+        var id = RevitValueReader.GetId(descriptor.Id);
+        return id < 0
+            ? element.get_Parameter((BuiltInParameter)id)
+            : element.get_Parameter(descriptor.Definition ??
+                throw new InvalidOperationException($"Parameter '{descriptor.Name}' has no definition."));
     }
 
     private static FilteredElementCollector Apply(FilteredElementCollector collector, IEnumerable<ElementFilter> filters)
