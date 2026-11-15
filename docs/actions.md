@@ -76,7 +76,7 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_mirror` | `element_ids`, `axis`, `point_mm`, `copy=true` | Mirror across an X or Y parallel line through the model XY point in mm. Copy keeps originals. Without copy, pinned, hosted and constrained elements that do not mirror are skipped and reported. Group members that Revit refuses to change are skipped. |
 | `revit_change_type` | `element_ids`, `type_name`, `family=null` | Resolve each target among compatible types. Refuse ambiguous or incompatible targets with candidates. Group members that Revit refuses to change are skipped. |
 | `revit_update_parameters` | `filters`, `parameter`, `value`, `parameter_id=null`, `max_elements=5000`, `include_type_parameters=false` | Use query filters to update matching instance parameters. Refuse counts above the limit, at most 20000. Report missing, read-only and type-only parameters and preview up to 50 values. Members of groups that Revit refuses to change appear in `skipped.inGroup`, next to `skipped.missing`, `skipped.readOnly` and `skipped.typeParameter`; dry runs predict these skips. With `include_type_parameters=true`, update each distinct type once and report `affectedTypeIds` and `outsideFilterCount` for instances sharing those types outside the filter. |
-| `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. |
+| `revit_place_family` | `family`, `type_name`, `x_mm`, `y_mm`, `level`, `rotation_deg=0` | Place a loaded family at model XY in mm on a named level; rotate about Z in degrees. Hosted and line based families are refused. |
 | `revit_load_family` | `paths` (1-100), `overwrite=false`, `overwrite_parameter_values=false`, `dry_run=false`, `timeout_seconds=600` | Load workstation `.rfa` files in one undo entry. Existing families are `skipped` unless overwrite is true. With overwrite, changed families are `reloaded`; an already loaded family that Revit leaves unchanged is `unchanged`. |
 | `revit_place_families` | Exactly one of `placements` or `at_rooms`; `load=null`, `dry_run=false`, `stop_on_error=true`, `timeout_seconds=600` | Load optional families and place up to 2000 instances in one undo entry. |
 | `revit_create_wall` | `start_mm`, `end_mm`, `level`, `wall_type`, `height_mm=3000` | Create a straight wall; endpoints are `[x,y]` in model mm. |
@@ -99,7 +99,7 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `timeout_seconds=1800` | Edit open family or named project families; one load cycle per family. |
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `timeout_seconds=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
-| `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. A real removal needs a confirmation token. Cannot be used in a batch. |
+| `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. `dry_run` lists the links and dependent elements without deleting anything and leaves links loaded. A real removal needs a confirmation token. Cannot be used in a batch. |
 | `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
@@ -293,6 +293,8 @@ The activity pane shows the first non-empty source line and a SHA-256 prefix. So
 ### Model file export
 
 `revit_export` writes to `output_dir`, or to `%LOCALAPPDATA%\RevitModelMcp\exports\<document title>\<UTC timestamp>` when omitted. The directory must be an absolute drive path or a UNC path under `trustedNetworkRoots`. Device paths and `..` segments are refused. Existing output files require `overwrite=true`. When `overwrite=true` and at least one target file already exists, the first call returns `needsConfirmation` with the files that would be replaced; retry with `confirm_token`. The token is bound to the document, the target paths and their size and modification time. With no existing target, or with `dry_run`, no token is needed. Exports inside `revit_process_models` are not gated. `dry_run=true` returns resolved targets and planned names without writing. The result includes `folder`, `files` with sizes, `targets`, `skipped`, `elapsedMs` and `summary`. File export changes no model elements and creates no undo entry.
+A target that another program holds open, or a read-only target, is refused before the export starts.
+An export that leaves an existing target unchanged is reported as failed.
 
 PDF and DWG accept any combination of view names or IDs, sheet numbers, names or IDs, a saved `sheet_set`, and `all_sheets=true`. At least one printable target is required; templates and unprintable views are rejected. PDF `options` are `combine=true`, `file_name`, `naming="sheet_number_name"` or `"view_name"`, `color="color"`, `"grayscale"` or `"black_line"`, `zoom_percent=100`, `paper="auto"`, `hide_crop_boundaries=true` and `hide_scope_boxes=true`. DWG options are `setup` (saved export setup), `merged_views=false` and `file_version` (Revit ACADVersion name).
 
@@ -421,6 +423,8 @@ For example, setting Comments on element 123 returns:
 ```
 
 `revit_place_families` accepts placement records with `family`, `type_name`, `x_mm`, `y_mm`, `level`, optional `z_mm`, `rotation_deg`, `host_id` and `parameters`. `z_mm` is an offset above the level. `host_id` addresses a wall, floor or ceiling, including its nearest usable face for a face-based family. Parameter names follow `revit_set_parameter` resolution rules. A failure rolls back every placement by default. With `stop_on_error=false`, failed indices and reasons are returned while successful items commit. `at_rooms` selects placed, enclosed rooms by optional level and room names or numbers; unplaced and unenclosed rooms are reported as `skipped`. The result includes `placed`, `failed`, `createdElementIds`, `perTypeCounts`, `instanceOffsetsMm`, `summary` and `verification`.
+A door or window needs `host_id` of a wall.
+A host of another kind than the family expects is refused before anything is created.
 `instanceOffsetsMm` maps created IDs to the actual elevation offset read from `INSTANCE_ELEVATION_PARAM` or `INSTANCE_FREE_HOST_OFFSET_PARAM`, in mm.
 A missing offset is reported as null.
 Level-based placements set and verify the offset against `z_mm`; face-based placements use the host face.
@@ -721,6 +725,7 @@ The first MCP run in each Revit session requires the token handshake, including 
 Every committed MCP action-mode run also requires the handshake; read-mode runs always roll back model transactions.
 The **My tools** ribbon runs through the same execution gates with independent local revision review and model-change confirmation.
 Its parameter form offers Preview and Run; Settings also runs approved overflow or hidden tools.
+Settings exports shared tool files under `get-tool` policy and imports them after source review under `save-tool` policy and the workstation read-only lock.
 The token does not prove human approval, and rollback does not undo C# file, network, or process effects.
 In the store channel only machine policy `ExecuteCode=confirm` enables saved C#, including read mode and dry runs.
 Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.
@@ -735,6 +740,7 @@ Schema and documentation checks run without Revit; independent preview rollback,
 | Contract | Implementation |
 | --- | --- |
 | Confirmation, first saved-tool preview and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [MyTools.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/MyTools.cs) |
+| Shared tool file integrity and local import review | [ToolShare.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ToolShare.cs), [ToolShareDialogs.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ToolShareDialogs.cs) |
 | Conditional close and detached-document exemption | [DocumentActions.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/DocumentActions.cs) |
 | Transaction ownership and native scopes | [CodeExecution.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/CodeExecution.cs) |
 | Independent batch previews and shared parameter transaction | [BatchActionExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/BatchActionExecutor.cs) |

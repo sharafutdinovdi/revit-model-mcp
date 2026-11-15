@@ -498,7 +498,7 @@ public sealed class Application : ExternalApplication
     {
         // An accepted wake-up is not an execution receipt; Idling also services pending requests.
         if (_requestQueue?.HasPendingRequest == true && sender is UIApplication application)
-            _eventHandler?.Execute(application);
+            _eventHandler?.ExecuteFromIdling(application);
     }
 
     private void RequestExecution()
@@ -720,12 +720,22 @@ internal sealed class ControlExternalEventHandler : IExternalEventHandler
 
     public void Execute(UIApplication application)
     {
+        Execute(application, false);
+    }
+
+    public void ExecuteFromIdling(UIApplication application)
+    {
+        Execute(application, true);
+    }
+
+    private void Execute(UIApplication application, bool fromIdling)
+    {
         var requestQueue = _requestQueue
                            ?? throw new InvalidOperationException("The ExternalEvent queue is not initialized.");
         requestQueue.Execute(
             () =>
             {
-                _controlChannel.Tick(application);
+                _controlChannel.Tick(application, fromIdling);
                 if (_controlChannel.HasPendingWork)
                 {
                     // The batch session requests the next Execute independently of Idling.

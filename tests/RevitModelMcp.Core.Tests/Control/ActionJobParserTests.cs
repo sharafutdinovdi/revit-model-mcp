@@ -141,6 +141,77 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("OneLevelBased", false, null)]
+    [Arguments("OneLevelBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("TwoLevelsBased", false, null)]
+    [Arguments("TwoLevelsBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("WorkPlaneBased", false, null)]
+    [Arguments("WorkPlaneBased", true, null)]
+    [Arguments("ViewBased", false, null)]
+    [Arguments("ViewBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("OneLevelBasedHosted", false, "Family 'Fixture' needs a host: pass host_id of a wall, floor or ceiling in a revit_place_families placement.")]
+    [Arguments("OneLevelBasedHosted", true, null)]
+    [Arguments("CurveBased", false, "Family 'Fixture' is placed along a line, which this tool does not support.")]
+    [Arguments("CurveBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("CurveDrivenStructural", false, "Family 'Fixture' is placed along a line, which this tool does not support.")]
+    [Arguments("CurveDrivenStructural", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("CurveBasedDetail", false, "Family 'Fixture' is placed along a line, which this tool does not support.")]
+    [Arguments("CurveBasedDetail", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("Adaptive", false, null)]
+    [Arguments("Adaptive", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("Invalid", false, null)]
+    [Arguments("Invalid", true, "Family 'Fixture' is not hosted.")]
+    public async Task PlacementRefusal_ChecksPlacementTypeAndHost(string placementType, bool hasHost, string? expected)
+    {
+        await Assert.That(FamilyPlacementContract.PlacementRefusal("Fixture", placementType, hasHost)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(null, "wall", null)]
+    [Arguments(null, "floor", null)]
+    [Arguments(null, "ceiling", null)]
+    [Arguments(0, "wall", null)]
+    [Arguments(0, "floor", null)]
+    [Arguments(0, "ceiling", null)]
+    [Arguments(1, "wall", null)]
+    [Arguments(1, "floor", "Family 'Fixture' is wall hosted; host 42 is a floor.")]
+    [Arguments(1, "ceiling", "Family 'Fixture' is wall hosted; host 42 is a ceiling.")]
+    [Arguments(2, "wall", "Family 'Fixture' is floor hosted; host 42 is a wall.")]
+    [Arguments(2, "floor", null)]
+    [Arguments(2, "ceiling", "Family 'Fixture' is floor hosted; host 42 is a ceiling.")]
+    [Arguments(3, "wall", "Family 'Fixture' is ceiling hosted; host 42 is a wall.")]
+    [Arguments(3, "floor", "Family 'Fixture' is ceiling hosted; host 42 is a floor.")]
+    [Arguments(3, "ceiling", null)]
+    [Arguments(4, "wall", "Family 'Fixture' is roof hosted; host 42 is a wall.")]
+    [Arguments(4, "floor", "Family 'Fixture' is roof hosted; host 42 is a floor.")]
+    [Arguments(4, "ceiling", "Family 'Fixture' is roof hosted; host 42 is a ceiling.")]
+    [Arguments(5, "wall", null)]
+    [Arguments(5, "floor", null)]
+    [Arguments(5, "ceiling", null)]
+    public async Task HostKindRefusal_ChecksKnownHostingBehaviors(int? hostingBehavior, string hostKind, string? expected)
+    {
+        await Assert.That(FamilyPlacementContract.HostKindRefusal("Fixture", hostingBehavior, hostKind, 42)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(2500, 2000, true)]
+    [Arguments(2500.5, 1999.5, true)]
+    [Arguments(2501, 1999, true)]
+    [Arguments(2499, 2001, true)]
+    [Arguments(2502, 2000, false)]
+    [Arguments(2500, 2002, false)]
+    [Arguments(double.NaN, 2000, false)]
+    [Arguments(2500, double.NaN, false)]
+    [Arguments(double.PositiveInfinity, 2000, false)]
+    [Arguments(2500, double.PositiveInfinity, false)]
+    [Arguments(double.NegativeInfinity, 2000, false)]
+    [Arguments(2500, double.NegativeInfinity, false)]
+    public async Task PlacementPoint_VerifiesRequestedXY(double actualXMm, double actualYMm, bool matches)
+    {
+        await Assert.That(FamilyPlacementContract.PointMatches(2500, 2000, actualXMm, actualYMm)).IsEqualTo(matches);
+    }
+
+    [Test]
     public async Task PlaceFamilies_PreservesLevelOffsetForExplicitAndRoomPlacements()
     {
         var explicitPlacement = ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Diffuser","typeName":"A","level":"Level 1","xMm":0,"yMm":0,"zMm":2700}]}""");
@@ -557,6 +628,182 @@ public sealed class ActionJobParserTests
     public async Task Export_FileNamingPrefixesReservedDeviceNames(string name)
     {
         await Assert.That(FileExportJob.FileName(name, "csv")).IsEqualTo($"_{name}.csv");
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableReturnsExclusivelyLockedFileUntilReleased()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            using (var stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                await Assert.That(FileExportJob.FirstUnwritable([path])).IsEqualTo(path);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableReturnsFileHeldByReader()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsEqualTo(path);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableSkipsMissingFilesAndPreservesPathOrder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var missing = Path.Combine(folder, "missing.ifc");
+            var writable = Path.Combine(folder, "writable.ifc");
+            var first = Path.Combine(folder, "first.ifc");
+            var second = Path.Combine(folder, "second.ifc");
+            File.WriteAllText(writable, "writable");
+            File.WriteAllText(first, "first");
+            File.WriteAllText(second, "second");
+            using var firstStream = File.Open(first, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using var secondStream = File.Open(second, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            await Assert.That(FileExportJob.FirstUnwritable([missing, writable, first, second])).IsEqualTo(first);
+            await Assert.That(FileExportJob.FirstUnwritable([missing, writable, second, first])).IsEqualTo(second);
+            await Assert.That(FileExportJob.FirstUnwritable([missing, writable])).IsNull();
+            await Assert.That(File.Exists(missing)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableReturnsReadOnlyFile()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "model.ifc");
+        File.WriteAllText(path, "model");
+        var attributes = File.GetAttributes(path);
+        try
+        {
+            File.SetAttributes(path, FileAttributes.ReadOnly);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsEqualTo(path);
+        }
+        finally
+        {
+            File.SetAttributes(path, attributes);
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritablePreservesWritableFileLengthAndLastWriteTime()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            var length = new FileInfo(path).Length;
+            var lastWriteTime = File.GetLastWriteTimeUtc(path);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsNull();
+            await Assert.That(new FileInfo(path).Length).IsEqualTo(length);
+            await Assert.That(File.GetLastWriteTimeUtc(path)).IsEqualTo(lastWriteTime);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_CapturedStateDetectsTimestampAndLengthChanges()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            var lastWriteTime = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, lastWriteTime);
+            var before = FileExportJob.CaptureState([path]);
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsTrue();
+
+            File.WriteAllText(path, "other");
+            File.SetLastWriteTimeUtc(path, lastWriteTime.AddMinutes(1));
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+
+            File.WriteAllText(path, "longer model");
+            File.SetLastWriteTimeUtc(path, lastWriteTime);
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_MissingTargetIsNeverUnchanged()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            var before = FileExportJob.CaptureState([path]);
+            await Assert.That(before.ContainsKey(path)).IsFalse();
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_DeletedCapturedTargetIsNotUnchanged()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            var before = FileExportJob.CaptureState([path]);
+            File.Delete(path);
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
     }
 
     [Test]
