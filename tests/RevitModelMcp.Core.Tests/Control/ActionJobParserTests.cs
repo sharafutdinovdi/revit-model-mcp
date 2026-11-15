@@ -141,6 +141,77 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments("OneLevelBased", false, null)]
+    [Arguments("OneLevelBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("TwoLevelsBased", false, null)]
+    [Arguments("TwoLevelsBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("WorkPlaneBased", false, null)]
+    [Arguments("WorkPlaneBased", true, null)]
+    [Arguments("ViewBased", false, null)]
+    [Arguments("ViewBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("OneLevelBasedHosted", false, "Family 'Fixture' needs a host: pass host_id of a wall, floor or ceiling in a revit_place_families placement.")]
+    [Arguments("OneLevelBasedHosted", true, null)]
+    [Arguments("CurveBased", false, "Family 'Fixture' is placed along a line, which this tool does not support.")]
+    [Arguments("CurveBased", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("CurveDrivenStructural", false, "Family 'Fixture' is placed along a line, which this tool does not support.")]
+    [Arguments("CurveDrivenStructural", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("CurveBasedDetail", false, "Family 'Fixture' is placed along a line, which this tool does not support.")]
+    [Arguments("CurveBasedDetail", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("Adaptive", false, null)]
+    [Arguments("Adaptive", true, "Family 'Fixture' is not hosted.")]
+    [Arguments("Invalid", false, null)]
+    [Arguments("Invalid", true, "Family 'Fixture' is not hosted.")]
+    public async Task PlacementRefusal_ChecksPlacementTypeAndHost(string placementType, bool hasHost, string? expected)
+    {
+        await Assert.That(FamilyPlacementContract.PlacementRefusal("Fixture", placementType, hasHost)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(null, "wall", null)]
+    [Arguments(null, "floor", null)]
+    [Arguments(null, "ceiling", null)]
+    [Arguments(0, "wall", null)]
+    [Arguments(0, "floor", null)]
+    [Arguments(0, "ceiling", null)]
+    [Arguments(1, "wall", null)]
+    [Arguments(1, "floor", "Family 'Fixture' is wall hosted; host 42 is a floor.")]
+    [Arguments(1, "ceiling", "Family 'Fixture' is wall hosted; host 42 is a ceiling.")]
+    [Arguments(2, "wall", "Family 'Fixture' is floor hosted; host 42 is a wall.")]
+    [Arguments(2, "floor", null)]
+    [Arguments(2, "ceiling", "Family 'Fixture' is floor hosted; host 42 is a ceiling.")]
+    [Arguments(3, "wall", "Family 'Fixture' is ceiling hosted; host 42 is a wall.")]
+    [Arguments(3, "floor", "Family 'Fixture' is ceiling hosted; host 42 is a floor.")]
+    [Arguments(3, "ceiling", null)]
+    [Arguments(4, "wall", "Family 'Fixture' is roof hosted; host 42 is a wall.")]
+    [Arguments(4, "floor", "Family 'Fixture' is roof hosted; host 42 is a floor.")]
+    [Arguments(4, "ceiling", "Family 'Fixture' is roof hosted; host 42 is a ceiling.")]
+    [Arguments(5, "wall", null)]
+    [Arguments(5, "floor", null)]
+    [Arguments(5, "ceiling", null)]
+    public async Task HostKindRefusal_ChecksKnownHostingBehaviors(int? hostingBehavior, string hostKind, string? expected)
+    {
+        await Assert.That(FamilyPlacementContract.HostKindRefusal("Fixture", hostingBehavior, hostKind, 42)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(2500, 2000, true)]
+    [Arguments(2500.5, 1999.5, true)]
+    [Arguments(2501, 1999, true)]
+    [Arguments(2499, 2001, true)]
+    [Arguments(2502, 2000, false)]
+    [Arguments(2500, 2002, false)]
+    [Arguments(double.NaN, 2000, false)]
+    [Arguments(2500, double.NaN, false)]
+    [Arguments(double.PositiveInfinity, 2000, false)]
+    [Arguments(2500, double.PositiveInfinity, false)]
+    [Arguments(double.NegativeInfinity, 2000, false)]
+    [Arguments(2500, double.NegativeInfinity, false)]
+    public async Task PlacementPoint_VerifiesRequestedXY(double actualXMm, double actualYMm, bool matches)
+    {
+        await Assert.That(FamilyPlacementContract.PointMatches(2500, 2000, actualXMm, actualYMm)).IsEqualTo(matches);
+    }
+
+    [Test]
     public async Task PlaceFamilies_PreservesLevelOffsetForExplicitAndRoomPlacements()
     {
         var explicitPlacement = ControlJobParser.Parse("""{"command":"place-families","placements":[{"family":"Diffuser","typeName":"A","level":"Level 1","xMm":0,"yMm":0,"zMm":2700}]}""");

@@ -1484,7 +1484,7 @@ internal static class ActionCommandExecutor
         {
             var target = views.Single(view => RevitValueReader.GetId(view.Id) == choice.Id);
             if (!CanShow(target)) continue;
-            if (!choice.IsActive) uiDocument.ActiveView = target;
+            if (!choice.IsActive) DocumentActions.SetActiveView(uiDocument, target);
             return !choice.IsOpen;
         }
         throw new InvalidOperationException("No existing floor plan or orthographic 3D view can show all requested elements. Create an uncropped 3D view with revit_create_view (kind='3d'), then retry.");

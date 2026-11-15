@@ -317,6 +317,8 @@ internal static class ActionMutations
             symbols.WhereParameter(BuiltInParameter.SYMBOL_NAME_PARAM).Equals(action.TypeName);
         var symbol = symbols.FirstOrDefault() as FamilySymbol
                      ?? throw new ArgumentException($"Type '{action.TypeName}' was not found in family '{action.Family}'.");
+        var placementRefusal = FamilyPlacementContract.PlacementRefusal(action.Family!, symbol.Family.FamilyPlacementType.ToString(), hostId is not null);
+        if (placementRefusal is not null) throw new ArgumentException(placementRefusal);
         var level = FindLevel(document, action.Level!);
         if (!symbol.IsActive)
         {
@@ -324,12 +326,20 @@ internal static class ActionMutations
             document.Regenerate();
         }
         var point = new XYZ(Millimeters(action.XMm), Millimeters(action.YMm), level.ProjectElevation + Millimeters(zMm));
-        if (hostId is not null && symbol.Family.FamilyPlacementType is not (FamilyPlacementType.OneLevelBasedHosted or FamilyPlacementType.WorkPlaneBased))
-            throw new ArgumentException($"Family '{action.Family}' is not hosted.");
         var host = hostId is null ? null : CreateId(hostId.Value).ToElement(document)
             ?? throw new ArgumentException($"Host {hostId} was not found.");
         if (host is not null && host is not Wall && host is not Floor && host is not Ceiling)
             throw new ArgumentException($"Host {hostId} must be a wall, floor or ceiling.");
+        if (host is not null && symbol.Family.FamilyPlacementType == FamilyPlacementType.OneLevelBasedHosted)
+        {
+            var hostingParameter = symbol.Family.get_Parameter(BuiltInParameter.FAMILY_HOSTING_BEHAVIOR);
+            var hostingBehavior = hostingParameter is not null && hostingParameter.StorageType == StorageType.Integer && hostingParameter.HasValue
+                ? hostingParameter.AsInteger()
+                : (int?)null;
+            var hostKind = host is Wall ? "wall" : host is Floor ? "floor" : "ceiling";
+            var hostKindRefusal = FamilyPlacementContract.HostKindRefusal(action.Family!, hostingBehavior, hostKind, hostId!.Value);
+            if (hostKindRefusal is not null) throw new ArgumentException(hostKindRefusal);
+        }
         FamilyInstance instance;
         var rotationPoint = point;
         var faceHosted = host is not null && symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased;
@@ -358,6 +368,9 @@ internal static class ActionMutations
                 document.Regenerate();
             }
         }
+        if (host is null && (instance.Location is not LocationPoint location ||
+            !FamilyPlacementContract.PointMatches(action.XMm, action.YMm, location.Point.X.ToMillimeters(), location.Point.Y.ToMillimeters())))
+            throw new InvalidOperationException($"Family '{action.Family}' was not created at the requested point; its placement type {symbol.Family.FamilyPlacementType} is not supported by this tool.");
         if (action.RotationDeg != 0)
             instance.Rotate(Line.CreateBound(rotationPoint, rotationPoint + XYZ.BasisZ), action.RotationDeg * Math.PI / 180);
         if (parameters is not null)

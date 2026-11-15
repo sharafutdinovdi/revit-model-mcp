@@ -33,7 +33,7 @@ public sealed class SaveReminderTests : RevitApiUiTest
             await Assert.That(dismissed).IsTrue();
             await Assert.That(selectedResult).IsEqualTo((int)TaskDialogResult.Cancel);
             if (running) return;
-            channel.Tick(UiApplication);
+            channel.Tick(UiApplication, false);
             using var response = JsonDocument.Parse(channel.Scheduler.Status(jobId)!.Result!);
             await Assert.That(response.RootElement.GetProperty("dialogsSuppressed")[0].GetString())
                 .IsEqualTo(BatchDialogPolicy.SaveReminderDismissed);

@@ -108,7 +108,7 @@ internal static class QueryParameterResolver
             }
             catch (Exception exception)
             {
-                PluginLog.Skipped($"parameter {enumName} display label", exception);
+                PluginLog.Debug($"Skipped parameter {enumName} display label.", exception);
             }
 
             if (!names.ContainsKey(enumName)) names.Add(enumName, builtIn);
