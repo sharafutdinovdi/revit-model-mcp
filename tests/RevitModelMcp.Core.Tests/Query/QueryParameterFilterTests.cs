@@ -7,6 +7,27 @@ namespace RevitModelMcp.Core.Tests.Query;
 public sealed class QueryParameterFilterTests
 {
     [Test]
+    public async Task UnresolvedFilterNames_OnlyRetriesNamesWithoutAnyFastPassBinding()
+    {
+        var bindings = new Dictionary<string, long[]>
+        {
+            ["Length"] = [-1004005],
+            ["Width"] = [42, 43],
+            ["height"] = [],
+            ["Missing"] = []
+        };
+        var result = QueryParameterSemantics.GetUnresolvedFilterNames(bindings.Keys, name => bindings[name].Length > 0);
+        await Assert.That(result.ToArray()).IsEquivalentTo(new[] { "height", "Missing" });
+    }
+
+    [Test]
+    public async Task UnresolvedFilterNames_DoesNotRetryResolvedNames()
+    {
+        var result = QueryParameterSemantics.GetUnresolvedFilterNames(["Length", "Width"], _ => true);
+        await Assert.That(result.Count).IsEqualTo(0);
+    }
+
+    [Test]
     [Arguments(false)]
     [Arguments(true)]
     public async Task FilterResolution_RefusesUnknownNamesWithTheOriginalMessage(bool hasCandidates)

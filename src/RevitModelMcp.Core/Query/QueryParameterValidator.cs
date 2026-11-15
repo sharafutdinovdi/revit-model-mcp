@@ -112,6 +112,10 @@ public static class QueryParameterSemantics
     public static bool IsDefinedAlias(string requested, ISet<string> definedNames) =>
         definedNames.Contains(requested);
 
+    public static IReadOnlyList<string> GetUnresolvedFilterNames(
+        IEnumerable<string> requested, Func<string, bool> hasBinding) =>
+        requested.Where(name => !hasBinding(name)).ToArray();
+
     public static bool MatchesParameterName(
         string requested, string? name, long id, long? builtInId) =>
         string.Equals(name, requested, StringComparison.OrdinalIgnoreCase) || id == builtInId;

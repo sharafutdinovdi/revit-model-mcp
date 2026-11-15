@@ -31,47 +31,82 @@ internal static class QueryParameterResolver
             name => QueryParameterSemantics.IsDefinedAlias(name, BuiltInAliasNames) &&
                     Enum.TryParse<BuiltInParameter>(name, true, out var builtIn) ? (long?)builtIn : null,
             StringComparer.OrdinalIgnoreCase);
-        var typeParameters = new Dictionary<ElementId, Parameter[]>();
+        var typeElements = new Dictionary<ElementId, Element?>();
+        var typeParameters = new Dictionary<(ElementId TypeId, string Name, bool IgnoreCase), IList<Parameter>>();
         var hasCandidates = false;
-        using var collector = candidateCollector();
-        foreach (var element in collector)
+        void GatherBindings(IReadOnlyList<string> names, bool ignoreCase)
         {
-            hasCandidates = true;
-            var instanceParameters = element.Parameters.Cast<Parameter>().ToArray();
-            IEnumerable<Parameter> ReadTypeParameters()
+            using var collector = candidateCollector();
+            foreach (var element in collector)
             {
-                var typeId = element.GetTypeId();
-                if (!typeParameters.TryGetValue(typeId, out var parameters))
+                hasCandidates = true;
+                ElementId? typeId = null;
+                IList<Parameter> ReadTypeParameters(string name)
                 {
-                    parameters = document.GetElement(typeId)?.Parameters.Cast<Parameter>().ToArray() ?? [];
-                    typeParameters.Add(typeId, parameters);
-                }
-                return parameters;
-            }
-            foreach (var name in requested)
-            {
-                var sources = QueryParameterSemantics.ResolveNamedSources(
-                    instanceParameters, ReadTypeParameters, parameter => QueryParameterSemantics.MatchesParameterName(
-                        name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInIds[name]));
-                foreach (var parameter in sources)
-                {
-                    if (candidates[name].ContainsKey(parameter.Id)) continue;
-                    candidates[name].Add(parameter.Id, new QueryParameterDescriptor
+                    typeId ??= element.GetTypeId();
+                    var key = (typeId, name, ignoreCase);
+                    if (typeParameters.TryGetValue(key, out var parameters)) return parameters;
+                    if (!typeElements.TryGetValue(typeId, out var type))
                     {
-                        Name = name,
-                        Id = parameter.Id,
-                        Kind = QueryParameterSemantics.ResolveKind(null, false, parameter.StorageType.ToString()),
-                        DataType = parameter.Definition.GetDataType()
-                    });
+                        type = document.GetElement(typeId);
+                        typeElements.Add(typeId, type);
+                    }
+                    parameters = type is null ? Array.Empty<Parameter>()
+                        : ReadFilterParameters(type, name, builtInIds[name], ignoreCase);
+                    typeParameters.Add(key, parameters);
+                    return parameters;
+                }
+                foreach (var name in names)
+                {
+                    IEnumerable<Parameter> sources;
+                    if (ignoreCase)
+                    {
+                        sources = QueryParameterSemantics.ResolveNamedSources(
+                            element.Parameters.Cast<Parameter>(), () => ReadTypeParameters(name),
+                            parameter => QueryParameterSemantics.MatchesParameterName(
+                                name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInIds[name]));
+                    }
+                    else
+                    {
+                        var instanceParameters = ReadFilterParameters(element, name, builtInIds[name], false);
+                        sources = instanceParameters.Count > 0 ? instanceParameters : ReadTypeParameters(name);
+                    }
+                    foreach (var parameter in sources)
+                    {
+                        if (candidates[name].ContainsKey(parameter.Id)) continue;
+                        candidates[name].Add(parameter.Id, new QueryParameterDescriptor
+                        {
+                            Name = name,
+                            Id = parameter.Id,
+                            Kind = QueryParameterSemantics.ResolveKind(null, false, parameter.StorageType.ToString()),
+                            DataType = parameter.Definition.GetDataType()
+                        });
+                    }
                 }
             }
         }
+        GatherBindings(requested, false);
+        // Only names without any fast-pass binding receive a case-insensitive enumeration pass.
+        var unresolvedNames = QueryParameterSemantics.GetUnresolvedFilterNames(requested, name => candidates[name].Count > 0);
+        if (hasCandidates && unresolvedNames.Count > 0) GatherBindings(unresolvedNames, true);
         foreach (var name in requested)
             QueryParameterValidator.ValidateFilterResolution(
                 name, hasCandidates, candidates[name].Count > 0,
                 () => Resolve(document, [name], candidateCollector).Keys);
         return candidates.ToDictionary(pair => pair.Key,
             pair => (IReadOnlyList<QueryParameterDescriptor>)pair.Value.Values.ToArray(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IList<Parameter> ReadFilterParameters(
+        Element element, string name, long? builtInId, bool ignoreCase)
+    {
+        if (ignoreCase)
+            return element.Parameters.Cast<Parameter>().Where(parameter =>
+                QueryParameterSemantics.MatchesParameterName(
+                    name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInId)).ToArray();
+        if (!builtInId.HasValue) return element.GetParameters(name);
+        var parameter = element.get_Parameter((BuiltInParameter)builtInId.Value);
+        return parameter is null ? Array.Empty<Parameter>() : new[] { parameter };
     }
 
     public static Dictionary<string, QueryParameterDescriptor> Resolve(
