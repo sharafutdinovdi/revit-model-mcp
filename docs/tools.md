@@ -80,13 +80,13 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,896 | 26,974 | 108,053 |
+| `all` | 89 | 107,895 | 26,973 | 108,052 |
 | `core,read` | 22 | 26,181 | 6,545 | 26,271 |
 | `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
 | `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
 | `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
-| `preset:sheets` | 54 | 64,006 | 16,001 | 64,128 |
-| `preset:batch` | 46 | 52,498 | 13,124 | 52,612 |
+| `preset:sheets` | 54 | 64,005 | 16,001 | 64,127 |
+| `preset:batch` | 46 | 52,497 | 13,124 | 52,611 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -167,15 +167,15 @@ Neither section opens worksets, checks out elements, synchronizes, nor starts a 
 | `revit_shared_coordinates` | None | Read base/survey points, sites and link transforms in mm and degrees. Refused for family documents. |
 | `revit_family_audit` | `families=null`, `detail="summary"`, `timeout_seconds=600` | Summary returns parameter counts and up to 20 unused parameter names, shared status, and purge candidates. `detail="full"` returns all parameter metadata with group IDs and `groupName` labels. `["*"]` audits the first 200 editable families sorted by name; `data.skipped` lists each remaining name and reason, with `skippedCount`. |
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
-| `revit_api_lookup` | `query`, `kind="search"`, `limit=25`, `include_inherited=false`, `include_obsolete=true`, `document=null`, `process_id=null` | Look up public types and members in the running Revit API. |
+| `revit_api_lookup` | `query`, `kind="search"`, `limit=25`, `include_inherited=false`, `include_obsolete=true`, `document=null`, `process_id=null` | Look up public types and members in the running Revit API, and describe `ScriptContext`, the `ctx` object passed to scripts. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null`, `open_timeout_minutes=null` | Start persistent read-only collection; see [batch collection](batch.md). |
 | `revit_batch_status` | `run_id` | Read persisted run and model status. |
 | `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
 | `revit_batch_fetch` | `run_id`, `output_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=null` (grids and levels), `name_map=null` (no renames), `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |
-| `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. |
-| `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. |
+| `revit_issue_register` | `output_path`, `project`, `issues`, `pixel_size=900`, `document=null`; no timeout arguments | Write a new local `.xlsx` review register with documents, severity totals, category chart, element rows and snapshots. Unavailable snapshots appear in `skipped` and `skippedCount`. |
+| `revit_build_report` | `snapshots_dir`, `output_path`, `previous_dir=null`, `findings=null`; no Revit document or timeout arguments | Build a local `.xlsx` report from schema-v1 snapshots. With path redaction enabled, errors and the returned `outputPath` omit parent directories. |
 
 ### Pinned elements
 
@@ -299,7 +299,9 @@ Captures run sequentially for the first 25 eligible issues in severity order, wi
 The remaining issues receive `Snapshot skipped: limit of 25 per register`.
 A 210-second capture budget reserves time within the 240-second client limit for writing the workbook.
 A capture failure receives `Snapshot unavailable: <reason>` and does not fail the register.
-Result fields are `path`, `issueCount`, `snapshotCount`, `bySeverity` and `warnings`.
+Result fields are `path`, `issueCount`, `snapshotCount`, `bySeverity`, `warnings`, `skipped` and `skippedCount`.
+Each unavailable requested snapshot has a skipped entry with `what` identifying the issue and `reason` describing the failure, capture budget or snapshot cap.
+Issues without requested snapshots do not count as skipped.
 
 ## Saved health report
 
@@ -428,5 +430,5 @@ The saved tool commands belong to the `code` toolset.
 List and get carry `readOnlyHint`; save and delete require confirmation, and run follows the saved mode and `execute_code` confirmation flow.
 Every saved tool command is unavailable wherever `execute_code` is disabled.
 The **My tools** ribbon also runs approved procedures locally, with a parameter form, local revision review and action confirmation.
-Settings manages display labels, icons and ribbon visibility independently of approved revisions.
+Settings exports and imports reviewed shared tool files and manages display labels, icons and ribbon visibility independently of approved revisions.
 Local clicks use the same execution gates and do not waive MCP token confirmation.

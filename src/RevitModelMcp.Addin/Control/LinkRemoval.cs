@@ -72,6 +72,44 @@ internal static class LinkRemoval
                 return gate;
             }
         }
+        if (dryRun)
+        {
+            // Deleting a link type unloads its document, and rollback does not load it again.
+            var changedIds = new HashSet<long>();
+            foreach (var candidate in selected)
+            {
+                result.Removed.Add(new RemovedLink
+                {
+                    Id = RevitValueReader.GetId(candidate.Element.Id),
+                    Name = candidate.Element.Name,
+                    Kind = candidate.Kind,
+                    InstanceCount = candidate.InstanceCount
+                });
+                changedIds.Add(RevitValueReader.GetId(candidate.Element.Id));
+                foreach (var dependentId in candidate.Element.GetDependentElements(null))
+                    changedIds.Add(RevitValueReader.GetId(dependentId));
+            }
+            return new ActionResultData
+            {
+                LinkRemoval = result,
+                Warning = result.Warning,
+                Verification = new ActionVerification
+                {
+                    Changed = changedIds.ToList()
+                },
+                DryRun = true,
+                RolledBack = true,
+                Committed = false,
+                Summary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
+                {
+                    Command = "remove-links",
+                    DocumentTitle = document.Title,
+                    Count = result.Removed.Count,
+                    DryRun = true
+                }),
+                UndoName = null
+            };
+        }
         using var group = new TransactionGroup(document, "MCP action");
         if (group.Start() != TransactionStatus.Started) throw new InvalidOperationException("Could not start the action transaction group.");
         using var transaction = new Transaction(document, "revit_remove_links");
@@ -80,7 +118,6 @@ internal static class LinkRemoval
             .SetFailuresPreprocessor(failures).SetClearAfterRollback(true));
         try
         {
-            var removedIds = new List<long>();
             foreach (var candidate in selected)
             {
                 var record = new RemovedLink
@@ -90,7 +127,7 @@ internal static class LinkRemoval
                     Kind = candidate.Kind,
                     InstanceCount = candidate.InstanceCount
                 };
-                removedIds.AddRange(document.Delete(candidate.Element.Id).Select(RevitValueReader.GetId));
+                document.Delete(candidate.Element.Id);
                 result.Removed.Add(record);
             }
             var humanSummary = ActionSummaryBuilder.BuildSummary(new ActionSummaryContext
@@ -101,32 +138,22 @@ internal static class LinkRemoval
                 DryRun = dryRun
             });
             var groupName = ActionSummaryBuilder.BuildGroupName(clientName, humanSummary);
-            if (dryRun)
-            {
-                // Dry runs must never commit: some deletions are irreversible.
-                if (transaction.RollBack() != TransactionStatus.RolledBack)
-                    throw new InvalidOperationException(failures.Message ?? "Could not roll back the dry run.");
-                group.RollBack();
-            }
-            else
-            {
-                transaction.SetName(groupName);
-                if (transaction.Commit() != TransactionStatus.Committed)
-                    throw new InvalidOperationException(failures.Message ?? "Link removal transaction failed.");
-                group.SetName(groupName);
-                if (group.Assimilate() != TransactionStatus.Committed)
-                    throw new InvalidOperationException("Could not assimilate the action transaction group.");
-            }
+            transaction.SetName(groupName);
+            if (transaction.Commit() != TransactionStatus.Committed)
+                throw new InvalidOperationException(failures.Message ?? "Link removal transaction failed.");
+            group.SetName(groupName);
+            if (group.Assimilate() != TransactionStatus.Committed)
+                throw new InvalidOperationException("Could not assimilate the action transaction group.");
             return new ActionResultData
             {
                 LinkRemoval = result,
                 Warning = result.Warning,
-                Verification = dryRun ? new ActionVerification { Changed = removedIds.Distinct().ToList() } : null,
-                DryRun = dryRun,
-                RolledBack = dryRun,
-                Committed = !dryRun,
+                Verification = null,
+                DryRun = false,
+                RolledBack = false,
+                Committed = true,
                 Summary = humanSummary,
-                UndoName = dryRun ? null : groupName
+                UndoName = groupName
             };
         }
         catch

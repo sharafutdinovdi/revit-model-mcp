@@ -50,14 +50,18 @@ def write_new_file(target: Path, write: Callable[[BinaryIO], None]) -> None:
         try:
             os.link(temporary, target)
         except FileExistsError as error:
-            raise ValueError(f"Local file already exists: {target}") from error
+            from revit_model_mcp.audit.result import redact_path
+
+            raise ValueError(f"Local file already exists: {redact_path(target)}") from error
         except OSError as error:
             if error.errno not in {errno.EXDEV, errno.ENOSYS, errno.ENOTSUP, errno.EOPNOTSUPP}:
                 raise
             try:
                 _rename_new_file(temporary, target)
             except FileExistsError as conflict:
-                raise ValueError(f"Local file already exists: {target}") from conflict
+                from revit_model_mcp.audit.result import redact_path
+
+                raise ValueError(f"Local file already exists: {redact_path(target)}") from conflict
     finally:
         try:
             os.unlink(temporary)
