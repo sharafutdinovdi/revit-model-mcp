@@ -720,6 +720,7 @@ The first MCP run in each Revit session requires the token handshake, including 
 Every committed MCP action-mode run also requires the handshake; read-mode runs always roll back model transactions.
 The **My tools** ribbon runs through the same execution gates with independent local revision review and model-change confirmation.
 Its parameter form offers Preview and Run; Settings also runs approved overflow or hidden tools.
+Settings exports shared tool files under `get-tool` policy and imports them after source review under `save-tool` policy and the workstation read-only lock.
 The token does not prove human approval, and rollback does not undo C# file, network, or process effects.
 In the store channel only machine policy `ExecuteCode=confirm` enables saved C#, including read mode and dry runs.
 Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.
@@ -734,6 +735,7 @@ Schema and documentation checks run without Revit; independent preview rollback,
 | Contract | Implementation |
 | --- | --- |
 | Confirmation, first saved-tool preview and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [MyTools.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/MyTools.cs) |
+| Shared tool file integrity and local import review | [ToolShare.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ToolShare.cs), [ToolShareDialogs.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ToolShareDialogs.cs) |
 | Conditional close and detached-document exemption | [DocumentActions.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/DocumentActions.cs) |
 | Transaction ownership and native scopes | [CodeExecution.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/CodeExecution.cs) |
 | Independent batch previews and shared parameter transaction | [BatchActionExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/BatchActionExecutor.cs) |
