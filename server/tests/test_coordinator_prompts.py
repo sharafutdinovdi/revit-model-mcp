@@ -201,6 +201,16 @@ def test_coordinator_guide_resource_matches_source():
     assert contents[0].content == GUIDE.read_text(encoding="utf-8")
 
 
+def test_coordinator_guide_locates_saved_tool_settings():
+    contents = asyncio.run(mcp.read_resource(RESOURCE_URI))
+    guide = contents[0].content
+    assert "Saved tools appear in Revit on the Model MCP tab under My tools." in guide
+    assert (
+        "File export, import, ribbon visibility and order, and later label or icon changes are "
+        "managed in Revit in My tools > Settings; no MCP tool supports these operations."
+    ) in guide
+
+
 def test_generated_skill_matches_guide_and_has_frontmatter():
     render_skill = runpy.run_path(str(ROOT / "build" / "generate_coordinator_skill.py"))[
         "render_skill"
