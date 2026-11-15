@@ -1836,6 +1836,8 @@ public sealed class ActionResultData
     [DataMember(Name = "elementsPerView", EmitDefaultValue = false)] public Dictionary<string, int>? ElementsPerView { get; set; }
     [DataMember(Name = "viewId", EmitDefaultValue = false)] public long? ViewId { get; set; }
     [DataMember(Name = "viewName", EmitDefaultValue = false)] public string? ViewName { get; set; }
+    [DataMember(Name = "templateControlled", EmitDefaultValue = false)] public List<string>? TemplateControlled { get; set; }
+    [DataMember(Name = "viewTemplate", EmitDefaultValue = false)] public string? ViewTemplate { get; set; }
     [DataMember(Name = "sheetId", EmitDefaultValue = false)] public long? SheetId { get; set; }
     [DataMember(Name = "sheetNumber", EmitDefaultValue = false)] public string? SheetNumber { get; set; }
     [DataMember(Name = "sheetName", EmitDefaultValue = false)] public string? SheetName { get; set; }

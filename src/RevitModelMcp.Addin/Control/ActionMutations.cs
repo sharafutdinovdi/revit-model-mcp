@@ -919,9 +919,12 @@ internal static class ActionMutations
             view = ViewSection.CreateSection(document, type.Id, sectionBox);
         }
         SetViewName(document, view, action.Name);
-        if (action.Scale is int scale) view.Scale = scale;
         if (action.Template is not null) ApplyTemplate(document, view, action.Template);
-        if (action.DisplayStyle is not null)
+        var template = view.ViewTemplateId == ElementId.InvalidElementId
+            ? null : document.GetElement(view.ViewTemplateId) as View;
+        var templateControlled = GetTemplateControlledSettings(view, template, action);
+        if (action.Scale is int scale && !templateControlled.Contains("scale")) view.Scale = scale;
+        if (action.DisplayStyle is not null && !templateControlled.Contains("displayStyle"))
             view.DisplayStyle = action.DisplayStyle switch
             {
                 "hidden_line" => DisplayStyle.HLR,
@@ -929,7 +932,7 @@ internal static class ActionMutations
                 "consistent_colors" => DisplayStyle.FlatColors,
                 _ => DisplayStyle.Realistic
             };
-        if (action.DetailLevel is not null)
+        if (action.DetailLevel is not null && !templateControlled.Contains("detailLevel"))
             view.DetailLevel = action.DetailLevel switch
             {
                 "coarse" => ViewDetailLevel.Coarse,
@@ -941,10 +944,28 @@ internal static class ActionMutations
             Id = RevitValueReader.GetId(view.Id),
             ViewId = RevitValueReader.GetId(view.Id),
             ViewName = view.Name,
+            TemplateControlled = templateControlled.Count == 0 ? null : templateControlled,
+            ViewTemplate = template?.Name,
             Category = "View",
             Names = [view.Name],
             Count = 1
         };
+    }
+
+    // Settings controlled by a view template remain unchanged and are reported; the view is still created.
+    private static List<string> GetTemplateControlledSettings(View view, View? template, ActionJobContract action)
+    {
+        var templateParameters = template?.GetTemplateParameterIds();
+        var nonControlledParameters = template?.GetNonControlledTemplateParameterIds();
+        bool Controls(BuiltInParameter parameter) => template is not null &&
+            ((templateParameters!.Any(id => RevitValueReader.GetId(id) == (long)parameter) &&
+              !nonControlledParameters!.Any(id => RevitValueReader.GetId(id) == (long)parameter)) ||
+             view.get_Parameter(parameter)?.IsReadOnly == true);
+
+        return ViewTemplateSettings.GetSkipped(
+            action.Scale.HasValue, Controls(BuiltInParameter.VIEW_SCALE),
+            action.DisplayStyle is not null, Controls(BuiltInParameter.MODEL_GRAPHICS_STYLE),
+            action.DetailLevel is not null, Controls(BuiltInParameter.VIEW_DETAIL_LEVEL));
     }
 
     internal static ActionResultData DuplicateView(Document document, ActionJobContract action)

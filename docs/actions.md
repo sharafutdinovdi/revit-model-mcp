@@ -103,6 +103,9 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
+`revit_create_view` leaves settings controlled by the view's template unchanged and lists them in `templateControlled` when any are skipped.
+The result includes the template name in `viewTemplate` when the view has a template.
+
 `revit_link_cad` accepts a workstation `.dwg` path subject to the same absolute-path and trusted network share rules as other file actions. The view must be a plan. Without `view`, it uses a floor plan on `level`, or the active plan. `origin` accepts `internal`, `shared` and `center`; `units` accepts `auto`, `mm`, `cm`, `m`, `in` and `ft`. The `layers` list selects imported layers. The result reports line and polyline segment counts by layer, plus XY extents.
 Counts and extents cover only `Line` and `PolyLine` segments, including nested instance transforms.
 Arcs, splines, meshes and other unsupported geometry are ignored; these extents do not establish the full DWG bounds.
