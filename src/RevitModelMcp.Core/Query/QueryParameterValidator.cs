@@ -1,3 +1,4 @@
+using System.Globalization;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Naming;
 
@@ -35,6 +36,17 @@ public static class QueryParameterValidator
         {
             Resolve(numericField!, availableFields);
         }
+    }
+
+    public static void ValidateFilterResolution(
+        string requested, bool hasCandidates, bool resolved, Func<IEnumerable<string>> modelWideNames)
+    {
+        if (resolved) return;
+        Resolve(requested, modelWideNames());
+        if (hasCandidates)
+            throw new ArgumentException(
+                $"Parameter '{requested}' was not found on the queried elements or their types. Use list-catalog with section=parameters to see available names.",
+                nameof(requested));
     }
 
     public static string Resolve(string requested, IEnumerable<string> available)
@@ -87,10 +99,54 @@ public enum QueryParameterKind
 
 public static class QueryParameterSemantics
 {
+    public static double ParseNumericFilterValue(string value, string parameter) =>
+        double.TryParse(value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : throw new ArgumentException($"Value '{value}' for parameter '{parameter}' is not a number.");
+
     public static T? ResolveValueSource<T>(T? instanceParameter, Func<T?> typeParameter) where T : class
     {
         return instanceParameter ?? typeParameter();
     }
+
+    public static bool IsDefinedAlias(string requested, ISet<string> definedNames) =>
+        definedNames.Contains(requested);
+
+    public static bool ShouldApplyNativeFilter(ParameterOperator operation, Func<bool> hasTypeBinding) =>
+        operation switch
+        {
+            ParameterOperator.NotEmpty => false,
+            ParameterOperator.Empty or ParameterOperator.Exists => !hasTypeBinding(),
+            _ => true
+        };
+
+    public static IReadOnlyList<string> GetUnresolvedFilterNames(
+        IEnumerable<string> requested, Func<string, bool> hasBinding) =>
+        requested.Where(name => !hasBinding(name)).ToArray();
+
+    public static bool MatchesParameterName(
+        string requested, string? name, long id, long? builtInId) =>
+        string.Equals(name, requested, StringComparison.OrdinalIgnoreCase) || id == builtInId;
+
+    public static IReadOnlyList<T> ResolveNamedSources<T>(
+        IEnumerable<T> instanceParameters, Func<IEnumerable<T>> typeParameters,
+        Func<T, bool> matches)
+    {
+        var instanceMatches = instanceParameters.Where(matches).ToArray();
+        return instanceMatches.Length > 0 ? instanceMatches : typeParameters().Where(matches).ToArray();
+    }
+
+    public static T CombineFilterAlternatives<T>(IReadOnlyList<T> rules, Func<IReadOnlyList<T>, T> combineAny) =>
+        rules.Count switch
+        {
+            0 => throw new ArgumentException("At least one resolved parameter rule is required.", nameof(rules)),
+            1 => rules[0],
+            _ => combineAny(rules)
+        };
+
+    public static bool MatchesValueState(IEnumerable<bool?> values, ParameterOperator operation) =>
+        values.Any(value => value.HasValue &&
+            (operation == ParameterOperator.Exists || value.Value == (operation == ParameterOperator.NotEmpty)));
 
     public static bool HasValue(bool hasValue, string storageType, string? text = null, long? elementId = null)
     {
