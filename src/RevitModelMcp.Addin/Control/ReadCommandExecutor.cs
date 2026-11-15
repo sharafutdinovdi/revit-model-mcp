@@ -47,7 +47,7 @@ internal static class ReadCommandExecutor
                     {
                         var path = System.IO.Path.ChangeExtension(assembly.Location, ".xml");
                         return System.IO.File.Exists(path) ? path : null;
-                    });
+                    }, [typeof(ScriptContext)]);
                 WriteSuccess(output, job.Command, lookup, stopwatch);
                 return;
             }
