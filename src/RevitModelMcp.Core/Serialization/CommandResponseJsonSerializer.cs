@@ -63,6 +63,45 @@ public static class CommandResponseJsonSerializer
                 execution.SkippedCount = (execution.SkippedCount ?? 0) + 1;
             }
         }
+        if (response is CommandResponse<ActionResultData>
+            { Command: "execute-code" or "run-tool", Success: true, Data.LogOmittedCount: > 0 } logged)
+        {
+            logged.Partial = true;
+            logged.Skipped ??= [];
+            if (!logged.Skipped.Any(item => item.What == "log"))
+            {
+                logged.Skipped.Add(new SkippedRead
+                {
+                    What = "log",
+                    Reason = ScriptLog.TruncationReason(logged.Data!.LogOmittedCount)
+                });
+                logged.SkippedCount = (logged.SkippedCount ?? 0) + 1;
+            }
+        }
+        if (response is CommandResponse<ActionResultData> { Command: "process-models", Data.Models: { } processed } batch)
+        {
+            for (var index = 0; index < processed.Count; index++)
+            {
+                if (processed[index].Code is not { LogOmittedCount: > 0 } code) continue;
+                if (processed[index].Status != "done") continue;
+                code.Partial = true;
+                code.Skipped ??= [];
+                var reason = ScriptLog.TruncationReason(code.LogOmittedCount);
+                if (!code.Skipped.Any(item => item.What == "log"))
+                {
+                    code.Skipped.Add(new SkippedRead { What = "log", Reason = reason });
+                    code.SkippedCount++;
+                }
+                if (batch.Success) batch.Partial = true;
+                batch.Skipped ??= [];
+                var what = $"models[{index}].code.log";
+                if (!batch.Skipped.Any(item => item.What == what))
+                {
+                    batch.Skipped.Add(new SkippedRead { What = what, Reason = reason });
+                    batch.SkippedCount = (batch.SkippedCount ?? 0) + 1;
+                }
+            }
+        }
 
         using var stream = new MemoryStream();
         ResponseSerializer<T>.Instance.WriteObject(stream, response);

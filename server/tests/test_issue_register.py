@@ -120,6 +120,10 @@ def test_invalid_image_becomes_warning(tmp_path):
     result = write_register(str(tmp_path / "out.xlsx"), {}, [issue(element_ids=[1])], {0: png})
     assert result["snapshotCount"] == 0
     assert "Snapshot unavailable:" in result["warnings"][0]
+    assert result["skippedCount"] == 1
+    assert result["skipped"] == [
+        {"what": "ISS-001 snapshot", "reason": result["warnings"][0].split(": ", 1)[1]}
+    ]
 
 
 @pytest.mark.parametrize(
@@ -186,6 +190,10 @@ def test_tool_captures_sequentially_with_addressing_and_continues_on_error(tmp_p
     assert len(register._images) == 1
     assert register["B3"].value == "Snapshot unavailable: capture failed"
     assert not Path(calls[0].output_path).exists()
+    assert result.structured_content["skipped"] == [
+        {"what": "ISS-002 snapshot", "reason": "Snapshot unavailable: capture failed"}
+    ]
+    assert result.structured_content["skippedCount"] == 1
 
 
 def test_tool_validates_all_issues_before_contacting_revit(tmp_path):
@@ -209,7 +217,8 @@ def test_tool_cap_sends_only_25_jobs_in_severity_order(tmp_path):
 
     async def capture(job, *_):
         calls.append(job.payload["elementIds"][0])
-        raise server.ToolError("unavailable")
+        Image.new("RGB", (40, 20), "red").save(job.output_path)
+        return {"success": True, "data": {"localPath": job.output_path}}
 
     issues = [issue(severity="info", element_ids=[index + 1]) for index in range(26)]
     issues.append(issue(severity="critical", element_ids=[100]))
@@ -222,6 +231,15 @@ def test_tool_cap_sends_only_25_jobs_in_severity_order(tmp_path):
         )
     assert not result.is_error
     assert calls == [100, *range(1, 25)]
+    assert result.structured_content["snapshotCount"] == 25
+    assert result.structured_content["skippedCount"] == 2
+    assert result.structured_content["skipped"] == [
+        {
+            "what": f"ISS-{index:03d} snapshot",
+            "reason": "Snapshot skipped: limit of 25 per register",
+        }
+        for index in (25, 26)
+    ]
 
 
 def test_capture_tool_returns_png_content(tmp_path):
@@ -289,6 +307,14 @@ def test_capture_budget_preserves_register_and_skips_remaining(tmp_path):
     register = load_workbook(result["path"])["Register"]
     assert register["B2"].value == "Snapshot unavailable: capture time budget exhausted"
     assert register["B3"].value == "Snapshot skipped: capture time budget exhausted"
+    assert result["skippedCount"] == 2
+    assert result["skipped"] == [
+        {
+            "what": "ISS-001 snapshot",
+            "reason": "Snapshot unavailable: capture time budget exhausted",
+        },
+        {"what": "ISS-002 snapshot", "reason": "Snapshot skipped: capture time budget exhausted"},
+    ]
 
 
 def test_early_budget_timer_starts_one_capture(tmp_path):
@@ -476,3 +502,20 @@ def test_workbook_presentation_print_settings_and_chart_placement(tmp_path):
     assert chart.anchor.ext.cx == pytest.approx(16 * 360000)
     assert chart.anchor.ext.cy == pytest.approx(9 * 360000)
     assert [series.graphicalProperties.solidFill.srgbClr for series in chart.series] == list(COLORS)
+
+
+def test_tool_all_snapshots_captured_has_empty_skipped_metadata(tmp_path):
+    async def capture(job, *_):
+        Image.new("RGB", (40, 20), "red").save(job.output_path)
+        return {"success": True, "data": {"localPath": job.output_path}}
+
+    with patch.object(server.channel, "execute", side_effect=capture):
+        result = asyncio.run(
+            server.revit_issue_register(
+                str(tmp_path / "out.xlsx"), {}, [issue(element_ids=[1]), issue()]
+            )
+        )
+    assert result["snapshotCount"] == 1
+    assert result["skipped"] == []
+    assert result["skippedCount"] == 0
+    assert result["warnings"] == []

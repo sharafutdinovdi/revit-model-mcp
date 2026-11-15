@@ -11,7 +11,9 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import IllegalCharacterError
 
+from revit_model_mcp.actions import env_flag
 from revit_model_mcp.atomic_write import write_new_file
+from revit_model_mcp.audit.result import local_file_error, redact_path
 
 HEADERS = {
     "Summary": [
@@ -74,21 +76,25 @@ HEADERS = {
 def load_snapshots(directory: str) -> list[tuple[Path, dict[str, Any]]]:
     path = Path(directory).expanduser()
     if not path.is_dir():
-        raise ValueError(f"Snapshot directory does not exist or is not a directory: {path}")
+        raise ValueError(
+            f"Snapshot directory does not exist or is not a directory: {redact_path(path)}"
+        )
     files = sorted(file for file in path.glob("*.json") if file.is_file() and not file.is_symlink())
     if not files:
-        raise ValueError(f"Snapshot directory contains no JSON files: {path}")
+        raise ValueError(f"Snapshot directory contains no JSON files: {redact_path(path)}")
     snapshots = []
     for file in files:
         try:
             snapshot = json.loads(file.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as error:
-            raise ValueError(f"Invalid snapshot JSON in {file}: {error}") from error
+            raise ValueError(f"Invalid snapshot JSON in {redact_path(file)}: {error}") from error
         if not isinstance(snapshot, dict):
-            raise ValueError(f"Snapshot root must be an object: {file}")
+            raise ValueError(f"Snapshot root must be an object: {redact_path(file)}")
         version = snapshot.get("schemaVersion")
         if type(version) is not int or version != 1:
-            raise ValueError(f"Unsupported schemaVersion in {file}: expected integer 1")
+            raise ValueError(
+                f"Unsupported schemaVersion in {redact_path(file)}: expected integer 1"
+            )
         snapshots.append((file, snapshot))
     return snapshots
 
@@ -114,9 +120,9 @@ def _unique_titles(
             if not isinstance(title, str):
                 raise TypeError("passport.title must be a string")
         except (KeyError, TypeError) as error:
-            raise ValueError(f"Invalid {label} snapshot {file}: {error}") from error
+            raise ValueError(f"Invalid {label} snapshot {redact_path(file)}: {error}") from error
         if title in result:
-            raise ValueError(f"Duplicate {label} model title {title!r} in {file}")
+            raise ValueError(f"Duplicate {label} model title {title!r} in {redact_path(file)}")
         result[title] = snapshot
     return result
 
@@ -266,7 +272,7 @@ def build_report(
                     ],
                 )
         except (KeyError, TypeError, ValueError, ZeroDivisionError, IllegalCharacterError) as error:
-            raise ValueError(f"Invalid snapshot {file}: {error}") from error
+            raise ValueError(f"Invalid snapshot {redact_path(file)}: {error}") from error
 
     for index, finding in enumerate(findings or [], start=1):
         if not isinstance(finding, dict):
@@ -292,8 +298,15 @@ def build_report(
         write_new_file(target, workbook.save)
     except ValueError as error:
         if target.exists() or target.is_symlink():
-            raise ValueError(f"Local file already exists: {target}") from error
+            raise ValueError(f"Local file already exists: {redact_path(target)}") from error
         raise
     except OSError as error:
-        raise ValueError(f"Cannot save report: {error}") from error
+        detail = (
+            local_file_error(error)
+            if env_flag("REVIT_MCP_REDACT_PATHS", False)
+            else f"{error.strerror}: {redact_path(error.filename)}"
+            if error.filename is not None
+            else str(error)
+        )
+        raise ValueError(f"Cannot save report: {detail}") from error
     return {"outputPath": str(target), "snapshotCount": len(current), "sheets": names}

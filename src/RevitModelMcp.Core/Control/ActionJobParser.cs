@@ -1259,6 +1259,10 @@ public sealed class ProcessModelCodeResult
     [IgnoreDataMember] public object? ReturnValue { get; set; }
     [DataMember(Name = "returnValue")] public string ReturnValueMarker { get; set; } = string.Empty;
     [DataMember(Name = "log")] public List<string> Log { get; set; } = [];
+    [DataMember(Name = "logOmittedCount", EmitDefaultValue = false)] public int LogOmittedCount { get; set; }
+    [DataMember(Name = "partial", EmitDefaultValue = false)] public bool Partial { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public List<SkippedRead>? Skipped { get; set; }
+    [DataMember(Name = "skippedCount", EmitDefaultValue = false)] public int SkippedCount { get; set; }
     [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }
     [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
 }
@@ -1296,6 +1300,45 @@ public sealed class FileExportJob
         var stem = safe.Split('.')[0].ToUpperInvariant();
         if (NwcPathValidator.IsReservedDeviceName(stem)) safe = $"_{safe}";
         return safe.EndsWith($".{extension}", StringComparison.OrdinalIgnoreCase) ? safe : $"{safe}.{extension}";
+    }
+
+    public static string? FirstUnwritable(IEnumerable<string> paths)
+    {
+        if (paths is null) throw new ArgumentNullException(nameof(paths));
+        foreach (var path in paths)
+        {
+            if (!File.Exists(path)) continue;
+            try
+            {
+                using var stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return path;
+            }
+        }
+        return null;
+    }
+
+    public static IReadOnlyDictionary<string, string> CaptureState(IEnumerable<string> paths)
+    {
+        if (paths is null) throw new ArgumentNullException(nameof(paths));
+        var state = new Dictionary<string, string>();
+        foreach (var path in paths)
+        {
+            var file = new FileInfo(path);
+            if (file.Exists) state[path] = $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+        }
+        return state;
+    }
+
+    public static bool IsUnchanged(IReadOnlyDictionary<string, string> before, string path)
+    {
+        if (before is null) throw new ArgumentNullException(nameof(before));
+        if (path is null) throw new ArgumentNullException(nameof(path));
+        if (!before.TryGetValue(path, out var state)) return false;
+        var file = new FileInfo(path);
+        return file.Exists && state == $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
     }
 }
 
@@ -1718,6 +1761,37 @@ public sealed class FamilyPlacementContract : SheetViewPlacement
     public static bool OffsetMatches(double requestedMm, double actualMm) =>
         !double.IsNaN(actualMm) && !double.IsInfinity(actualMm) && Math.Abs(requestedMm - actualMm) <= 0.01;
 
+    public static string? PlacementRefusal(string family, string placementType, bool hasHost)
+    {
+        if (!hasHost && placementType == "OneLevelBasedHosted")
+            return $"Family '{family}' needs a host: pass host_id of a wall, floor or ceiling in a revit_place_families placement.";
+        if (!hasHost && placementType is "CurveBased" or "CurveDrivenStructural" or "CurveBasedDetail")
+            return $"Family '{family}' is placed along a line, which this tool does not support.";
+        if (hasHost && placementType is not ("OneLevelBasedHosted" or "WorkPlaneBased"))
+            return $"Family '{family}' is not hosted.";
+        return null;
+    }
+
+    public static string? HostKindRefusal(string family, int? hostingBehavior, string hostKind, long hostId)
+    {
+        var expected = hostingBehavior switch
+        {
+            1 => "wall",
+            2 => "floor",
+            3 => "ceiling",
+            4 => "roof",
+            _ => null
+        };
+        return expected is not null && expected != hostKind
+            ? $"Family '{family}' is {expected} hosted; host {hostId} is a {hostKind}."
+            : null;
+    }
+
+    public static bool PointMatches(double requestedXMm, double requestedYMm, double actualXMm, double actualYMm) =>
+        !double.IsNaN(actualXMm) && !double.IsInfinity(actualXMm) &&
+        !double.IsNaN(actualYMm) && !double.IsInfinity(actualYMm) &&
+        Math.Abs(requestedXMm - actualXMm) <= 1 && Math.Abs(requestedYMm - actualYMm) <= 1;
+
     [DataMember(Name = "family")] public string? Family { get; set; }
     [DataMember(Name = "typeName")] public string? TypeName { get; set; }
     [DataMember(Name = "zMm")] public double ZMm { get; set; }
@@ -1798,6 +1872,7 @@ public sealed class ActionResultData
     [DataMember(Name = "resultCompleteness", EmitDefaultValue = false)] public CodeResult? ResultCompleteness { get; set; }
     [DataMember(Name = "resultArtifact", EmitDefaultValue = false)] public string? ResultArtifact { get; set; }
     [DataMember(Name = "log", EmitDefaultValue = false)] public List<string>? Log { get; set; }
+    [DataMember(Name = "logOmittedCount", EmitDefaultValue = false)] public int LogOmittedCount { get; set; }
     [DataMember(Name = "diagnostics", EmitDefaultValue = false)] public List<CodeDiagnostic>? Diagnostics { get; set; }
     [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }
     [DataMember(Name = "exceptionType", EmitDefaultValue = false)] public string? ExceptionType { get; set; }
@@ -2122,6 +2197,37 @@ public static class CadWallPlanner
             return wall;
         }
     }
+}
+
+public static class MepRunConnection
+{
+    public const double MaximumDistanceMm = 50;
+
+    public static void ValidateTarget(long targetId, bool hasConnectorManager)
+    {
+        if (!hasConnectorManager) throw new ArgumentException($"Element {targetId} has no MEP connectors.");
+    }
+
+    public static string? UnavailableReason(long targetId, int connectorCount, int compatibleCount,
+        int freeCompatibleCount, double nearestDistanceMm)
+    {
+        if (connectorCount == 0) return $"connect_to {targetId} has no MEP connectors.";
+        if (compatibleCount == 0) return $"connect_to {targetId} has no connector in the run's domain.";
+        if (freeCompatibleCount == 0) return $"connect_to {targetId} has no free connector in the run's domain.";
+        if (nearestDistanceMm > MaximumDistanceMm)
+            return $"connect_to {targetId} has no free connector within {MaximumDistanceMm} mm of the run start.";
+        return null;
+    }
+
+    public static void ReportFailure(ActionResultData result, long segmentId, long targetId, string reason)
+    {
+        (result.UnjoinedPairs ??= []).Add([segmentId, targetId]);
+        var reasons = result.UnjoinedReasons ??= [];
+        reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+    }
+
+    public static string RejectedReason(long targetId, string detail) =>
+        $"connect_to {targetId} could not be joined: {detail}";
 }
 
 public static class MepRunSizing

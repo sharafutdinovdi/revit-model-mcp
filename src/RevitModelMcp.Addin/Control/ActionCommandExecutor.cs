@@ -502,6 +502,7 @@ internal static class ActionCommandExecutor
                     ReturnValue = code.ReturnValue,
                     ReturnValueMarker = Guid.NewGuid().ToString("N"),
                     Log = code.Log ?? [],
+                    LogOmittedCount = code.LogOmittedCount,
                     DocumentReceipts = code.DocumentReceipts,
                     Warning = code.Warning
                 };
@@ -891,6 +892,12 @@ internal static class ActionCommandExecutor
             throw new ArgumentException("Export targets produce duplicate file names.");
         if (Directory.Exists(folder) && !request.Overwrite && planned.Any(name => File.Exists(Path.Combine(folder, name))))
             throw new ArgumentException("An export file already exists; set overwrite=true.");
+        if (request.Overwrite && !action.DryRun)
+        {
+            var locked = FileExportJob.FirstUnwritable(planned.Select(name => Path.Combine(folder, name)));
+            if (locked is not null)
+                throw new IOException($"'{Path.GetFileName(locked)}' is open in another program or is read-only. Close it and repeat the export.");
+        }
         if (request.Overwrite && !action.DryRun && action.ConfirmOverwrites)
         {
             var existing = planned.Select(name => Path.Combine(folder, name)).Where(File.Exists).ToList();
@@ -918,6 +925,14 @@ internal static class ActionCommandExecutor
         };
         if (action.DryRun) return result;
         Directory.CreateDirectory(folder);
+        var before = request.Overwrite
+            ? FileExportJob.CaptureState(planned.Select(name => Path.Combine(folder, name)))
+            : null;
+        void RefuseUnchangedFile(string path)
+        {
+            if (before is not null && FileExportJob.IsUnchanged(before, path))
+                throw new InvalidOperationException($"Export did not replace '{Path.GetFileName(path)}'; the existing file is unchanged.");
+        }
         var stopwatch = Stopwatch.StartNew();
         if (request.Format == "pdf")
         {
@@ -994,6 +1009,7 @@ internal static class ActionCommandExecutor
                 };
                 schedule.Export(folder, planned[index], csvOptions);
                 var path = Path.Combine(folder, planned[index]);
+                RefuseUnchangedFile(path);
                 using var reader = new StreamReader(path, Encoding.Default, true);
                 var contents = reader.ReadToEnd();
                 reader.Close();
@@ -1005,6 +1021,7 @@ internal static class ActionCommandExecutor
             var path = Path.Combine(folder, file.Name);
             if (!File.Exists(path) || new FileInfo(path).Length == 0)
                 throw new InvalidOperationException($"Export did not produce '{file.Name}'.");
+            RefuseUnchangedFile(path);
             file.SizeBytes = new FileInfo(path).Length;
         }
         result.ElapsedMs = stopwatch.ElapsedMilliseconds;
@@ -1468,7 +1485,7 @@ internal static class ActionCommandExecutor
         {
             var target = views.Single(view => RevitValueReader.GetId(view.Id) == choice.Id);
             if (!CanShow(target)) continue;
-            if (!choice.IsActive) uiDocument.ActiveView = target;
+            if (!choice.IsActive) DocumentActions.SetActiveView(uiDocument, target);
             return !choice.IsOpen;
         }
         throw new InvalidOperationException("No existing floor plan or orthographic 3D view can show all requested elements. Create an uncropped 3D view with revit_create_view (kind='3d'), then retry.");

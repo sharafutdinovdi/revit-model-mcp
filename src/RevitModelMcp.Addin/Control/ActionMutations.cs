@@ -317,6 +317,8 @@ internal static class ActionMutations
             symbols.WhereParameter(BuiltInParameter.SYMBOL_NAME_PARAM).Equals(action.TypeName);
         var symbol = symbols.FirstOrDefault() as FamilySymbol
                      ?? throw new ArgumentException($"Type '{action.TypeName}' was not found in family '{action.Family}'.");
+        var placementRefusal = FamilyPlacementContract.PlacementRefusal(action.Family!, symbol.Family.FamilyPlacementType.ToString(), hostId is not null);
+        if (placementRefusal is not null) throw new ArgumentException(placementRefusal);
         var level = FindLevel(document, action.Level!);
         if (!symbol.IsActive)
         {
@@ -324,12 +326,20 @@ internal static class ActionMutations
             document.Regenerate();
         }
         var point = new XYZ(Millimeters(action.XMm), Millimeters(action.YMm), level.ProjectElevation + Millimeters(zMm));
-        if (hostId is not null && symbol.Family.FamilyPlacementType is not (FamilyPlacementType.OneLevelBasedHosted or FamilyPlacementType.WorkPlaneBased))
-            throw new ArgumentException($"Family '{action.Family}' is not hosted.");
         var host = hostId is null ? null : CreateId(hostId.Value).ToElement(document)
             ?? throw new ArgumentException($"Host {hostId} was not found.");
         if (host is not null && host is not Wall && host is not Floor && host is not Ceiling)
             throw new ArgumentException($"Host {hostId} must be a wall, floor or ceiling.");
+        if (host is not null && symbol.Family.FamilyPlacementType == FamilyPlacementType.OneLevelBasedHosted)
+        {
+            var hostingParameter = symbol.Family.get_Parameter(BuiltInParameter.FAMILY_HOSTING_BEHAVIOR);
+            var hostingBehavior = hostingParameter is not null && hostingParameter.StorageType == StorageType.Integer && hostingParameter.HasValue
+                ? hostingParameter.AsInteger()
+                : (int?)null;
+            var hostKind = host is Wall ? "wall" : host is Floor ? "floor" : "ceiling";
+            var hostKindRefusal = FamilyPlacementContract.HostKindRefusal(action.Family!, hostingBehavior, hostKind, hostId!.Value);
+            if (hostKindRefusal is not null) throw new ArgumentException(hostKindRefusal);
+        }
         FamilyInstance instance;
         var rotationPoint = point;
         var faceHosted = host is not null && symbol.Family.FamilyPlacementType == FamilyPlacementType.WorkPlaneBased;
@@ -358,6 +368,9 @@ internal static class ActionMutations
                 document.Regenerate();
             }
         }
+        if (host is null && (instance.Location is not LocationPoint location ||
+            !FamilyPlacementContract.PointMatches(action.XMm, action.YMm, location.Point.X.ToMillimeters(), location.Point.Y.ToMillimeters())))
+            throw new InvalidOperationException($"Family '{action.Family}' was not created at the requested point; its placement type {symbol.Family.FamilyPlacementType} is not supported by this tool.");
         if (action.RotationDeg != 0)
             instance.Rotate(Line.CreateBound(rotationPoint, rotationPoint + XYZ.BasisZ), action.RotationDeg * Math.PI / 180);
         if (parameters is not null)
@@ -596,13 +609,48 @@ internal static class ActionMutations
                 MEPCurve curve => curve.ConnectorManager,
                 FamilyInstance instance => instance.MEPModel?.ConnectorManager,
                 _ => null
-            } ?? throw new ArgumentException($"Element {action.ConnectTo} has no MEP connectors.");
+            };
+            MepRunConnection.ValidateTarget(action.ConnectTo.Value, connectorManager is not null);
             var start = NearestConnector(segments[0], points[0]);
-            var target = connectorManager.Connectors.Cast<Connector>()
-                .Where(connector => !connector.IsConnected && connector.Domain == start.Domain &&
-                    connector.Origin.DistanceTo(start.Origin) <= Millimeters(50))
-                .OrderBy(connector => connector.Origin.DistanceTo(start.Origin)).FirstOrDefault();
-            target?.ConnectTo(start);
+            var connectorCount = 0;
+            var compatibleCount = 0;
+            var freeCompatibleCount = 0;
+            var nearestDistance = double.PositiveInfinity;
+            Connector? target = null;
+            if (connectorManager is not null)
+                foreach (Connector connector in connectorManager.Connectors)
+                {
+                    connectorCount++;
+                    if (connector.Domain != start.Domain) continue;
+                    compatibleCount++;
+                    if (connector.IsConnected) continue;
+                    freeCompatibleCount++;
+                    var distance = connector.Origin.DistanceTo(start.Origin);
+                    if (distance >= nearestDistance) continue;
+                    nearestDistance = distance;
+                    target = connector;
+                }
+            var reason = MepRunConnection.UnavailableReason(action.ConnectTo.Value, connectorCount,
+                compatibleCount, freeCompatibleCount, freeCompatibleCount == 0 ? double.PositiveInfinity : nearestDistance.ToMillimeters());
+            if (reason is null && target is not null)
+            {
+                using var connectionTransaction = new SubTransaction(document);
+                connectionTransaction.Start();
+                try
+                {
+                    target.ConnectTo(start);
+                    if (connectionTransaction.Commit() != TransactionStatus.Committed)
+                        reason = MepRunConnection.RejectedReason(action.ConnectTo.Value, "Revit rolled back the connection.");
+                }
+                catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ArgumentException or
+                    Autodesk.Revit.Exceptions.InvalidOperationException or ArgumentException or InvalidOperationException)
+                {
+                    if (connectionTransaction.GetStatus() == TransactionStatus.Started) connectionTransaction.RollBack();
+                    reason = MepRunConnection.RejectedReason(action.ConnectTo.Value, exception.Message);
+                }
+            }
+            if (reason is not null)
+                MepRunConnection.ReportFailure(result, result.SegmentIds[0], action.ConnectTo.Value, reason);
         }
         result.Count = result.SegmentIds.Count;
         result.Verification = new ActionVerification { Changed = result.SegmentIds.Concat(result.FittingIds).ToList() };
