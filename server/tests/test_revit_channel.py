@@ -3483,10 +3483,10 @@ try { SCRIPT } finally { [Console]::Error.WriteLine("ATTEMPTS=" + [HeartbeatProb
             input=kwargs.get("input"),
             capture_output=True,
         )
-        assert f"ATTEMPTS={attempts}" in result.stderr.decode()
+        assert f"ATTEMPTS={attempts}" in result.stderr.decode("utf-8", errors="replace")
         if result.returncode:
             raise RevitChannelError("Heartbeat refused")
-        return result.stdout.decode().strip()
+        return result.stdout.decode("utf-8", errors="replace").strip()
 
     host._run = run
     content = json.dumps({"command": "ping", "jobId": "a" * 32})
