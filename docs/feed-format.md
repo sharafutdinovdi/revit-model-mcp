@@ -88,6 +88,10 @@ The new command names are `view-info`, `set-view-visibility` and `remove-links`.
 `output_path` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
 A parameter filter matches the Revit parameter of that name, even when the name matches a built-in output field such as `Level` or `Name`.
+The name is bound to the parameters the queried elements carry: every instance parameter with that name, or the type parameter when the element has no instance parameter with it.
+A defined built-in parameter name such as `CURVE_ELEM_LENGTH` is accepted in place of the display name.
+Names are matched exactly; only a name that no queried element carries in that spelling is matched again without regard to letter case.
+A name that no queried element carries is refused, and so is a name unknown to the model.
 Output `fields` with those names return the built-in field value.
 Numeric filter values use mm for lengths, m2 for areas and m3 for volumes.
 Other measurable filter values use the document's display units; unmeasurable doubles use internal values.
