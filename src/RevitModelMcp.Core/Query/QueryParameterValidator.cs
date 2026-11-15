@@ -1,3 +1,4 @@
+using System.Globalization;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Naming;
 
@@ -87,10 +88,39 @@ public enum QueryParameterKind
 
 public static class QueryParameterSemantics
 {
+    public static double ParseNumericFilterValue(string value, string parameter) =>
+        double.TryParse(value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : throw new ArgumentException($"Value '{value}' for parameter '{parameter}' is not a number.");
+
     public static T? ResolveValueSource<T>(T? instanceParameter, Func<T?> typeParameter) where T : class
     {
         return instanceParameter ?? typeParameter();
     }
+
+    public static bool MatchesParameterName(
+        string requested, string? name, long id, long? builtInId) =>
+        string.Equals(name, requested, StringComparison.OrdinalIgnoreCase) || id == builtInId;
+
+    public static IReadOnlyList<T> ResolveNamedSources<T>(
+        IEnumerable<T> instanceParameters, Func<IEnumerable<T>> typeParameters,
+        Func<T, bool> matches)
+    {
+        var instanceMatches = instanceParameters.Where(matches).ToArray();
+        return instanceMatches.Length > 0 ? instanceMatches : typeParameters().Where(matches).ToArray();
+    }
+
+    public static T CombineFilterAlternatives<T>(IReadOnlyList<T> rules, Func<IReadOnlyList<T>, T> combineAny) =>
+        rules.Count switch
+        {
+            0 => throw new ArgumentException("At least one resolved parameter rule is required.", nameof(rules)),
+            1 => rules[0],
+            _ => combineAny(rules)
+        };
+
+    public static bool MatchesValueState(IEnumerable<bool?> values, ParameterOperator operation) =>
+        values.Any(value => value.HasValue &&
+            (operation == ParameterOperator.Exists || value.Value == (operation == ParameterOperator.NotEmpty)));
 
     public static bool HasValue(bool hasValue, string storageType, string? text = null, long? elementId = null)
     {

@@ -25,16 +25,21 @@ internal static class QueryFilterBuilder
             string.Equals(filter.Parameter, "pinned", StringComparison.OrdinalIgnoreCase)).ToList();
         foreach (var filter in pinnedFilters) QueryParameterValidator.MatchesPinned(false, filter);
         var parameterSpecs = filters.Parameters.Except(pinnedFilters).ToList();
-        var parameterNames = parameterSpecs.Select(filter => filter.Parameter)
-            .Concat(requestedFields.Where(field => !ElementFieldReader.IsBuiltInField(field)));
-        var parameters = QueryParameterResolver.Resolve(document, parameterNames, structuralCollector);
+        var parameters = QueryParameterResolver.Resolve(document,
+            requestedFields.Where(field => !ElementFieldReader.IsBuiltInField(field)), structuralCollector);
+        var filterParameters = QueryParameterResolver.ResolveFilters(document,
+            parameterSpecs.Select(filter => filter.Parameter), structuralCollector, filters.Categories);
+        var unresolved = filterParameters.Values.Any(descriptors => descriptors.Count == 0);
         // Revit's HasValue rule does not read parameters from element types.
         var parameterFilters = parameterSpecs
-            .Where(filter => filter.Operator != ParameterOperator.NotEmpty)
-            .Select(filter => BuildParameterFilter(document, filter, parameters[filter.Parameter]));
+            .Where(filter => filter.Operator != ParameterOperator.NotEmpty && filterParameters[filter.Parameter].Count > 0)
+            .Select(filter => QueryParameterSemantics.CombineFilterAlternatives(
+                filterParameters[filter.Parameter].Select(descriptor =>
+                    BuildParameterFilter(document, filter, descriptor)).ToArray(),
+                alternatives => (ElementFilter)new LogicalOrFilter(alternatives.ToList())));
         var allFilters = structuralFilters.Concat(parameterFilters).ToList();
         var valueFilters = parameterSpecs
-            .Where(filter => filter.Operator is ParameterOperator.Empty or ParameterOperator.NotEmpty).ToList();
+            .Where(filter => filter.Operator is ParameterOperator.Empty or ParameterOperator.NotEmpty or ParameterOperator.Exists).ToList();
         return new QueryFilterContext
         {
             ResolvedFields = requestedFields
@@ -47,9 +52,11 @@ internal static class QueryFilterBuilder
                 var collector = Apply(
                     viewId is null ? new FilteredElementCollector(document) : new FilteredElementCollector(document, viewId),
                     allFilters);
-                if (valueFilters.Count == 0 && pinnedFilters.Count == 0) return collector;
-                var excluded = collector.Where(element => valueFilters.Any(filter =>
-                    HasParameterValue(element, parameters[filter.Parameter]) != (filter.Operator == ParameterOperator.NotEmpty))
+                if (!unresolved && valueFilters.Count == 0 && pinnedFilters.Count == 0) return collector;
+                var excluded = collector.Where(element => unresolved || valueFilters.Any(filter =>
+                    !QueryParameterSemantics.MatchesValueState(
+                        filterParameters[filter.Parameter].Select(descriptor => HasParameterValue(element, descriptor)),
+                        filter.Operator))
                     || pinnedFilters.Any(filter => !QueryParameterValidator.MatchesPinned(element.Pinned, filter)))
                     .Select(element => element.Id).ToList();
                 if (excluded.Count > 0) collector.WherePasses(new ExclusionFilter(excluded));
@@ -58,13 +65,14 @@ internal static class QueryFilterBuilder
         };
     }
 
-    private static bool HasParameterValue(Element element, QueryParameterDescriptor descriptor)
+    private static bool? HasParameterValue(Element element, QueryParameterDescriptor descriptor)
     {
         var parameter = QueryParameterSemantics.ResolveValueSource(
             element.Parameters.Cast<Parameter>().FirstOrDefault(candidate => candidate.Id == descriptor.Id),
             () => element.Document.GetElement(element.GetTypeId())?.Parameters.Cast<Parameter>()
                 .FirstOrDefault(candidate => candidate.Id == descriptor.Id));
-        if (parameter is null || !parameter.HasValue) return false;
+        if (parameter is null) return null;
+        if (!parameter.HasValue) return false;
         return QueryParameterSemantics.HasValue(parameter.HasValue, parameter.StorageType.ToString(),
             parameter.StorageType == StorageType.String ? parameter.AsString() : null,
             parameter.StorageType == StorageType.ElementId ? RevitValueReader.GetId(parameter.AsElementId()) : null);
@@ -158,7 +166,7 @@ internal static class QueryFilterBuilder
         QueryParameterDescriptor descriptor,
         ParameterFilterSpec filter)
     {
-        var displayValue = ParseDouble(filter.Value!, descriptor.Name);
+        var displayValue = QueryParameterSemantics.ParseNumericFilterValue(filter.Value!, descriptor.Name);
         var internalValue = displayValue;
         if (descriptor.DataType is not null && UnitUtils.IsMeasurableSpec(descriptor.DataType))
         {
@@ -331,11 +339,6 @@ internal static class QueryFilterBuilder
             filters.Add(new ElementParameterFilter(CreateEqualsRule(CreateElementId((long)parameter), value)));
         }
     }
-
-    private static double ParseDouble(string value, string parameter) =>
-        double.TryParse(value.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-            ? parsed
-            : throw new ArgumentException($"Value '{value}' for parameter '{parameter}' is not a number.");
 
     private static ArgumentException NotFound(string kind, string name, string section) =>
         new($"{kind} '{name}' was not found. Use list-catalog with section={section}.");
