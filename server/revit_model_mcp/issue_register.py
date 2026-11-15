@@ -12,6 +12,7 @@ from openpyxl.styles import Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from revit_model_mcp.atomic_write import write_new_file
+from revit_model_mcp.audit.result import redact_path
 from revit_model_mcp.workbook_style import (
     ACCENT,
     BORDER,
@@ -25,6 +26,12 @@ from revit_model_mcp.workbook_style import (
 )
 
 SEVERITIES = ("critical", "major", "minor", "info")
+ISSUE_REQUIRED_TEXT_FIELDS = ("title", "category", "finding", "severity")
+ISSUE_ITEM_CONTRACT = (
+    f"Each issue needs {', '.join(ISSUE_REQUIRED_TEXT_FIELDS[:-1])} "
+    f"and {ISSUE_REQUIRED_TEXT_FIELDS[-1]} "
+    f"({', '.join(SEVERITIES[:-1])} or {SEVERITIES[-1]})."
+)
 SNAPSHOT_LIMIT = 25
 HEADERS = [
     "ID",
@@ -65,7 +72,7 @@ def validate_register(output_path, project, issues, pixel_size=900):
         raise ValueError("output_path must have a .xlsx extension.")
     target = Path(output_path).expanduser().absolute()
     if target.exists() or target.is_symlink():
-        raise ValueError(f"output_path already exists: {target}")
+        raise ValueError(f"output_path already exists: {redact_path(target)}")
     if not isinstance(project, dict):
         raise ValueError("project must be an object.")
     for field in ("name", "model", "reviewer", "client", "stage", "date"):
@@ -107,9 +114,12 @@ def validate_register(output_path, project, issues, pixel_size=900):
         item = dict(issue)
         for field, value in item.items():
             check_text(value, f"{prefix}.{field}")
-        for field in ("title", "category", "finding", "severity"):
+        for field in ISSUE_REQUIRED_TEXT_FIELDS:
             if not isinstance(item.get(field), str) or not item[field].strip():
-                raise ValueError(f"{prefix}.{field} is required and must be a non-blank string.")
+                raise ValueError(
+                    f"{prefix}.{field} is required and must be a non-blank string. "
+                    + ISSUE_ITEM_CONTRACT
+                )
         for field in (
             "id",
             "requirement_source",
@@ -122,7 +132,9 @@ def validate_register(output_path, project, issues, pixel_size=900):
             if field in item and not isinstance(item[field], str):
                 raise ValueError(f"{prefix}.{field} must be a string.")
         if item["severity"] not in SEVERITIES:
-            raise ValueError(f"{prefix}.severity must be critical, major, minor or info.")
+            raise ValueError(
+                f"{prefix}.severity must be critical, major, minor or info. " + ISSUE_ITEM_CONTRACT
+            )
         item.setdefault("id", f"ISS-{index + 1:03d}")
         if not item["id"].strip() or item["id"] in identifiers:
             raise ValueError(f"{prefix}.id must be non-blank and unique.")
@@ -291,6 +303,7 @@ def write_register(
     _append(register, HEADERS)
     _append(elements, ["Issue ID", "Element ID"])
     snapshot_count = 0
+    skipped_snapshots = []
     for index, issue in enumerate(issues):
         ids = issue["element_ids"]
         _append(
@@ -327,6 +340,7 @@ def write_register(
         if issue["status"] == "Open":
             register.cell(row, 10).fill = PatternFill("solid", fgColor="FCE4E4")
         register.row_dimensions[row].height = 60
+        captured = False
         if index in snapshots and index not in skipped:
             try:
                 image = _snapshot(snapshots[index])
@@ -338,10 +352,15 @@ def write_register(
             if image is not None:
                 _box_image(register, image, row, 2)
                 snapshot_count += 1
+                captured = True
         elif ids and issue["snapshot"] != "none" and index not in notes:
             message = "Snapshot unavailable: no image supplied"
             register.cell(row, 2, message)
             warnings.append(f"{issue['id']}: {message}")
+        if ids and issue["snapshot"] != "none" and not captured:
+            skipped_snapshots.append(
+                {"what": f"{issue['id']} snapshot", "reason": register.cell(row, 2).value}
+            )
         for element_id in ids:
             _append(elements, [issue["id"], element_id])
     _header(register, [9, 52, 32, 11, 20, 16, 40, 46, 36, 10, 16, 11, 9, 24], filter_rows=True)
@@ -366,7 +385,7 @@ def write_register(
         write_new_file(target, workbook.save)
     except ValueError as error:
         if target.exists() or target.is_symlink():
-            raise ValueError(f"output_path already exists: {target}") from error
+            raise ValueError(f"output_path already exists: {redact_path(target)}") from error
         raise
     except OSError as error:
         raise ValueError(f"Cannot save report: {error}") from error
@@ -375,5 +394,7 @@ def write_register(
         "issueCount": len(issues),
         "snapshotCount": snapshot_count,
         "bySeverity": totals,
+        "skipped": skipped_snapshots,
+        "skippedCount": len(skipped_snapshots),
         "warnings": warnings,
     }

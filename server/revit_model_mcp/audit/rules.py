@@ -73,6 +73,15 @@ def load_rules(path=None, inline=None):
                 value = yaml.safe_load(content)
         except yaml.YAMLError as error:
             raise ValueError("Invalid YAML rule file.") from error
+    pending = [(value, 0)]
+    while pending:
+        item, depth = pending.pop()
+        if depth > 100:
+            raise ValueError("Rule data is nested too deeply (maximum 100 levels).")
+        if isinstance(item, dict):
+            pending.extend((child, depth + 1) for child in item.values())
+        elif isinstance(item, list):
+            pending.extend((child, depth + 1) for child in item)
     try:
         json.dumps(value, sort_keys=True)
     except (TypeError, ValueError) as error:
