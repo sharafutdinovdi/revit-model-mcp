@@ -228,6 +228,52 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments(0, 0, 0, 0, "connect_to 42 has no MEP connectors.")]
+    [Arguments(2, 0, 0, 0, "connect_to 42 has no connector in the run's domain.")]
+    [Arguments(2, 2, 0, 0, "connect_to 42 has no free connector in the run's domain.")]
+    [Arguments(2, 2, 1, 50.001, "connect_to 42 has no free connector within 50 mm of the run start.")]
+    [Arguments(2, 2, 1, 30000, "connect_to 42 has no free connector within 50 mm of the run start.")]
+    public async Task MepRunConnection_ReportsUnavailableTarget(int connectorCount, int compatibleCount,
+        int freeCompatibleCount, double nearestDistanceMm, string expected)
+    {
+        await Assert.That(MepRunConnection.UnavailableReason(42, connectorCount, compatibleCount,
+            freeCompatibleCount, nearestDistanceMm)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(49.999)]
+    [Arguments(50)]
+    public async Task MepRunConnection_AllowsFreeCompatibleConnectorWithinTolerance(double distanceMm)
+    {
+        await Assert.That(MepRunConnection.UnavailableReason(42, 2, 1, 1, distanceMm)).IsNull();
+        var result = new ActionResultData { UnjoinedPairs = [] };
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("create-mep-run", result, 1));
+        await Assert.That(json).Contains("\"unjoinedPairs\":[]");
+        await Assert.That(json).DoesNotContain("\"unjoinedReasons\"");
+    }
+
+    [Test]
+    public async Task MepRunConnection_PreservesSegmentsAndReportsRejectedConnection()
+    {
+        var result = new ActionResultData
+        {
+            Count = 1,
+            SegmentIds = [11],
+            UnjoinedPairs = [[11, 12]]
+        };
+        var reason = MepRunConnection.RejectedReason(42, "Revit refused the connection.");
+        MepRunConnection.ReportFailure(result, 11, 42, reason);
+        await Assert.That(reason).IsEqualTo("connect_to 42 could not be joined: Revit refused the connection.");
+        await Assert.That(result.Count).IsEqualTo(1);
+        await Assert.That(result.SegmentIds).IsEquivalentTo([11L]);
+        var json = CommandResponseJsonSerializer.Serialize(CommandResponse<ActionResultData>.Ok("create-mep-run", result, 1));
+        await Assert.That(json).Contains("\"success\":true");
+        await Assert.That(json).Contains("\"unjoinedPairs\":[[11,12],[11,42]]");
+        await Assert.That(json).Contains("\"unjoinedReasons\":{\"connect_to 42 could not be joined: Revit refused the connection.\":1}");
+    }
+
+    [Test]
     public async Task CadActions_ValidateArgumentsAndTrustedPaths()
     {
         var link = ControlJobParser.Parse("""{"command":"link-cad","path":"C:\\Plans\\Floor.dwg","origin":"center","units":"mm","layers":["Walls"]}""");
