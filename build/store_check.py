@@ -27,6 +27,7 @@ FILE_WRITERS = {
     "revit_model_audit",
     "revit_audit_report",
     "revit_batch_start",
+    "revit_batch_status",
     "revit_batch_cancel",
 }
 FORBIDDEN = (

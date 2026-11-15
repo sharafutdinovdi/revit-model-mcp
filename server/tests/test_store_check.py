@@ -36,7 +36,7 @@ def test_store_manifest_and_annotations():
     for tool in live:
         if tool["name"] in CHECK["FILE_WRITERS"]:
             assert tool["annotations"]["readOnlyHint"] is False
-            assert tool["annotations"]["idempotentHint"] is False
+            assert tool["annotations"]["idempotentHint"] is (tool["name"] == "revit_batch_status")
 
 
 @pytest.mark.parametrize("failure", ["missing", "read_only", "registry", "schema", "transports"])
@@ -57,6 +57,19 @@ def test_manifest_failures(failure):
     else:
         del exported["server"]["transports"]
     assert CHECK["check_manifest"](exported, live)
+
+
+def test_batch_status_read_only_annotation_is_rejected():
+    tools, live = registry()
+    exported = GENERATOR["export_snake_case"](
+        GENERATOR["build_manifest"](tools, [], [], managed=True), tools
+    )
+    for entries in (exported["tools"], live):
+        tool = next(tool for tool in entries if tool["name"] == "revit_batch_status")
+        tool["annotations"]["readOnlyHint"] = True
+    assert CHECK["check_manifest"](exported, live) == [
+        "File writer labelled read-only: revit_batch_status"
+    ]
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-16-le"])

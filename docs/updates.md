@@ -2,7 +2,7 @@
 
 The Autodesk App Store build contains no add-in updater or server update check.
 Updates arrive through the Autodesk App Store.
-The Python server contains no update check in this branch.
+The Python server contains no update check.
 The automatic update behavior below applies to non-store add-in builds.
 
 The add-in checks the latest stable release after Revit starts. The check runs in the background at most once every 24 hours. It uses the system proxy and has a 10-second request timeout. Drafts and prereleases are ignored.

@@ -14,7 +14,11 @@ Install the bundle through Autodesk App Store and use **Connect AI app** in Revi
 For manual registration, set the MCP client's command to the installed `Contents/server/revit-model-mcp.exe` executable.
 The server runs on the Revit workstation.
 
-Claude Desktop uses this entry in `claude_desktop_config.json` on Windows:
+Bundle roots are `%ProgramData%\Autodesk\ApplicationPlugins` for all users and `%APPDATA%\Autodesk\ApplicationPlugins` for one user.
+The store SingleUser MSI installs the server at `%LOCALAPPDATA%\Programs\Model MCP\server\revit-model-mcp.exe`.
+Use the executable path for the installed package.
+
+For example, Claude Desktop can use this entry in `claude_desktop_config.json` for an all-users bundle installation on Windows:
 
 ```json
 {

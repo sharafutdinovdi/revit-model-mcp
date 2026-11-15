@@ -256,10 +256,7 @@ def _described(item, *fields) -> dict:
 def build_manifest(tools, resources, prompts, managed=False) -> dict:
     data_handling = dict(DATA_HANDLING)
     if managed:
-        data_handling["updateChecks"] = (
-            "None. The managed add-in build never checks for updates, "
-            "and the server is started with REVIT_MCP_NO_UPDATE_CHECK=1."
-        )
+        data_handling["updateChecks"] = "The server contains no update check."
     return {
         "schemaVersion": "1.0",
         **({"variant": "managed"} if managed else {}),

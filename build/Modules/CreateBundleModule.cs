@@ -72,9 +72,9 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
 
                 For example, for Claude Code:
 
-                    claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- {serverLauncher}
+                    claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -- {serverLauncher}
 
-                Always set REVIT_MCP_NO_UPDATE_CHECK=1 in the server settings so the server makes no update request.
+                The server contains no update check.
                 """;
             await System.IO.File.WriteAllTextAsync(bundleFolder.GetFile("README.txt").Path,
                 readme.Replace("\r\n", "\n") + "\n", new UTF8Encoding(false), cancellationToken);

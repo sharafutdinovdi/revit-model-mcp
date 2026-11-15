@@ -48,10 +48,7 @@ def test_managed_manifest(generator, registry, built):
     assert managed["variant"] == "managed"
     assert list(managed)[:2] == ["schemaVersion", "variant"]
     assert managed["tools"] == built["tools"]
-    assert managed["dataHandling"]["updateChecks"] == (
-        "None. The managed add-in build never checks for updates, "
-        "and the server is started with REVIT_MCP_NO_UPDATE_CHECK=1."
-    )
+    assert managed["dataHandling"]["updateChecks"] == "The server contains no update check."
     assert "variant" not in built
     assert "updateChecks" not in built["dataHandling"]
 

@@ -68,7 +68,7 @@ Model MCP is an open-source add-in and a local server. There is no hosted servic
 | Question | Answer | Status |
 | --- | --- | --- |
 | Outbound connections | `api.github.com`, `github.com`, `release-assets.githubusercontent.com`, `pypi.org`, `files.pythonhosted.org`, all HTTPS, no model data. Full table in the [whitepaper](security-whitepaper.md#outbound-network). | Documented |
-| Can all outbound traffic be disabled? | Yes: `UPDATECHECK=0` or `UpdateMode=off` for the add-in, `REVIT_MCP_NO_UPDATE_CHECK=1` for the server, and a pinned or wheelhouse install. | Met |
+| Can all outbound traffic be disabled? | Yes: `UPDATECHECK=0` or `UpdateMode=off` for the add-in, a pinned or wheelhouse server install, and no remote workstation connection. The server contains no update check. | Met |
 | Telemetry | None. | Met |
 | Listening ports | None by default. HTTP is optional and binds to loopback. | Met |
 | Application allow-listing | Binaries are unsigned: use path or hash rules. | Gap |

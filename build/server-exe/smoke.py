@@ -83,7 +83,6 @@ def main() -> None:
     environment = {
         **os.environ,
         "REVIT_MCP_HOST": "local",
-        "REVIT_MCP_NO_UPDATE_CHECK": "1",
     }
     process = subprocess.Popen(
         command,

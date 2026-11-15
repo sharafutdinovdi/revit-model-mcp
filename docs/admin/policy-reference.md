@@ -174,7 +174,6 @@ These exist without a machine policy. They are per user or per process, so a use
 | `REVIT_MCP_REDACT_PATHS` | Redact paths in outgoing responses. |
 | `REVIT_MCP_TOKEN` | Bearer token for an HTTP workstation. |
 | `REVIT_MCP_CHANNEL_DIR` | Channel folder on the workstation. |
-| `REVIT_MCP_NO_UPDATE_CHECK` | `1` turns the daily PyPI check off. |
 | `REVIT_MCP_TOOL_BUDGET_S` | Time budget per tool call in seconds. |
 | `REVIT_MCP_ACTIVATE_TASK` | Windows task used to bring the Revit window forward. |
 | `REVIT_MCP_SSH_MUX`, `REVIT_MCP_SSH_OPTIONS` | SSH connection sharing and extra options. |

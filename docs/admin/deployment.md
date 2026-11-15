@@ -113,10 +113,10 @@ The package `Sharafutdinov.RevitModelMcp` is generated weekly for the latest sta
 
 The server is a Python package started by the MCP client through uv. The client machine needs Python 3.11 or newer, uv, and a way to fetch the package.
 
-For a controlled fleet, pin the version and turn off the daily check:
+For a controlled fleet, pin the version:
 
 ```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- uvx revit-model-mcp==<version>
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -- uvx revit-model-mcp==<version>
 ```
 
 Use the same `==<version>` pin in a JSON client configuration. The managed add-in bundle `revit-model-mcp-<version>-managed.bundle.zip` is built to never check for updates; see [managed installs](../install.md#managed-installs).
@@ -136,7 +136,7 @@ uv tool install --offline --no-index --find-links wheelhouse revit-model-mcp==<v
 Then register the installed command instead of `uvx`:
 
 ```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- revit-model-mcp
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -- revit-model-mcp
 ```
 
 The repository also keeps a hash-pinned dependency list for the container image, `server/requirements.docker.txt`. You can use it as the seed for `pip download --require-hashes`.

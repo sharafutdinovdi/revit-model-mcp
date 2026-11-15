@@ -11,7 +11,7 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 | Server name | `revit-model-mcp` |
 | Transport | `stdio` |
 | MCP specification version | `2025-11-25` |
-| Tools | 79 (34 read-only, 45 modifying) |
+| Tools | 79 (25 read-only, 54 modifying) |
 | Resources | 1 (`revit://guides/coordinator`) |
 | Prompts | 5 |
 
@@ -26,16 +26,15 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 
 ## External endpoints
 
-All requests are HTTPS, carry no model data, and can be turned off. The Autodesk Marketplace build uses the update channel `store` and the bundled server executable: updates come from the store, the add-in does not check GitHub or download an installer, and the server makes no PyPI request. **The store build makes no external request at all.** Its tool manifest declares no external endpoints.
+The store build makes no update or package request; user-configured workstation connections use the configured transport.
 
 | Domain | Component | Purpose | Present in the store build |
 | --- | --- | --- | --- |
 | `api.github.com` | Add-in | Latest stable release check, at most every 24 hours | No |
 | `github.com`, `release-assets.githubusercontent.com` | Add-in | Release MSI and checksum download for per-user installs | No |
-| `pypi.org` | Python server | Optional check for a newer server release | No (the bundled executable never checks) |
 | `pypi.org`, `files.pythonhosted.org` | uv launcher | Package download when the server starts for the first time | No (the store build does not use the uv launcher) |
 
-No other domain is contacted. The committed manifest lists the domains of the regular build; the managed manifest (`--managed`) has none, and the release workflow attaches the store export `revit-model-mcp-<version>-store.mcp-manifest.json`, made from the managed manifest with `--export-snake-case`, with `external_endpoints` and `ai_llm_providers` empty. See the [full table](admin/security-whitepaper.md#outbound-network).
+The committed manifest lists the update and package domains of the regular build; the managed manifest (`--managed`) has none, and the release workflow attaches the store export `revit-model-mcp-<version>-store.mcp-manifest.json`, made from the managed manifest with `--export-snake-case`, with `external_endpoints` and `ai_llm_providers` empty. See the [full table](admin/security-whitepaper.md#outbound-network).
 Each tool in the store export includes the server's advertised `inputSchema`.
 
 ## Code execution in the store build
@@ -80,9 +79,12 @@ Every tool is listed in the [tool reference](tools.md) with its access class, fi
 | Documents and files | `open_document`, `new_document`, `close_document`, `save_document`, `sync_document`, `remove_links`, `align_link_datums`, `export`, `export_nwc`, `process_models`, `cancel_job` | Document lifecycle and hand-over files. Irreversible or file-overwriting calls need a confirmation token. |
 | Code execution | `execute_code` | Covers tasks that no fixed tool handles. Unsandboxed, token-gated, refused in read-only mode, and removable by policy. |
 
-All modifying tools are refused in read-only mode. Tool names and descriptions do not change after installation; the server registers a fixed list.
+All tools that change a model are refused in read-only mode; `revit_batch_status`, `revit_batch_fetch` and the client-side file writers stay available.
+Client-side file writers include `revit_capture_elements`, `revit_export_view`, `revit_model_health`, `revit_issue_register` and `revit_build_report`.
+Tool names and descriptions do not change after installation; the server registers a fixed list.
 
 ## Server runtime
 
 The MSI installers ship the server as a self-contained Windows executable (`revit-model-mcp.exe`, a PyInstaller folder with its own Python runtime and the locked dependencies) under `%ProgramFiles%\Model MCP\server` (multi-user) or `%LocalAppData%\Programs\Model MCP\server` (single-user). The user needs no Python and no uv, and the executable never starts uv or contacts PyPI. The bundled Python and package licenses are in the `licenses` folder next to the executable and in [THIRD-PARTY-NOTICES](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/THIRD-PARTY-NOTICES.md).
-The add-in bundle and the Claude Desktop `.mcpb` still start the server through uv.
+The store add-in bundle includes the server executable.
+The regular add-in bundle and the Claude Desktop `.mcpb` start the server through uv.

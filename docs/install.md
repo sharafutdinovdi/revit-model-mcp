@@ -94,7 +94,7 @@ Managed installs do not check for updates. If your organization delivers add-in 
 The managed bundle does not contain the server. Pin the server launcher to the exact release version; the server makes no update check:
 
 ```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- uvx revit-model-mcp==<version>
+claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -- uvx revit-model-mcp==<version>
 ```
 
 In a JSON configuration, use `"args": ["revit-model-mcp==<version>"]`. A `README.txt` in the bundle repeats the commands for its version. Neither part makes an update request.
