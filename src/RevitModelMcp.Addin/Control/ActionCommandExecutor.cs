@@ -891,6 +891,12 @@ internal static class ActionCommandExecutor
             throw new ArgumentException("Export targets produce duplicate file names.");
         if (Directory.Exists(folder) && !request.Overwrite && planned.Any(name => File.Exists(Path.Combine(folder, name))))
             throw new ArgumentException("An export file already exists; set overwrite=true.");
+        if (request.Overwrite && !action.DryRun)
+        {
+            var locked = FileExportJob.FirstUnwritable(planned.Select(name => Path.Combine(folder, name)));
+            if (locked is not null)
+                throw new IOException($"'{Path.GetFileName(locked)}' is open in another program or is read-only. Close it and repeat the export.");
+        }
         if (request.Overwrite && !action.DryRun && action.ConfirmOverwrites)
         {
             var existing = planned.Select(name => Path.Combine(folder, name)).Where(File.Exists).ToList();

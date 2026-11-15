@@ -1297,6 +1297,24 @@ public sealed class FileExportJob
         if (NwcPathValidator.IsReservedDeviceName(stem)) safe = $"_{safe}";
         return safe.EndsWith($".{extension}", StringComparison.OrdinalIgnoreCase) ? safe : $"{safe}.{extension}";
     }
+
+    public static string? FirstUnwritable(IEnumerable<string> paths)
+    {
+        if (paths is null) throw new ArgumentNullException(nameof(paths));
+        foreach (var path in paths)
+        {
+            if (!File.Exists(path)) continue;
+            try
+            {
+                using var stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                return path;
+            }
+        }
+        return null;
+    }
 }
 
 [DataContract]

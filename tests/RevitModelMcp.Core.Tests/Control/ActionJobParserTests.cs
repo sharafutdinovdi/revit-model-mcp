@@ -560,6 +560,112 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task Export_FirstUnwritableReturnsExclusivelyLockedFileUntilReleased()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            using (var stream = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                await Assert.That(FileExportJob.FirstUnwritable([path])).IsEqualTo(path);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableReturnsFileHeldByReader()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            using var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsEqualTo(path);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableSkipsMissingFilesAndPreservesPathOrder()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var missing = Path.Combine(folder, "missing.ifc");
+            var writable = Path.Combine(folder, "writable.ifc");
+            var first = Path.Combine(folder, "first.ifc");
+            var second = Path.Combine(folder, "second.ifc");
+            File.WriteAllText(writable, "writable");
+            File.WriteAllText(first, "first");
+            File.WriteAllText(second, "second");
+            using var firstStream = File.Open(first, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            using var secondStream = File.Open(second, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            await Assert.That(FileExportJob.FirstUnwritable([missing, writable, first, second])).IsEqualTo(first);
+            await Assert.That(FileExportJob.FirstUnwritable([missing, writable, second, first])).IsEqualTo(second);
+            await Assert.That(FileExportJob.FirstUnwritable([missing, writable])).IsNull();
+            await Assert.That(File.Exists(missing)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritableReturnsReadOnlyFile()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "model.ifc");
+        File.WriteAllText(path, "model");
+        var attributes = File.GetAttributes(path);
+        try
+        {
+            File.SetAttributes(path, FileAttributes.ReadOnly);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsEqualTo(path);
+        }
+        finally
+        {
+            File.SetAttributes(path, attributes);
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_FirstUnwritablePreservesWritableFileLengthAndLastWriteTime()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            var length = new FileInfo(path).Length;
+            var lastWriteTime = File.GetLastWriteTimeUtc(path);
+            await Assert.That(FileExportJob.FirstUnwritable([path])).IsNull();
+            await Assert.That(new FileInfo(path).Length).IsEqualTo(length);
+            await Assert.That(File.GetLastWriteTimeUtc(path)).IsEqualTo(lastWriteTime);
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
     public async Task ScheduleData_SerializesNamedResult()
     {
         var data = new ScheduleDataResult
