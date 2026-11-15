@@ -618,7 +618,7 @@ internal static class ActionMutations
                     target = connector;
                 }
             var reason = MepRunConnection.UnavailableReason(action.ConnectTo.Value, connectorCount,
-                compatibleCount, freeCompatibleCount, nearestDistance.ToMillimeters());
+                compatibleCount, freeCompatibleCount, freeCompatibleCount == 0 ? double.PositiveInfinity : nearestDistance.ToMillimeters());
             if (reason is null && target is not null)
             {
                 using var connectionTransaction = new SubTransaction(document);

@@ -256,6 +256,15 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments(0, "connect_to 42 has no connector in the run's domain.")]
+    [Arguments(2, "connect_to 42 has no free connector in the run's domain.")]
+    public async Task MepRunConnection_ReportsUnavailableTargetWithInfiniteDistance(int compatibleCount, string expected)
+    {
+        await Assert.That(MepRunConnection.UnavailableReason(42, 2, compatibleCount, 0, double.PositiveInfinity))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
     [Arguments(0)]
     [Arguments(49.999)]
     [Arguments(50)]
