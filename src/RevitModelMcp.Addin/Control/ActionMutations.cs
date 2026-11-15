@@ -609,13 +609,48 @@ internal static class ActionMutations
                 MEPCurve curve => curve.ConnectorManager,
                 FamilyInstance instance => instance.MEPModel?.ConnectorManager,
                 _ => null
-            } ?? throw new ArgumentException($"Element {action.ConnectTo} has no MEP connectors.");
+            };
+            MepRunConnection.ValidateTarget(action.ConnectTo.Value, connectorManager is not null);
             var start = NearestConnector(segments[0], points[0]);
-            var target = connectorManager.Connectors.Cast<Connector>()
-                .Where(connector => !connector.IsConnected && connector.Domain == start.Domain &&
-                    connector.Origin.DistanceTo(start.Origin) <= Millimeters(50))
-                .OrderBy(connector => connector.Origin.DistanceTo(start.Origin)).FirstOrDefault();
-            target?.ConnectTo(start);
+            var connectorCount = 0;
+            var compatibleCount = 0;
+            var freeCompatibleCount = 0;
+            var nearestDistance = double.PositiveInfinity;
+            Connector? target = null;
+            if (connectorManager is not null)
+                foreach (Connector connector in connectorManager.Connectors)
+                {
+                    connectorCount++;
+                    if (connector.Domain != start.Domain) continue;
+                    compatibleCount++;
+                    if (connector.IsConnected) continue;
+                    freeCompatibleCount++;
+                    var distance = connector.Origin.DistanceTo(start.Origin);
+                    if (distance >= nearestDistance) continue;
+                    nearestDistance = distance;
+                    target = connector;
+                }
+            var reason = MepRunConnection.UnavailableReason(action.ConnectTo.Value, connectorCount,
+                compatibleCount, freeCompatibleCount, freeCompatibleCount == 0 ? double.PositiveInfinity : nearestDistance.ToMillimeters());
+            if (reason is null && target is not null)
+            {
+                using var connectionTransaction = new SubTransaction(document);
+                connectionTransaction.Start();
+                try
+                {
+                    target.ConnectTo(start);
+                    if (connectionTransaction.Commit() != TransactionStatus.Committed)
+                        reason = MepRunConnection.RejectedReason(action.ConnectTo.Value, "Revit rolled back the connection.");
+                }
+                catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ArgumentException or
+                    Autodesk.Revit.Exceptions.InvalidOperationException or ArgumentException or InvalidOperationException)
+                {
+                    if (connectionTransaction.GetStatus() == TransactionStatus.Started) connectionTransaction.RollBack();
+                    reason = MepRunConnection.RejectedReason(action.ConnectTo.Value, exception.Message);
+                }
+            }
+            if (reason is not null)
+                MepRunConnection.ReportFailure(result, result.SegmentIds[0], action.ConnectTo.Value, reason);
         }
         result.Count = result.SegmentIds.Count;
         result.Verification = new ActionVerification { Changed = result.SegmentIds.Concat(result.FittingIds).ToList() };

@@ -2199,6 +2199,37 @@ public static class CadWallPlanner
     }
 }
 
+public static class MepRunConnection
+{
+    public const double MaximumDistanceMm = 50;
+
+    public static void ValidateTarget(long targetId, bool hasConnectorManager)
+    {
+        if (!hasConnectorManager) throw new ArgumentException($"Element {targetId} has no MEP connectors.");
+    }
+
+    public static string? UnavailableReason(long targetId, int connectorCount, int compatibleCount,
+        int freeCompatibleCount, double nearestDistanceMm)
+    {
+        if (connectorCount == 0) return $"connect_to {targetId} has no MEP connectors.";
+        if (compatibleCount == 0) return $"connect_to {targetId} has no connector in the run's domain.";
+        if (freeCompatibleCount == 0) return $"connect_to {targetId} has no free connector in the run's domain.";
+        if (nearestDistanceMm > MaximumDistanceMm)
+            return $"connect_to {targetId} has no free connector within {MaximumDistanceMm} mm of the run start.";
+        return null;
+    }
+
+    public static void ReportFailure(ActionResultData result, long segmentId, long targetId, string reason)
+    {
+        (result.UnjoinedPairs ??= []).Add([segmentId, targetId]);
+        var reasons = result.UnjoinedReasons ??= [];
+        reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+    }
+
+    public static string RejectedReason(long targetId, string detail) =>
+        $"connect_to {targetId} could not be joined: {detail}";
+}
+
 public static class MepRunSizing
 {
     public static string DiameterParameter(string kind) => kind switch
