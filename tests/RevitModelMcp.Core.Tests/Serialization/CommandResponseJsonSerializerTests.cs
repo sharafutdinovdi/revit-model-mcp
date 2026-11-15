@@ -358,19 +358,25 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(log.Lines[0]).IsEqualTo("line 0");
         await Assert.That(log.Lines[^1]).IsEqualTo("line 1999");
         await Assert.That(log.OmittedCount).IsEqualTo(omitted);
-        await Assert.That(completeness.GetProperty("omittedCount").GetInt32()).IsEqualTo(omitted);
-        await Assert.That(completeness.GetProperty("truncated").GetBoolean()).IsEqualTo(omitted > 0);
+        await Assert.That(completeness.GetProperty("omittedCount").GetInt32()).IsEqualTo(0);
+        await Assert.That(completeness.GetProperty("truncated").GetBoolean()).IsFalse();
+        await Assert.That(ReferenceEquals(data.ResultCompleteness, limited)).IsTrue();
+        await Assert.That(completeness.TryGetProperty("logOmittedCount", out _)).IsFalse();
         await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsEqualTo(omitted > 0);
         await Assert.That(response.SkippedCount ?? 0).IsEqualTo(omitted > 0 ? 1 : 0);
         if (omitted > 0)
         {
             await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
-            await Assert.That(completeness.GetProperty("logOmittedCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(json.RootElement.GetProperty("data").GetProperty("logOmittedCount").GetInt32()).IsEqualTo(1);
             var skipped = json.RootElement.GetProperty("skipped");
             await Assert.That(skipped.GetArrayLength()).IsEqualTo(1);
             await Assert.That(skipped[0].GetProperty("what").GetString()).IsEqualTo("log");
             await Assert.That(skipped[0].GetProperty("reason").GetString())
                 .IsEqualTo("Script log truncated: 1 lines omitted after the first 2000.");
+        }
+        else
+        {
+            await Assert.That(json.RootElement.GetProperty("data").TryGetProperty("logOmittedCount", out _)).IsFalse();
         }
     }
 
@@ -391,7 +397,9 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(log.Lines.Count).IsEqualTo(2000);
         await Assert.That(log.Lines[^1]).IsEqualTo("last retained");
         await Assert.That(log.OmittedCount).IsEqualTo(4);
-        await Assert.That(data.ResultCompleteness!.OmittedCount).IsEqualTo(4);
+        await Assert.That(data.LogOmittedCount).IsEqualTo(4);
+        await Assert.That(data.ResultCompleteness is null).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("data").TryGetProperty("resultCompleteness", out _)).IsFalse();
         await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsTrue();
         await Assert.That(json.RootElement.GetProperty("skipped")[0].GetProperty("reason").GetString())
             .IsEqualTo("Script log truncated: 4 lines omitted after the first 2000.");
@@ -409,14 +417,55 @@ public sealed class CommandResponseJsonSerializerTests
         CommandResponseJsonSerializer.Serialize(response);
         using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
 
-        await Assert.That(data.ResultCompleteness!.OmittedCount).IsEqualTo(1001);
-        await Assert.That(data.ResultCompleteness.LogOmittedCount).IsEqualTo(1);
+        await Assert.That(data.ResultCompleteness!.OmittedCount).IsEqualTo(1000);
+        await Assert.That(data.LogOmittedCount).IsEqualTo(1);
+        await Assert.That(ReferenceEquals(data.ResultCompleteness, limited)).IsTrue();
         await Assert.That(data.ResultCompleteness.FullJson).IsEqualTo(limited.FullJson);
         await Assert.That(data.ResultCompleteness.RetainedCount).IsEqualTo(limited.RetainedCount);
         await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(2);
         await Assert.That(json.RootElement.GetProperty("skipped").GetArrayLength()).IsEqualTo(2);
         await Assert.That(response.Skipped!.Select(item => item.What))
             .IsEquivalentTo(new[] { "log", "returnValue" });
+    }
+
+    [Test]
+    [Arguments(0)]
+    [Arguments(1)]
+    public async Task ScriptLog_ProcessModelsReportsPerModelAndEnvelopeDiagnostics(int omittedCount)
+    {
+        var code = new ProcessModelCodeResult
+        {
+            ReturnValue = 1,
+            ReturnValueMarker = "marker",
+            Log = ["retained"],
+            LogOmittedCount = omittedCount
+        };
+        var response = CommandResponse<ActionResultData>.Ok("process-models", new ActionResultData
+        {
+            Models = [new ProcessModelResult { Path = "model.rvt", Status = "done", Code = code }]
+        }, 5);
+        CommandResponseJsonSerializer.Serialize(response);
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        var serializedCode = json.RootElement.GetProperty("data").GetProperty("models")[0].GetProperty("code");
+        await Assert.That(serializedCode.GetProperty("returnValue").GetInt32()).IsEqualTo(1);
+        await Assert.That(code.Partial).IsEqualTo(omittedCount > 0);
+        await Assert.That(code.SkippedCount).IsEqualTo(omittedCount);
+        await Assert.That(response.Partial).IsEqualTo(omittedCount > 0);
+        await Assert.That(response.SkippedCount ?? 0).IsEqualTo(omittedCount);
+        if (omittedCount > 0)
+        {
+            await Assert.That(serializedCode.GetProperty("logOmittedCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(serializedCode.GetProperty("partial").GetBoolean()).IsTrue();
+            await Assert.That(serializedCode.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(serializedCode.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("log");
+            await Assert.That(response.Skipped![0].What).IsEqualTo("models[0].code.log");
+            await Assert.That(response.Skipped[0].Reason)
+                .IsEqualTo("Script log truncated: 1 lines omitted after the first 2000.");
+        }
+        else
+        {
+            await Assert.That(serializedCode.TryGetProperty("logOmittedCount", out _)).IsFalse();
+        }
     }
 
     [Test]

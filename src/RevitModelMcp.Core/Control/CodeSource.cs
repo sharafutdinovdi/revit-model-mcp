@@ -297,16 +297,11 @@ public sealed class ScriptLog
     public void ApplyTo(ActionResultData result)
     {
         result.Log = _lines.ToList();
-        if (OmittedCount == 0) return;
-        var completeness = result.ResultCompleteness ?? new CodeResult();
-        result.ResultCompleteness = completeness with
-        {
-            Truncated = true,
-            OmittedCount = completeness.OmittedCount + OmittedCount,
-            LogOmittedCount = OmittedCount,
-            Reasons = [.. completeness.Reasons, "scriptLog"]
-        };
+        result.LogOmittedCount = OmittedCount;
     }
+
+    public static string TruncationReason(int omittedCount) =>
+        $"Script log truncated: {omittedCount} lines omitted after the first {MaximumLines}.";
 }
 
 [DataContract]
@@ -317,6 +312,5 @@ public sealed record CodeResult
     [DataMember(Name = "truncated")] public bool Truncated { get; init; }
     [DataMember(Name = "retainedCount")] public int RetainedCount { get; init; }
     [DataMember(Name = "omittedCount")] public int OmittedCount { get; init; }
-    [DataMember(Name = "logOmittedCount", EmitDefaultValue = false)] public int LogOmittedCount { get; init; }
     [DataMember(Name = "reasons")] public List<string> Reasons { get; init; } = [];
 }

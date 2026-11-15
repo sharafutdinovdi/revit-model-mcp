@@ -502,6 +502,7 @@ internal static class ActionCommandExecutor
                     ReturnValue = code.ReturnValue,
                     ReturnValueMarker = Guid.NewGuid().ToString("N"),
                     Log = code.Log ?? [],
+                    LogOmittedCount = code.LogOmittedCount,
                     DocumentReceipts = code.DocumentReceipts,
                     Warning = code.Warning
                 };

@@ -53,18 +53,7 @@ public static class CommandResponseJsonSerializer
         {
             execution.Partial = true;
             execution.Skipped ??= [];
-            var completeness = execution.Data!.ResultCompleteness!;
-            if (completeness.LogOmittedCount > 0 && !execution.Skipped.Any(item => item.What == "log"))
-            {
-                execution.Skipped.Add(new SkippedRead
-                {
-                    What = "log",
-                    Reason = $"Script log truncated: {completeness.LogOmittedCount} lines omitted after the first {ScriptLog.MaximumLines}."
-                });
-                execution.SkippedCount = (execution.SkippedCount ?? 0) + 1;
-            }
-            if ((completeness.LogOmittedCount == 0 || completeness.Reasons.Any(reason => reason != "scriptLog"))
-                && !execution.Skipped.Any(item => item.What == "returnValue"))
+            if (!execution.Skipped.Any(item => item.What == "returnValue"))
             {
                 execution.Skipped.Add(new SkippedRead
                 {
@@ -72,6 +61,44 @@ public static class CommandResponseJsonSerializer
                     Reason = "Inline result truncated: " + string.Join(", ", execution.Data!.ResultCompleteness!.Reasons)
                 });
                 execution.SkippedCount = (execution.SkippedCount ?? 0) + 1;
+            }
+        }
+        if (response is CommandResponse<ActionResultData>
+            { Command: "execute-code" or "run-tool", Data.LogOmittedCount: > 0 } logged)
+        {
+            logged.Partial = true;
+            logged.Skipped ??= [];
+            if (!logged.Skipped.Any(item => item.What == "log"))
+            {
+                logged.Skipped.Add(new SkippedRead
+                {
+                    What = "log",
+                    Reason = ScriptLog.TruncationReason(logged.Data!.LogOmittedCount)
+                });
+                logged.SkippedCount = (logged.SkippedCount ?? 0) + 1;
+            }
+        }
+        if (response is CommandResponse<ActionResultData> { Command: "process-models", Data.Models: { } processed } batch)
+        {
+            for (var index = 0; index < processed.Count; index++)
+            {
+                if (processed[index].Code is not { LogOmittedCount: > 0 } code) continue;
+                code.Partial = true;
+                code.Skipped ??= [];
+                var reason = ScriptLog.TruncationReason(code.LogOmittedCount);
+                if (!code.Skipped.Any(item => item.What == "log"))
+                {
+                    code.Skipped.Add(new SkippedRead { What = "log", Reason = reason });
+                    code.SkippedCount++;
+                }
+                batch.Partial = true;
+                batch.Skipped ??= [];
+                var what = $"models[{index}].code.log";
+                if (!batch.Skipped.Any(item => item.What == what))
+                {
+                    batch.Skipped.Add(new SkippedRead { What = what, Reason = reason });
+                    batch.SkippedCount = (batch.SkippedCount ?? 0) + 1;
+                }
             }
         }
 

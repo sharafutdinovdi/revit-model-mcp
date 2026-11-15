@@ -1259,6 +1259,10 @@ public sealed class ProcessModelCodeResult
     [IgnoreDataMember] public object? ReturnValue { get; set; }
     [DataMember(Name = "returnValue")] public string ReturnValueMarker { get; set; } = string.Empty;
     [DataMember(Name = "log")] public List<string> Log { get; set; } = [];
+    [DataMember(Name = "logOmittedCount", EmitDefaultValue = false)] public int LogOmittedCount { get; set; }
+    [DataMember(Name = "partial", EmitDefaultValue = false)] public bool Partial { get; set; }
+    [DataMember(Name = "skipped", EmitDefaultValue = false)] public List<SkippedRead>? Skipped { get; set; }
+    [DataMember(Name = "skippedCount", EmitDefaultValue = false)] public int SkippedCount { get; set; }
     [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }
     [DataMember(Name = "warning", EmitDefaultValue = false)] public string? Warning { get; set; }
 }
@@ -1798,6 +1802,7 @@ public sealed class ActionResultData
     [DataMember(Name = "resultCompleteness", EmitDefaultValue = false)] public CodeResult? ResultCompleteness { get; set; }
     [DataMember(Name = "resultArtifact", EmitDefaultValue = false)] public string? ResultArtifact { get; set; }
     [DataMember(Name = "log", EmitDefaultValue = false)] public List<string>? Log { get; set; }
+    [DataMember(Name = "logOmittedCount", EmitDefaultValue = false)] public int LogOmittedCount { get; set; }
     [DataMember(Name = "diagnostics", EmitDefaultValue = false)] public List<CodeDiagnostic>? Diagnostics { get; set; }
     [DataMember(Name = "documentReceipts", EmitDefaultValue = false)] public List<CodeDocumentReceipt>? DocumentReceipts { get; set; }
     [DataMember(Name = "exceptionType", EmitDefaultValue = false)] public string? ExceptionType { get; set; }

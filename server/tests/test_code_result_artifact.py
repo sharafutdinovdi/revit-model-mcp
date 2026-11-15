@@ -102,3 +102,87 @@ async def test_full_artifact_applies_configured_path_redaction(monkeypatch):
     finally:
         target.unlink()
         target.parent.rmdir()
+
+
+@pytest.mark.parametrize("command", ["execute-code", "run-tool"])
+async def test_log_truncation_preserves_complete_return_value(command):
+    response = {
+        "success": True,
+        "partial": True,
+        "skipped": [
+            {
+                "what": "log",
+                "reason": "Script log truncated: 1 lines omitted after the first 2000.",
+            }
+        ],
+        "skippedCount": 1,
+        "data": {
+            "returnValue": 1,
+            "log": [f"line {index}" for index in range(2000)],
+            "logOmittedCount": 1,
+            "resultCompleteness": {
+                "truncated": False,
+                "retainedCount": 1,
+                "omittedCount": 0,
+                "reasons": [],
+            },
+        },
+    }
+    expected = json.loads(json.dumps(response))
+    with patch.object(server.channel, "execute", AsyncMock(return_value=response)):
+        result = await server._execute(Job(command, {}), 120, None)
+    assert result == expected
+    assert "resultArtifact" not in result["data"]
+    assert result["skippedCount"] == 1
+    assert [item["what"] for item in result["skipped"]] == ["log"]
+
+
+@pytest.mark.parametrize("command", ["execute-code", "run-tool"])
+async def test_log_and_value_truncation_keep_value_artifact_counts(command):
+    full = list(range(6000))
+    completeness = {
+        "truncated": True,
+        "retainedCount": 5000,
+        "omittedCount": 1000,
+        "reasons": ["itemBudget"],
+    }
+    log_receipt = {
+        "what": "log",
+        "reason": "Script log truncated: 1 lines omitted after the first 2000.",
+    }
+    response = {
+        "success": True,
+        "partial": True,
+        "skipped": [
+            {"what": "returnValue", "reason": "Inline result truncated: itemBudget"},
+            log_receipt.copy(),
+        ],
+        "skippedCount": 2,
+        "data": {
+            "returnValue": full[:5000],
+            "log": [f"line {index}" for index in range(2000)],
+            "logOmittedCount": 1,
+            "resultCompleteness": completeness.copy(),
+            "resultArtifact": base64.b64encode(json.dumps(full).encode()).decode(),
+        },
+    }
+    with patch.object(server.channel, "execute", AsyncMock(return_value=response)):
+        result = await server._execute(Job(command, {}), 120, None)
+    artifact = result["data"]["resultArtifact"]
+    target = Path(artifact["path"])
+    try:
+        assert artifact["complete"] is True
+        assert json.loads(target.read_text()) == full
+        assert result["data"]["resultCompleteness"] == completeness
+        assert result["data"]["logOmittedCount"] == 1
+        assert result["partial"] is True
+        assert result["skippedCount"] == 2
+        assert [item["what"] for item in result["skipped"]] == ["returnValue", "log"]
+        receipt = result["skipped"][0]
+        assert receipt["omittedCount"] == 1000
+        assert receipt["retainedCount"] == 5000
+        assert receipt["reasons"] == ["itemBudget"]
+        assert result["skipped"][1] == log_receipt
+    finally:
+        target.unlink()
+        target.parent.rmdir()
