@@ -97,6 +97,72 @@ namespace RevitModelMcp.Core.Tests.Control
         }
 
         [Test]
+        [Arguments("ScriptContext")]
+        [Arguments("sCrIpTcOnTeXt")]
+        [Arguments("RevitModelMcp.LookupFixtures.ScriptContext")]
+        public async Task ExtraTypes_ResolveSimpleAndFullNamesWithoutLoadingTheirAssembly(string query)
+        {
+            var result = ApiLookup.Lookup([], new ApiLookupRequest(query, "type"),
+                _ => throw new InvalidOperationException("Extra type assemblies must not load XML documentation."),
+                [typeof(LookupFixtures.ScriptContext)]);
+            await Assert.That(result.Types.Single().FullName).IsEqualTo(typeof(LookupFixtures.ScriptContext).FullName);
+            await Assert.That(result.Types.Single().Kind).IsEqualTo("class");
+            await Assert.That(result.Types.Single().Summary).IsNull();
+            await Assert.That(result.Members.Count).IsEqualTo(0);
+            await Assert.That(result.AssemblyVersions.Count).IsEqualTo(0);
+            await Assert.That(result.SkippedCount).IsEqualTo(0);
+        }
+
+        [Test]
+        [Arguments("ScriptContext.Document", "member")]
+        [Arguments("ScriptContext.Document", "search")]
+        [Arguments("RevitModelMcp.LookupFixtures.ScriptContext.Document", "member")]
+        public async Task ExtraMembers_ResolveQualifiedNames(string query, string kind)
+        {
+            var result = ApiLookup.Lookup([], new ApiLookupRequest(query, kind), _ => null,
+                [typeof(LookupFixtures.ScriptContext)]);
+            await Assert.That(result.Members.Select(member => member.Name).ToArray())
+                .IsEquivalentTo(new[] { "Document", "UiDocument" });
+            var member = result.Members.Single(item => item.Name == "Document");
+            await Assert.That(member.Name).IsEqualTo("Document");
+            await Assert.That(member.DeclaringType).IsEqualTo(typeof(LookupFixtures.ScriptContext).FullName);
+            await Assert.That(member.Signature).IsEqualTo("public string Document { get; }");
+            await Assert.That(member.Summary).IsNull();
+            await Assert.That(result.SkippedCount).IsEqualTo(0);
+        }
+
+        [Test]
+        public async Task ExtraTypes_SearchReturnsOnlyPublicMembersOfSelectedVisibleTypes()
+        {
+            var result = ApiLookup.Lookup([], new ApiLookupRequest("ScriptContext", Limit: 100), _ => null,
+                [typeof(LookupFixtures.ScriptContext), typeof(LookupFixtures.HiddenContext)]);
+            await Assert.That(result.Types.Single().FullName).IsEqualTo(typeof(LookupFixtures.ScriptContext).FullName);
+            await Assert.That(result.Members.Select(member => member.Name).ToArray())
+                .IsEquivalentTo(new[] { "Document", "UiDocument", "Log" });
+            await Assert.That(result.Members.Single(member => member.Name == "UiDocument").Signature)
+                .IsEqualTo("public string UiDocument { get; }");
+            var hidden = ApiLookup.Lookup([], new ApiLookupRequest(typeof(LookupFixtures.HiddenContext).FullName!, "type"),
+                _ => null, [typeof(LookupFixtures.HiddenContext)]);
+            await Assert.That(hidden.Types.Count).IsEqualTo(0);
+            var unrelated = ApiLookup.Lookup([], new ApiLookupRequest(typeof(LookupFixtures.UnrelatedContext).FullName!, "type"),
+                _ => null, [typeof(LookupFixtures.ScriptContext)]);
+            await Assert.That(unrelated.Types.Count).IsEqualTo(0);
+        }
+
+        [Test]
+        public async Task ExtraTypes_DoNotDuplicateAssemblyTypesOrAddAssemblyDiagnostics()
+        {
+            var assembly = new FakeAssembly([typeof(LookupFixtures.ScriptContext)]);
+            var result = ApiLookup.Lookup([assembly], new ApiLookupRequest("ScriptContext", Limit: 100), _ => null,
+                [typeof(LookupFixtures.ScriptContext), typeof(LookupFixtures.ScriptContext)]);
+            await Assert.That(result.Types.Count).IsEqualTo(1);
+            await Assert.That(result.Members.Count).IsEqualTo(3);
+            await Assert.That(result.AssemblyVersions.Single().Name).IsEqualTo("LookupFixture");
+            await Assert.That(result.SkippedCount).IsEqualTo(1);
+            await Assert.That(result.Skipped.Single().What).IsEqualTo("LookupFixture");
+        }
+
+        [Test]
         public async Task XmlSummaries_ArePlainFirstSentencesAndCachedPerAssembly()
         {
             var assembly = System.Reflection.Assembly.Load(File.ReadAllBytes(typeof(ApiLookup).Assembly.Location));
@@ -108,7 +174,7 @@ namespace RevitModelMcp.Core.Tests.Control
                     <member name="T:RevitModelMcp.Core.Control.ApiLookup"><summary>
                     Read <c>public</c> metadata. More text.
                     </summary></member>
-                    <member name="M:RevitModelMcp.Core.Control.ApiLookup.Lookup(System.Collections.Generic.IReadOnlyList{System.Reflection.Assembly},RevitModelMcp.Core.Control.ApiLookupRequest,System.Func{System.Reflection.Assembly,System.String})"><summary>Look up <see cref="T:System.String"/> names. Another sentence.</summary></member>
+                    <member name="M:RevitModelMcp.Core.Control.ApiLookup.Lookup(System.Collections.Generic.IReadOnlyList{System.Reflection.Assembly},RevitModelMcp.Core.Control.ApiLookupRequest,System.Func{System.Reflection.Assembly,System.String},System.Collections.Generic.IReadOnlyList{System.Type})"><summary>Look up <see cref="T:System.String"/> names. Another sentence.</summary></member>
                     <member name="T:RevitModelMcp.Core.Control.ApiLookupRequest"><summary>
                     """ + new string('x', 400) + "</summary></member></members></doc>");
                 var result = ApiLookup.Lookup([assembly], new ApiLookupRequest(typeof(ApiLookup).FullName!, Limit: 100), _ => path);
@@ -176,4 +242,20 @@ namespace Autodesk.Revit.Lookup
 namespace Autodesk.Revit.Other
 {
     public class Sample;
+}
+
+namespace RevitModelMcp.LookupFixtures
+{
+    public sealed class ScriptContext
+    {
+        internal ScriptContext() { }
+        public string Document => throw new InvalidOperationException("Metadata lookup must not invoke getters.");
+        public string UiDocument { get; internal set; } = "";
+        public void Log(string message) => throw new InvalidOperationException("Metadata lookup must not invoke methods.");
+        internal static ScriptContext? Current => null;
+        internal void CloseOpenScopes() => throw new InvalidOperationException();
+    }
+
+    internal sealed class HiddenContext;
+    public sealed class UnrelatedContext;
 }
