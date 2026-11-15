@@ -78,7 +78,7 @@ _COMMAND_ALIASES = {"run-actions": "batch", "batch-start": "batch-supervisor-sta
 
 
 def fail_closed(problem: str) -> dict[str, Any]:
-    """The state used when the policy cannot be trusted: read-only, no C# code, no updates, no HTTP."""
+    """The state used when the policy cannot be trusted: read-only, no C# code, no HTTP."""
     return {
         "ReadOnly": True,
         "ExecuteCode": "off",

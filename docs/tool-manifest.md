@@ -84,7 +84,8 @@ cd server && uv run python ../build/tool_manifest.py --managed --export-snake-ca
 ```
 
 On Windows, run `output/server-exe/venv/Scripts/python.exe build/store_check.py output/revit-model-mcp-1.0.0-store.bundle.zip --manifest output/store.mcp-manifest.json` from the repository root.
-The check reads compressed Python code, scans binary strings, starts the bundled server to compare its live registry, and checks settings and UI source rules.
+The check reads compressed Python code, rejects server updater modules and identifiers in first-party code (including nested constants and import tuples), scans binary strings, starts the bundled server to compare its live registry, and checks settings and UI source rules.
+The store branch removes the server updater source and startup hooks instead of relying on channel guards or frozen-build exclusions.
 For a macOS add-in-only publish check, pass `--registry-source` and the publish directory instead of a ZIP.
 That mode does not verify the bundled server.
 The store workflow builds all supported years and uploads the ZIP and manifest without publishing them.

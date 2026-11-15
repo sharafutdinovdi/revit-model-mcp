@@ -14,7 +14,6 @@ from typing import Any, Protocol, get_type_hints
 
 from mcp.server.mcpserver import Context
 
-from revit_model_mcp import CHANNEL
 from revit_model_mcp.errors import (
     POLICY_BLOCKED,
     READ_ONLY,
@@ -566,14 +565,7 @@ class RemoteHost(Protocol):
     async def delete_files(self, names: list[str]) -> None: ...
 
 
-if CHANNEL == "store":
-    ADDIN_UPDATE_INSTRUCTION = "Update the Model MCP add-in from the Autodesk App Store."
-else:
-    from revit_model_mcp.updates import RELEASES_URL
-
-    ADDIN_UPDATE_INSTRUCTION = (
-        f"Install the matching add-in from the releases page: {RELEASES_URL}."
-    )
+ADDIN_UPDATE_INSTRUCTION = "Update the Model MCP add-in from the Autodesk App Store."
 ADDIN_VERSION = re.compile(
     r"(\d+(?:\.\d+)+)(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"
     r"(?:\+[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?"

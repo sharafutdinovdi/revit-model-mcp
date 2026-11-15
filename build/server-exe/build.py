@@ -156,7 +156,6 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
-        (package.parent / "updates.py").unlink()
         shutil.rmtree(package.parent / "__pycache__", ignore_errors=True)
         for module in (
             "jsonschema/validators.py",
@@ -194,8 +193,6 @@ def main() -> None:
         "jsonschema",
         *(
             [
-                "--exclude-module",
-                "revit_model_mcp.updates",
                 "--exclude-module",
                 "setuptools",
             ]

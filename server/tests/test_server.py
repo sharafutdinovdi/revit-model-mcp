@@ -358,20 +358,20 @@ class RecordingChannel:
 
 
 class ServerTests(unittest.IsolatedAsyncioTestCase):
-    async def test_ping_reports_versions_and_update_state(self) -> None:
+    async def test_ping_reports_version_without_update_state(self) -> None:
         channel = RecordingChannel()
-        with (
-            patch.object(revit_server, "channel", channel),
-            patch.object(
-                revit_server,
-                "update_status",
-                return_value={"latestKnownVersion": "0.7.0", "updateCheck": "disabled"},
-            ),
-        ):
+        with patch.object(revit_server, "channel", channel):
             result = await revit_server._execute(Job.ping(), 120, 300, None)
-        self.assertEqual(result["serverVersion"], package_version())
-        self.assertEqual(result["latestKnownVersion"], "0.7.0")
-        self.assertEqual(result["updateCheck"], "disabled")
+        self.assertEqual(
+            result,
+            {
+                "command": "ping",
+                "payload": {"command": "ping"},
+                "serverVersion": package_version(),
+                "skipped": [],
+                "skippedCount": 0,
+            },
+        )
 
     async def test_jobs_tool_lists_without_cancellation(self) -> None:
         channel = RecordingChannel()
@@ -521,7 +521,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             3000,
         )
         self.assertIn(
-            "The active view and model stay unchanged", tools["revit_export_view"].description
+            "The active view and model remain unchanged", tools["revit_export_view"].description
         )
         self.assertFalse(
             tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"]

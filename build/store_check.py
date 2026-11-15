@@ -216,6 +216,34 @@ def code_bytes(code: types.CodeType) -> bytes:
     return b"\n".join(values)
 
 
+def check_server_code(code: types.CodeType, module: str) -> list[str]:
+    """Reject updater identifiers in first-party code, including import tuples."""
+    if module != "revit_model_mcp" and not module.startswith("revit_model_mcp."):
+        return []
+    forbidden = {"revit_model_mcp.updates", "check_for_updates", "update_status"}
+    found = set()
+
+    def inspect_value(value):
+        if isinstance(value, types.CodeType):
+            for item in (
+                *value.co_names,
+                *value.co_varnames,
+                *value.co_freevars,
+                *value.co_cellvars,
+                value.co_name,
+                *value.co_consts,
+            ):
+                inspect_value(item)
+        elif isinstance(value, (tuple, frozenset)):
+            for item in value:
+                inspect_value(item)
+        elif isinstance(value, str) and value in forbidden:
+            found.add(value)
+
+    inspect_value(code)
+    return [f"Forbidden server identifier {name} in {module}" for name in sorted(found)]
+
+
 def check_archive(path: Path) -> list[str]:
     # PyInstaller compresses Python code. Raw binary strings cannot inspect the PYZ.
     from PyInstaller.archive.readers import CArchiveReader
@@ -234,6 +262,7 @@ def check_archive(path: Path) -> list[str]:
                 code = pyz.extract(module)
                 if isinstance(code, types.CodeType):
                     errors.extend(check_bytes(code_bytes(code), module))
+                    errors.extend(check_server_code(code, module))
     return errors
 
 

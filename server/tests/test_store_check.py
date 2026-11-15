@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import runpy
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +76,68 @@ def test_compressed_python_code_strings():
     assert CHECK["check_bytes"](CHECK["code_bytes"](code), "fixture")
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "check_for_updates()",
+        "result = update_status()",
+        "from revit_model_mcp.updates import RELEASES_URL",
+        "from elsewhere import check_for_updates",
+        "def nested():\n return update_status()",
+        "value = (('check_for_updates',), frozenset())",
+        "def update_status():\n pass",
+        "def nested(update_status):\n return None",
+    ],
+)
+def test_first_party_updater_identifiers_are_rejected(source):
+    code = compile(source, "fixture", "exec")
+    assert CHECK["check_server_code"](code, "revit_model_mcp.server")
+    assert CHECK["check_server_code"](code, "third_party") == []
+
+
+def test_first_party_updater_identifiers_in_nested_constants():
+    code = compile("pass", "fixture", "exec").replace(co_consts=((frozenset({"update_status"}),),))
+    assert CHECK["check_server_code"](code, "revit_model_mcp")
+
+
+def test_unrelated_update_names_are_allowed():
+    code = compile(
+        "revit_update_parameters()\nresult.update({'update': 'updates'})",
+        "fixture",
+        "exec",
+    )
+    assert CHECK["check_server_code"](code, "revit_model_mcp.server") == []
+
+
+@pytest.mark.parametrize(
+    ("module", "source", "expected"),
+    [
+        ("revit_model_mcp.updates", "pass", "Packaged server update module"),
+        ("revit_model_mcp.server", "check_for_updates()", "Forbidden server identifier"),
+        ("revit_model_mcp.server", "revit_update_parameters()", None),
+        ("third_party", "update_status()", None),
+    ],
+)
+def test_archive_checks_updater_modules_and_first_party_code(monkeypatch, module, source, expected):
+    code = compile(source, "fixture", "exec")
+    pyz = SimpleNamespace(toc={module: None}, extract=lambda name: code)
+    archive = SimpleNamespace(
+        toc={"PYZ.pyz": None},
+        extract=lambda name: b"",
+        open_embedded_archive=lambda name: pyz,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "PyInstaller.archive.readers",
+        SimpleNamespace(CArchiveReader=lambda path: archive),
+    )
+    errors = CHECK["check_archive"](Path("fixture.exe"))
+    if expected:
+        assert any(expected in error for error in errors)
+    else:
+        assert errors == []
+
+
 def test_source_checks(tmp_path):
     addin = tmp_path / "src/RevitModelMcp.Addin"
     (addin / "Control").mkdir(parents=True)
@@ -127,9 +191,9 @@ def test_store_registry_import_without_update_module(tmp_path):
     shutil.copytree(
         ROOT / "server/revit_model_mcp", package, ignore=shutil.ignore_patterns("__pycache__")
     )
+    assert not (package / "updates.py").exists()
     init = package / "__init__.py"
     init.write_text(init.read_text().replace('CHANNEL = "github"', 'CHANNEL = "store"'))
-    (package / "updates.py").unlink()
     result = subprocess.run(
         [sys.executable, "-m", "revit_model_mcp.server", "--tool-manifest"],
         cwd=tmp_path,

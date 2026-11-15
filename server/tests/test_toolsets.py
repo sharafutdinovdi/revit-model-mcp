@@ -63,7 +63,6 @@ def test_main_applies_environment_selection(monkeypatch):
     monkeypatch.setenv("REVIT_MCP_TOOLSETS", "core,read")
     with (
         patch.object(revit_server, "apply_toolsets", lambda _server, value: applied.append(value)),
-        patch.object(revit_server, "check_for_updates"),
         patch.object(revit_server.mcp, "run"),
     ):
         revit_server.main()

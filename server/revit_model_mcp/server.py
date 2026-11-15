@@ -49,9 +49,6 @@ from revit_model_mcp.snapshot_report import build_report
 from revit_model_mcp.ssh_host import SshPowerShellHost
 from revit_model_mcp.toolsets import ENVIRONMENT_VARIABLE, TOOLSETS, apply_toolsets, parse_toolsets
 
-if CHANNEL != "store":
-    from revit_model_mcp.updates import check_for_updates, update_status
-
 
 def create_host(
     value: str, token: str | None = None
@@ -487,8 +484,6 @@ async def _execute(
         )
         if job.command == "ping":
             result["serverVersion"] = package_version()
-            if CHANNEL != "store":
-                result.update(update_status(package_version()))
         result.setdefault("skipped", [])
         result.setdefault("skippedCount", 0)
         return redact_model_paths(result)
@@ -497,10 +492,11 @@ async def _execute(
 
 
 def addressed_tool(function):
-    function.__doc__ = (
-        (function.__doc__ or "")
-        + " A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
-    )
+    if function.__name__ != "revit_export_view":
+        function.__doc__ = (
+            (function.__doc__ or "")
+            + " A non-empty skipped list means the result is incomplete; skippedCount counts all skipped entries."
+        )
     title = {
         "revit_ping": "Check Revit Connection",
         "revit_jobs": "List Revit Jobs",
@@ -1094,7 +1090,7 @@ async def revit_export_view(
     output_path: SaveTo = None,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Save a PNG picture of the selected view in a folder the user names through output_path, or in a temporary folder when omitted. Existing files are refused. The active view and model stay unchanged."""
+    """Write a PNG image of the selected Revit view to the folder the user names through output_path on the computer running the AI app. Omitting output_path uses a temporary folder. A destination already present is refused. The active view and model remain unchanged. A non-empty skipped list means incomplete results; skippedCount counts all skipped entries."""
     return await _execute(
         Job.export_view(view, pixel_size, output_path),
         DEFAULT_TIMEOUT_SECONDS,
@@ -1407,8 +1403,6 @@ def main() -> None:
     if args.redact_paths:
         os.environ["REVIT_MCP_REDACT_PATHS"] = "1"
     apply_toolsets(mcp, args.toolsets)
-    if CHANNEL != "store":
-        check_for_updates()
     mcp.run(transport="stdio")
 
 
