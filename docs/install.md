@@ -10,7 +10,7 @@ Model MCP has two parts. The add-in runs inside Revit on Windows. The server run
 | Add-in | Installed on the Windows machine where Revit runs. No administrator rights are needed for the per-user installation. |
 | Server runtime | The MSI installers carry a self-contained server (`revit-model-mcp.exe`, with its own Python): no Python and no uv are needed. The add-in bundle and the Claude Desktop `.mcpb` start the server through [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python 3.11 or newer; uv downloads the server package and, if needed, a matching Python). |
 | MCP client | An MCP client such as Claude Desktop or Claude Code. It can run on the same Windows machine, or on macOS or Linux with a [remote workstation](transport.md). |
-| Network | Local use needs no open ports. Update checks and the first server download need internet access; see the [privacy policy](privacy.md). |
+| Network | Local use needs no open ports. The store build makes no update check and receives updates through the Autodesk App Store. Non-store add-in update checks and launcher package downloads need internet access; see the [privacy policy](privacy.md). |
 
 The add-in changes nothing in a model on its own. The MCP client asks for data or actions through the server. Actions are enabled by default and every one is a named undo entry. Switch to read-only mode if you only want to inspect models; see [actions](actions.md).
 
@@ -91,20 +91,20 @@ The **Claude Code** row has a **Copy command** button for the `claude mcp add` c
 
 Managed installs do not check for updates. If your organization delivers add-in updates itself, use `revit-model-mcp-<version>-managed.bundle.zip` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest). It is the same bundle, built with `ManagedInstall=true`; see [automatic updates](updates.md#channels). You can also build it yourself with that property.
 
-The bundle does not contain the server. Pin the server launcher to the exact release version and turn off its daily check for a newer package on PyPI:
+The managed bundle does not contain the server. Pin the server launcher to the exact release version; the server makes no update check:
 
 ```sh
 claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_NO_UPDATE_CHECK=1 -- uvx revit-model-mcp==<version>
 ```
 
-In a JSON configuration, use `"args": ["revit-model-mcp==<version>"]` and set `REVIT_MCP_NO_UPDATE_CHECK` to `1` in `env`. A `README.txt` in the bundle repeats these commands for its version. With both settings, neither part makes an update request.
+In a JSON configuration, use `"args": ["revit-model-mcp==<version>"]`. A `README.txt` in the bundle repeats the commands for its version. Neither part makes an update request.
 
 ### Autodesk App Store build
 
 The store build is the same add-in with the update channel `store`, packaged with a bundled server executable (`revit-model-mcp.exe`), so no Python or uv is needed. It is free, and the releases carry `RevitModelMcp-<version>-SingleUser-store.msi` and `revit-model-mcp-<version>-store.bundle.zip` next to the other assets. Differences from the regular build:
 
 - No updater and no update check; updates arrive through the Autodesk App Manager. See [the store channel](updates.md#the-store-channel).
-- The server and the add-in make no external request.
+- The server and the add-in make no external update request. User-requested workstation connections use the configured transport.
 - In the store channel, only an administrator can enable C# execution with the ExecuteCode machine policy set to confirm. The user executeCode value in settings.json is ignored. revit_ping reports executeCodeSource as policy or store-default. GitHub builds keep their existing behavior. See the [policy reference](admin/policy-reference.md#enable-code-in-the-store-channel).
 - The releases are not code-signed yet; see [code signing](code-signing.md).
 
@@ -126,8 +126,9 @@ Then register the server as in step 6 of [Install the add-in bundle](#install-th
 ## Claude Desktop bundle
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on the client's PATH, download `revit-model-mcp-<version>.mcpb` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest), and open it in Claude Desktop.
-The bundle starts from the local uv cache. The server checks for a newer stable release in the background once per day.
-The next client start uses the refreshed version. Set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
+The bundle starts from the local uv cache.
+The server makes no update check and does not refresh the cached package.
+The store build uses its bundled executable instead and receives updates through the Autodesk App Store.
 The settings form configures the workstation host, path redaction, read-only mode and the HTTP bearer token without editing JSON.
 Use `local` on the Windows Revit workstation, or configure a [remote workstation](transport.md) for macOS and Linux clients.
 Path redaction starts enabled and actions start enabled. Check "Read-only mode" to refuse actions.

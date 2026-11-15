@@ -166,13 +166,6 @@ EXTERNAL_ENDPOINTS = [
     ),
     _endpoint(
         "pypi.org",
-        "Python server",
-        "Best-effort check for a newer revit-model-mcp release.",
-        _HTTPS_REQUEST_ONLY,
-        "Set REVIT_MCP_NO_UPDATE_CHECK=1.",
-    ),
-    _endpoint(
-        "pypi.org",
         "Claude Desktop bundle launcher (uvx)",
         _PYPI_LAUNCHER_PURPOSE,
         "None.",

@@ -82,6 +82,10 @@ def test_compressed_python_code_strings():
         "check_for_updates()",
         "result = update_status()",
         "from revit_model_mcp.updates import RELEASES_URL",
+        "from .updates import X",
+        "from . import updates",
+        "from revit_model_mcp import updates",
+        "def nested():\n from .updates import X",
         "from elsewhere import check_for_updates",
         "def nested():\n return update_status()",
         "value = (('check_for_updates',), frozenset())",
@@ -102,7 +106,7 @@ def test_first_party_updater_identifiers_in_nested_constants():
 
 def test_unrelated_update_names_are_allowed():
     code = compile(
-        "revit_update_parameters()\nresult.update({'update': 'updates'})",
+        "update()\nrevit_update_parameters()\nresult.update({'update': 'updates'})",
         "fixture",
         "exec",
     )

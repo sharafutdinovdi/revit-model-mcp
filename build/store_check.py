@@ -225,6 +225,9 @@ def check_server_code(code: types.CodeType, module: str) -> list[str]:
 
     def inspect_value(value):
         if isinstance(value, types.CodeType):
+            for name in value.co_names:
+                if name == "updates" or name.endswith(".updates"):
+                    found.add(name)
             for item in (
                 *value.co_names,
                 *value.co_varnames,

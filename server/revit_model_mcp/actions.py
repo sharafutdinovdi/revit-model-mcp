@@ -1736,7 +1736,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
-        """Write PDF, DWG or IFC documents, or a CSV schedule, to the folder the user names with output_dir on the Revit workstation. dry_run lists the planned names. overwrite=true replaces an existing destination only through the two-step confirm_token handshake with the AI app. The AI app is expected to show the action to the user; Model MCP provides no separate dialog. A long action can return status=running and jobId; revit_jobs retrieves its result. Resubmitting repeats the action."""
+        """Write PDF, DWG or IFC documents, or a CSV schedule, to the folder the user names with output_dir on the Revit workstation. Omitting output_dir uses a dated folder under %LOCALAPPDATA%\\RevitModelMcp\\exports on the Revit workstation. dry_run lists the planned names. overwrite=true replaces an existing destination only through the two-step confirm_token handshake with the AI app. The AI app is expected to show the action to the user; Model MCP provides no separate dialog. A long action can return status=running and jobId; revit_jobs retrieves its result. Resubmitting repeats the action."""
         return await send(
             "export",
             format=format,

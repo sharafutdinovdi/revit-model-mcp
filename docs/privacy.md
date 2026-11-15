@@ -8,7 +8,7 @@ Changes to this policy are recorded in the repository history.
 - Your model data stays on your machines. The project has no server that receives it.
 - There is no analytics, telemetry, crash reporting or advertising code in the add-in or the Python server.
 - Revit model data leaves the workstation only as responses to the MCP client you chose. That client may send it to an AI model service under its own policy.
-- The Autodesk App Store build and its bundled server contain no update implementation or telemetry. User-requested workstation traffic still uses the configured transport. Other builds make only update checks to `api.github.com` (add-in) and `pypi.org` (server). They carry no model data and you can switch them off.
+- The Autodesk App Store build and its bundled server contain no update implementation or telemetry. User-requested workstation traffic still uses the configured transport. Non-store add-in builds can check `api.github.com` for updates without sending model data. The Python server makes no update check.
 
 ## Data collection
 
@@ -20,7 +20,7 @@ Runtime network connections serve the configured Revit workstation through HTTP 
 
 ## Update checks
 
-The add-in contacts `api.github.com` at most once every 24 hours after Revit starts to check the latest stable release.
+Non-store add-in builds contact `api.github.com` at most once every 24 hours after Revit starts to check the latest stable release, subject to the configured update mode.
 The request is a plain HTTPS `GET` for the latest release of this repository, sent through the system proxy with the user agent `RevitModelMcp updater`.
 It contains no model data, document names, user names or license information.
 GitHub sees the network address of the request, as it does for any web request, and handles it under [its own privacy statement](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement).
@@ -30,22 +30,20 @@ Per-user installs download the SingleUser MSI and its SHA256 checksum from the r
 The Autodesk App Store build (the `store` channel) never checks GitHub and ships without the updater. Its bundled server never contacts PyPI. Updates arrive through the Autodesk App Store. Managed builds (the `managed` channel) likewise make no update requests.
 The **Connect AI app** button writes a local MCP client configuration entry on the workstation. It makes no network request.
 
-The Python server checks for a newer package once every 24 hours.
-It looks up the package page on `pypi.org` and refreshes the cached package with `uvx`, which downloads from PyPI and its package hosting service.
-These requests contain no model data.
-The bundle launcher uses uvx to download the package and dependencies from PyPI and its package hosting service during installation or updates.
-Prerelease bundles download the package wheel from GitHub Releases.
+The Python server contains no package update check or background package refresh.
+Non-store bundle launchers use uvx to download the package and dependencies from PyPI and its package hosting service when the configured package is not cached.
+Prerelease bundle launchers download the package wheel from GitHub Releases.
+The store build uses a bundled executable and receives updates through the Autodesk App Store.
 
-To turn the checks off:
+To turn non-store add-in checks off:
 
 | Check | How to disable |
 | --- | --- |
 | Add-in, one machine | Install the MSI with `UPDATEMODE=off` (or `UPDATECHECK=0`), or set `{"updateMode":"off"}` in `%ProgramData%\RevitModelMcp\settings.json` (all users) or `%LOCALAPPDATA%\RevitModelMcp\settings.json` (current user). |
 | Add-in, environment | Set `REVIT_MCP_NO_UPDATE_CHECK=1` in the environment of the Revit process. |
 | Add-in, managed install | A build made with the MSBuild property `ManagedInstall=true` never checks for updates. Use it when another system delivers add-in updates. |
-| Server | Set `REVIT_MCP_NO_UPDATE_CHECK=1` in the MCP client's server settings. |
 
-Any one of these is enough. Without them the default behavior stays on.
+Any one of these disables the add-in check.
 See [automatic updates](updates.md) for details.
 
 ## AI client data flow

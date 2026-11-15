@@ -279,7 +279,8 @@ Model MCP returns requested model data to the selected MCP client.
 The bundle enables response path redaction by default.
 The project has no telemetry.
 The [privacy policy](https://sharafutdinovdi.github.io/revit-model-mcp/privacy/) covers collection, update checks, the AI client data flow, storage, retention and contact information.
-The server checks for a newer stable release once a day; set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
+The server makes no update check.
+The Autodesk App Store build contains no updater and receives updates through the marketplace.
 
 ## For administrators
 
@@ -292,7 +293,7 @@ See also the [MCP specifications](https://sharafutdinovdi.github.io/revit-model-
 
 Release builds are not code-signed yet, so Revit asks whether to load the add-in after install and after each update.
 Verify downloads with `SHA256SUMS.txt` and the build provenance attestation; see the [code signing policy](https://sharafutdinovdi.github.io/revit-model-mcp/code-signing/) and [download verification](https://sharafutdinovdi.github.io/revit-model-mcp/security/#verify-downloads).
-See [automatic updates](docs/updates.md) for how the add-in updates itself.
+See [updates](docs/updates.md) for marketplace updates and the automatic update behavior of non-store add-in builds.
 
 ## Contributing and support
 

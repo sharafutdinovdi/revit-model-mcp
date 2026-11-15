@@ -1090,7 +1090,7 @@ async def revit_export_view(
     output_path: SaveTo = None,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Write a PNG image of the selected Revit view to the folder the user names through output_path on the computer running the AI app. Omitting output_path uses a temporary folder. A destination already present is refused. The active view and model remain unchanged. A non-empty skipped list means incomplete results; skippedCount counts all skipped entries."""
+    """Write a PNG image of the selected Revit view to the new .png file the user names through output_path on the computer running the AI app. Omitting output_path uses a temporary folder. A destination already present is refused. The active view and model remain unchanged. A non-empty skipped list means incomplete results; skippedCount counts all skipped entries."""
     return await _execute(
         Job.export_view(view, pixel_size, output_path),
         DEFAULT_TIMEOUT_SECONDS,

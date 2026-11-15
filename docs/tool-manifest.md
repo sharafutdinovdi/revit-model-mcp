@@ -11,7 +11,7 @@ cd server && uv run python ../build/tool_manifest.py --check
 
 `--check` fails when the committed file is stale.
 
-`--managed` writes the manifest for the managed install variant to `output/tool-manifest-managed.json`, or to `--output`. That variant has no external endpoints, because the add-in makes no update check and the server runs with `REVIT_MCP_NO_UPDATE_CHECK=1`. The committed file describes the regular build.
+`--managed` writes the manifest for the managed install variant to `output/tool-manifest-managed.json`, or to `--output`. That variant has no external endpoints; the add-in makes no update check and the server contains no update implementation. The committed file describes the regular build.
 `--export-snake-case PATH` writes the Autodesk MCP manifest fields (`mcp_manifest_version`, `app_model`, `mcp_spec_version`, `server`, `tools`, `resources`, `prompts`, `external_endpoints`, `autodesk_apis_used`, `ai_llm_providers`) to PATH. The release workflow runs it with `--managed` for the store build, which excludes update code and declares optional user-configured workstation transports, and attaches `revit-model-mcp-<version>-store.mcp-manifest.json`.
 Each tool in the store export includes `inputSchema` and annotations as the server advertises them.
 The export declares stdio and named pipe defaults, optional loopback HTTP, and user-configured SSH.
@@ -84,7 +84,11 @@ cd server && uv run python ../build/tool_manifest.py --managed --export-snake-ca
 ```
 
 On Windows, run `output/server-exe/venv/Scripts/python.exe build/store_check.py output/revit-model-mcp-1.0.0-store.bundle.zip --manifest output/store.mcp-manifest.json` from the repository root.
-The check reads compressed Python code, rejects server updater modules and identifiers in first-party code (including nested constants and import tuples), scans binary strings, starts the bundled server to compare its live registry, and checks settings and UI source rules.
+The check reads compressed Python code and rejects the packaged `revit_model_mcp.updates` module.
+In first-party code objects, it rejects names in `co_names` equal to `updates` or ending in `.updates`.
+It also rejects `revit_model_mcp.updates`, `check_for_updates` and `update_status` in code names, local and closure variable names, function names and constants, recursively inspecting nested code objects, tuples and frozensets.
+A string constant `updates` and the names `update` and `revit_update_parameters` are allowed.
+The check also scans binary strings, starts the bundled server to compare its live registry, and checks settings and UI source rules.
 The store branch removes the server updater source and startup hooks instead of relying on channel guards or frozen-build exclusions.
 For a macOS add-in-only publish check, pass `--registry-source` and the publish directory instead of a ZIP.
 That mode does not verify the bundled server.
