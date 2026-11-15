@@ -597,6 +597,7 @@ internal static class ActionMutations
                 FamilyInstance instance => instance.MEPModel?.ConnectorManager,
                 _ => null
             };
+            MepRunConnection.ValidateTarget(action.ConnectTo.Value, connectorManager is not null);
             var start = NearestConnector(segments[0], points[0]);
             var connectorCount = 0;
             var compatibleCount = 0;

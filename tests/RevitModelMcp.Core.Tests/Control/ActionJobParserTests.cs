@@ -228,6 +228,21 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task MepRunConnection_RefusesMissingOrNonMepTarget()
+    {
+        await Assert.That(() => MepRunConnection.ValidateTarget(42, false))
+            .Throws<ArgumentException>().WithMessage("Element 42 has no MEP connectors.");
+    }
+
+    [Test]
+    public async Task MepRunConnection_AcceptsTargetWithConnectorManager()
+    {
+        MepRunConnection.ValidateTarget(42, true);
+        await Assert.That(MepRunConnection.UnavailableReason(42, 0, 0, 0, double.PositiveInfinity))
+            .IsEqualTo("connect_to 42 has no MEP connectors.");
+    }
+
+    [Test]
     [Arguments(0, 0, 0, 0, "connect_to 42 has no MEP connectors.")]
     [Arguments(2, 0, 0, 0, "connect_to 42 has no connector in the run's domain.")]
     [Arguments(2, 2, 0, 0, "connect_to 42 has no free connector in the run's domain.")]

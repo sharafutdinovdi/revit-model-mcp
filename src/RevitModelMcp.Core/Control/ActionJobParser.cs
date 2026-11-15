@@ -2128,6 +2128,11 @@ public static class MepRunConnection
 {
     public const double MaximumDistanceMm = 50;
 
+    public static void ValidateTarget(long targetId, bool hasConnectorManager)
+    {
+        if (!hasConnectorManager) throw new ArgumentException($"Element {targetId} has no MEP connectors.");
+    }
+
     public static string? UnavailableReason(long targetId, int connectorCount, int compatibleCount,
         int freeCompatibleCount, double nearestDistanceMm)
     {
