@@ -99,7 +99,7 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_edit_families` | `operations`, `families=null`, `overwrite_parameter_values=false`, `stop_on_error=true`, `dry_run=false`, `timeout_seconds=1800` | Edit open family or named project families; one load cycle per family. |
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `timeout_seconds=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
-| `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. A real removal needs a confirmation token. Cannot be used in a batch. |
+| `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. `dry_run` lists the links and dependent elements without deleting anything and leaves links loaded. A real removal needs a confirmation token. Cannot be used in a batch. |
 | `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
@@ -722,6 +722,7 @@ The first MCP run in each Revit session requires the token handshake, including 
 Every committed MCP action-mode run also requires the handshake; read-mode runs always roll back model transactions.
 The **My tools** ribbon runs through the same execution gates with independent local revision review and model-change confirmation.
 Its parameter form offers Preview and Run; Settings also runs approved overflow or hidden tools.
+Settings exports shared tool files under `get-tool` policy and imports them after source review under `save-tool` policy and the workstation read-only lock.
 The token does not prove human approval, and rollback does not undo C# file, network, or process effects.
 In the store channel only machine policy `ExecuteCode=confirm` enables saved C#, including read mode and dry runs.
 Committed changes use one undo entry named `Model MCP: <tool name>` and appear in Activity with a summary.
@@ -736,6 +737,7 @@ Schema and documentation checks run without Revit; independent preview rollback,
 | Contract | Implementation |
 | --- | --- |
 | Confirmation, first saved-tool preview and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [MyTools.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/MyTools.cs) |
+| Shared tool file integrity and local import review | [ToolShare.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ToolShare.cs), [ToolShareDialogs.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ToolShareDialogs.cs) |
 | Conditional close and detached-document exemption | [DocumentActions.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/DocumentActions.cs) |
 | Transaction ownership and native scopes | [CodeExecution.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/CodeExecution.cs) |
 | Independent batch previews and shared parameter transaction | [BatchActionExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/BatchActionExecutor.cs) |

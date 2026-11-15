@@ -11,6 +11,7 @@ from revit_model_mcp.audit.evaluate import Evaluator, SnapshotReadSource
 from revit_model_mcp.audit.result import (
     audit_directory,
     build_result,
+    local_file_error,
     model_identity,
     model_key,
     redact_path,
@@ -120,7 +121,9 @@ async def audit_snapshots(directory, rules, compare_with="previous", save=True, 
             result["skipped"].extend(audit["skipped"])
             result["skippedCount"] += audit["skippedCount"]
         except (OSError, ValueError, TypeError, KeyError) as error:
-            reason = redact_model_paths({"error": str(error)})["error"]
+            reason = local_file_error(
+                error, str(root), model.get("localPath"), str(audit_directory())
+            )
             row["reason"] = reason
             result["skipped"].append({"model": row["model"], "reason": reason})
             result["skippedCount"] += 1

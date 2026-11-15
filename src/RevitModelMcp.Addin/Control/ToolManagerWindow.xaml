@@ -1,0 +1,26 @@
+<Window x:Class="RevitModelMcp.Control.ToolManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="My tools" Width="760" Height="700" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner">
+    <Grid Margin="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/></Grid.RowDefinitions>
+        <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBox x:Name="Search" Style="{DynamicResource SearchBox}" TextChanged="SearchChanged" AutomationProperties.AutomationId="MyTools.Search" AutomationProperties.Name="Search"/>
+            <Button x:Name="ImportButton" Grid.Column="1" Content="Import…" Margin="8,0,0,0" Click="ImportClick" AutomationProperties.AutomationId="MyTools.Import" AutomationProperties.Name="Import tools"/>
+            <Button x:Name="ExportButton" Grid.Column="2" Content="Export…" Margin="8,0,0,0" Click="ExportClick" AutomationProperties.AutomationId="MyTools.Export" AutomationProperties.Name="Export tools"/>
+        </Grid>
+        <TextBlock x:Name="Notice" Grid.Row="1" Margin="0,10,0,0" TextWrapping="Wrap" Visibility="Collapsed" Foreground="{DynamicResource Muted}" AutomationProperties.AutomationId="MyTools.Notice" AutomationProperties.Name="Last action"/>
+        <Grid Grid.Row="2" Margin="0,8,0,0">
+            <ScrollViewer x:Name="ListScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="MyTools.List" AutomationProperties.Name="Saved tools">
+                <StackPanel x:Name="Rows"/>
+            </ScrollViewer>
+            <StackPanel x:Name="EmptyState" VerticalAlignment="Center" Visibility="Collapsed">
+                <TextBlock Text="No saved tools yet. Ask your AI app to save a procedure as a tool, or import a tool file." TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource Muted}" MaxWidth="380"/>
+                <Button x:Name="EmptyImport" Content="Import…" Click="ImportClick" HorizontalAlignment="Center" Margin="0,12,0,0" AutomationProperties.Name="Import tools"/>
+            </StackPanel>
+            <TextBlock x:Name="NoMatches" VerticalAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource Muted}" Visibility="Collapsed"/>
+        </Grid>
+    </Grid>
+</Window>

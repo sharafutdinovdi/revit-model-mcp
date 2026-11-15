@@ -93,9 +93,24 @@ def build_report(audit, output, format="both"):
     if format not in ("xlsx", "html", "both", "bcf", "all"):
         raise ValueError("format must be xlsx, html, both, bcf or all.")
     result = json.loads(Path(audit).expanduser().read_text(encoding="utf-8"))
-    if result.get("schema") != 1 or not (
-        isinstance(result.get("findings"), list)
-        or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
+    pending = [(result, 0)]
+    while pending:
+        value, depth = pending.pop()
+        if depth > 100:
+            raise ValueError("Audit JSON is nested too deeply (maximum 100 levels).")
+        if isinstance(value, dict):
+            pending.extend((item, depth + 1) for item in value.values())
+        elif isinstance(value, list):
+            pending.extend((item, depth + 1) for item in value)
+    if not isinstance(result, dict):
+        raise ValueError("Audit JSON root must be an object.")
+    if (
+        type(result.get("schema")) is not int
+        or result["schema"] != 1
+        or not (
+            isinstance(result.get("findings"), list)
+            or (result.get("kind") == "batch_audit" and isinstance(result.get("models"), list))
+        )
     ):
         raise ValueError("Expected a schema 1 audit result.")
     is_batch = result.get("kind") == "batch_audit"
@@ -134,7 +149,7 @@ def build_report(audit, output, format="both"):
     )
     for target in [*targets, *image_targets.values()]:
         if target.exists() or target.is_symlink():
-            raise ValueError(f"Local file already exists: {target}")
+            raise ValueError(f"Local file already exists: {redact_path(target)}")
         if not target.parent.is_dir():
             raise ValueError("Output parent directory must exist.")
     content = tables(result)

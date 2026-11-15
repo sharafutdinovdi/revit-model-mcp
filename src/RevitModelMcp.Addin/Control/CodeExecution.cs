@@ -27,6 +27,10 @@ public sealed class ScriptContext
     [ThreadStatic] internal static ScriptContext? Current;
     private readonly List<IDisposable> _scopes = [];
 
+    /// <summary>Registers a disposable scope with the current script execution.</summary>
+    /// <typeparam name="T">The disposable scope type.</typeparam>
+    /// <param name="scope">The scope to track.</param>
+    /// <returns>The supplied scope.</returns>
     public static T TrackScope<T>(T scope) where T : IDisposable
     {
         if (scope is not null) Current?._scopes.Add(scope);
@@ -77,12 +81,20 @@ public sealed class ScriptContext
         Document = document;
     }
 
+    /// <summary>Gets the Revit UI application for the script execution.</summary>
     public UIApplication UiApplication { get; }
+    /// <summary>Gets the Revit application for the script execution.</summary>
     public Autodesk.Revit.ApplicationServices.Application Application => UiApplication.Application;
+    /// <summary>Gets the target UI document, or <see langword="null" /> when none is available.</summary>
     public UIDocument? UiDocument { get; }
+    /// <summary>Gets the target document, or <see langword="null" /> when none is available.</summary>
     public Document? Document { get; }
+    /// <summary>Gets the messages recorded by the script.</summary>
     public IReadOnlyList<string> Lines => _log;
+    /// <summary>Gets the arguments supplied to the script.</summary>
     public IReadOnlyDictionary<string, object> Args { get; internal set; } = new Dictionary<string, object>();
+    /// <summary>Records nonempty message lines up to the execution limit of 2000 lines.</summary>
+    /// <param name="message">The message to record.</param>
     public void Log(string message)
     {
         foreach (var line in (message ?? string.Empty).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
@@ -91,7 +103,13 @@ public sealed class ScriptContext
             _log.Add(line);
         }
     }
+    /// <summary>Converts a length from Revit internal feet to millimeters.</summary>
+    /// <param name="feet">The length in feet.</param>
+    /// <returns>The length in millimeters.</returns>
     public double ToMm(double feet) => feet * 304.8;
+    /// <summary>Converts a length from millimeters to Revit internal feet.</summary>
+    /// <param name="millimeters">The length in millimeters.</param>
+    /// <returns>The length in feet.</returns>
     public double FromMm(double millimeters) => millimeters / 304.8;
 }
 
