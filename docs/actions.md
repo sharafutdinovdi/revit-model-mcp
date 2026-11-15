@@ -162,7 +162,7 @@ Code return values can be incomplete independently of transaction success.
 Truncation sets top-level `partial` and skipped diagnostics; `data.resultArtifact` identifies the full JSON file when publication succeeds.
 An artifact publication failure reports `complete:false` and a skipped reason; it does not undo a committed model change.
 Saved-tool runs use the same result limiter and artifact handling.
-Script logs retain the first 2000 non-empty lines; omitted lines appear in `logOmittedCount` beside `log` and set `partial`, `skipped` and `skippedCount`, including per-model code diagnostics in `revit_process_models`; `resultCompleteness` describes only the return value.
+Script logs retain the first 2000 non-empty lines; omitted lines appear in `logOmittedCount` beside `log`, including per-model code results in `revit_process_models`; successful results also set `partial`, `skipped` and `skippedCount`, and `resultCompleteness` describes only the return value.
 
 `revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. Both supported transaction modes require a target document.
 

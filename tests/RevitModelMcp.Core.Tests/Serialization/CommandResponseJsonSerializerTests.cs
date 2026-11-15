@@ -429,9 +429,33 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
-    [Arguments(0)]
-    [Arguments(1)]
-    public async Task ScriptLog_ProcessModelsReportsPerModelAndEnvelopeDiagnostics(int omittedCount)
+    [Arguments("execute-code")]
+    [Arguments("run-tool")]
+    public async Task ScriptLog_FailedExecutionKeepsFailureAndOmittedCount(string command)
+    {
+        var log = new ScriptLog();
+        log.Add(string.Join("\n", Enumerable.Range(0, 2001)));
+        var data = new ActionResultData { CodeError = "InvalidOperationException: Script failed." };
+        log.ApplyTo(data);
+        var response = CommandResponse<ActionResultData>.Fail(command, "Script failed.", 5);
+        response.Data = data;
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+
+        await Assert.That(json.RootElement.GetProperty("success").GetBoolean()).IsFalse();
+        await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsFalse();
+        await Assert.That(response.Success || response.Partial).IsFalse();
+        await Assert.That(response.SkippedCount ?? 0).IsEqualTo(0);
+        await Assert.That(response.Skipped?.Any(item => item.What == "log") ?? false).IsFalse();
+        await Assert.That(json.RootElement.GetProperty("data").GetProperty("logOmittedCount").GetInt32()).IsEqualTo(1);
+        await Assert.That(data.Log!.Count).IsEqualTo(2000);
+    }
+
+    [Test]
+    [Arguments(0, "done")]
+    [Arguments(1, "done")]
+    [Arguments(0, "failed")]
+    [Arguments(1, "failed")]
+    public async Task ScriptLog_ProcessModelsReportsPerModelAndEnvelopeDiagnostics(int omittedCount, string status)
     {
         var code = new ProcessModelCodeResult
         {
@@ -442,25 +466,34 @@ public sealed class CommandResponseJsonSerializerTests
         };
         var response = CommandResponse<ActionResultData>.Ok("process-models", new ActionResultData
         {
-            Models = [new ProcessModelResult { Path = "model.rvt", Status = "done", Code = code }]
+            Models = [new ProcessModelResult { Path = "model.rvt", Status = status, Code = code }]
         }, 5);
         CommandResponseJsonSerializer.Serialize(response);
         using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
         var serializedCode = json.RootElement.GetProperty("data").GetProperty("models")[0].GetProperty("code");
         await Assert.That(serializedCode.GetProperty("returnValue").GetInt32()).IsEqualTo(1);
-        await Assert.That(code.Partial).IsEqualTo(omittedCount > 0);
-        await Assert.That(code.SkippedCount).IsEqualTo(omittedCount);
-        await Assert.That(response.Partial).IsEqualTo(omittedCount > 0);
-        await Assert.That(response.SkippedCount ?? 0).IsEqualTo(omittedCount);
+        await Assert.That(code.Partial).IsEqualTo(omittedCount > 0 && status == "done");
+        var expectedSkipped = omittedCount > 0 && status == "done" ? 1 : 0;
+        await Assert.That(code.SkippedCount).IsEqualTo(expectedSkipped);
+        await Assert.That(response.Partial).IsEqualTo(expectedSkipped > 0);
+        await Assert.That(response.SkippedCount ?? 0).IsEqualTo(expectedSkipped);
         if (omittedCount > 0)
         {
             await Assert.That(serializedCode.GetProperty("logOmittedCount").GetInt32()).IsEqualTo(1);
-            await Assert.That(serializedCode.GetProperty("partial").GetBoolean()).IsTrue();
-            await Assert.That(serializedCode.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
-            await Assert.That(serializedCode.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("log");
-            await Assert.That(response.Skipped![0].What).IsEqualTo("models[0].code.log");
-            await Assert.That(response.Skipped[0].Reason)
-                .IsEqualTo("Script log truncated: 1 lines omitted after the first 2000.");
+            if (status == "done")
+            {
+                await Assert.That(serializedCode.GetProperty("partial").GetBoolean()).IsTrue();
+                await Assert.That(serializedCode.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+                await Assert.That(serializedCode.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("log");
+                await Assert.That(response.Skipped![0].What).IsEqualTo("models[0].code.log");
+                await Assert.That(response.Skipped[0].Reason)
+                    .IsEqualTo("Script log truncated: 1 lines omitted after the first 2000.");
+            }
+            else
+            {
+                await Assert.That(serializedCode.TryGetProperty("partial", out _)).IsFalse();
+                await Assert.That(serializedCode.TryGetProperty("skipped", out _)).IsFalse();
+            }
         }
         else
         {

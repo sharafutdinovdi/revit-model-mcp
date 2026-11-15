@@ -64,7 +64,7 @@ public static class CommandResponseJsonSerializer
             }
         }
         if (response is CommandResponse<ActionResultData>
-            { Command: "execute-code" or "run-tool", Data.LogOmittedCount: > 0 } logged)
+            { Command: "execute-code" or "run-tool", Success: true, Data.LogOmittedCount: > 0 } logged)
         {
             logged.Partial = true;
             logged.Skipped ??= [];
@@ -83,6 +83,7 @@ public static class CommandResponseJsonSerializer
             for (var index = 0; index < processed.Count; index++)
             {
                 if (processed[index].Code is not { LogOmittedCount: > 0 } code) continue;
+                if (processed[index].Status != "done") continue;
                 code.Partial = true;
                 code.Skipped ??= [];
                 var reason = ScriptLog.TruncationReason(code.LogOmittedCount);
@@ -91,7 +92,7 @@ public static class CommandResponseJsonSerializer
                     code.Skipped.Add(new SkippedRead { What = "log", Reason = reason });
                     code.SkippedCount++;
                 }
-                batch.Partial = true;
+                if (batch.Success) batch.Partial = true;
                 batch.Skipped ??= [];
                 var what = $"models[{index}].code.log";
                 if (!batch.Skipped.Any(item => item.What == what))
