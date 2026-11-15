@@ -482,6 +482,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     "revit_issue_register",
                     "revit_build_report",
                     "revit_batch_start",
+                    "revit_batch_status",
                     "revit_batch_cancel",
                     "revit_batch_fetch",
                 },
@@ -913,6 +914,7 @@ def test_in_process_read_tool_titles():
                 "revit_issue_register",
                 "revit_build_report",
                 "revit_batch_start",
+                "revit_batch_status",
                 "revit_batch_cancel",
                 "revit_batch_fetch",
             }

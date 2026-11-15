@@ -76,6 +76,14 @@ def test_policy_tables_reference_registered_tools(generator, registry):
 
 def test_read_only_tools_are_safe(built, registry):
     hints = {tool.name: tool.annotations.read_only_hint for tool in registry[0]}
+    assert sum(hints.values()) == 25
+    assert len(hints) - sum(hints.values()) == 54
+    status = next(entry for entry in built["tools"] if entry["name"] == "revit_batch_status")
+    assert status["annotations"] == {
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
     for entry in built["tools"]:
         assert (entry["access"] == "read_only") == bool(hints[entry["name"]])
         if entry["access"] == "read_only":

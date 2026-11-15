@@ -76,7 +76,7 @@ Versions are from `server/uv.lock` on 2026-10-10; license text is from the PyPI 
 | annotated-types | 0.8.0 | MIT, [PyPI metadata](https://pypi.org/pypi/annotated-types/0.8.0/json) |
 | pydantic-core | 2.46.5 | MIT, [PyPI metadata](https://pypi.org/pypi/pydantic-core/2.46.5/json) |
 | typing-inspection | 0.4.4 | MIT, [PyPI metadata](https://pypi.org/pypi/typing-inspection/0.4.4/json) |
-| opentelemetry-api | 1.45.0 | Apache-2.0, [PyPI metadata](https://pypi.org/pypi/opentelemetry-api/1.45.0/json) |
+| opentelemetry-api | 1.45.1 | Apache-2.0, [PyPI metadata](https://pypi.org/pypi/opentelemetry-api/1.45.1/json) |
 | pyjwt | 2.15.1 | MIT, [PyPI metadata](https://pypi.org/pypi/pyjwt/2.15.1/json) |
 | cryptography | 50.0.2 | Apache-2.0 OR BSD-3-Clause, [PyPI metadata](https://pypi.org/pypi/cryptography/50.0.2/json) |
 | cffi | 2.1.1 | MIT-0, [PyPI metadata](https://pypi.org/pypi/cffi/2.1.1/json) |

@@ -99,7 +99,7 @@ Every successful Revit-backed read result returns top-level `skipped` and `skipp
 | `revit_parameter_fill_check` | `categories`, `parameters`, `level=null`, `workset=null`, `view=null`, `sample_limit=20`, `include_types=true` | Count filled, empty and missing values; sample unitless element IDs. |
 | `revit_model_snapshot` | `parameter_rules=null`, `document=null`, `process_id=null` | Read a schema version 1 project snapshot for batch audits. |
 | `revit_batch_start` | `paths=null`, `folder=null`, `recursive=false`, `parameter_rules=null`, `years=null`, `open_timeout_minutes=null` | Start persistent read-only collection; see [batch collection](batch.md). |
-| `revit_batch_status` | `run_id` | Read persisted run and model status. |
+| `revit_batch_status` | `run_id` | Read persisted run and model status; can record a stopped supervisor in the run's saved state. |
 | `revit_batch_cancel` | `run_id` | Persist cancellation and stop unstarted models. |
 | `revit_batch_fetch` | `run_id`, `output_dir` | Copy completed JSON snapshots to new local files. |
 | `revit_compare_link_datums` | `link`, `kinds=null` (grids and levels), `name_map=null` (no renames), `prefix=""`, `suffix=""`, `level_offset_mm=0`, `reuse_matching=true`, `tolerance_mm=0.5` | Compare link grids and levels with host datums without modifying the model. |

@@ -14,6 +14,8 @@ cd server && uv run python ../build/tool_manifest.py --check
 `--managed` writes the manifest for the managed install variant to `output/tool-manifest-managed.json`, or to `--output`. That variant has no external endpoints; the add-in makes no update check and the server contains no update implementation. The committed file describes the regular build.
 `--export-snake-case PATH` writes the Autodesk MCP manifest fields (`mcp_manifest_version`, `app_model`, `mcp_spec_version`, `server`, `tools`, `resources`, `prompts`, `external_endpoints`, `autodesk_apis_used`, `ai_llm_providers`) to PATH. The release workflow runs it with `--managed` for the store build, which excludes update code and declares optional user-configured workstation transports, and attaches `revit-model-mcp-<version>-store.mcp-manifest.json`.
 Each tool in the store export includes `inputSchema` and annotations as the server advertises them.
+The store registry declares 25 read-only tools and 54 modifying tools.
+`revit_batch_status` is modifying, non-destructive and idempotent; it can record a stopped supervisor in the run's saved state.
 The export declares stdio and named pipe defaults, optional loopback HTTP, and user-configured SSH.
 `confirm_token` is a two-step handshake with the AI app.
 The AI app is expected to show the action to you; Model MCP does not show its own dialog.

@@ -1448,11 +1448,11 @@
     },
     {
       "name": "revit_batch_status",
-      "description": "Read durable run and model status after the initiating client exits.",
+      "description": "Read durable run and model status; can record a stopped supervisor in the run's saved state.",
       "toolset": "batch",
-      "access": "read_only",
+      "access": "modifying",
       "annotations": {
-        "readOnlyHint": true,
+        "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": true
       },
