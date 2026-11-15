@@ -79,6 +79,8 @@ internal sealed record ToolDefinition
 
 public static class ToolArguments
 {
+    private const int MaxJsonDepth = 8;
+
     public static string ExecutionBinding(ActionJobContract action) =>
         DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
         $":dry_run={action.DryRun}" +
@@ -87,8 +89,39 @@ public static class ToolArguments
     private static XElement Parse(string json)
     {
         if (Encoding.UTF8.GetByteCount(json) > 65536) throw new ArgumentException("parameters or args exceed 64 KB.");
-        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json), XmlDictionaryReaderQuotas.Max);
-        return XElement.Load(reader);
+        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json),
+            new XmlDictionaryReaderQuotas { MaxDepth = MaxJsonDepth, MaxStringContentLength = 65536, MaxArrayLength = 65536 });
+        try { return XElement.Load(reader); }
+        catch (XmlException)
+        {
+            if (ExceedsMaxDepth(json))
+                throw new ArgumentException($"parameters or args are nested deeper than {MaxJsonDepth} levels.");
+            throw;
+        }
+    }
+
+    private static bool ExceedsMaxDepth(string json)
+    {
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        foreach (var character in json)
+        {
+            if (inString)
+            {
+                if (escaped) escaped = false;
+                else if (character == '\\') escaped = true;
+                else if (character == '"') inString = false;
+                continue;
+            }
+            if (character == '"') inString = true;
+            else if (character is '{' or '[')
+            {
+                if (++depth > MaxJsonDepth) return true;
+            }
+            else if (character is '}' or ']') depth--;
+        }
+        return false;
     }
 
     private static string Kind(XElement element) => (string?)element.Attribute("type") ?? "string";
@@ -106,8 +139,10 @@ public static class ToolArguments
     private static void ValidateTitle(Dictionary<string, XElement> rules, string path)
     {
         if (!rules.TryGetValue("title", out var title)) return;
+        if (Kind(title) == "string" && title.Value.Any(char.IsControl))
+            throw new ArgumentException($"{path}.title must be a single line without control characters.");
         var message = $"{path}.title must be 1 to 80 characters of text.";
-        if (Kind(title) != "string" || title.Value.Trim().Length is < 1 or > 80 || title.Value.Any(char.IsControl))
+        if (Kind(title) != "string" || title.Value.Trim().Length is < 1 or > 80)
             throw new ArgumentException(message);
         try { ToolDefinition.RejectFormat(title.Value); }
         catch (ArgumentException) { throw new ArgumentException(message); }
@@ -130,7 +165,7 @@ public static class ToolArguments
         var schema = Members(Parse(json));
         ValidateKeywords(schema, "parameters", ["type", "title", "properties", "required", "additionalProperties"]);
         ValidateTitle(schema, "parameters");
-        if (!schema.TryGetValue("type", out var type) || type.Value != "object" || Kind(type) != "string")
+        if (!schema.TryGetValue("type", out var type) || Kind(type) != "string" || type.Value != "object")
             throw new ArgumentException("parameters.type must be object.");
         if (schema.TryGetValue("additionalProperties", out var additional) &&
             (Kind(additional) != "boolean" || additional.Value != "false"))
@@ -251,6 +286,9 @@ internal sealed class ToolStore(string directory)
     {
         if (name is null || !Regex.IsMatch(name, @"\A[a-z][a-z0-9_]{2,47}\z"))
             throw new ArgumentException("name must match ^[a-z][a-z0-9_]{2,47}$.");
+        if (name is "con" or "prn" or "aux" or "nul" ||
+            Regex.IsMatch(name, @"\A(?:com|lpt)[1-9]\z"))
+            throw new ArgumentException("Tool name must not be a reserved Windows device name.");
     }
 
     public IReadOnlyList<ToolDefinition> List() => List(out _);
@@ -378,7 +416,7 @@ internal sealed class ToolStore(string directory)
         }
     }
 
-    private static void AtomicWrite(string path, string text)
+    internal static void AtomicWrite(string path, string text)
     {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

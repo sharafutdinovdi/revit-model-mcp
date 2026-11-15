@@ -283,6 +283,9 @@ Client reports and downloads publish new files atomically and refuse existing de
 
 ## Reusing successful procedures
 
+Saved tools appear in Revit on the Model MCP tab under My tools.
+File export, import, ribbon visibility and order, and later label or icon changes are managed in Revit in My tools > Settings; no MCP tool supports these operations.
+
 After a successful multi-step or C# procedure requested by the user, offer once to save it as a My tools procedure with parameters.
 Do not offer again after a refusal or save automatically.
 This offer does not authorize any action during a read-only coordinator workflow.
