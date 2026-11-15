@@ -666,6 +666,76 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task Export_CapturedStateDetectsTimestampAndLengthChanges()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            var lastWriteTime = new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, lastWriteTime);
+            var before = FileExportJob.CaptureState([path]);
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsTrue();
+
+            File.WriteAllText(path, "other");
+            File.SetLastWriteTimeUtc(path, lastWriteTime.AddMinutes(1));
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+
+            File.WriteAllText(path, "longer model");
+            File.SetLastWriteTimeUtc(path, lastWriteTime);
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_MissingTargetIsNeverUnchanged()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            var before = FileExportJob.CaptureState([path]);
+            await Assert.That(before.ContainsKey(path)).IsFalse();
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
+    public async Task Export_DeletedCapturedTargetIsNotUnchanged()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = Path.Combine(folder, "model.ifc");
+            File.WriteAllText(path, "model");
+            File.SetLastWriteTimeUtc(path, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            var before = FileExportJob.CaptureState([path]);
+            File.Delete(path);
+            await Assert.That(FileExportJob.IsUnchanged(before, path)).IsFalse();
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
     public async Task ScheduleData_SerializesNamedResult()
     {
         var data = new ScheduleDataResult

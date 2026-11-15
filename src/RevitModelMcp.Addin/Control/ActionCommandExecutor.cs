@@ -924,6 +924,9 @@ internal static class ActionCommandExecutor
         };
         if (action.DryRun) return result;
         Directory.CreateDirectory(folder);
+        var before = request.Overwrite
+            ? FileExportJob.CaptureState(planned.Select(name => Path.Combine(folder, name)))
+            : null;
         var stopwatch = Stopwatch.StartNew();
         if (request.Format == "pdf")
         {
@@ -1011,6 +1014,8 @@ internal static class ActionCommandExecutor
             var path = Path.Combine(folder, file.Name);
             if (!File.Exists(path) || new FileInfo(path).Length == 0)
                 throw new InvalidOperationException($"Export did not produce '{file.Name}'.");
+            if (before is not null && FileExportJob.IsUnchanged(before, path))
+                throw new InvalidOperationException($"Export did not replace '{file.Name}'; the existing file is unchanged.");
             file.SizeBytes = new FileInfo(path).Length;
         }
         result.ElapsedMs = stopwatch.ElapsedMilliseconds;

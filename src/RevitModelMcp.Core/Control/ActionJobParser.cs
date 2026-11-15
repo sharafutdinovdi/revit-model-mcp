@@ -1315,6 +1315,27 @@ public sealed class FileExportJob
         }
         return null;
     }
+
+    public static IReadOnlyDictionary<string, string> CaptureState(IEnumerable<string> paths)
+    {
+        if (paths is null) throw new ArgumentNullException(nameof(paths));
+        var state = new Dictionary<string, string>();
+        foreach (var path in paths)
+        {
+            var file = new FileInfo(path);
+            if (file.Exists) state[path] = $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+        }
+        return state;
+    }
+
+    public static bool IsUnchanged(IReadOnlyDictionary<string, string> before, string path)
+    {
+        if (before is null) throw new ArgumentNullException(nameof(before));
+        if (path is null) throw new ArgumentNullException(nameof(path));
+        if (!before.TryGetValue(path, out var state)) return false;
+        var file = new FileInfo(path);
+        return file.Exists && state == $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+    }
 }
 
 [DataContract]
