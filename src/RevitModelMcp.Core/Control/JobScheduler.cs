@@ -137,12 +137,14 @@ public sealed class JobScheduler
         }
     }
 
-    public ScheduledJob? TakeNext()
+    public ScheduledJob? TakeNext(Func<string, string, bool>? canExecute = null)
     {
         lock (_sync)
         {
             EvictExpired();
             if (_running is not null || _rotation.Count == 0) return null;
+            var head = _clients[_rotation.Peek()].Peek();
+            if (canExecute is not null && !canExecute(head.JobId, head.Command)) return null;
             var clientId = _rotation.Dequeue();
             var queue = _clients[clientId];
             var entry = queue.Dequeue();

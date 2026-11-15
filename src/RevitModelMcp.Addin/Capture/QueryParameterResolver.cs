@@ -9,12 +9,120 @@ internal sealed class QueryParameterDescriptor
     public ElementId Id { get; set; } = ElementId.InvalidElementId;
     public QueryParameterKind Kind { get; set; }
     public ForgeTypeId? DataType { get; set; }
+    public bool HasTypeSource { get; set; }
+    public Definition? Definition { get; set; }
 }
 
 internal static class QueryParameterResolver
 {
     private static readonly Lazy<(Dictionary<string, BuiltInParameter> Names,
         Dictionary<BuiltInParameter, (string Name, int Order)> Details)> BuiltIns = new(CreateBuiltInCache);
+    private static readonly HashSet<string> BuiltInAliasNames =
+        new(Enum.GetNames(typeof(BuiltInParameter)), StringComparer.OrdinalIgnoreCase);
+
+    public static Dictionary<string, IReadOnlyList<QueryParameterDescriptor>> ResolveFilters(
+        Document document, IEnumerable<string> requestedNames,
+        Func<FilteredElementCollector> candidateCollector)
+    {
+        var requested = requestedNames.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var candidates = requested.ToDictionary(name => name,
+            _ => new Dictionary<ElementId, QueryParameterDescriptor>(), StringComparer.OrdinalIgnoreCase);
+        if (requested.Length == 0)
+            return new Dictionary<string, IReadOnlyList<QueryParameterDescriptor>>(StringComparer.OrdinalIgnoreCase);
+        var builtInIds = requested.ToDictionary(name => name,
+            name => QueryParameterSemantics.IsDefinedAlias(name, BuiltInAliasNames) &&
+                    Enum.TryParse<BuiltInParameter>(name, true, out var builtIn) ? (long?)builtIn : null,
+            StringComparer.OrdinalIgnoreCase);
+        var typeElements = new Dictionary<ElementId, Element?>();
+        var typeParameters = new Dictionary<(ElementId TypeId, string Name, bool IgnoreCase), IList<Parameter>>();
+        var hasCandidates = false;
+        void GatherBindings(IReadOnlyList<string> names, bool ignoreCase)
+        {
+            using var collector = candidateCollector();
+            foreach (var element in collector)
+            {
+                hasCandidates = true;
+                ElementId? typeId = null;
+                IList<Parameter> ReadTypeParameters(string name)
+                {
+                    typeId ??= element.GetTypeId();
+                    var key = (typeId, name, ignoreCase);
+                    if (typeParameters.TryGetValue(key, out var parameters)) return parameters;
+                    if (!typeElements.TryGetValue(typeId, out var type))
+                    {
+                        type = document.GetElement(typeId);
+                        typeElements.Add(typeId, type);
+                    }
+                    parameters = type is null ? Array.Empty<Parameter>()
+                        : ReadFilterParameters(type, name, builtInIds[name], ignoreCase);
+                    typeParameters.Add(key, parameters);
+                    return parameters;
+                }
+                foreach (var name in names)
+                {
+                    var fromType = false;
+                    IEnumerable<Parameter> sources;
+                    if (ignoreCase)
+                    {
+                        sources = QueryParameterSemantics.ResolveNamedSources(
+                            element.Parameters.Cast<Parameter>(), () =>
+                            {
+                                fromType = true;
+                                return ReadTypeParameters(name);
+                            },
+                            parameter => QueryParameterSemantics.MatchesParameterName(
+                                name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInIds[name]));
+                    }
+                    else
+                    {
+                        var instanceParameters = ReadFilterParameters(element, name, builtInIds[name], false);
+                        fromType = instanceParameters.Count == 0;
+                        sources = fromType ? ReadTypeParameters(name) : instanceParameters;
+                    }
+                    foreach (var parameter in sources)
+                    {
+                        if (candidates[name].TryGetValue(parameter.Id, out var existing))
+                        {
+                            existing.HasTypeSource |= fromType;
+                            continue;
+                        }
+                        var definition = parameter.Definition;
+                        candidates[name].Add(parameter.Id, new QueryParameterDescriptor
+                        {
+                            Name = name,
+                            Id = parameter.Id,
+                            Kind = QueryParameterSemantics.ResolveKind(null, false, parameter.StorageType.ToString()),
+                            DataType = definition.GetDataType(),
+                            HasTypeSource = fromType,
+                            Definition = definition
+                        });
+                    }
+                }
+            }
+        }
+        GatherBindings(requested, false);
+        // Only names without any fast-pass binding receive a case-insensitive enumeration pass.
+        var unresolvedNames = QueryParameterSemantics.GetUnresolvedFilterNames(requested, name => candidates[name].Count > 0);
+        if (hasCandidates && unresolvedNames.Count > 0) GatherBindings(unresolvedNames, true);
+        foreach (var name in requested)
+            QueryParameterValidator.ValidateFilterResolution(
+                name, hasCandidates, candidates[name].Count > 0,
+                () => Resolve(document, [name], candidateCollector).Keys);
+        return candidates.ToDictionary(pair => pair.Key,
+            pair => (IReadOnlyList<QueryParameterDescriptor>)pair.Value.Values.ToArray(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IList<Parameter> ReadFilterParameters(
+        Element element, string name, long? builtInId, bool ignoreCase)
+    {
+        if (ignoreCase)
+            return element.Parameters.Cast<Parameter>().Where(parameter =>
+                QueryParameterSemantics.MatchesParameterName(
+                    name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInId)).ToArray();
+        if (!builtInId.HasValue) return element.GetParameters(name);
+        var parameter = element.get_Parameter((BuiltInParameter)builtInId.Value);
+        return parameter is null ? Array.Empty<Parameter>() : new[] { parameter };
+    }
 
     public static Dictionary<string, QueryParameterDescriptor> Resolve(
         Document document,
@@ -108,7 +216,7 @@ internal static class QueryParameterResolver
             }
             catch (Exception exception)
             {
-                PluginLog.Skipped($"parameter {enumName} display label", exception);
+                PluginLog.Debug($"Skipped parameter {enumName} display label.", exception);
             }
 
             if (!names.ContainsKey(enumName)) names.Add(enumName, builtIn);

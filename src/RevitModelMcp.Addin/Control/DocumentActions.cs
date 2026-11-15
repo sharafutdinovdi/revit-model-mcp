@@ -361,7 +361,7 @@ internal static class DocumentActions
         var uiDocument = application.ActiveUIDocument!;
         var wasOpen = uiDocument.GetOpenUIViews().Any(item => item.ViewId == view.Id);
         var wasActive = uiDocument.ActiveView.Id == view.Id;
-        uiDocument.ActiveView = view;
+        SetActiveView(uiDocument, view);
         ZoomActiveView(uiDocument, action.Zoom, action.ZoomElementIds);
         return new ActionResultData
         {
@@ -376,6 +376,19 @@ internal static class DocumentActions
             ViewOpened = !wasOpen,
             Changed = !wasActive
         };
+    }
+
+    internal static void SetActiveView(UIDocument uiDocument, View view)
+    {
+        try
+        {
+            uiDocument.ActiveView = view;
+        }
+        catch (Autodesk.Revit.Exceptions.InvalidOperationException exception)
+            when (exception.Message.Equals("Setting active view is temporarily disabled.", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(ControlExecutionPolicy.ViewChangeDeferredMessage, exception);
+        }
     }
 
     internal static void ZoomActiveView(UIDocument uiDocument, string zoom = "fit", List<long>? elementIds = null)
