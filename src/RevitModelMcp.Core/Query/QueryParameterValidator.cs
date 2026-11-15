@@ -112,6 +112,14 @@ public static class QueryParameterSemantics
     public static bool IsDefinedAlias(string requested, ISet<string> definedNames) =>
         definedNames.Contains(requested);
 
+    public static bool ShouldApplyNativeFilter(ParameterOperator operation, Func<bool> hasTypeBinding) =>
+        operation switch
+        {
+            ParameterOperator.NotEmpty => false,
+            ParameterOperator.Empty or ParameterOperator.Exists => !hasTypeBinding(),
+            _ => true
+        };
+
     public static IReadOnlyList<string> GetUnresolvedFilterNames(
         IEnumerable<string> requested, Func<string, bool> hasBinding) =>
         requested.Where(name => !hasBinding(name)).ToArray();

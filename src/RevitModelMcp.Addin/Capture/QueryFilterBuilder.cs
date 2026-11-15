@@ -31,7 +31,9 @@ internal static class QueryFilterBuilder
             parameterSpecs.Select(filter => filter.Parameter), structuralCollector);
         // Revit's HasValue rule does not read parameters from element types.
         var parameterFilters = parameterSpecs
-            .Where(filter => filter.Operator != ParameterOperator.NotEmpty && filterParameters[filter.Parameter].Count > 0)
+            .Where(filter => filterParameters[filter.Parameter].Count > 0 &&
+                QueryParameterSemantics.ShouldApplyNativeFilter(filter.Operator,
+                    () => filterParameters[filter.Parameter].Any(descriptor => descriptor.HasTypeSource)))
             .Select(filter => QueryParameterSemantics.CombineFilterAlternatives(
                 filterParameters[filter.Parameter].Select(descriptor =>
                     BuildParameterFilter(document, filter, descriptor)).ToArray(),
@@ -54,7 +56,7 @@ internal static class QueryFilterBuilder
                 if (valueFilters.Count == 0 && pinnedFilters.Count == 0) return collector;
                 var excluded = collector.Where(element => valueFilters.Any(filter =>
                     !QueryParameterSemantics.MatchesValueState(
-                        filterParameters[filter.Parameter].Select(descriptor => HasParameterValue(element, descriptor)),
+                        ReadParameterValueStates(element, filterParameters[filter.Parameter]),
                         filter.Operator))
                     || pinnedFilters.Any(filter => !QueryParameterValidator.MatchesPinned(element.Pinned, filter)))
                     .Select(element => element.Id).ToList();
@@ -64,13 +66,18 @@ internal static class QueryFilterBuilder
         };
     }
 
-    private static bool? HasParameterValue(Element element, QueryParameterDescriptor descriptor)
+    private static IEnumerable<bool?> ReadParameterValueStates(
+        Element element, IReadOnlyList<QueryParameterDescriptor> descriptors)
     {
-        var parameter = QueryParameterSemantics.ResolveValueSource(
-            element.Parameters.Cast<Parameter>().FirstOrDefault(candidate => candidate.Id == descriptor.Id),
-            () => element.Document.GetElement(element.GetTypeId())?.Parameters.Cast<Parameter>()
-                .FirstOrDefault(candidate => candidate.Id == descriptor.Id));
-        if (parameter is null) return null;
+        var sources = QueryParameterSemantics.ResolveNamedSources(
+            element.Parameters.Cast<Parameter>(),
+            () => element.Document.GetElement(element.GetTypeId())?.Parameters.Cast<Parameter>() ?? [],
+            parameter => descriptors.Any(descriptor => descriptor.Id == parameter.Id));
+        return sources.Select(parameter => (bool?)HasParameterValue(parameter));
+    }
+
+    private static bool HasParameterValue(Parameter parameter)
+    {
         if (!parameter.HasValue) return false;
         return QueryParameterSemantics.HasValue(parameter.HasValue, parameter.StorageType.ToString(),
             parameter.StorageType == StorageType.String ? parameter.AsString() : null,

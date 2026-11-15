@@ -7,6 +7,60 @@ namespace RevitModelMcp.Core.Tests.Query;
 public sealed class QueryParameterFilterTests
 {
     [Test]
+    [Arguments(ParameterOperator.Empty, true)]
+    [Arguments(ParameterOperator.Exists, true)]
+    [Arguments(ParameterOperator.NotEmpty, false)]
+    public async Task NativePrefilter_PreservesInstanceOnlyBehaviour(ParameterOperator operation, bool expected)
+    {
+        await Assert.That(QueryParameterSemantics.ShouldApplyNativeFilter(operation, () => false)).IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(ParameterOperator.Empty)]
+    [Arguments(ParameterOperator.Exists)]
+    [Arguments(ParameterOperator.NotEmpty)]
+    public async Task NativePrefilter_IsOmittedWhenAnyBindingComesFromAType(ParameterOperator operation)
+    {
+        var typeSources = new[] { false, true, false };
+        await Assert.That(QueryParameterSemantics.ShouldApplyNativeFilter(operation, () => typeSources.Any(source => source)))
+            .IsFalse();
+    }
+
+    [Test]
+    [Arguments(ParameterOperator.Equals)]
+    [Arguments(ParameterOperator.Contains)]
+    [Arguments(ParameterOperator.Greater)]
+    [Arguments(ParameterOperator.Less)]
+    public async Task NativePrefilter_ValueOperatorsDoNotInspectBindingOrigins(ParameterOperator operation)
+    {
+        await Assert.That(QueryParameterSemantics.ShouldApplyNativeFilter(operation,
+            () => throw new InvalidOperationException("Value operators keep their native rules."))).IsTrue();
+    }
+
+    [Test]
+    [Arguments(ParameterOperator.Empty, true)]
+    [Arguments(ParameterOperator.NotEmpty, false)]
+    [Arguments(ParameterOperator.Exists, true)]
+    public async Task ValueState_UnsetInstanceOverridesValuedType(ParameterOperator operation, bool expected)
+    {
+        var sources = QueryParameterSemantics.ResolveNamedSources(new[] { false },
+            () => throw new InvalidOperationException("An instance parameter prevents type fallback."), _ => true);
+        await Assert.That(QueryParameterSemantics.MatchesValueState(sources.Select(value => (bool?)value), operation))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
+    [Arguments(ParameterOperator.Empty, false)]
+    [Arguments(ParameterOperator.NotEmpty, true)]
+    [Arguments(ParameterOperator.Exists, true)]
+    public async Task ValueState_UsesValuedTypeWhenInstanceIsAbsent(ParameterOperator operation, bool expected)
+    {
+        var sources = QueryParameterSemantics.ResolveNamedSources(Array.Empty<bool>(), () => new[] { true }, _ => true);
+        await Assert.That(QueryParameterSemantics.MatchesValueState(sources.Select(value => (bool?)value), operation))
+            .IsEqualTo(expected);
+    }
+
+    [Test]
     public async Task UnresolvedFilterNames_OnlyRetriesNamesWithoutAnyFastPassBinding()
     {
         var bindings = new Dictionary<string, long[]>

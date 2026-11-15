@@ -9,6 +9,7 @@ internal sealed class QueryParameterDescriptor
     public ElementId Id { get; set; } = ElementId.InvalidElementId;
     public QueryParameterKind Kind { get; set; }
     public ForgeTypeId? DataType { get; set; }
+    public bool HasTypeSource { get; set; }
 }
 
 internal static class QueryParameterResolver
@@ -58,28 +59,39 @@ internal static class QueryParameterResolver
                 }
                 foreach (var name in names)
                 {
+                    var fromType = false;
                     IEnumerable<Parameter> sources;
                     if (ignoreCase)
                     {
                         sources = QueryParameterSemantics.ResolveNamedSources(
-                            element.Parameters.Cast<Parameter>(), () => ReadTypeParameters(name),
+                            element.Parameters.Cast<Parameter>(), () =>
+                            {
+                                fromType = true;
+                                return ReadTypeParameters(name);
+                            },
                             parameter => QueryParameterSemantics.MatchesParameterName(
                                 name, parameter.Definition?.Name, RevitValueReader.GetId(parameter.Id), builtInIds[name]));
                     }
                     else
                     {
                         var instanceParameters = ReadFilterParameters(element, name, builtInIds[name], false);
-                        sources = instanceParameters.Count > 0 ? instanceParameters : ReadTypeParameters(name);
+                        fromType = instanceParameters.Count == 0;
+                        sources = fromType ? ReadTypeParameters(name) : instanceParameters;
                     }
                     foreach (var parameter in sources)
                     {
-                        if (candidates[name].ContainsKey(parameter.Id)) continue;
+                        if (candidates[name].TryGetValue(parameter.Id, out var existing))
+                        {
+                            existing.HasTypeSource |= fromType;
+                            continue;
+                        }
                         candidates[name].Add(parameter.Id, new QueryParameterDescriptor
                         {
                             Name = name,
                             Id = parameter.Id,
                             Kind = QueryParameterSemantics.ResolveKind(null, false, parameter.StorageType.ToString()),
-                            DataType = parameter.Definition.GetDataType()
+                            DataType = parameter.Definition.GetDataType(),
+                            HasTypeSource = fromType
                         });
                     }
                 }
