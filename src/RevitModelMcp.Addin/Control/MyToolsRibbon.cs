@@ -102,30 +102,34 @@ public sealed class SavedToolAvailability : IExternalCommandAvailability
 
 internal static class ToolIcons
 {
-    internal static ImageSource Load(ToolPresentation presentation, int size)
+    internal static ImageSource Load(ToolPresentation presentation, int size, bool? isDark = null)
     {
         var png = size == 16 ? presentation.SmallPng : presentation.LargePng;
         if (!string.IsNullOrEmpty(png))
         {
             try
             {
-                using var stream = new MemoryStream(Convert.FromBase64String(png));
-                var decoder = new PngBitmapDecoder(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
-                var frame = decoder.Frames[0];
-                if (frame.PixelWidth != size || frame.PixelHeight != size) throw new ArgumentException("Stored PNG dimensions are invalid.");
-                var image = new WriteableBitmap(frame);
-                image.Freeze();
-                return image;
+                return Decode(png, size);
             }
             catch (Exception exception) when (exception is IOException or ArgumentException or NotSupportedException or FileFormatException)
             {
                 // Presentation files are not approved code. A damaged icon uses the default fallback.
             }
         }
-        var suffix = PaneTheme.IsDark ? "-dark" : "";
+        var suffix = (isDark ?? PaneTheme.IsDark) ? "-dark" : "";
         var fallback = new BitmapImage(new Uri($"pack://application:,,,/RevitModelMcp;component/Resources/Icons/Script{size}{suffix}.png"));
         fallback.Freeze();
         return fallback;
+    }
+
+    internal static ImageSource Decode(string png, int size)
+    {
+        using var stream = new MemoryStream(ToolShare.StoredPng(png, size));
+        var decoder = new PngBitmapDecoder(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+        if (decoder.Frames.Count != 1) throw new ArgumentException("Choose a single-frame PNG image.");
+        var image = new WriteableBitmap(decoder.Frames[0]);
+        image.Freeze();
+        return image;
     }
 
     internal static ToolPresentation Import(string path, ToolPresentation presentation)

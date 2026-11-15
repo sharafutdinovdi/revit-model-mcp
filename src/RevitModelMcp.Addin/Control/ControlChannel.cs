@@ -28,6 +28,7 @@ internal sealed class ControlChannel
 {
     private readonly string _channelDirectory;
     private readonly JobScheduler _scheduler;
+    private readonly ControlExecutionDeferral _executionDeferral = new();
     private readonly TabActivityVisuals _tabActivity = new();
     private readonly object _filesSync = new();
     private readonly Dictionary<string, TaskCompletionSource<string>> _httpCompletions = new();
@@ -192,15 +193,16 @@ internal sealed class ControlChannel
         return job.TargetDocument is null;
     }
 
-    public void Tick(UIApplication application)
+    public void Tick(UIApplication application, bool fromIdling)
     {
         try
         {
             if (_stopped) return;
+            if (!fromIdling) _executionDeferral.Reset();
             ScanPendingFiles(application);
             if (_session is null)
             {
-                _current = _scheduler.TakeNext();
+                _current = _executionDeferral.TakeNext(_scheduler, fromIdling);
                 if (_current is null) return;
                 _currentJob = ControlJobParser.Parse(_current.Payload);
                 _currentStartedAt = DateTimeOffset.Now;
@@ -311,6 +313,8 @@ internal sealed class ControlChannel
                     }
                 }
                 _scheduler.Complete(_current.JobId, response, IsSuccessfulOrPartial(response));
+                PluginLog.Info($"Job processing finished. Command='{_current.Command}'. JobId='{_current.JobId}'. " +
+                    $"ExecutionPath='{(fromIdling ? "idling" : "externalEvent")}'.");
                 _tabActivity.End(_current.JobId, HasHttpCompletion(_current.JobId)
                     ? DateTimeOffset.UtcNow : _responseDeliveredAt ?? DateTimeOffset.UtcNow);
                 lock (_httpCompletions)

@@ -270,6 +270,40 @@ public static class CodeResultLimiter
         : key?.ToString() ?? "null";
 }
 
+public sealed class ScriptLog
+{
+    public const int MaximumLines = 2000;
+    private readonly List<string> _lines = [];
+
+    public IReadOnlyList<string> Lines => _lines;
+    public int OmittedCount { get; private set; }
+
+    public void Add(string? message)
+    {
+        if (message is null) return;
+        var start = 0;
+        for (var index = 0; index <= message.Length; index++)
+        {
+            if (index < message.Length && message[index] is not ('\r' or '\n')) continue;
+            if (index > start)
+            {
+                if (_lines.Count < MaximumLines) _lines.Add(message.Substring(start, index - start));
+                else OmittedCount++;
+            }
+            start = index + 1;
+        }
+    }
+
+    public void ApplyTo(ActionResultData result)
+    {
+        result.Log = _lines.ToList();
+        result.LogOmittedCount = OmittedCount;
+    }
+
+    public static string TruncationReason(int omittedCount) =>
+        $"Script log truncated: {omittedCount} lines omitted after the first {MaximumLines}.";
+}
+
 [DataContract]
 public sealed record CodeResult
 {
