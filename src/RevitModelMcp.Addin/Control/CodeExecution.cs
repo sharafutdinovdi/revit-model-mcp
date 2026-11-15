@@ -23,7 +23,7 @@ namespace RevitModelMcp.Control;
 
 public sealed class ScriptContext
 {
-    private readonly List<string> _log = [];
+    private readonly ScriptLog _log = new();
     [ThreadStatic] internal static ScriptContext? Current;
     private readonly List<IDisposable> _scopes = [];
 
@@ -90,19 +90,13 @@ public sealed class ScriptContext
     /// <summary>Gets the target document, or <see langword="null" /> when none is available.</summary>
     public Document? Document { get; }
     /// <summary>Gets the messages recorded by the script.</summary>
-    public IReadOnlyList<string> Lines => _log;
+    public IReadOnlyList<string> Lines => _log.Lines;
     /// <summary>Gets the arguments supplied to the script.</summary>
     public IReadOnlyDictionary<string, object> Args { get; internal set; } = new Dictionary<string, object>();
     /// <summary>Records nonempty message lines up to the execution limit of 2000 lines.</summary>
     /// <param name="message">The message to record.</param>
-    public void Log(string message)
-    {
-        foreach (var line in (message ?? string.Empty).Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
-        {
-            if (_log.Count == 2000) break;
-            _log.Add(line);
-        }
-    }
+    public void Log(string message) => _log.Add(message);
+    internal void ApplyLogTo(ActionResultData result) => _log.ApplyTo(result);
     /// <summary>Converts a length from Revit internal feet to millimeters.</summary>
     /// <param name="feet">The length in feet.</param>
     /// <returns>The length in millimeters.</returns>
@@ -376,7 +370,6 @@ internal static class CodeExecution
             result.ResultCompleteness = limited;
             if (limited.FullJson is not null)
                 result.ResultArtifact = Convert.ToBase64String(Encoding.UTF8.GetBytes(limited.FullJson));
-            result.Log = context.Lines.ToList();
             if (transaction is not null)
             {
                 var status = rollbackRequested ? transaction.RollBack() : transaction.Commit();
@@ -431,10 +424,10 @@ internal static class CodeExecution
             result.StackTrace = (exception.StackTrace ?? string.Empty).Split(['\n'])
                 .Select(line => line.Trim()).Where(line => line.Contains("Script.Execute") || line.Contains("submitted.cs"))
                 .ToList();
-            result.Log = context.Lines.ToList();
         }
         finally
         {
+            context.ApplyLogTo(result);
             ScriptContext.Current = previousContext;
             handlers.Dispose();
             _currentFailures = previousFailures;
