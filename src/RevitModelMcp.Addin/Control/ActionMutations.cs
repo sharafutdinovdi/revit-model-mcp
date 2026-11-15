@@ -922,7 +922,7 @@ internal static class ActionMutations
         if (action.Template is not null) ApplyTemplate(document, view, action.Template);
         var template = view.ViewTemplateId == ElementId.InvalidElementId
             ? null : document.GetElement(view.ViewTemplateId) as View;
-        var templateControlled = GetTemplateControlledSettings(view, template, action);
+        var templateControlled = GetTemplateControlledSettings(template, action);
         if (action.Scale is int scale && !templateControlled.Contains("scale")) view.Scale = scale;
         if (action.DisplayStyle is not null && !templateControlled.Contains("displayStyle"))
             view.DisplayStyle = action.DisplayStyle switch
@@ -953,19 +953,16 @@ internal static class ActionMutations
     }
 
     // Settings controlled by a view template remain unchanged and are reported; the view is still created.
-    private static List<string> GetTemplateControlledSettings(View view, View? template, ActionJobContract action)
+    private static List<string> GetTemplateControlledSettings(View? template, ActionJobContract action)
     {
-        var templateParameters = template?.GetTemplateParameterIds();
-        var nonControlledParameters = template?.GetNonControlledTemplateParameterIds();
-        bool Controls(BuiltInParameter parameter) => template is not null &&
-            ((templateParameters!.Any(id => RevitValueReader.GetId(id) == (long)parameter) &&
-              !nonControlledParameters!.Any(id => RevitValueReader.GetId(id) == (long)parameter)) ||
-             view.get_Parameter(parameter)?.IsReadOnly == true);
+        static HashSet<string> ParameterNames(IEnumerable<ElementId>? parameters) => parameters is null ? [] :
+            parameters.Select(id => RevitValueReader.ToBuiltInParameter(RevitValueReader.GetId(id)))
+                .Where(parameter => parameter.HasValue).Select(parameter => parameter!.Value.ToString()).ToHashSet();
 
         return ViewTemplateSettings.GetSkipped(
-            action.Scale.HasValue, Controls(BuiltInParameter.VIEW_SCALE),
-            action.DisplayStyle is not null, Controls(BuiltInParameter.MODEL_GRAPHICS_STYLE),
-            action.DetailLevel is not null, Controls(BuiltInParameter.VIEW_DETAIL_LEVEL));
+            ParameterNames(template?.GetTemplateParameterIds()),
+            ParameterNames(template?.GetNonControlledTemplateParameterIds()),
+            action.Scale.HasValue, action.DisplayStyle is not null, action.DetailLevel is not null);
     }
 
     internal static ActionResultData DuplicateView(Document document, ActionJobContract action)
