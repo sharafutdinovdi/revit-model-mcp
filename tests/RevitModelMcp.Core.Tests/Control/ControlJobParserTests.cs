@@ -676,15 +676,17 @@ public sealed class ControlJobParserTests
     }
 
     [Test]
-    public async Task ViewReferenceMatcher_DuplicateName_AsksForNumericId()
+    public async Task ViewReferenceMatcher_DuplicateName_AsksForIdAsText()
     {
         var views = new[] { new TestView(1, "Plan"), new TestView(2, "Plan") };
 
         var error = Assert.Throws<InvalidOperationException>(() => ViewReferenceMatcher.Find(views, "Plan", view => view.Id, view => view.Name));
 
-        await Assert.That(error.Message).Contains("Pass the numeric id instead");
+        await Assert.That(error.Message).Contains("Pass the id as text instead, for example \"1\".");
         await Assert.That(error.Message).Contains("id=1, name=Plan");
         await Assert.That(error.Message).Contains("id=2, name=Plan");
+        var example = ViewReferenceMatcher.Find(views, "1", view => view.Id, view => view.Name);
+        await Assert.That(example?.Id).IsEqualTo(1);
         var selected = ViewReferenceMatcher.Find(views, "2", view => view.Id, view => view.Name);
         await Assert.That(selected?.Id).IsEqualTo(2);
     }

@@ -15,7 +15,7 @@ public static class ApiLookup
     private static readonly ConcurrentDictionary<Assembly, Lazy<Dictionary<string, string>?>> Documentation = new();
 
     public static ApiLookupResult Lookup(IReadOnlyList<Assembly> assemblies, ApiLookupRequest request,
-        Func<Assembly, string?> xmlDocPathResolver)
+        Func<Assembly, string?> xmlDocPathResolver, IReadOnlyList<Type>? extraTypes = null)
     {
         if (assemblies is null) throw new ArgumentNullException(nameof(assemblies));
         if (request is null) throw new ArgumentNullException(nameof(request));
@@ -51,13 +51,14 @@ public static class ApiLookup
                 result.Skipped.Add(new SkippedRead { What = identity.Name ?? "Assembly", Reason = "XML documentation could not be read." });
             }
         }
+        if (extraTypes is not null) types.AddRange(extraTypes.Where(type => type.IsVisible));
         types = types.Distinct().OrderBy(type => type.FullName, StringComparer.Ordinal).ToList();
         var query = request.Query.Trim();
-        var matched = Resolve(types, query);
+        var matched = Resolve(types, query, extraTypes);
         string? memberName = null;
         if (matched.Count == 0 && request.Kind != "type" && query.LastIndexOf('.') is var separator && separator > 0)
         {
-            matched = Resolve(types, query[..separator]);
+            matched = Resolve(types, query[..separator], extraTypes);
             if (matched.Count > 0) memberName = query[(separator + 1)..];
         }
         if (matched.Count > 1)
@@ -132,10 +133,12 @@ public static class ApiLookup
         }
     }
 
-    private static List<Type> Resolve(List<Type> types, string query)
+    private static List<Type> Resolve(List<Type> types, string query, IReadOnlyList<Type>? extraTypes)
     {
         var exact = types.Where(type => type.FullName == query).ToList();
-        return exact.Count > 0 ? exact : types.Where(type => type.Namespace?.StartsWith("Autodesk.Revit.", StringComparison.Ordinal) == true && string.Equals(type.Name, query, StringComparison.OrdinalIgnoreCase)).ToList();
+        return exact.Count > 0 ? exact : types.Where(type =>
+            (type.Namespace?.StartsWith("Autodesk.Revit.", StringComparison.Ordinal) == true || extraTypes?.Contains(type) == true) &&
+            string.Equals(type.Name, query, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
     private static bool Contains(string text, string query) => text.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;

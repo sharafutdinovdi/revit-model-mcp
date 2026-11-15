@@ -278,12 +278,42 @@ public sealed class ToolPresentationTests
     {
         var ribbon = new ToolRibbonSession();
         var mcp = new ToolSession();
-        ribbon.Confirm("my_tool", "revision1");
-        await Assert.That(ribbon.RequiresReview("my_tool", "revision1")).IsFalse();
+        ribbon.Confirm("binding1", "auto");
+        await Assert.That(ribbon.RequiresReview("binding1", "auto")).IsFalse();
         await Assert.That(mcp.RequiresConfirmation("my_tool", "revision1", "read", true)).IsTrue();
         mcp.Confirm("my_tool", "revision2");
-        await Assert.That(ribbon.RequiresReview("my_tool", "revision2")).IsTrue();
-        await Assert.That(ribbon.RequiresReview("other_tool", "revision1")).IsTrue();
+        await Assert.That(ribbon.RequiresReview("binding2", "auto")).IsTrue();
+        await Assert.That(ribbon.RequiresReview("binding1", "group")).IsTrue();
+    }
+
+    [Test]
+    [Arguments("mode")]
+    [Arguments("parameters")]
+    [Arguments("code")]
+    public async Task RibbonSessionReviewsChangedApprovalBindings(string field)
+    {
+        var tool = new ToolDefinition
+        {
+            Name = "my_tool",
+            Description = "Test tool",
+            Code = "return 1;\n",
+            Parameters = """{"type":"object"}""",
+            Mode = "read"
+        };
+        var changed = field switch
+        {
+            "mode" => tool with { Mode = "action" },
+            "parameters" => tool with { Parameters = """{"type":"object","properties":{"label":{"type":"string"}}}""" },
+            _ => tool with { Code = "return 2;\n" }
+        };
+        var session = new ToolRibbonSession();
+        await Assert.That(session.RequiresReview(tool.ApprovalBinding(), "auto")).IsTrue();
+        session.Confirm(tool.ApprovalBinding(), "auto");
+        await Assert.That(session.RequiresReview(tool.ApprovalBinding(), "auto")).IsFalse();
+        await Assert.That(session.RequiresReview(changed.ApprovalBinding(), "auto")).IsTrue();
+        await Assert.That(session.RequiresReview(tool.ApprovalBinding(), "group")).IsTrue();
+        session.Confirm(tool.ApprovalBinding(), "group");
+        await Assert.That(session.RequiresReview(tool.ApprovalBinding(), "group")).IsFalse();
     }
 
     [Test]

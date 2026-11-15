@@ -1,5 +1,6 @@
 import asyncio
 import json
+from contextlib import nullcontext
 from pathlib import Path
 from unittest.mock import patch
 
@@ -181,3 +182,90 @@ def test_mcp_reports_expected_errors(tmp_path):
         empty = tmp_path / "empty"
         empty.mkdir()
         server.revit_build_report(str(empty), str(tmp_path / "out.xlsx"))
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("windows", [False, True])
+def test_mcp_missing_directory_redacts_path(tmp_path, monkeypatch, redact, windows):
+    directory = r"C:\Private\Models\missing" if windows else str(tmp_path / "missing")
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    with pytest.raises(ToolError) as caught:
+        server.revit_build_report(directory, str(tmp_path / "out.xlsx"))
+    expected = "missing" if redact else directory
+    assert str(caught.value) == (
+        f"Snapshot directory does not exist or is not a directory: {expected}"
+    )
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize("failure", ["empty", "invalid", "previous", "existing", "io"])
+def test_mcp_report_errors_redact_input_paths(tmp_path, monkeypatch, redact, failure):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    current = tmp_path / "snapshots"
+    current.mkdir()
+    output = tmp_path / "out.xlsx"
+    previous = None
+    if failure != "empty":
+        (current / "model.json").write_bytes((CURRENT / "model-a.json").read_bytes())
+    if failure == "invalid":
+        (current / "model.json").write_text("{")
+    if failure == "previous":
+        previous = str(tmp_path / "missing")
+    if failure == "existing":
+        output.write_bytes(b"original")
+    with (
+        patch(
+            "revit_model_mcp.snapshot_report.write_new_file",
+            side_effect=PermissionError(13, "Permission denied", str(output)),
+        )
+        if failure == "io"
+        else nullcontext()
+    ):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(str(current), str(output), previous)
+    assert (str(tmp_path) in str(caught.value)) is not redact
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_mcp_report_result_redacts_output_path(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    output = tmp_path / "report.xlsx"
+    result = server.revit_build_report(str(CURRENT), str(output))
+    assert result["outputPath"] == ("report.xlsx" if redact else str(output))
+    assert output.is_file()
+
+
+@pytest.mark.parametrize("redact", [False, True])
+@pytest.mark.parametrize(
+    "filename",
+    [
+        r"C:\Users\name\Private\out.xlsx",
+        r"C:\Users\name\Private\.out.xlsx.ab12",
+        "/Users/name/Private/out.xlsx",
+        "/Users/name/Private/.out.xlsx.ab12",
+    ],
+)
+def test_mcp_save_error_redacts_explicit_filename(tmp_path, monkeypatch, redact, filename):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    error = PermissionError(13, "Permission denied", filename)
+    with patch("revit_model_mcp.snapshot_report.write_new_file", side_effect=error):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(str(CURRENT), str(tmp_path / "out.xlsx"))
+    basename = filename.replace("\\", "/").rsplit("/", 1)[1]
+    expected = basename if redact else filename
+    message = str(caught.value)
+    assert message == f"Cannot save report: Permission denied: {expected}"
+    if redact:
+        assert all(component not in message for component in ("C:", "Users", "name", "Private"))
+
+
+@pytest.mark.parametrize("redact", [False, True])
+def test_mcp_save_error_without_filename_preserves_message(tmp_path, monkeypatch, redact):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1" if redact else "0")
+    with patch(
+        "revit_model_mcp.snapshot_report.write_new_file",
+        side_effect=OSError("Atomic no-replace publication is unavailable"),
+    ):
+        with pytest.raises(ToolError) as caught:
+            server.revit_build_report(str(CURRENT), str(tmp_path / "out.xlsx"))
+    assert str(caught.value) == "Cannot save report: Atomic no-replace publication is unavailable"
