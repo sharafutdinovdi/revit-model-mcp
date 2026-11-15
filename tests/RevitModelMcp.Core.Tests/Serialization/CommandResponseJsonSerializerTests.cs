@@ -11,6 +11,45 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task CreateView_SerializesTemplateControlledSettings()
+    {
+        var result = new ActionResultData
+        {
+            ViewId = 42,
+            TemplateControlled = ["scale", "displayStyle", "detailLevel"],
+            ViewTemplate = "Company 3D"
+        };
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ActionResultData>.Ok("create-view", result, 1)));
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(string.Join(",", data.GetProperty("templateControlled").EnumerateArray()
+            .Select(setting => setting.GetString())))
+            .IsEqualTo("scale,displayStyle,detailLevel");
+        await Assert.That(data.GetProperty("viewTemplate").GetString()).IsEqualTo("Company 3D");
+    }
+
+    [Test]
+    public async Task CreateView_OmitsUnsetTemplateFields()
+    {
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ActionResultData>.Ok("create-view", new ActionResultData { ViewId = 42 }, 1)));
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.TryGetProperty("templateControlled", out _)).IsFalse();
+        await Assert.That(data.TryGetProperty("viewTemplate", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task CreateView_SerializesTemplateWithoutSkippedSettings()
+    {
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ActionResultData>.Ok("create-view",
+                new ActionResultData { ViewId = 42, ViewTemplate = "Company 3D" }, 1)));
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.TryGetProperty("templateControlled", out _)).IsFalse();
+        await Assert.That(data.GetProperty("viewTemplate").GetString()).IsEqualTo("Company 3D");
+    }
+
+    [Test]
     public async Task CaptureCamera_TransformsMetricPositionAndRotatesVectorsWithoutTranslation()
     {
         var camera = new CaptureCamera

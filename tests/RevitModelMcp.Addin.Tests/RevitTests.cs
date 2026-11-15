@@ -425,6 +425,89 @@ public sealed class RevitTests : RevitApiUiTest
     }
 
     [Test]
+    public async Task CreateViewKeepsDefaultTemplateControlledDisplaySettingsAsync()
+    {
+        using var rollback = new TransactionGroup(Model, "RMM test rollback");
+        rollback.Start();
+        View template;
+        ViewFamilyType viewType;
+        using (var seed = new Transaction(Model, "Create default view template"))
+        {
+            seed.Start();
+            viewType = new FilteredElementCollector(Model).OfClass(typeof(ViewFamilyType))
+                .Cast<ViewFamilyType>().First(type => type.ViewFamily == ViewFamily.ThreeDimensional);
+            var source = View3D.CreateIsometric(Model, viewType.Id);
+            source.ViewTemplateId = ElementId.InvalidElementId;
+            source.DisplayStyle = DisplayStyle.HLR;
+            source.DetailLevel = ViewDetailLevel.Coarse;
+            template = source.CreateViewTemplate();
+            template.Name = "RMM controlled display " + Guid.NewGuid().ToString("N");
+            template.SetNonControlledTemplateParameterIds(template.GetTemplateParameterIds()
+                .Where(id => Id(id) != (long)BuiltInParameter.GRAPHIC_DISPLAY_OPTIONS_MODEL &&
+                    Id(id) != (long)BuiltInParameter.VIEW_DETAIL_LEVEL).ToList());
+            viewType.get_Parameter(BuiltInParameter.DEFAULT_VIEW_TEMPLATE).Set(template.Id);
+            viewType.get_Parameter(BuiltInParameter.ASSIGN_TEMPLATE_ON_VIEW_CREATION).Set(1);
+            seed.Commit();
+        }
+        await Assert.That(template.GetTemplateParameterIds().Any(
+            id => Id(id) == (long)BuiltInParameter.GRAPHIC_DISPLAY_OPTIONS_MODEL)).IsTrue();
+        await Assert.That(template.GetTemplateParameterIds().Any(
+            id => Id(id) == (long)BuiltInParameter.VIEW_DETAIL_LEVEL)).IsTrue();
+        var action = ControlJobParser.Parse("""{"command":"create-view","kind":"3d"}""").Action!;
+        action.ViewFamilyType = viewType.Name;
+        var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);
+        var result = Invoke<ActionResultData>(Type("Control.ActionCommandExecutor"), null, "ExecuteStep",
+            Model, null, "create-view", action, failures, "RMM tests", false, true);
+        var created = Model.GetElement(CreateId(result.ViewId!.Value)) as View3D;
+        await Assert.That(created is not null).IsTrue();
+        await Assert.That(created!.ViewTemplateId).IsEqualTo(template.Id);
+        await Assert.That(created.DisplayStyle).IsEqualTo(template.DisplayStyle);
+        await Assert.That(created.DetailLevel).IsEqualTo(template.DetailLevel);
+        await Assert.That(string.Join(",", result.TemplateControlled!)).IsEqualTo("displayStyle,detailLevel");
+        await Assert.That(result.ViewTemplate).IsEqualTo(template.Name);
+        rollback.RollBack();
+    }
+
+    [Test]
+    public async Task CreateViewAppliesScaleNotControlledByTemplateAsync()
+    {
+        using var rollback = new TransactionGroup(Model, "RMM test rollback");
+        rollback.Start();
+        View template;
+        ViewFamilyType viewType;
+        using (var seed = new Transaction(Model, "Create view template with uncontrolled scale"))
+        {
+            seed.Start();
+            viewType = new FilteredElementCollector(Model).OfClass(typeof(ViewFamilyType))
+                .Cast<ViewFamilyType>().First(type => type.ViewFamily == ViewFamily.ThreeDimensional);
+            var source = View3D.CreateIsometric(Model, viewType.Id);
+            source.ViewTemplateId = ElementId.InvalidElementId;
+            source.Scale = 100;
+            template = source.CreateViewTemplate();
+            template.Name = "RMM uncontrolled scale " + Guid.NewGuid().ToString("N");
+            template.SetNonControlledTemplateParameterIds(template.GetTemplateParameterIds());
+            seed.Commit();
+        }
+        var action = new ActionJobContract
+        {
+            Kind = "3d",
+            ViewFamilyType = viewType.Name,
+            Template = template.Name,
+            Scale = 50
+        };
+        var failures = Activator.CreateInstance(Type("Control.ActionCommandExecutor+ActionFailures"), true);
+        var result = Invoke<ActionResultData>(Type("Control.ActionCommandExecutor"), null, "ExecuteStep",
+            Model, null, "create-view", action, failures, "RMM tests", false, true);
+        var created = Model.GetElement(CreateId(result.ViewId!.Value)) as View3D;
+        await Assert.That(created is not null).IsTrue();
+        await Assert.That(created!.ViewTemplateId).IsEqualTo(template.Id);
+        await Assert.That(created.Scale).IsEqualTo(50);
+        await Assert.That(result.TemplateControlled).IsNull();
+        await Assert.That(result.ViewTemplate).IsEqualTo(template.Name);
+        rollback.RollBack();
+    }
+
+    [Test]
     [Arguments("set-parameter")]
     [Arguments("move")]
     [Arguments("copy")]
