@@ -53,7 +53,18 @@ public static class CommandResponseJsonSerializer
         {
             execution.Partial = true;
             execution.Skipped ??= [];
-            if (!execution.Skipped.Any(item => item.What == "returnValue"))
+            var completeness = execution.Data!.ResultCompleteness!;
+            if (completeness.LogOmittedCount > 0 && !execution.Skipped.Any(item => item.What == "log"))
+            {
+                execution.Skipped.Add(new SkippedRead
+                {
+                    What = "log",
+                    Reason = $"Script log truncated: {completeness.LogOmittedCount} lines omitted after the first {ScriptLog.MaximumLines}."
+                });
+                execution.SkippedCount = (execution.SkippedCount ?? 0) + 1;
+            }
+            if ((completeness.LogOmittedCount == 0 || completeness.Reasons.Any(reason => reason != "scriptLog"))
+                && !execution.Skipped.Any(item => item.What == "returnValue"))
             {
                 execution.Skipped.Add(new SkippedRead
                 {

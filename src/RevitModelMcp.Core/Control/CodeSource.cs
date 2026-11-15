@@ -270,6 +270,45 @@ public static class CodeResultLimiter
         : key?.ToString() ?? "null";
 }
 
+public sealed class ScriptLog
+{
+    public const int MaximumLines = 2000;
+    private readonly List<string> _lines = [];
+
+    public IReadOnlyList<string> Lines => _lines;
+    public int OmittedCount { get; private set; }
+
+    public void Add(string? message)
+    {
+        if (message is null) return;
+        var start = 0;
+        for (var index = 0; index <= message.Length; index++)
+        {
+            if (index < message.Length && message[index] is not ('\r' or '\n')) continue;
+            if (index > start)
+            {
+                if (_lines.Count < MaximumLines) _lines.Add(message.Substring(start, index - start));
+                else OmittedCount++;
+            }
+            start = index + 1;
+        }
+    }
+
+    public void ApplyTo(ActionResultData result)
+    {
+        result.Log = _lines.ToList();
+        if (OmittedCount == 0) return;
+        var completeness = result.ResultCompleteness ?? new CodeResult();
+        result.ResultCompleteness = completeness with
+        {
+            Truncated = true,
+            OmittedCount = completeness.OmittedCount + OmittedCount,
+            LogOmittedCount = OmittedCount,
+            Reasons = [.. completeness.Reasons, "scriptLog"]
+        };
+    }
+}
+
 [DataContract]
 public sealed record CodeResult
 {
@@ -278,5 +317,6 @@ public sealed record CodeResult
     [DataMember(Name = "truncated")] public bool Truncated { get; init; }
     [DataMember(Name = "retainedCount")] public int RetainedCount { get; init; }
     [DataMember(Name = "omittedCount")] public int OmittedCount { get; init; }
+    [DataMember(Name = "logOmittedCount", EmitDefaultValue = false)] public int LogOmittedCount { get; init; }
     [DataMember(Name = "reasons")] public List<string> Reasons { get; init; } = [];
 }

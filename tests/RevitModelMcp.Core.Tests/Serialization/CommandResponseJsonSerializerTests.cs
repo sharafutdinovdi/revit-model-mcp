@@ -338,6 +338,88 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    [Arguments("execute-code", 2000)]
+    [Arguments("execute-code", 2001)]
+    [Arguments("run-tool", 2000)]
+    [Arguments("run-tool", 2001)]
+    public async Task ScriptLog_LimitReportsOnlyOmittedLines(string command, int lineCount)
+    {
+        var log = new ScriptLog();
+        for (var index = 0; index < lineCount; index++) log.Add($"line {index}");
+        var limited = CodeResultLimiter.Limit(1, value => value);
+        var data = new ActionResultData { ReturnValue = limited.Value, ResultCompleteness = limited };
+        log.ApplyTo(data);
+        var response = CommandResponse<ActionResultData>.Ok(command, data, 5);
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        var completeness = json.RootElement.GetProperty("data").GetProperty("resultCompleteness");
+        var omitted = lineCount - 2000;
+
+        await Assert.That(log.Lines.Count).IsEqualTo(2000);
+        await Assert.That(log.Lines[0]).IsEqualTo("line 0");
+        await Assert.That(log.Lines[^1]).IsEqualTo("line 1999");
+        await Assert.That(log.OmittedCount).IsEqualTo(omitted);
+        await Assert.That(completeness.GetProperty("omittedCount").GetInt32()).IsEqualTo(omitted);
+        await Assert.That(completeness.GetProperty("truncated").GetBoolean()).IsEqualTo(omitted > 0);
+        await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsEqualTo(omitted > 0);
+        await Assert.That(response.SkippedCount ?? 0).IsEqualTo(omitted > 0 ? 1 : 0);
+        if (omitted > 0)
+        {
+            await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
+            await Assert.That(completeness.GetProperty("logOmittedCount").GetInt32()).IsEqualTo(1);
+            var skipped = json.RootElement.GetProperty("skipped");
+            await Assert.That(skipped.GetArrayLength()).IsEqualTo(1);
+            await Assert.That(skipped[0].GetProperty("what").GetString()).IsEqualTo("log");
+            await Assert.That(skipped[0].GetProperty("reason").GetString())
+                .IsEqualTo("Script log truncated: 1 lines omitted after the first 2000.");
+        }
+    }
+
+    [Test]
+    public async Task ScriptLog_MultilineEntryCountsNonEmptyLinesAcrossLimit()
+    {
+        var log = new ScriptLog();
+        for (var index = 0; index < 1999; index++) log.Add($"line {index}");
+        log.Add("\r\nlast retained\r\nfirst omitted\n\nsecond omitted\rthird omitted\n");
+        log.Add(null);
+        log.Add("\r\n");
+        log.Add("fourth omitted");
+        var data = new ActionResultData();
+        log.ApplyTo(data);
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ActionResultData>.Ok("execute-code", data, 5)));
+
+        await Assert.That(log.Lines.Count).IsEqualTo(2000);
+        await Assert.That(log.Lines[^1]).IsEqualTo("last retained");
+        await Assert.That(log.OmittedCount).IsEqualTo(4);
+        await Assert.That(data.ResultCompleteness!.OmittedCount).IsEqualTo(4);
+        await Assert.That(json.RootElement.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(json.RootElement.GetProperty("skipped")[0].GetProperty("reason").GetString())
+            .IsEqualTo("Script log truncated: 4 lines omitted after the first 2000.");
+    }
+
+    [Test]
+    public async Task ScriptLog_CombinesReturnTruncationWithoutDuplicatingDiagnostics()
+    {
+        var log = new ScriptLog();
+        log.Add(string.Join("\n", Enumerable.Range(0, 2001)));
+        var limited = CodeResultLimiter.Limit(Enumerable.Range(0, 6000), value => value);
+        var data = new ActionResultData { ReturnValue = limited.Value, ResultCompleteness = limited };
+        log.ApplyTo(data);
+        var response = CommandResponse<ActionResultData>.Ok("run-tool", data, 5);
+        CommandResponseJsonSerializer.Serialize(response);
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+
+        await Assert.That(data.ResultCompleteness!.OmittedCount).IsEqualTo(1001);
+        await Assert.That(data.ResultCompleteness.LogOmittedCount).IsEqualTo(1);
+        await Assert.That(data.ResultCompleteness.FullJson).IsEqualTo(limited.FullJson);
+        await Assert.That(data.ResultCompleteness.RetainedCount).IsEqualTo(limited.RetainedCount);
+        await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(2);
+        await Assert.That(json.RootElement.GetProperty("skipped").GetArrayLength()).IsEqualTo(2);
+        await Assert.That(response.Skipped!.Select(item => item.What))
+            .IsEquivalentTo(new[] { "log", "returnValue" });
+    }
+
+    [Test]
     public async Task Serialize_CreatedViewsSheetsAndPlacements_ExposeTopLevelIds()
     {
         var view = new ActionResultData
