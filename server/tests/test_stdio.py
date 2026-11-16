@@ -23,6 +23,7 @@ from revit_model_mcp.stdio import MAX_FRAME_SIZE
         ('{"id":10,"payload":"' + "x" * MAX_FRAME_SIZE + '"}', 10, -32600, "size limit"),
         ("not-json", None, -32700, "Parse"),
     ],
+    ids=["invalid-request", "invalid-json", "deep-arguments", "oversized-frame", "non-json"],
 )
 def test_bad_stdio_frame_replies_and_keeps_connection(frame, request_id, code, message):
     async def check():
@@ -40,7 +41,7 @@ def test_bad_stdio_frame_replies_and_keeps_connection(frame, request_id, code, m
 
             async def send(value):
                 process.stdin.write((value + "\n").encode())
-                await process.stdin.drain()
+                await asyncio.wait_for(process.stdin.drain(), 10)
                 return json.loads(await asyncio.wait_for(process.stdout.readline(), 10))
 
             initialized = await send(
@@ -59,7 +60,7 @@ def test_bad_stdio_frame_replies_and_keeps_connection(frame, request_id, code, m
             )
             assert "result" in initialized
             process.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
-            await process.stdin.drain()
+            await asyncio.wait_for(process.stdin.drain(), 10)
             process.stdin.write(b" \t\r\n\n")
             response = await send(frame)
             assert response["id"] == request_id
@@ -68,10 +69,11 @@ def test_bad_stdio_frame_replies_and_keeps_connection(frame, request_id, code, m
             following = await send('{"jsonrpc":"2.0","id":11,"method":"ping"}')
             assert following == {"jsonrpc": "2.0", "id": 11, "result": {}}
         finally:
-            process.terminate()
-            await process.wait()
+            if process.returncode is None:
+                process.kill()
+            await asyncio.wait_for(process.communicate(), 5)
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 45))
 
 
 @pytest.mark.parametrize("failure", ["missing", "signature", "startup"])
@@ -114,14 +116,73 @@ server.main()
                         json.dumps({"jsonrpc": "2.0", "id": request_id, "method": "ping"}) + "\n"
                     ).encode()
                 )
-                await process.stdin.drain()
+                await asyncio.wait_for(process.stdin.drain(), 10)
                 result = json.loads(await asyncio.wait_for(process.stdout.readline(), 10))
                 assert result == {"jsonrpc": "2.0", "id": request_id, "result": {}}
         finally:
             if process.returncode is None:
-                process.terminate()
-            await process.wait()
-        stderr = (await process.stderr.read()).decode()
+                process.kill()
+            _, stderr = await asyncio.wait_for(process.communicate(), 5)
+        stderr = stderr.decode()
         assert stderr.count("Warning: guarded stdio is unavailable; using SDK stdio.") == 1
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 45))
+
+
+@pytest.mark.parametrize("shutdown", ["eof", "cancel"])
+def test_stdio_exits_with_idle_input_on_shutdown(shutdown):
+    async def check():
+        source = """
+import asyncio
+import sys
+from revit_model_mcp import server
+async def main():
+    try:
+        await asyncio.wait_for(server.mcp.run_stdio_async(), 0.1)
+    except TimeoutError:
+        print("cancelled", file=sys.stderr)
+asyncio.run(main())
+"""
+        arguments = ["-c", source] if shutdown == "cancel" else ["-m", "revit_model_mcp.server"]
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            *arguments,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "REVIT_MCP_CHECK_UPDATES": "0"},
+        )
+        try:
+            if shutdown == "eof":
+                process.stdin.close()
+            assert await asyncio.wait_for(process.wait(), 5) == 0
+            if shutdown == "cancel":
+                assert b"cancelled" in await asyncio.wait_for(process.stderr.read(), 1)
+        finally:
+            if process.returncode is None:
+                process.kill()
+            await asyncio.wait_for(process.communicate(), 5)
+
+    asyncio.run(asyncio.wait_for(check(), 15))
+
+
+def test_stdio_exits_when_output_pipe_is_closed():
+    import subprocess
+
+    process = subprocess.Popen(
+        [sys.executable, "-m", "revit_model_mcp.server"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        env={**os.environ, "REVIT_MCP_CHECK_UPDATES": "0"},
+    )
+    try:
+        process.stdout.close()
+        process.stdin.write(b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n')
+        process.stdin.flush()
+        assert process.wait(timeout=5) != 0
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        process.stdin.close()

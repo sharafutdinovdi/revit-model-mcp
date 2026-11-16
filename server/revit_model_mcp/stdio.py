@@ -1,9 +1,11 @@
 """Validate bounded raw frames before the SDK's JSON decoder can drop them."""
 
+import asyncio
 import inspect
 import json
 import sys
 from contextlib import ExitStack
+from threading import Thread
 
 import anyio
 from mcp import types
@@ -74,15 +76,37 @@ class _Input:
         self.stream = stream
         self.output = output
 
+    async def _readline(self):
+        loop = asyncio.get_running_loop()
+        result = loop.create_future()
+
+        def complete(line, error):
+            if not result.done():
+                if error is None:
+                    result.set_result(line)
+                else:
+                    result.set_exception(error)
+
+        def read():
+            try:
+                line, error = self.stream.wrapped.readline(MAX_FRAME_SIZE + 1), None
+            except Exception as failure:
+                line, error = None, failure
+            try:
+                loop.call_soon_threadsafe(complete, line, error)
+            except RuntimeError:
+                # Cancellation can close the loop before the input peer disconnects.
+                return
+
+        # An idle pipe read cannot be interrupted portably; it must not own process shutdown.
+        Thread(target=read, daemon=True, name="MCP stdin reader").start()
+        return await result
+
     async def __aiter__(self):
-        while line := await anyio.to_thread.run_sync(
-            self.stream.wrapped.readline, MAX_FRAME_SIZE + 1
-        ):
+        while line := await self._readline():
             oversized = len(line) > MAX_FRAME_SIZE
             if oversized and not line.endswith("\n"):
-                while chunk := await anyio.to_thread.run_sync(
-                    self.stream.wrapped.readline, MAX_FRAME_SIZE + 1
-                ):
+                while chunk := await self._readline():
                     if chunk.endswith("\n"):
                         break
             if not oversized and not line.strip():
