@@ -1189,6 +1189,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
+        max_seconds: Annotated[int, Field(ge=1)] | None = None,
     ) -> dict[str, Any]:
         """Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns a Transaction; group lets scripts own Transactions and edit scopes inside one Undo group. Close all scopes before returning; transaction="none" is refused. Needs confirm_token except dry_run, which rolls back."""
         if dry_run and transaction == "none":
@@ -1201,6 +1202,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             dryRun=dry_run,
             confirmToken=confirm_token,
             timeout_seconds=timeout_seconds,
+            maxSeconds=max_seconds,
         )
 
     @action

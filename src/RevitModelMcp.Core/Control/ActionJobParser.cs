@@ -188,6 +188,8 @@ public static class ActionJobParser
                 Require(command == "run-tool" || job.Code is { Length: > 0 and <= 200000 }, "code must contain 1 to 200000 characters.");
                 action.Code = job.Code;
                 action.TransactionMode = job.Transaction ?? "auto";
+                action.MaxSeconds = job.MaxSeconds;
+                Require(action.MaxSeconds is null or >= 1, "max_seconds must be positive.");
                 Require(action.TransactionMode is "auto" or "group" or "none", "transaction must be auto, group or none.");
                 Require(action.TransactionMode != "none", CodeExecutionPolicy.TransactionNoneRefusal);
             }
@@ -894,6 +896,7 @@ public sealed class ActionJobContract
     public ProcessModelsJob? ProcessModels { get; set; }
     public string? Code { get; set; }
     public string TransactionMode { get; set; } = "auto";
+    public int? MaxSeconds { get; set; }
     public string? Document { get; set; }
     public string? DocumentPath { get; set; }
     public string Mode { get; set; } = "detached";
@@ -1574,6 +1577,7 @@ public sealed partial class ControlJobContract
     [DataMember(Name = "process")] public ProcessModelsJob? ProcessModels { get; set; }
     [DataMember(Name = "code")] public string? Code { get; set; }
     [DataMember(Name = "transaction")] public string? Transaction { get; set; }
+    [DataMember(Name = "maxSeconds")] public int? MaxSeconds { get; set; }
     [DataMember(Name = "document")] public string? Document { get; set; }
     [DataMember(Name = "mode")] public string? Mode { get; set; }
     [DataMember(Name = "worksets")] public string? Worksets { get; set; }

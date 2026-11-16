@@ -221,10 +221,12 @@ public sealed class JobScheduler
                 entry.CompletedUtc = _clock();
                 return new(true, entry.State, "Queued job cancelled.");
             }
-            if (entry.State == JobState.Running && entry.CanCancel && (!isAction || entry.Command == "process-models"))
+            if (entry.State == JobState.Running &&
+                (entry.Command is "execute-code" or "run-tool" or "tag-elements" ||
+                 entry.CanCancel && (!isAction || entry.Command == "process-models")))
             {
                 entry.CancelRequested = true;
-                return new(true, entry.State, "Cancellation requested; it takes effect between slices or before the next model.");
+                return new(true, entry.State, "Cancellation requested; a cooperating operation stops at its next cancellation point. Completed changes stay committed.");
             }
             return new(false, entry.State, entry.State == JobState.Running
                 ? "A running command cannot be interrupted; it will finish."

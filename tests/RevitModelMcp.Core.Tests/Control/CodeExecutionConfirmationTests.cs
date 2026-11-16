@@ -73,6 +73,26 @@ public sealed class CodeExecutionConfirmationTests
     }
 
     [Test]
+    [Arguments("execute-code")]
+    [Arguments("run-tool")]
+    public async Task ExecutionBinding_PreservesUnlimitedCallsAndBindsExecutionLimit(string command)
+    {
+        var action = Action(command, false);
+        var legacy = DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
+            $":dry_run={action.DryRun}" +
+            (action.ToolName is null ? "" : $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}");
+        await Assert.That(ToolArguments.ExecutionBinding(action)).IsEqualTo(legacy);
+        var tokens = new DocumentConfirmationTokens();
+        action.MaxSeconds = 2;
+        var limited = ToolArguments.ExecutionBinding(action);
+        await Assert.That(limited).IsNotEqualTo(legacy);
+        var token = tokens.Issue(command, "document", limited, "");
+        action.MaxSeconds = 3;
+        await Assert.That(tokens.Consume(token, command, "document", ToolArguments.ExecutionBinding(action), ""))
+            .IsEqualTo(DocumentConfirmationResult.ArgumentsMismatch);
+    }
+
+    [Test]
     public async Task ExecutionBinding_ExcludesConfirmationToken()
     {
         var action = Action("run-tool", true);

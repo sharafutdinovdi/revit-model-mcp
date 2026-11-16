@@ -485,6 +485,26 @@ public sealed class JobSchedulerTests
     }
 
     [Test]
+    [Arguments("execute-code")]
+    [Arguments("run-tool")]
+    [Arguments("tag-elements")]
+    public async Task RunningCooperativeActionsReceiveCancellation(string command)
+    {
+        var scheduler = new JobScheduler();
+        scheduler.Submit("action", "client", "Client", command, "{}");
+        scheduler.TakeNext();
+        await Assert.That(scheduler.Cancel("action", "other").Cancelled).IsFalse();
+        var cancellation = scheduler.Cancel("action", "client", isAction: true);
+        await Assert.That(cancellation.Cancelled).IsTrue();
+        await Assert.That(cancellation.State).IsEqualTo(JobState.Running);
+        await Assert.That(cancellation.Message).Contains("next cancellation point");
+        await Assert.That(cancellation.Message).Contains("Completed changes stay committed");
+        await Assert.That(scheduler.IsCancellationRequested("action")).IsTrue();
+        scheduler.Complete("action", "{}", false);
+        await Assert.That(scheduler.Status("action")?.State).IsEqualTo(JobState.Cancelled);
+    }
+
+    [Test]
     public async Task RunningReadSessionCancelsBetweenSlices()
     {
         var scheduler = new JobScheduler();

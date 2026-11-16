@@ -246,6 +246,9 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     assert job.payload["transaction"] == "auto"
     assert job.payload["dryRun"] is False
     assert execute.await_args.args[1] == 600
+    assert job.payload["maxSeconds"] is None
+    asyncio.run(server.call_tool("revit_execute_code", {"code": "return 42;", "max_seconds": 2}))
+    assert execute.await_args.args[0].payload["maxSeconds"] == 2
 
     execute.reset_mock()
     result = asyncio.run(

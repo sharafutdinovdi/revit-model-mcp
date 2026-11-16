@@ -2307,6 +2307,18 @@
         "default": false,
         "type": "boolean"
       },
+      "max_seconds": {
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "timeout_seconds": {
         "default": 600,
         "maximum": 3600,

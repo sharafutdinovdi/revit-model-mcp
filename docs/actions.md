@@ -100,7 +100,7 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `timeout_seconds=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
 | `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. `dry_run` lists the links and dependent elements without deleting anything and leaves links loaded. A real removal needs a confirmation token. Cannot be used in a batch. |
-| `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
+| `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600`, `max_seconds=null` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
 
 `revit_create_view` leaves settings controlled by the view's template unchanged and lists them in `templateControlled` when any are skipped.
@@ -168,6 +168,26 @@ Saved-tool runs use the same result limiter and artifact handling.
 Script logs retain the first 2000 non-empty lines; omitted lines appear in `logOmittedCount` beside `log`, including per-model code results in `revit_process_models`; successful results also set `partial`, `skipped` and `skippedCount`, and `resultCompleteness` describes only the return value.
 
 `revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. Both supported transaction modes require a target document.
+
+`ctx.CancellationRequested` reports client cancellation or expiry of the optional `max_seconds` execution limit.
+`ctx.ThrowIfCancellationRequested()` throws on either condition; the managed run fails and rolls back its owned transactions and groups where possible.
+The failure reports elapsed seconds in the error and elapsed milliseconds in `data.elapsedMs`.
+There is no default execution limit.
+`timeout_seconds` only limits the client's wait; it does not stop Revit execution.
+Loops over many elements must call `ctx.ThrowIfCancellationRequested()` between elements, especially when calling `Document.Regenerate()` inside the loop.
+Cancellation never aborts the Revit thread and cannot interrupt a single blocking API call or a script that never checks.
+The runner also checks before invocation and after the script returns.
+`revit_cancel_job(job_id=...)` requests cancellation; the activity pane's queue menu Cancel link sets the same flag for a running job.
+Cancellation received after a commit does not undo the committed change; document receipts remain authoritative.
+
+```csharp
+for (var index = 0; index < 10000; index++)
+{
+    ctx.ThrowIfCancellationRequested();
+    System.Threading.Thread.Sleep(100);
+}
+return null;
+```
 
 The default `auto` mode owns one Revit transaction inside a group. Scripts in this mode must not open transactions.
 `EditFamily` and the family-document `LoadFamily` overloads require an unmodifiable target document.

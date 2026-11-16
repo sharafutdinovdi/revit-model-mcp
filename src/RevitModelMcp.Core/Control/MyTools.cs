@@ -84,6 +84,7 @@ public static class ToolArguments
     public static string ExecutionBinding(ActionJobContract action) =>
         DocumentConfirmationBinding.CodeArguments(action.Code!, action.TransactionMode) +
         $":dry_run={action.DryRun}" +
+        (action.MaxSeconds.HasValue ? $":max_seconds={action.MaxSeconds.Value}" : "") +
         (action.ToolName is null ? "" : $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}");
 
     private static XElement Parse(string json)
