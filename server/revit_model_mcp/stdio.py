@@ -1,5 +1,6 @@
 """Validate bounded raw frames before the SDK's JSON decoder can drop them."""
 
+import inspect
 import json
 import sys
 from contextlib import ExitStack
@@ -7,13 +8,7 @@ from contextlib import ExitStack
 import anyio
 from mcp import types
 from mcp.server import MCPServer as SdkServer
-from mcp.server.stdio import (
-    _claim_fd,
-    _open_stdin_diversion,
-    _open_stdout_diversion,
-    _UnownedTextWrapper,
-    stdio_server,
-)
+from mcp.server import stdio as sdk_stdio
 
 MAX_FRAME_SIZE = 4 * 1024 * 1024
 MAX_FRAME_DEPTH = 64
@@ -90,6 +85,8 @@ class _Input:
                 ):
                     if chunk.endswith("\n"):
                         break
+            if not oversized and not line.strip():
+                continue
             request_id, depth = _scan_frame(line)
             code = -32600
             message = None
@@ -126,15 +123,35 @@ class MCPServer(SdkServer):
     async def run_stdio_async(self):
         # Retain the SDK's descriptor diversion so stray prints cannot corrupt frames.
         with ExitStack() as cleanup:
-            stdin, restore = _claim_fd(0, sys.stdin, "rb", _open_stdin_diversion)
-            if restore is not None:
-                cleanup.callback(restore)
-            stdout, restore = _claim_fd(1, sys.stdout, "wb", _open_stdout_diversion)
-            if restore is not None:
-                cleanup.callback(restore)
-            reader = anyio.wrap_file(_UnownedTextWrapper(stdin, encoding="utf-8", errors="replace"))
-            writer = _Output(anyio.wrap_file(_UnownedTextWrapper(stdout, encoding="utf-8")))
-            async with stdio_server(stdin=_Input(reader, writer), stdout=writer) as (read, write):
+            try:
+                claim = sdk_stdio._claim_fd
+                stdin_diversion = sdk_stdio._open_stdin_diversion
+                stdout_diversion = sdk_stdio._open_stdout_diversion
+                wrapper = sdk_stdio._UnownedTextWrapper
+                inspect.signature(claim).bind(0, sys.stdin, "rb", stdin_diversion)
+                inspect.signature(stdin_diversion).bind()
+                inspect.signature(stdout_diversion).bind()
+                inspect.signature(wrapper).bind(sys.stdin.buffer, encoding="utf-8")
+                stdin, restore = claim(0, sys.stdin, "rb", stdin_diversion)
+                if restore is not None:
+                    cleanup.callback(restore)
+                stdout, restore = claim(1, sys.stdout, "wb", stdout_diversion)
+                if restore is not None:
+                    cleanup.callback(restore)
+                reader = anyio.wrap_file(wrapper(stdin, encoding="utf-8", errors="replace"))
+                writer = _Output(anyio.wrap_file(wrapper(stdout, encoding="utf-8")))
+            except Exception:
+                cleanup.close()
+                print(
+                    "revit-model-mcp: Warning: guarded stdio is unavailable; using SDK stdio.",
+                    file=sys.stderr,
+                )
+                await super().run_stdio_async()
+                return
+            async with sdk_stdio.stdio_server(stdin=_Input(reader, writer), stdout=writer) as (
+                read,
+                write,
+            ):
                 await self._lowlevel_server.run(
                     read, write, self._lowlevel_server.create_initialization_options()
                 )

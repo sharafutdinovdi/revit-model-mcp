@@ -60,6 +60,7 @@ def test_bad_stdio_frame_replies_and_keeps_connection(frame, request_id, code, m
             assert "result" in initialized
             process.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
             await process.stdin.drain()
+            process.stdin.write(b" \t\r\n\n")
             response = await send(frame)
             assert response["id"] == request_id
             assert response["error"]["code"] == code
@@ -69,5 +70,58 @@ def test_bad_stdio_frame_replies_and_keeps_connection(frame, request_id, code, m
         finally:
             process.terminate()
             await process.wait()
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("failure", ["missing", "signature", "startup"])
+def test_sdk_private_api_changes_fall_back_to_public_stdio(failure):
+    async def check():
+        source = """
+import sys
+from types import SimpleNamespace
+import mcp.server
+import mcp.server.stdio as original
+shim = SimpleNamespace(stdio_server=original.stdio_server)
+if sys.argv[1] != "missing":
+    for name in ("_claim_fd", "_open_stdin_diversion", "_open_stdout_diversion", "_UnownedTextWrapper"):
+        setattr(shim, name, getattr(original, name))
+    if sys.argv[1] == "signature":
+        shim._claim_fd = lambda: None
+    else:
+        def fail_claim(*args):
+            raise RuntimeError("Simulated SDK setup failure")
+        shim._claim_fd = fail_claim
+mcp.server.stdio = shim
+from revit_model_mcp import server
+sys.argv = [sys.argv[0]]
+server.main()
+"""
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            source,
+            failure,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "REVIT_MCP_CHECK_UPDATES": "0"},
+        )
+        try:
+            for request_id in (1, 2):
+                process.stdin.write(
+                    (
+                        json.dumps({"jsonrpc": "2.0", "id": request_id, "method": "ping"}) + "\n"
+                    ).encode()
+                )
+                await process.stdin.drain()
+                result = json.loads(await asyncio.wait_for(process.stdout.readline(), 10))
+                assert result == {"jsonrpc": "2.0", "id": request_id, "result": {}}
+        finally:
+            if process.returncode is None:
+                process.terminate()
+            await process.wait()
+        stderr = (await process.stderr.read()).decode()
+        assert stderr.count("Warning: guarded stdio is unavailable; using SDK stdio.") == 1
 
     asyncio.run(check())
