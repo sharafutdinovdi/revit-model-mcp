@@ -93,8 +93,9 @@
           DestinationFolder="$(TargetDir)"/>
   </Target>
 
-  <Target Name="RemoveStoreUpdater" BeforeTargets="PublishAddin" AfterTargets="Build" Condition="'$(Channel)' == 'store'">
-    <Delete Files="$(TargetDir)RevitModelMcp.Updater.exe;$(TargetDir)publish/RevitModelMcp/RevitModelMcp.Updater.exe"/>
+  <Target Name="RemoveExcludedUpdater" BeforeTargets="PublishAddin" AfterTargets="Build"
+          Condition="'$(ManagedInstall)' == 'true' Or '$(Channel)' == 'store'">
+    <Delete Files="$(TargetDir)RevitModelMcp.Updater.exe;$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', 'RevitModelMcp.Updater.exe'))"/>
   </Target>
 
   <Target Name="CopyBatchSupervisor" BeforeTargets="PublishAddin" AfterTargets="Build">

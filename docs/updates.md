@@ -32,11 +32,15 @@ Each build carries a channel, set at build time with the MSBuild property `Chann
 | Channel | Network access for updates | Updater | Use |
 | --- | --- | --- | --- |
 | `release` | Yes, subject to the mode | Included | MSI, WinGet and zip downloads from GitHub. |
-| `managed` | Never | Not copied | Your deployment tool delivers updates. `-p:ManagedInstall=true` is an alias. |
+| `managed` | Never | Excluded from build output and packaging | Your deployment tool delivers updates. `-p:ManagedInstall=true` is an alias. |
 | `store` | Never | Excluded from compilation and packaging | Autodesk App Store builds. Updates arrive through the Autodesk App Manager. The build also ships the bundled server, which never checks for updates, and keeps C# code execution off by default (see below). |
 | `dev` | Only when policy or settings turn it on, and then notify only | Included | Builds whose version contains `-dev`. They are never installed over. |
 
 Example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:ManagedInstall=true`. A `managed` or `store` build ignores every mode setting and never contacts the network for updates. The store build excludes updater sources, updater packaging, and the server update module. First-run settings omit updateCheck.
+
+Managed and store builds remove any updater left in the build and publish folders by an earlier build.
+Managed bundle packaging excludes the updater even when the publish folder comes from a release build.
+`build/validate_bundle.py --managed-version <version>` rejects a managed bundle containing the updater.
 
 ### The store channel
 
