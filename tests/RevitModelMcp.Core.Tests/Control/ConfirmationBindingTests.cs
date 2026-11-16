@@ -142,11 +142,23 @@ public sealed class ConfirmationBindingTests
         var token = tokens.Issue("export", "document", arguments, "state");
         request.Options = new FileExportOptions
         {
-            Combine = true, Color = "color", ZoomPercent = 100, Paper = "auto",
-            Naming = "sheet_number_name", HideCropBoundaries = true, HideScopeBoxes = true,
-            MergedViews = false, Version = "IFC2x3CV2", ExportBaseQuantities = true,
-            SpaceBoundaries = 0, SplitWallsByLevel = false, Delimiter = ",",
-            Headers = true, Title = false, GroupHeaders = false, Encoding = "utf-8"
+            Combine = true,
+            Color = "color",
+            ZoomPercent = 100,
+            Paper = "auto",
+            Naming = "sheet_number_name",
+            HideCropBoundaries = true,
+            HideScopeBoxes = true,
+            MergedViews = false,
+            Version = "IFC2x3CV2",
+            ExportBaseQuantities = true,
+            SpaceBoundaries = 0,
+            SplitWallsByLevel = false,
+            Delimiter = ",",
+            Headers = true,
+            Title = false,
+            GroupHeaders = false,
+            Encoding = "utf-8"
         };
         await Assert.That(tokens.Consume(token, "export", "document",
             request.ConfirmationArguments(paths, [1], false), "state"))
