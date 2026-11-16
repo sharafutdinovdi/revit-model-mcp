@@ -140,8 +140,9 @@ public static class ToolArguments
     private static void ValidateTitle(Dictionary<string, XElement> rules, string path)
     {
         if (!rules.TryGetValue("title", out var title)) return;
-        if (Kind(title) == "string" && title.Value.Any(char.IsControl))
-            throw new ArgumentException($"{path}.title must be a single line without control characters.");
+        if (Kind(title) == "string" && title.Value.Any(character => char.IsControl(character) ||
+                char.GetUnicodeCategory(character) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
+            throw new ArgumentException($"{path}.title must not contain line breaks or control characters.");
         var message = $"{path}.title must be 1 to 80 characters of text.";
         if (Kind(title) != "string" || title.Value.Trim().Length is < 1 or > 80)
             throw new ArgumentException(message);
