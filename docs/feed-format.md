@@ -88,7 +88,10 @@ The new command names are `view-info`, `set-view-visibility` and `remove-links`.
 `output_path` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
 A parameter filter matches the Revit parameter of that name, even when the name matches a built-in output field such as `Level` or `Name`.
-The name is bound to the parameters the queried elements carry: every instance parameter with that name, or the type parameter when the element has no instance parameter with it.
+The name is bound to matching instance and type parameters.
+When both share the name, the filter matches an element if either its instance parameter or its type parameter matches.
+The result is the union of both matches, not an instance-first lookup.
+`revit_update_parameters` uses the same union to select elements, even when it updates only instance parameters.
 A defined built-in parameter name such as `CURVE_ELEM_LENGTH` is accepted in place of the display name.
 Names are matched exactly; only a name that no queried element carries in that spelling is matched again without regard to letter case.
 A name that no queried element carries is refused, and so is a name unknown to the model.
@@ -213,7 +216,8 @@ Response data shape:
 
 Scope counts cover all matching non-type elements without pagination.
 Each parameter's `filled + empty + missing` equals `elements`; storage and owner counts include existing parameters only.
-Type fallback occurs only when the instance has no parameter with that name.
+For parameter fill counts, type fallback occurs only when the instance has no parameter with that name.
+This fill-count lookup differs from the union used by parameter filters.
 A filled parameter has `HasValue`; strings also require non-whitespace text and element IDs must differ from `InvalidElementId`.
 Double and integer zero values count as filled when `HasValue` is true.
 Each sample list is capped independently at `sampleLimit`; `byCategory` contains only categories with matching elements.
