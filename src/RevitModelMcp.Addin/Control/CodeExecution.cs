@@ -14,6 +14,7 @@ using Microsoft.CodeAnalysis.Emit;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Output;
 
 #if !NETFRAMEWORK
 using System.Runtime.Loader;

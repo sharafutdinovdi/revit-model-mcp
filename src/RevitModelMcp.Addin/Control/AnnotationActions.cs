@@ -3,6 +3,7 @@ using Autodesk.Revit.DB.Architecture;
 using Nice3point.Revit.Extensions;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Output;
 
 namespace RevitModelMcp.Control;
 
