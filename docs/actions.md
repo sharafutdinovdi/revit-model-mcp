@@ -609,6 +609,11 @@ The view may already be active if zoom fails.
 `revit_close_views` defaults to closing all views except the active one. It reports a refused last or active view without failing the call.
 
 `revit_new_document` uses the default project template unless `template` is supplied. Family creation requires a `.rft` template; project templates use `.rte`. Template and `save_as` paths follow the existing path and trusted network root rules. An existing `save_as` target is refused. With `activate=true` and no `save_as`, the document is saved under `%LOCALAPPDATA%\RevitModelMcp\new` so Revit can activate it. Activation keeps the created document when Revit returns another wrapper for it. If Revit opens a separate copy, the action closes only the background original. The action checks that documents open before creation remain open. `name` sets the temporary file name without an extension and must be a safe file name. The default is `Project yyyyMMdd-HHmmss` or `Family yyyyMMdd-HHmmss`; an existing file adds a numeric suffix. `revit_ui_state.activeView.isActive` is true, and `openViews` marks the active view. Session actions have activity entries and summaries but no model transaction or undo entry. They are not batch steps and are refused in read-only mode.
+The response returns the written location in `data.path` and reports `data.saved=true` when a file is written.
+With path redaction enabled, `data.path` contains only the file name.
+Automatic saving for activation is explained in `data.warning`: activation requires a saved path.
+With `activate=false` and no `save_as`, the document remains unsaved.
+Call `revit_save_document` with `save_as`, complete its confirmation handshake, then call `revit_activate_document` to activate that background document.
 
 `revit_close_document` closes a background document. The active document cannot be closed through this tool. `save=false` is the default. Closing a modified document without saving needs confirmation, except an MCP-opened detached document that has not been saved to central. Closing with `save=true` always needs confirmation.
 

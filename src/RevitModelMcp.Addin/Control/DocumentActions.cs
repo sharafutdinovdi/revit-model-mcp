@@ -302,7 +302,7 @@ internal static class DocumentActions
         var path = document.PathName;
         var title = document.Title;
         if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException($"Cannot activate '{title}': it has no saved path. Save it first or open it with activate=true.");
+            throw new InvalidOperationException($"Cannot activate '{title}': activation requires a saved path. Call revit_save_document with save_as, then retry revit_activate_document.");
         if (!DocumentIdentityMatcher.Contains(application.Application.Documents.Cast<Document>(), document, Identity))
             throw new InvalidOperationException("The document path no longer belongs to an open document.");
         var previous = application.ActiveUIDocument?.Document;
@@ -523,7 +523,11 @@ internal static class DocumentActions
                 Path = document.PathName,
                 Active = action.Activate,
                 Saved = path is not null,
-                Warning = closures.Count > 0 ? string.Join(" ", closures) : null
+                Warning = (action.Activate && action.SaveAs is null
+                    ? "Saved to the returned path: activation requires a saved path."
+                    : path is null
+                        ? "The document is unsaved. Activation requires a saved path; call revit_save_document with save_as before revit_activate_document."
+                        : "") + (closures.Count > 0 ? " " + string.Join(" ", closures) : "")
             };
         }
         catch (Exception exception)
