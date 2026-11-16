@@ -3,9 +3,11 @@
 import asyncio
 import inspect
 import json
+import logging
+import os
 import sys
-from contextlib import ExitStack
-from threading import Thread
+from contextlib import ExitStack, suppress
+from threading import Lock, Thread, current_thread
 
 import anyio
 from mcp import types
@@ -15,6 +17,35 @@ from mcp.server import stdio as sdk_stdio
 MAX_FRAME_SIZE = 4 * 1024 * 1024
 MAX_FRAME_DEPTH = 64
 EOF_DRAIN_SECONDS = 1.0
+_stdin_reads = set()
+_stdin_reads_lock = Lock()
+
+
+def _stdin_read_pending():
+    with _stdin_reads_lock:
+        return bool(_stdin_reads)
+
+
+def _restore_stdin(restore):
+    # Windows descriptor restoration can wait on the CRT lock held by a pipe read.
+    if not _stdin_read_pending():
+        restore()
+
+
+def finish_stdio_process(exit_code):
+    if not _stdin_read_pending():
+        return
+    try:
+        logging.shutdown()
+        for stream in (sys.stdout, sys.stderr):
+            if stream is not None:
+                with suppress(OSError, ValueError):
+                    stream.flush()
+    except Exception:
+        exit_code = 1
+    finally:
+        # Buffered input finalization can wait forever even for a daemon reader.
+        os._exit(exit_code)
 
 
 def _scan_frame(line):
@@ -111,14 +142,24 @@ class _Input:
                 line, error = self.stream.wrapped.readline(MAX_FRAME_SIZE + 1), None
             except Exception as failure:
                 line, error = None, failure
+            finally:
+                with _stdin_reads_lock:
+                    _stdin_reads.discard(current_thread())
             try:
                 loop.call_soon_threadsafe(complete, line, error)
             except RuntimeError:
                 # Cancellation can close the loop before the input peer disconnects.
                 return
 
-        # An idle pipe read cannot be interrupted portably; it must not own process shutdown.
-        Thread(target=read, daemon=True, name="MCP stdin reader").start()
+        reader = Thread(target=read, daemon=True, name="MCP stdin reader")
+        with _stdin_reads_lock:
+            _stdin_reads.add(reader)
+        try:
+            reader.start()
+        except BaseException:
+            with _stdin_reads_lock:
+                _stdin_reads.discard(reader)
+            raise
         return await result
 
     async def __aiter__(self):
@@ -180,7 +221,7 @@ class MCPServer(SdkServer):
                 inspect.signature(wrapper).bind(sys.stdin.buffer, encoding="utf-8")
                 stdin, restore = claim(0, sys.stdin, "rb", stdin_diversion)
                 if restore is not None:
-                    cleanup.callback(restore)
+                    cleanup.callback(_restore_stdin, restore)
                 stdout, restore = claim(1, sys.stdout, "wb", stdout_diversion)
                 if restore is not None:
                     cleanup.callback(restore)

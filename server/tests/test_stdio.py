@@ -129,21 +129,30 @@ server.main()
     asyncio.run(asyncio.wait_for(check(), 45))
 
 
-@pytest.mark.parametrize("shutdown", ["eof", "cancel"])
+@pytest.mark.parametrize("shutdown", ["eof", "cancel", "fatal"])
 def test_stdio_exits_with_idle_input_on_shutdown(shutdown):
     async def check():
         source = """
 import asyncio
 import sys
 from revit_model_mcp import server
+mode = sys.argv[1]
+sys.argv = sys.argv[:1]
 async def main():
     try:
         await asyncio.wait_for(server.mcp.run_stdio_async(), 0.1)
     except TimeoutError:
         print("cancelled", file=sys.stderr)
-asyncio.run(main())
+def run(**kwargs):
+    asyncio.run(main())
+    if mode == "fatal":
+        raise RuntimeError("fatal shutdown")
+if mode != "eof":
+    server.mcp.run = run
+server.main()
+print("normal-return", file=sys.stderr)
 """
-        arguments = ["-c", source] if shutdown == "cancel" else ["-m", "revit_model_mcp.server"]
+        arguments = ["-c", source, shutdown]
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             *arguments,
@@ -155,9 +164,15 @@ asyncio.run(main())
         try:
             if shutdown == "eof":
                 process.stdin.close()
-            assert await asyncio.wait_for(process.wait(), 5) == 0
-            if shutdown == "cancel":
-                assert b"cancelled" in await asyncio.wait_for(process.stderr.read(), 1)
+            assert await asyncio.wait_for(process.wait(), 5) == (1 if shutdown == "fatal" else 0)
+            stderr = await asyncio.wait_for(process.stderr.read(), 1)
+            if shutdown == "eof":
+                assert b"normal-return" in stderr
+            else:
+                assert b"cancelled" in stderr
+                assert b"normal-return" not in stderr
+            if shutdown == "fatal":
+                assert b"RuntimeError: fatal shutdown" in stderr
         finally:
             if process.returncode is None:
                 process.kill()
@@ -264,5 +279,77 @@ mcp.run()
         terminal = next(reply for reply in replies if reply["id"] == 2)
         assert terminal["error"] == {"code": -32000, "message": "Connection closed"}
         assert asyncio.get_running_loop().time() - started >= EOF_DRAIN_SECONDS
+
+    asyncio.run(asyncio.wait_for(check(), 15))
+
+
+def test_forced_stdio_exit_flushes_logs_and_preserves_request_journal(tmp_path):
+    async def check():
+        source = """
+import asyncio
+import logging
+import sys
+from logging.handlers import MemoryHandler
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from revit_model_mcp import package_version, revit_channel, server
+journal = Path(sys.argv[1])
+target = logging.FileHandler(sys.argv[2], encoding="utf-8")
+sys.argv = sys.argv[:1]
+logger = logging.getLogger("shutdown")
+logger.setLevel(logging.INFO)
+logger.addHandler(MemoryHandler(1000, flushLevel=logging.CRITICAL, target=target))
+revit_channel._request_journal_directory = lambda: journal
+async def select(job):
+    return remote, job
+remote = SimpleNamespace(
+    instance_info={"addinVersion": package_version(), "commands": ["delete"]},
+    select_job=select,
+    prepare_job=AsyncMock(side_effect=revit_channel.RevitChannelError("Submission refused")),
+    fetch_job=AsyncMock(side_effect=revit_channel.RevitChannelError("No stored result")),
+    delete_files=AsyncMock(),
+)
+async def main():
+    await revit_channel.RevitChannel(remote).execute(
+        revit_channel.Job("delete", {"command": "delete", "jobId": "a" * 32})
+    )
+    logger.info("Buffered shutdown record")
+    try:
+        await asyncio.wait_for(server.mcp.run_stdio_async(), 0.2)
+    except TimeoutError:
+        pass
+server.mcp.run = lambda **kwargs: asyncio.run(main())
+server.main()
+print("normal-return", file=sys.stderr)
+"""
+        journal = tmp_path / "journal"
+        log = tmp_path / "shutdown.log"
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-c",
+            source,
+            str(journal),
+            str(log),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={**os.environ, "REVIT_MCP_CHECK_UPDATES": "0"},
+        )
+        try:
+            process.stdin.write(b'{"jsonrpc":"2.0","id":1,"method":"ping"}\n')
+            await asyncio.wait_for(process.stdin.drain(), 5)
+            assert await asyncio.wait_for(process.wait(), 5) == 0
+            stdout, stderr = await asyncio.wait_for(process.communicate(), 5)
+            assert json.loads(stdout) == {"jsonrpc": "2.0", "id": 1, "result": {}}
+            assert b"normal-return" not in stderr
+            assert "Buffered shutdown record" in log.read_text(encoding="utf-8")
+            record = json.loads((journal / ("a" * 32 + ".json")).read_text(encoding="utf-8"))
+            assert record["jobId"] == "a" * 32
+            assert record["command"] == "delete"
+        finally:
+            if process.returncode is None:
+                process.kill()
+            await asyncio.wait_for(process.communicate(), 5)
 
     asyncio.run(asyncio.wait_for(check(), 15))

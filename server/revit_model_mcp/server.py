@@ -36,7 +36,7 @@ from revit_model_mcp.revit_channel import (
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
-from revit_model_mcp.stdio import MCPServer
+from revit_model_mcp.stdio import MCPServer, finish_stdio_process
 from revit_model_mcp.toolsets import (
     ENVIRONMENT_VARIABLE,
     PRESETS,
@@ -1808,15 +1808,20 @@ def main() -> None:
     apply_toolsets(mcp, args.toolsets)
     if CHANNEL != "store":
         check_for_updates()
+    exit_code = 1
     try:
         mcp.run(transport="stdio")
-    except KeyboardInterrupt:
+        exit_code = 0
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        exit_code = 0
         return
     except Exception as error:
         message = redact_model_paths({"error": str(error)})["error"]
         message = " ".join(message.splitlines())
         print(f"revit-model-mcp: {type(error).__name__}: {message}", file=sys.stderr)
         raise
+    finally:
+        finish_stdio_process(exit_code)
 
 
 if __name__ == "__main__":
