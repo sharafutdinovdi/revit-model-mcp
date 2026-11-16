@@ -160,6 +160,9 @@ Missing XML and type load failures appear in `skipped` and `skippedCount`.
 
 ### Execute C# code
 
+With `dry_run=true` and `transaction="none"`, execution uses `auto` and rolls back its transaction.
+The response includes `warnings: ["dry_run forced transaction=auto"]` alongside any existing warnings.
+
 Code return values can be incomplete independently of transaction success.
 `data.resultCompleteness` reports `truncated`, `retainedCount`, `omittedCount` and `reasons`.
 Truncation sets top-level `partial` and skipped diagnostics; `data.resultArtifact` identifies the full JSON file when publication succeeds.

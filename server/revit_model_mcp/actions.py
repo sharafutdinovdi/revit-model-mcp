@@ -1191,9 +1191,10 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
     ) -> dict[str, Any]:
         """Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns a Transaction; group lets scripts own Transactions and edit scopes inside one Undo group. Close all scopes before returning; transaction="none" is refused. Needs confirm_token except dry_run, which rolls back."""
-        if dry_run and transaction == "none":
+        forced_auto = dry_run and transaction == "none"
+        if forced_auto:
             transaction = "auto"
-        return await send(
+        response = await send(
             "execute-code",
             code=code,
             transaction=transaction,
@@ -1202,6 +1203,9 @@ def register_actions(mcp, execute, host_provider) -> None:
             confirmToken=confirm_token,
             timeout_seconds=timeout_seconds,
         )
+        if forced_auto:
+            response.setdefault("warnings", []).append("dry_run forced transaction=auto")
+        return response
 
     @action
     async def revit_undo_last(document: Document = None) -> dict[str, Any]:
