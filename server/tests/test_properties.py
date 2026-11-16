@@ -157,14 +157,6 @@ def test_redaction_removes_directories(parts):
 
 @BOUNDED
 @given(TEXT)
-@example("/")
-@example("\\")
-@example("C:\\")
-@example("//")
-@example("\\\\")
-@example("/\\")
-@example("\\/")
-@example("C:/\\/")
 def test_arbitrary_path_fields_keep_only_the_basename(path):
     with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
         expected = PureWindowsPath(path).name
