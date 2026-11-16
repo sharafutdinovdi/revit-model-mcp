@@ -502,8 +502,12 @@ def test_unc_share_root_os_error_does_not_disclose_host(
         assert "Client Share" not in str(caught.value)
 
 
-@pytest.mark.parametrize("directory", [".", "/", "//", "/./", "C:\\"])
-def test_nameless_directory_without_host_keeps_only_root_text(tmp_path, monkeypatch, directory):
+@pytest.mark.parametrize(
+    "directory,expected", [(".", "."), ("/", ""), ("//", ""), ("/./", ""), ("C:\\", "")]
+)
+def test_nameless_directory_redacts_roots_but_preserves_relative_dot(
+    tmp_path, monkeypatch, directory, expected
+):
     monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
     with (
         patch.object(snapshot_report.Path, "is_dir", return_value=True),
@@ -511,7 +515,7 @@ def test_nameless_directory_without_host_keeps_only_root_text(tmp_path, monkeypa
     ):
         with pytest.raises(ToolError) as caught:
             server.revit_build_report(directory, str(tmp_path / "report.xlsx"))
-    assert str(caught.value) == f"Snapshot directory contains no JSON files: {Path(directory)}"
+    assert str(caught.value) == f"Snapshot directory contains no JSON files: {expected}"
 
 
 @pytest.mark.parametrize("redact", [False, True])

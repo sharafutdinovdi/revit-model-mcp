@@ -42,6 +42,8 @@ def redact_path(path):
     path = PureWindowsPath(value)
     if path.name:
         return path.name
+    if path.root or not value.strip("/\\"):
+        return ""
     return "" if path.drive.startswith("\\\\") and path.drive.strip("/\\.") else value
 
 
