@@ -979,6 +979,8 @@ class RevitChannel:
     def __init__(self, remote: RemoteHost) -> None:
         self.remote = remote
         self._lock = asyncio.Lock()
+        self._selection_failure: Exception | None = None
+        self._selection_generation = 0
         self._job_routes: dict[str, tuple[dict[str, Any], Job, float]] = {}
 
     async def execute(
@@ -1044,7 +1046,12 @@ class RevitChannel:
                 ):
                     raise RevitChannelError("The job belongs to a different target document.")
                 job = job.for_process(identity.get("processId"))
-            remote, job = await self.remote.select_job(job)
+            try:
+                remote, job = await asyncio.wait_for(self.remote.select_job(job), timeout_seconds)
+            except TimeoutError as error:
+                raise RevitChannelError(
+                    "Host discovery timed out; this request was not submitted."
+                ) from error
             if route is not None:
                 current = getattr(remote, "instance_info", {})
                 if any(
@@ -1097,8 +1104,37 @@ class RevitChannel:
                     )
                 await asyncio.sleep(min(0.25, remaining))
 
-        async with self._lock:
-            remote, job = await self.remote.select_job(job)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_seconds
+        generation = self._selection_generation
+        try:
+            await asyncio.wait_for(self._lock.acquire(), max(0, deadline - loop.time()))
+        except TimeoutError as error:
+            raise RevitChannelError(
+                "Timed out waiting for the channel; not submitted, nothing ran in Revit, safe to retry."
+            ) from error
+        try:
+            if generation != self._selection_generation:
+                raise RevitChannelError(
+                    f"Host discovery failed while this request was queued; nothing was submitted: "
+                    f"{str(self._selection_failure) or 'Transport unavailable.'}"
+                )
+            try:
+                remote, job = await asyncio.wait_for(
+                    self.remote.select_job(job), max(0, deadline - loop.time())
+                )
+            except TransportUnavailableError as error:
+                self._selection_failure = error
+                self._selection_generation += 1
+                raise
+            except TimeoutError as error:
+                raise RevitChannelError(
+                    "Host discovery timed out; not submitted, nothing ran in Revit, safe to retry."
+                ) from error
+            if loop.time() >= deadline:
+                raise RevitChannelError(
+                    "Submission deadline expired; not submitted, nothing ran in Revit, safe to retry."
+                )
             instance = getattr(remote, "instance_info", {})
             if not isinstance(instance, dict):
                 instance = {}
@@ -1122,6 +1158,8 @@ class RevitChannel:
                     if "httpReason" in instance:
                         result["httpListener"]["reason"] = instance["httpReason"]
             return result
+        finally:
+            self._lock.release()
 
     async def _execute_serial(
         self, job: Job, timeout_seconds: int, pickup_timeout_seconds: int

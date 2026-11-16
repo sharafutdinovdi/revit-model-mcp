@@ -137,6 +137,73 @@ public sealed class JobSchedulerTests
     }
 
     [Test]
+    [Arguments("execute-code", false)]
+    [Arguments("execute-code", true)]
+    [Arguments("run-tool", false)]
+    [Arguments("run-tool", true)]
+    public async Task JournalRestoresCompletedContentTruncation(string command, bool truncateLog)
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "client", "Client", command, "{}");
+            scheduler.TakeNext();
+            var data = new ActionResultData();
+            if (truncateLog)
+            {
+                var log = new ScriptLog();
+                for (var index = 0; index < 2001; index++) log.Add($"line {index}");
+                log.ApplyTo(data);
+            }
+            else
+            {
+                var limited = CodeResultLimiter.Limit(Enumerable.Range(0, 6000), value => value);
+                data.ReturnValue = limited.Value;
+                data.ResultCompleteness = limited;
+            }
+            var response = CommandResponse<ActionResultData>.Ok(command, data, 5);
+            var receipt = CommandResponseJsonSerializer.Serialize(response);
+            await Assert.That(response.Partial).IsTrue();
+            scheduler.Complete(jobId, receipt, true);
+            var restored = new JobScheduler(resultDirectory: directory);
+            await Assert.That(restored.Status(jobId)!.State).IsEqualTo(JobState.Done);
+            await Assert.That(restored.Status(jobId)!.Result).IsEqualTo(receipt);
+            await Assert.That(restored.Submit(jobId, "client", "Client", command, "{}", retry: true).Job!.Result).IsEqualTo(receipt);
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    [Arguments("""{"success":true,"partial":true,"data":{"value":1}""")]
+    [Arguments("""{"success":true,"partial":true} trailing }""")]
+    [Arguments("""{"success":false,"partial":true,"data":"accepted","message":"Command accepted and running."}""")]
+    public async Task JournalDoesNotRestoreIncompleteOrProgressResultAsCompleted(string receipt)
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            var jobId = NewId();
+            var scheduler = new JobScheduler(resultDirectory: directory);
+            scheduler.Submit(jobId, "client", "Client", "execute-code", "{}");
+            File.WriteAllText(Path.Combine(directory, $"{jobId}.json"), receipt);
+            var restored = new JobScheduler(resultDirectory: directory);
+            await Assert.That(restored.Status(jobId)!.State).IsEqualTo(JobState.Abandoned);
+            await Assert.That(restored.Status(jobId)!.Result).Contains("outcome unknown");
+            await Assert.That(restored.TakeNext()).IsNull();
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
     public async Task UnfinishedJournalNeverRequeuesAfterRestart()
     {
         var directory = NewTempDirectory();

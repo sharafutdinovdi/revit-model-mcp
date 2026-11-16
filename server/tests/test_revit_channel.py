@@ -2542,28 +2542,37 @@ class SimulatedHost:
     async def finish_job(self, response_name, cleanup_names, download_artifact, output_path):
         return root.joinpath(response_name).read_text(), None
     async def delete_files(self, names): pass
-asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
+asyncio.run(asyncio.wait_for(RevitChannel(SimulatedHost()).execute(Job.ping()), 10))
 """
-    workers = [subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]) for _ in range(2)]
+    workers = []
     try:
+        for _ in range(2):
+            workers.append(subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]))
         deadline = time.monotonic() + 10
-        while len(list(tmp_path.glob("job_*.json"))) < 2 and time.monotonic() < deadline:
+        payloads = []
+        while time.monotonic() < deadline:
+            jobs = list(tmp_path.glob("job_*.json"))
+            if len(jobs) == 2:
+                try:
+                    payloads = [json.loads(path.read_text()) for path in jobs]
+                    break
+                except json.JSONDecodeError:
+                    pass
             time.sleep(0.01)
-        jobs = list(tmp_path.glob("job_*.json"))
-        assert len(jobs) == 2
-        payloads = [json.loads(path.read_text()) for path in jobs]
+        assert len(payloads) == 2
         assert payloads[0]["clientId"] != payloads[1]["clientId"]
         for path, payload in zip(jobs, payloads):
             path.unlink()
-            tmp_path.joinpath(f"response_{payload['jobId']}.json").write_text(
-                json.dumps({"command": "ping", "success": True, "data": "pong"})
-            )
+            response = tmp_path.joinpath(f"response_{payload['jobId']}.json")
+            temporary = response.with_suffix(".tmp")
+            temporary.write_text(json.dumps({"command": "ping", "success": True, "data": "pong"}))
+            temporary.replace(response)
         assert all(process.wait(timeout=10) == 0 for process in workers)
     finally:
         for process in workers:
             if process.poll() is None:
                 process.kill()
-                process.wait()
+                process.wait(timeout=5)
 
 
 @pytest.mark.parametrize("completed", [False, True])
@@ -2854,7 +2863,18 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
             side_effect=[host.response_name, error_type("Poll timed out.")]
         )
         host.fetch_job = AsyncMock(side_effect=error_type("Boundary fetch timed out."))
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1):
+
+        async def advance_poll_delay(delay):
+            clock.return_value += delay
+
+        clock = SimpleNamespace(return_value=100.0)
+        channel_asyncio = SimpleNamespace(**vars(asyncio))
+        channel_asyncio.get_running_loop = lambda: SimpleNamespace(time=lambda: clock.return_value)
+        channel_asyncio.sleep = advance_poll_delay
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1),
+            patch("revit_model_mcp.revit_channel.asyncio", channel_asyncio),
+        ):
             result = await RevitChannel(host).execute(
                 Job("process-models", {"command": "process-models"})
             )
@@ -2864,7 +2884,7 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
         assert result["jobId"] == json.loads(host.written_content)["jobId"]
         assert host.deleted_names == []
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 5))
 
 
 @pytest.mark.parametrize("command", ["export-view", "capture-elements"])
@@ -3908,3 +3928,141 @@ def test_waiting_dialog_progress_and_running_result():
         assert ctx.calls[-1][2] == "waiting for dialog Next"
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("failure", ["unreachable", "timeout"])
+def test_parallel_unreachable_host_shares_discovery_failure_and_deadline(failure):
+    async def check():
+        host = SshPowerShellHost("simulated-unreachable")
+        started = asyncio.Event()
+        release = asyncio.Event()
+        attempts = 0
+
+        async def discover():
+            nonlocal attempts
+            attempts += 1
+            started.set()
+            await release.wait()
+            raise SshUnavailableError("Simulated unreachable host")
+
+        host._discover_instances = discover
+        channel = RevitChannel(host)
+        calls = [
+            asyncio.create_task(channel.execute(Job.ping(), timeout_seconds=0.1)) for _ in range(20)
+        ]
+        await asyncio.wait_for(started.wait(), 1)
+        # Let every caller queue behind the same discovery attempt.
+        await asyncio.sleep(0.01)
+        if failure == "unreachable":
+            release.set()
+        results = await asyncio.wait_for(asyncio.gather(*calls, return_exceptions=True), 0.5)
+        assert attempts == 1
+        assert all(isinstance(result, RevitChannelError) for result in results)
+        assert not channel._lock.locked()
+
+        # A later call may retry discovery rather than retaining a permanent failure.
+        host._discover_instances = AsyncMock(side_effect=SshUnavailableError("Retry"))
+        with pytest.raises(SshUnavailableError, match="Retry"):
+            await channel.execute(Job.ping(), timeout_seconds=0.1)
+        host._discover_instances.assert_awaited_once()
+
+    asyncio.run(asyncio.wait_for(check(), 2))
+
+
+def test_discovery_uses_time_remaining_after_channel_lock_wait():
+    async def check():
+        host = SshPowerShellHost("simulated-unreachable")
+
+        async def discover():
+            await asyncio.sleep(1)
+
+        host._discover_instances = discover
+        channel = RevitChannel(host)
+        await channel._lock.acquire()
+        call = asyncio.create_task(channel.execute(Job.ping(), timeout_seconds=0.1))
+        await asyncio.sleep(0.06)
+        channel._lock.release()
+        with pytest.raises(RevitChannelError, match="discovery timed out"):
+            await asyncio.wait_for(call, 0.08)
+        assert not channel._lock.locked()
+
+    asyncio.run(asyncio.wait_for(check(), 2))
+
+
+def test_discovery_timeout_does_not_fail_a_queued_long_timeout_caller():
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": package_version(), "commands": ["document-info"]}
+        channel = RevitChannel(host)
+        discovery_started = asyncio.Event()
+        pending = asyncio.Event()
+        selections = 0
+
+        async def select(job):
+            nonlocal selections
+            selections += 1
+            if selections == 1:
+                discovery_started.set()
+                await pending.wait()
+            clock.return_value += 0.3
+            return host, job
+
+        host.select_job = select
+        clock = SimpleNamespace(return_value=100.0)
+        channel_asyncio = SimpleNamespace(**vars(asyncio))
+        channel_asyncio.get_running_loop = lambda: SimpleNamespace(time=lambda: clock.return_value)
+        with patch("revit_model_mcp.revit_channel.asyncio", channel_asyncio):
+            await channel._lock.acquire()
+            short = asyncio.create_task(channel.execute(Job.document_info(), 1.3))
+            long = asyncio.create_task(channel.execute(Job.document_info(), 120))
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            clock.return_value += 1.1
+            channel._lock.release()
+            await discovery_started.wait()
+            clock.return_value += 0.3
+            with pytest.raises(RevitChannelError, match="not submitted.*safe to retry"):
+                await short
+            result = await long
+            assert result["success"] is True
+            assert selections == 2
+            assert host.response_timeout == 120
+            assert channel._selection_generation == 0
+
+    asyncio.run(asyncio.wait_for(check(), 2))
+
+
+@pytest.mark.parametrize("discovery_seconds", [0.01, 0.1])
+def test_queue_discovery_deadline_never_reduces_submitted_execution_budget(discovery_seconds):
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": package_version(), "commands": ["document-info"]}
+        channel = RevitChannel(host)
+
+        async def select(job):
+            clock.return_value += discovery_seconds
+            return host, job
+
+        host.select_job = select
+        clock = SimpleNamespace(return_value=100.0)
+        channel_asyncio = SimpleNamespace(**vars(asyncio))
+        channel_asyncio.get_running_loop = lambda: SimpleNamespace(time=lambda: clock.return_value)
+        with patch("revit_model_mcp.revit_channel.asyncio", channel_asyncio):
+            await channel._lock.acquire()
+            call = asyncio.create_task(channel.execute(Job.document_info(), 2))
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            clock.return_value += 1.95
+            channel._lock.release()
+            if discovery_seconds == 0.1:
+                with pytest.raises(RevitChannelError, match="not submitted.*safe to retry"):
+                    await call
+                assert host.written_content is None
+            else:
+                result = await call
+                assert result["success"] is True
+                assert host.response_timeout == 2
+                assert host.written_content is not None
+            assert clock.return_value > 101.95
+
+    asyncio.run(asyncio.wait_for(check(), 2))

@@ -446,7 +446,30 @@ public sealed class JobScheduler
             return;
         }
         var result = hasResult ? File.ReadAllText(resultPath) : "";
-        var finished = ResultEnvelope.TryReadFlags(result, out var success, out var partial) && !partial;
+        var finished = ResultEnvelope.TryReadFlags(result, out var success, out var partial) && (!partial || success);
+        if (finished && partial)
+        {
+            // The JSON XML reader tolerates missing closing delimiters.
+            var depth = 0;
+            var quoted = false;
+            var escaped = false;
+            foreach (var character in result)
+            {
+                if (quoted)
+                {
+                    if (escaped) escaped = false;
+                    else if (character == '\\') escaped = true;
+                    else if (character == '"') quoted = false;
+                }
+                else if (character == '"') quoted = true;
+                else if (character is '{' or '[') depth++;
+                else if (character is '}' or ']')
+                {
+                    if (--depth < 0) break;
+                }
+            }
+            finished = depth == 0 && !quoted;
+        }
         if (!finished)
         {
             var unknown = CommandResponse<string>.Fail(metadata[0],
