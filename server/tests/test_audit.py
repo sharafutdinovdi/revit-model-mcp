@@ -1093,3 +1093,23 @@ def test_live_audit_pins_implicit_document_before_reading_findings():
     assert "targetDocument" not in initial
     assert subsequent["targetDocument"] == "Tower.rvt"
     assert subsequent["targetProcessId"] == 123
+
+
+@pytest.mark.parametrize(
+    "save,compare_with",
+    [(False, "none"), (True, "none"), (False, "previous"), (False, "baseline.json")],
+)
+def test_pathless_live_audit_only_requires_path_for_history(save, compare_with):
+    snapshot = {"passport": {"title": "Unsaved"}, "source": {"path": None}}
+    with patch.object(server.channel, "execute", AsyncMock(return_value=read(snapshot))):
+        audit = server.revit_model_audit(
+            rules_inline=file([]), save=save, compare_with=compare_with
+        )
+        if save or compare_with != "none":
+            with pytest.raises(server.ToolError, match="path.*sav.*compar"):
+                run(audit)
+        else:
+            result = run(audit)
+            assert result["model"]["title"] == "Unsaved"
+            assert result["findings"] == []
+            assert result["savedTo"] is None
