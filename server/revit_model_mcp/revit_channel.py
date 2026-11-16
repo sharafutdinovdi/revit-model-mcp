@@ -1111,26 +1111,30 @@ class RevitChannel:
             await asyncio.wait_for(self._lock.acquire(), max(0, deadline - loop.time()))
         except TimeoutError as error:
             raise RevitChannelError(
-                "Timed out waiting for the channel; this request was not submitted."
+                "Timed out waiting for the channel; not submitted, nothing ran in Revit, safe to retry."
             ) from error
         try:
             if generation != self._selection_generation:
                 raise RevitChannelError(
                     f"Host discovery failed while this request was queued; nothing was submitted: "
-                    f"{self._selection_failure}"
+                    f"{str(self._selection_failure) or 'Transport unavailable.'}"
                 )
             try:
                 remote, job = await asyncio.wait_for(
                     self.remote.select_job(job), max(0, deadline - loop.time())
                 )
-            except (TransportUnavailableError, TimeoutError) as error:
+            except TransportUnavailableError as error:
                 self._selection_failure = error
                 self._selection_generation += 1
-                if isinstance(error, TimeoutError):
-                    raise RevitChannelError(
-                        "Host discovery timed out; this request was not submitted."
-                    ) from error
                 raise
+            except TimeoutError as error:
+                raise RevitChannelError(
+                    "Host discovery timed out; not submitted, nothing ran in Revit, safe to retry."
+                ) from error
+            if loop.time() >= deadline:
+                raise RevitChannelError(
+                    "Submission deadline expired; not submitted, nothing ran in Revit, safe to retry."
+                )
             instance = getattr(remote, "instance_info", {})
             if not isinstance(instance, dict):
                 instance = {}
@@ -1138,9 +1142,7 @@ class RevitChannel:
             channel = RevitChannel(remote)
             channel._job_routes = self._job_routes
             try:
-                result = await channel._execute_serial(
-                    job, max(0, deadline - loop.time()), pickup_timeout_seconds
-                )
+                result = await channel._execute_serial(job, timeout_seconds, pickup_timeout_seconds)
             except ReadOnlyRefusedError as error:
                 if not job.is_action:
                     raise

@@ -1502,8 +1502,7 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_response_and_cleans_temporary_files(self) -> None:
         remote = FakeRemoteHost()
 
-        with patch.object(asyncio.get_running_loop(), "time", return_value=100.0):
-            response = await RevitChannel(remote).execute(Job.document_info(), timeout_seconds=120)
+        response = await RevitChannel(remote).execute(Job.document_info(), timeout_seconds=120)
 
         self.assertEqual(response["data"]["viewCount"], 84)
         self.assertEqual(
@@ -2784,10 +2783,7 @@ def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
         if persisted:
             host.instance_info["commands"].append("jobs/persisted")
         host.response_content = json.dumps({"command": "export", "success": True, "data": {}})
-        with (
-            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10),
-            patch.object(asyncio.get_running_loop(), "time", return_value=100.0),
-        ):
+        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10):
             await RevitChannel(host).execute(Job("export", {"command": "export"}), 120)
         if persisted:
             assert host.response_timeout <= 10
@@ -3983,5 +3979,78 @@ def test_discovery_uses_time_remaining_after_channel_lock_wait():
         with pytest.raises(RevitChannelError, match="discovery timed out"):
             await asyncio.wait_for(call, 0.08)
         assert not channel._lock.locked()
+
+    asyncio.run(check())
+
+
+def test_discovery_timeout_does_not_fail_a_queued_long_timeout_caller():
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": package_version(), "commands": ["document-info"]}
+        channel = RevitChannel(host)
+        discovery_started = asyncio.Event()
+        pending = asyncio.Event()
+        selections = 0
+
+        async def select(job):
+            nonlocal selections
+            selections += 1
+            if selections == 1:
+                discovery_started.set()
+                await pending.wait()
+            clock.return_value += 0.3
+            return host, job
+
+        host.select_job = select
+        with patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock:
+            await channel._lock.acquire()
+            short = asyncio.create_task(channel.execute(Job.document_info(), 1.3))
+            long = asyncio.create_task(channel.execute(Job.document_info(), 120))
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            clock.return_value += 1.1
+            channel._lock.release()
+            await discovery_started.wait()
+            clock.return_value += 0.3
+            with pytest.raises(RevitChannelError, match="not submitted.*safe to retry"):
+                await short
+            result = await long
+            assert result["success"] is True
+            assert selections == 2
+            assert host.response_timeout == 120
+            assert channel._selection_generation == 0
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("discovery_seconds", [0.01, 0.1])
+def test_queue_discovery_deadline_never_reduces_submitted_execution_budget(discovery_seconds):
+    async def check():
+        host = FakeRemoteHost()
+        host.instance_info = {"addinVersion": package_version(), "commands": ["document-info"]}
+        channel = RevitChannel(host)
+
+        async def select(job):
+            clock.return_value += discovery_seconds
+            return host, job
+
+        host.select_job = select
+        with patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock:
+            await channel._lock.acquire()
+            call = asyncio.create_task(channel.execute(Job.document_info(), 2))
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            clock.return_value += 1.95
+            channel._lock.release()
+            if discovery_seconds == 0.1:
+                with pytest.raises(RevitChannelError, match="not submitted.*safe to retry"):
+                    await call
+                assert host.written_content is None
+            else:
+                result = await call
+                assert result["success"] is True
+                assert host.response_timeout == 2
+                assert host.written_content is not None
+            assert clock.return_value > 101.95
 
     asyncio.run(check())
