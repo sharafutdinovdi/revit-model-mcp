@@ -1449,11 +1449,46 @@ async def revit_family_audit(
         raise ToolError("families must contain 1 to 200 non-empty names.")
     if families is not None and "*" in families and families != ["*"]:
         raise ToolError("The '*' family selector must be alone.")
-    return await _execute(
+    result = await _execute(
         Job("family-audit", {"command": "family-audit", "families": families, "detail": detail}),
         timeout_seconds,
         document,
     )
+    data = result.get("data") or {}
+    if (
+        result.get("partial")
+        and data.get("mode") == "project"
+        and any(
+            item.get("what") == "family-audit remaining families"
+            for item in result.get("skipped", [])
+        )
+    ):
+        completed = data.get("families", [])
+        audited = sum(item.get("status") == "audited" for item in completed)
+        if families and families != ["*"]:
+            processed = {item["name"].casefold() for item in completed}
+            remaining = [name for name in families if name.casefold() not in processed]
+            guidance = (
+                f"{audited} of {len(families)} requested families audited. "
+                f"Continue with families={json.dumps(remaining)}."
+                if remaining
+                else f"{audited} of {len(families)} requested families audited; "
+                "review skipped and failed entries before retrying those names explicitly."
+            )
+        else:
+            guidance = (
+                f"{audited} families audited; total and remaining family names are unavailable "
+                "in this response. Use revit_list_catalog with section='family-types' to find "
+                "names, exclude returned families, and continue with an explicit families=[...] "
+                "list of up to 200 names."
+            )
+        result = {
+            **result,
+            "message": (result.get("message") or "")
+            + " Inspection stopped at the read time budget or cancellation boundary. "
+            + guidance,
+        }
+    return result
 
 
 register_actions(mcp, _execute, lambda: host)
