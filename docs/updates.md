@@ -41,6 +41,7 @@ Example: `dotnet build src/RevitModelMcp.Addin -c Release.R26 -p:ManagedInstall=
 Managed and store builds remove any updater left in the build and publish folders by an earlier build.
 Managed bundle packaging excludes the updater even when the publish folder comes from a release build.
 `build/validate_bundle.py --managed-version <version>` rejects a managed bundle containing the updater.
+Release builds include `RevitModelMcp/RevitModelMcp.Updater.exe` in the publish folder after a single build, including the first build in a clean tree.
 
 ### The store channel
 

@@ -87,7 +87,7 @@
                       SetTargetFramework="TargetFramework=net48"/>
   </ItemGroup>
 
-  <Target Name="CopyUpdater" AfterTargets="Build"
+  <Target Name="CopyUpdater" BeforeTargets="PublishAddin" AfterTargets="Build"
           Condition="'$(ManagedInstall)' != 'true' And '$(Channel)' != 'store'">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
           DestinationFolder="$(TargetDir)"/>
