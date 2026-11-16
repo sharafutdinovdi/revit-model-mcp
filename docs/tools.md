@@ -405,6 +405,9 @@ The built-in allowlist is empty.
 `data.dialogs` records dialog IDs, messages, available buttons, and decisions.
 Button capture depends on the visible native controls; a dialog that closes before capture may have no buttons recorded.
 While a dialog blocks execution, progress and persisted job responses report `waiting_dialog` with the dialog record.
+`revit_jobs` returns `waiting_dialog` with the captured dialog text and available buttons.
+No tool answers a native Revit dialog.
+Opening a model that requires an upgrade can therefore require a person at the Revit workstation to answer the dialog before the job continues.
 Progress text reads `waiting for dialog <id> / <text>`.
 The usual timeout warning still applies: a waiting call may already have committed changes.
 Failure and dialog handlers are removed when execution ends, including exceptional exits.

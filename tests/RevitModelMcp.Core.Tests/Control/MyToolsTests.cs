@@ -169,13 +169,12 @@ public sealed class MyToolsTests
         for (var level = 2; level < 9; level++)
             nested = objects ? "{\"value\":" + nested + "}" : "[" + nested + "]";
         var json = "{\"type\":" + nested + "}";
-        const string message = "parameters or args are nested deeper than 8 levels.";
         await Assert.That(() => ToolArguments.ValidateSchema(json))
-            .Throws<ArgumentException>().WithMessage(message);
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
         await Assert.That(() => ToolArguments.Validate(Schema, json))
-            .Throws<ArgumentException>().WithMessage(message);
+            .Throws<ArgumentException>().WithMessage("args: The value is nested deeper than 8 levels.");
         await Assert.That(() => ToolArguments.Title(json))
-            .Throws<ArgumentException>().WithMessage(message);
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
     }
 
     [Test]
@@ -205,9 +204,9 @@ public sealed class MyToolsTests
         var schema = "{\"type\":" + new string('[', 30000) + "0" + new string(']', 30000) + "}";
         await Assert.That(Encoding.UTF8.GetByteCount(schema) < 65536).IsTrue();
         await Assert.That(() => ToolArguments.ValidateSchema(schema))
-            .Throws<ArgumentException>().WithMessage("parameters or args are nested deeper than 8 levels.");
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
         await Assert.That(() => (Definition() with { Parameters = schema }).Validate())
-            .Throws<ArgumentException>().WithMessage("parameters or args are nested deeper than 8 levels.");
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
     }
 
     [Test]
@@ -216,7 +215,7 @@ public sealed class MyToolsTests
         var arguments = "{\"count\":" + new string('[', 30000) + "0" + new string(']', 30000) + "}";
         await Assert.That(Encoding.UTF8.GetByteCount(arguments) < 65536).IsTrue();
         await Assert.That(() => ToolArguments.Validate(Schema, arguments))
-            .Throws<ArgumentException>().WithMessage("parameters or args are nested deeper than 8 levels.");
+            .Throws<ArgumentException>().WithMessage("args: The value is nested deeper than 8 levels.");
     }
 
     [Test]
@@ -258,8 +257,11 @@ public sealed class MyToolsTests
     [Test]
     [Arguments("\"\"", "must be 1 to 80 characters of text.")]
     [Arguments("\"   \"", "must be 1 to 80 characters of text.")]
-    [Arguments("\"bad\\nlabel\"", "must be a single line without control characters.")]
-    [Arguments("\"\\tlabel\"", "must be a single line without control characters.")]
+    [Arguments("\"bad\\nlabel\"", "must not contain line breaks or control characters.")]
+    [Arguments("\"\\tlabel\"", "must not contain line breaks or control characters.")]
+    [Arguments("\"bad\\rlabel\"", "must not contain line breaks or control characters.")]
+    [Arguments("\"bad\\u2028label\"", "must not contain line breaks or control characters.")]
+    [Arguments("\"bad\\u2029label\"", "must not contain line breaks or control characters.")]
     [Arguments("\"bad\\u200blabel\"", "must be 1 to 80 characters of text.")]
     [Arguments("42", "must be 1 to 80 characters of text.")]
     [Arguments("true", "must be 1 to 80 characters of text.")]
@@ -270,10 +272,10 @@ public sealed class MyToolsTests
     public async Task Schema_RejectsInvalidTitlesAtBothLevels(string title, string message)
     {
         await Assert.That(Capture(() => ToolArguments.ValidateSchema(
-            "{\"type\":\"object\",\"title\":" + title + "}")))
+            "{\"type\":\"object\",\"title\":" + title + "}", rejectTitleLineSeparators: true)))
             .IsEqualTo("parameters.title " + message);
         await Assert.That(Capture(() => ToolArguments.ValidateSchema(
-            "{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\",\"title\":" + title + "}}}")))
+            "{\"type\":\"object\",\"properties\":{\"count\":{\"type\":\"integer\",\"title\":" + title + "}}}", rejectTitleLineSeparators: true)))
             .IsEqualTo("parameters.count.title " + message);
     }
 
@@ -387,6 +389,50 @@ public sealed class MyToolsTests
             await Assert.That(Capture(() => reopened.Delete(initial.Name, initial.ApprovalBinding()))).Contains("The tool changed");
             reopened.Delete(initial.Name, updated.ApprovalBinding());
             await Assert.That(store.List().Count).IsEqualTo(0);
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [Test]
+    [Arguments('\u2028')]
+    [Arguments('\u2029')]
+    public async Task Store_LoadsLegacyTitleLineSeparatorsButRefusesNewSaves(char separator)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new ToolStore(folder);
+            var initial = Definition();
+            store.Save(initial);
+            var legacy = initial with
+            {
+                Parameters = CodeResultLimiter.ToJson(new Dictionary<string, object>
+                {
+                    ["type"] = "object",
+                    ["title"] = $"Old{separator}title",
+                    ["properties"] = new Dictionary<string, object>
+                    {
+                        ["count"] = new Dictionary<string, object>
+                        {
+                            ["type"] = "integer",
+                            ["title"] = $"Old{separator}count"
+                        }
+                    }
+                })
+            };
+            var payload = legacy.ApprovalPayload();
+            using var signature = new System.Security.Cryptography.HMACSHA256(File.ReadAllBytes(Path.Combine(folder, ".approval-key")));
+            File.WriteAllText(Path.Combine(folder, legacy.Name, legacy.Revision + ".json"), payload);
+            File.WriteAllText(Path.Combine(folder, legacy.Name, legacy.Revision + ".approved"),
+                Convert.ToBase64String(signature.ComputeHash(Encoding.UTF8.GetBytes(payload))));
+
+            var loaded = store.Get(legacy.Name);
+            await Assert.That(loaded.Parameters).IsEqualTo(legacy.Parameters);
+            await Assert.That(store.List().Count).IsEqualTo(1);
+            await Assert.That(new ToolParameterForm(loaded.Parameters).Fields.Single().Label).IsEqualTo($"Old{separator}count");
+            await Assert.That(ToolArguments.Validate(loaded.Parameters, """{"count":1}""")["count"]).IsEqualTo(1L);
+            await Assert.That(() => store.Save(legacy)).Throws<ArgumentException>()
+                .WithMessage("parameters.title must not contain line breaks or control characters.");
         }
         finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
     }

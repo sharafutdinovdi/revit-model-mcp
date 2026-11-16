@@ -52,6 +52,8 @@ Supported root keywords are `type`, `title`, `properties`, `required`, and `addi
 Supported property keywords are `type`, `title`, `description`, `enum`, `minimum`, `maximum`, and `maxLength`.
 The root type must be `object`; `additionalProperties`, when supplied, must be `false`.
 Root and property titles must contain 1 to 80 characters after trimming, without control or Unicode Format characters.
+Saving or importing a tool also rejects Unicode line and paragraph separators (U+2028 and U+2029) in titles.
+Previously stored tools with those separators remain loadable and runnable; saving a new revision requires a single-line title.
 A property `title` labels its form field; argument keys remain the property names.
 Nested objects, arrays, references, patterns, defaults, and other schema keywords are rejected.
 Unsupported keyword errors name the offending keywords and list the supported keywords.

@@ -11,6 +11,39 @@ namespace RevitModelMcp.Core.Tests.Serialization;
 public sealed class CommandResponseJsonSerializerTests
 {
     [Test]
+    public async Task NewDocument_RedactsSavedPathAndPreservesActivationExplanation()
+    {
+        const string warning = "Saved to the returned path: activation requires a saved path.";
+        var response = CommandResponse<ActionResultData>.Ok("new-document", new ActionResultData
+        {
+            Path = @"C:\Private\New\Project.rvt",
+            Saved = true,
+            Active = true,
+            Warning = warning
+        }, 1);
+        var redacted = CommandResponseJsonSerializer.RedactPaths(CommandResponseJsonSerializer.Serialize(response));
+        using var json = JsonDocument.Parse(redacted);
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("path").GetString()).IsEqualTo("Project.rvt");
+        await Assert.That(data.GetProperty("saved").GetBoolean()).IsTrue();
+        await Assert.That(data.GetProperty("warning").GetString()).IsEqualTo(warning);
+        await Assert.That(redacted.Contains("Private")).IsFalse();
+    }
+
+    [Test]
+    public async Task NewDocument_OmitsAbsentWarning()
+    {
+        var response = CommandResponse<ActionResultData>.Ok("new-document", new ActionResultData
+        {
+            Path = @"C:\New\Project.rvt",
+            Saved = true,
+            Warning = null
+        }, 1);
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.GetProperty("data").TryGetProperty("warning", out _)).IsFalse();
+    }
+
+    [Test]
     public async Task CreateView_SerializesTemplateControlledSettings()
     {
         var result = new ActionResultData
