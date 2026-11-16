@@ -1869,6 +1869,16 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task Parse_SaveTool_PreservesCompilePreviewFlag(bool dryRun)
+    {
+        var result = ControlJobParser.Parse($$"""{"command":"save-tool","name":"test_tool","toolDescription":"Test tool","toolParameters":"{\"type\":\"object\"}","code":"invalid C#","dryRun":{{dryRun.ToString().ToLowerInvariant()}}}""");
+        await Assert.That(result.Kind).IsEqualTo(ControlJobKind.Action);
+        await Assert.That(result.Action!.DryRun).IsEqualTo(dryRun);
+    }
+
+    [Test]
     public async Task Parse_Batch_ValidatesEachStep()
     {
         var result = ControlJobParser.Parse("""{"command":"batch","dryRun":true,"steps":[{"command":"move","elementIds":[1],"dxMm":10,"dyMm":0},{"command":"set-parameter","elementId":1,"parameter":"Comments","value":"Reviewed"}]}""");
