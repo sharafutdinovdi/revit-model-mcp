@@ -546,7 +546,8 @@ class SshPowerShellHost:
             "cancelled": True,
             "jobId": job_id,
             "message": "Cancellation requested; cooperating operations stop at their next cancellation point. "
-            "Non-cooperating operations finish; completed changes stay committed.",
+            "Scripts and tagging roll back at that point or on return. "
+            "Process-models stops before the next model; completed models stay committed.",
         }
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:

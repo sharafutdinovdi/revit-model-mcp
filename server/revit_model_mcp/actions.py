@@ -1258,7 +1258,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Process-models stops before the next model. Cooperating scripts and tagging stop and roll back; other running operations finish."""
+        """Process-models stops between models; completed models stay committed. Scripts and tagging roll back at a check or on return."""
         if (gate := policy_gate("revit_cancel_job", label="jobs")) is not None:
             return gate
         job = (

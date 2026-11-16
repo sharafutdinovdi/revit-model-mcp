@@ -226,7 +226,7 @@ public sealed class JobScheduler
                  entry.CanCancel && (!isAction || entry.Command == "process-models")))
             {
                 entry.CancelRequested = true;
-                return new(true, entry.State, "Cancellation requested; a cooperating operation stops at its next cancellation point. Completed changes stay committed.");
+                return new(true, entry.State, "Cancellation requested; cooperating operations stop at their next cancellation point. Scripts and tagging roll back at that point or on return. Process-models stops before the next model; completed models stay committed.");
             }
             return new(false, entry.State, entry.State == JobState.Running
                 ? "A running command cannot be interrupted; it will finish."

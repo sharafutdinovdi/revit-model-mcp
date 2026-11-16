@@ -62,7 +62,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
-| `core` | 9 | 7,217 | 1,804 |
+| `core` | 9 | 7,213 | 1,803 |
 | `read` | 13 | 18,890 | 4,722 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
@@ -73,20 +73,20 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `export` | 4 | 7,198 | 1,799 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,253 | 1,563 |
-| `all` (default) | 89 | 107,908 | 26,977 |
-| `core,read` | 22 | 26,107 | 6,526 |
+| `all` (default) | 89 | 107,904 | 26,976 |
+| `core,read` | 22 | 26,103 | 6,525 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,908 | 26,977 | 108,065 |
-| `core,read` | 22 | 26,107 | 6,526 | 26,197 |
-| `preset:audit` | 28 | 30,986 | 7,746 | 31,082 |
-| `preset:edit` | 59 | 67,836 | 16,959 | 67,963 |
-| `preset:families` | 40 | 46,013 | 11,503 | 46,121 |
-| `preset:sheets` | 54 | 63,930 | 15,982 | 64,052 |
-| `preset:batch` | 46 | 52,511 | 13,127 | 52,625 |
+| `all` | 89 | 107,904 | 26,976 | 108,061 |
+| `core,read` | 22 | 26,103 | 6,525 | 26,193 |
+| `preset:audit` | 28 | 30,982 | 7,745 | 31,078 |
+| `preset:edit` | 59 | 67,832 | 16,958 | 67,959 |
+| `preset:families` | 40 | 46,009 | 11,502 | 46,117 |
+| `preset:sheets` | 54 | 63,926 | 15,981 | 64,048 |
+| `preset:batch` | 46 | 52,507 | 13,126 | 52,621 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.

@@ -65,7 +65,7 @@ Cancellation is refused while the workstation read-only lock is on.
 
 | Tool | Arguments | Action and units |
 | --- | --- | --- |
-| `revit_cancel_job` | `job_id`, `document=null`, `process_id=null` | Request cancellation. Process-models stops before the next model. Poll `revit_jobs` for the final result. Completed changes remain committed. |
+| `revit_cancel_job` | `job_id`, `document=null`, `process_id=null` | Request cancellation. Process-models stops before the next model; completed models remain committed. Scripts and tagging stop at a cancellation check or on return, then roll back. Poll `revit_jobs` for the final result. |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
 | `revit_show` | `element_ids`, `select=true` | Frame nonempty IDs in an explicitly selected level plan or orthographic 3D view; return `activeView`, `viewOpened`, `elapsedMs` and `count`. With `select=false`, `count` reports the requested element count. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
@@ -180,14 +180,14 @@ The failure reports elapsed seconds in the error and elapsed milliseconds in `da
 There is no default execution limit.
 `timeout_seconds` only limits the client's wait; it does not stop Revit execution.
 Loops over many elements must call `ctx.ThrowIfCancellationRequested()` between elements, especially when calling `Document.Regenerate()` inside the loop.
-Cancellation never aborts the Revit thread and cannot interrupt a single blocking API call or a script that never checks.
+Cancellation never aborts the Revit thread and cannot interrupt a single blocking API call.
 The runner also checks before invocation and after the script returns.
 Running scripts and tagging jobs accept cancellation through `revit_cancel_job(job_id=...)` from the AI app.
 The activity pane's Cancel link applies to queued jobs; the Revit UI thread cannot handle its click while a script or tagging job is running.
 Cooperative script cancellation is enabled only for `revit_execute_code` and `revit_run_tool`.
 In `revit_process_models` code steps, `ctx.CancellationRequested` remains false and `ctx.ThrowIfCancellationRequested()` does not throw.
 Cancelling model processing lets the current model finish and save, then stops before the next model.
-Cancellation received after a commit does not undo the committed change; document receipts remain authoritative.
+A cancelled script that never checks the flag runs to its end, then the runner checks and rolls back the managed run; document receipts remain authoritative.
 
 ```csharp
 for (var index = 0; index < 10000; index++)

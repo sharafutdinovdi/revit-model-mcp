@@ -2737,8 +2737,9 @@ def test_file_action_fetch_and_cancel_use_retained_instance_job_files(command, l
         cancellation = await host.cancel_job("a" * 32)
         assert cancellation["cancelled"] is True
         assert "next cancellation point" in cancellation["message"]
-        assert "Non-cooperating operations finish" in cancellation["message"]
-        assert "completed changes stay committed" in cancellation["message"]
+        assert "Scripts and tagging roll back at that point or on return" in cancellation["message"]
+        assert "Process-models stops before the next model" in cancellation["message"]
+        assert "completed models stay committed" in cancellation["message"]
         scripts = [call.args[0] for call in host._run.await_args_list]
         assert all("selected-instance-directory" in script for script in scripts)
         assert "jobs/" + "a" * 32 + ".json" in scripts[0]

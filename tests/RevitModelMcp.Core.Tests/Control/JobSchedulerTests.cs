@@ -498,7 +498,8 @@ public sealed class JobSchedulerTests
         await Assert.That(cancellation.Cancelled).IsTrue();
         await Assert.That(cancellation.State).IsEqualTo(JobState.Running);
         await Assert.That(cancellation.Message).Contains("next cancellation point");
-        await Assert.That(cancellation.Message).Contains("Completed changes stay committed");
+        await Assert.That(cancellation.Message).Contains("Scripts and tagging roll back at that point or on return");
+        await Assert.That(cancellation.Message).Contains("completed models stay committed");
         await Assert.That(scheduler.IsCancellationRequested("action")).IsTrue();
         scheduler.Complete("action", "{}", false);
         await Assert.That(scheduler.Status("action")?.State).IsEqualTo(JobState.Cancelled);
