@@ -942,13 +942,34 @@ async def revit_model_health(
 
     if target is None or health.get("success") is False:
         return health
-    warning_result = await _execute(
-        Job.list_warnings(None, True),
-        timeout_seconds,
-        document,
-    )
+    try:
+        warning_result = await _execute(
+            Job.list_warnings(None, True),
+            timeout_seconds,
+            document,
+        )
+    except ToolError as error:
+        warning_result = {"success": False, "error": str(error)}
     if warning_result.get("success") is False:
-        return warning_result
+        skipped = [
+            *health.get("skipped", []),
+            *warning_result.get("skipped", []),
+            {
+                "what": "list-warnings",
+                "reason": warning_result.get("error")
+                or warning_result.get("message")
+                or "Warning details could not be read.",
+                "response": warning_result,
+            },
+        ]
+        return {
+            **health,
+            "partial": True,
+            "skipped": skipped,
+            "skippedCount": max(health.get("skippedCount", 0), len(health.get("skipped", [])))
+            + max(warning_result.get("skippedCount", 0), len(warning_result.get("skipped", [])))
+            + 1,
+        }
     groups = warning_result["data"]["groups"]
     selected = sorted(range(len(groups)), key=lambda i: groups[i]["count"], reverse=True)[:5]
     snapshots, notes, warnings = {}, {}, []
