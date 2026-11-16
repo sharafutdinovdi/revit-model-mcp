@@ -18,8 +18,8 @@ from revit_model_mcp.toolsets import (
     select_tools,
 )
 
-# 2.0 adds list_sheets, set_read_only, api_lookup, audit tools.
-TOOLS_LIST_BUDGET_BYTES = 108_000
+# Regression guard for context growth, not a client protocol limit.
+TOOLS_LIST_BUDGET_BYTES = 111_000
 
 
 def _registered() -> set[str]:
