@@ -898,15 +898,16 @@ internal static class ActionCommandExecutor
             if (locked is not null)
                 throw new IOException($"'{Path.GetFileName(locked)}' is open in another program or is read-only. Close it and repeat the export.");
         }
-        if (request.Overwrite && !action.DryRun && action.ConfirmOverwrites)
+        if (action.ConfirmOverwrites)
         {
-            var existing = planned.Select(name => Path.Combine(folder, name)).Where(File.Exists).ToList();
-            if (existing.Count > 0)
+            var paths = planned.Select(name => Path.Combine(folder, name)).ToList();
+            var existing = paths.Where(File.Exists).ToList();
+            if (action.ConfirmToken is not null || request.Overwrite && !action.DryRun && existing.Count > 0)
             {
                 var gate = ConfirmationStore.Gate("export",
                     DocumentConfirmationBinding.Identity(document.PathName, document.Title),
-                    DocumentConfirmationBinding.ExportArguments("export", existing),
-                    DocumentConfirmationBinding.FileState(existing), action.ConfirmToken,
+                    DocumentConfirmationBinding.ExportArguments("export", paths, request.Format, request.Overwrite, action.DryRun),
+                    DocumentConfirmationBinding.FileState(paths), action.ConfirmToken,
                     "Exporting will overwrite these existing files: " + string.Join(", ", existing),
                     $"Needs confirmation to overwrite {existing.Count} export files.",
                     "The export targets changed on disk after the preview (size or modification time). The confirmation token is used up; repeat the call without confirm_token to get a new one.");

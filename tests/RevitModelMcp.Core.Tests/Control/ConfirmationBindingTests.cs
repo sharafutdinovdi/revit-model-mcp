@@ -60,6 +60,35 @@ public sealed class ConfirmationBindingTests
     }
 
     [Test]
+    [Arguments("name")]
+    [Arguments("directory")]
+    [Arguments("added")]
+    [Arguments("dry_run")]
+    [Arguments("overwrite")]
+    [Arguments("format")]
+    public async Task ExportToken_RejectsChangedPlanAndAcceptsOriginal(string change)
+    {
+        var tokens = new DocumentConfirmationTokens();
+        string[] original = [@"C:\Out\A.pdf"];
+        var arguments = DocumentConfirmationBinding.ExportArguments("export", original, "pdf", true, false);
+        var changedPaths = change switch
+        {
+            "name" => new[] { @"C:\Out\B.pdf" },
+            "directory" => [@"C:\Other\A.pdf"],
+            "added" => [@"C:\Out\A.pdf", @"C:\Out\B.pdf"],
+            _ => original
+        };
+        var changedArguments = DocumentConfirmationBinding.ExportArguments("export", changedPaths,
+            change == "format" ? "dwg" : "pdf", change != "overwrite", change == "dry_run");
+        var token = tokens.Issue("export", "document", arguments, "state");
+        await Assert.That(tokens.Consume(token, "export", "document", changedArguments, "state"))
+            .IsEqualTo(DocumentConfirmationResult.ArgumentsMismatch);
+        var originalToken = tokens.Issue("export", "document", arguments, "state");
+        await Assert.That(tokens.Consume(originalToken, "export", "document", arguments, "state"))
+            .IsEqualTo(DocumentConfirmationResult.Valid);
+    }
+
+    [Test]
     public async Task FileState_ReportsMissingAndBindsLengthAndModificationTime()
     {
         var path = Path.Combine(Path.GetTempPath(), $"confirmation-{Guid.NewGuid():N}.tmp");

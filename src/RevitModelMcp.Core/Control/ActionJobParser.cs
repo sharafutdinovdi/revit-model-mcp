@@ -852,6 +852,10 @@ public static class DocumentConfirmationBinding
         command + ":" + string.Join("\n", existingTargets.Select(NormalizePath)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
 
+    public static string ExportArguments(string command, IEnumerable<string> plannedTargets, string format, bool overwrite, bool dryRun) =>
+        $"{command}:{format}:overwrite={overwrite}:dry_run={dryRun}:" +
+        CodeHash(ExportArguments(command, plannedTargets));
+
     public static string FileState(IEnumerable<string> paths) =>
         string.Join("\n", paths.OrderBy(NormalizePath, StringComparer.OrdinalIgnoreCase)
             .ThenBy(path => path, StringComparer.Ordinal).Select(path =>
