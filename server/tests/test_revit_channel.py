@@ -2542,10 +2542,12 @@ class SimulatedHost:
     async def finish_job(self, response_name, cleanup_names, download_artifact, output_path):
         return root.joinpath(response_name).read_text(), None
     async def delete_files(self, names): pass
-asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
+asyncio.run(asyncio.wait_for(RevitChannel(SimulatedHost()).execute(Job.ping()), 10))
 """
-    workers = [subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]) for _ in range(2)]
+    workers = []
     try:
+        for _ in range(2):
+            workers.append(subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]))
         deadline = time.monotonic() + 10
         payloads = []
         while time.monotonic() < deadline:
@@ -2561,15 +2563,16 @@ asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
         assert payloads[0]["clientId"] != payloads[1]["clientId"]
         for path, payload in zip(jobs, payloads):
             path.unlink()
-            tmp_path.joinpath(f"response_{payload['jobId']}.json").write_text(
-                json.dumps({"command": "ping", "success": True, "data": "pong"})
-            )
+            response = tmp_path.joinpath(f"response_{payload['jobId']}.json")
+            temporary = response.with_suffix(".tmp")
+            temporary.write_text(json.dumps({"command": "ping", "success": True, "data": "pong"}))
+            temporary.replace(response)
         assert all(process.wait(timeout=10) == 0 for process in workers)
     finally:
         for process in workers:
             if process.poll() is None:
                 process.kill()
-                process.wait()
+                process.wait(timeout=5)
 
 
 @pytest.mark.parametrize("completed", [False, True])
@@ -2864,10 +2867,13 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
         async def advance_poll_delay(delay):
             clock.return_value += delay
 
+        clock = SimpleNamespace(return_value=100.0)
+        channel_asyncio = SimpleNamespace(**vars(asyncio))
+        channel_asyncio.get_running_loop = lambda: SimpleNamespace(time=lambda: clock.return_value)
+        channel_asyncio.sleep = advance_poll_delay
         with (
             patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1),
-            patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock,
-            patch("revit_model_mcp.revit_channel.asyncio.sleep", side_effect=advance_poll_delay),
+            patch("revit_model_mcp.revit_channel.asyncio", channel_asyncio),
         ):
             result = await RevitChannel(host).execute(
                 Job("process-models", {"command": "process-models"})
@@ -2878,7 +2884,7 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
         assert result["jobId"] == json.loads(host.written_content)["jobId"]
         assert host.deleted_names == []
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 5))
 
 
 @pytest.mark.parametrize("command", ["export-view", "capture-elements"])
@@ -3944,7 +3950,7 @@ def test_parallel_unreachable_host_shares_discovery_failure_and_deadline(failure
         calls = [
             asyncio.create_task(channel.execute(Job.ping(), timeout_seconds=0.1)) for _ in range(20)
         ]
-        await started.wait()
+        await asyncio.wait_for(started.wait(), 1)
         # Let every caller queue behind the same discovery attempt.
         await asyncio.sleep(0.01)
         if failure == "unreachable":
@@ -3960,7 +3966,7 @@ def test_parallel_unreachable_host_shares_discovery_failure_and_deadline(failure
             await channel.execute(Job.ping(), timeout_seconds=0.1)
         host._discover_instances.assert_awaited_once()
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 2))
 
 
 def test_discovery_uses_time_remaining_after_channel_lock_wait():
@@ -3980,7 +3986,7 @@ def test_discovery_uses_time_remaining_after_channel_lock_wait():
             await asyncio.wait_for(call, 0.08)
         assert not channel._lock.locked()
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 2))
 
 
 def test_discovery_timeout_does_not_fail_a_queued_long_timeout_caller():
@@ -4002,7 +4008,10 @@ def test_discovery_timeout_does_not_fail_a_queued_long_timeout_caller():
             return host, job
 
         host.select_job = select
-        with patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock:
+        clock = SimpleNamespace(return_value=100.0)
+        channel_asyncio = SimpleNamespace(**vars(asyncio))
+        channel_asyncio.get_running_loop = lambda: SimpleNamespace(time=lambda: clock.return_value)
+        with patch("revit_model_mcp.revit_channel.asyncio", channel_asyncio):
             await channel._lock.acquire()
             short = asyncio.create_task(channel.execute(Job.document_info(), 1.3))
             long = asyncio.create_task(channel.execute(Job.document_info(), 120))
@@ -4020,7 +4029,7 @@ def test_discovery_timeout_does_not_fail_a_queued_long_timeout_caller():
             assert host.response_timeout == 120
             assert channel._selection_generation == 0
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 2))
 
 
 @pytest.mark.parametrize("discovery_seconds", [0.01, 0.1])
@@ -4035,7 +4044,10 @@ def test_queue_discovery_deadline_never_reduces_submitted_execution_budget(disco
             return host, job
 
         host.select_job = select
-        with patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock:
+        clock = SimpleNamespace(return_value=100.0)
+        channel_asyncio = SimpleNamespace(**vars(asyncio))
+        channel_asyncio.get_running_loop = lambda: SimpleNamespace(time=lambda: clock.return_value)
+        with patch("revit_model_mcp.revit_channel.asyncio", channel_asyncio):
             await channel._lock.acquire()
             call = asyncio.create_task(channel.execute(Job.document_info(), 2))
             await asyncio.sleep(0)
@@ -4053,4 +4065,4 @@ def test_queue_discovery_deadline_never_reduces_submitted_execution_budget(disco
                 assert host.written_content is not None
             assert clock.return_value > 101.95
 
-    asyncio.run(check())
+    asyncio.run(asyncio.wait_for(check(), 2))
