@@ -2547,11 +2547,17 @@ asyncio.run(RevitChannel(SimulatedHost()).execute(Job.ping()))
     workers = [subprocess.Popen([sys.executable, "-c", worker, str(tmp_path)]) for _ in range(2)]
     try:
         deadline = time.monotonic() + 10
-        while len(list(tmp_path.glob("job_*.json"))) < 2 and time.monotonic() < deadline:
+        payloads = []
+        while time.monotonic() < deadline:
+            jobs = list(tmp_path.glob("job_*.json"))
+            if len(jobs) == 2:
+                try:
+                    payloads = [json.loads(path.read_text()) for path in jobs]
+                    break
+                except json.JSONDecodeError:
+                    pass
             time.sleep(0.01)
-        jobs = list(tmp_path.glob("job_*.json"))
-        assert len(jobs) == 2
-        payloads = [json.loads(path.read_text()) for path in jobs]
+        assert len(payloads) == 2
         assert payloads[0]["clientId"] != payloads[1]["clientId"]
         for path, payload in zip(jobs, payloads):
             path.unlink()
@@ -2854,7 +2860,15 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
             side_effect=[host.response_name, error_type("Poll timed out.")]
         )
         host.fetch_job = AsyncMock(side_effect=error_type("Boundary fetch timed out."))
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1):
+
+        async def advance_poll_delay(delay):
+            clock.return_value += delay
+
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1),
+            patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock,
+            patch("revit_model_mcp.revit_channel.asyncio.sleep", side_effect=advance_poll_delay),
+        ):
             result = await RevitChannel(host).execute(
                 Job("process-models", {"command": "process-models"})
             )
