@@ -88,10 +88,11 @@ The new command names are `view-info`, `set-view-visibility` and `remove-links`.
 `output_path` and timeouts are client options, not job fields.
 `parameterFilters` entries contain `parameter`, `operator` and an optional `value`.
 A parameter filter matches the Revit parameter of that name, even when the name matches a built-in output field such as `Level` or `Name`.
-The name is bound to matching instance and type parameters.
-When both share the name, the filter matches an element if either its instance parameter or its type parameter matches.
+For value operators (`equals`, `greater`, `less` and `contains`), the name is bound to matching instance and type parameters.
+When both share the name, these operators match an element if either its instance parameter or its type parameter matches.
 The result is the union of both matches, not an instance-first lookup.
-`revit_update_parameters` uses the same union to select elements, even when it updates only instance parameters.
+For `empty`, `not_empty` and `exists`, instance parameters take precedence; type parameters are checked only when the element has no instance parameter with that name.
+`revit_update_parameters` uses the same operator-specific rules to select elements, even when it updates only instance parameters.
 A defined built-in parameter name such as `CURVE_ELEM_LENGTH` is accepted in place of the display name.
 Names are matched exactly; only a name that no queried element carries in that spelling is matched again without regard to letter case.
 A name that no queried element carries is refused, and so is a name unknown to the model.
