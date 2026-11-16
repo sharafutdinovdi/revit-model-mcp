@@ -1318,7 +1318,7 @@ async def revit_export_view(
     output_path: SaveTo = None,
     document: Document = None,
 ) -> dict[str, Any]:
-    """Save a picture of the selected view as a PNG file in a folder the user names on the AI app computer. output_path names the new file; without it, a temporary folder is used. Existing files are refused. The active view and model stay unchanged."""
+    """Write a PNG image of the selected Revit view to the new .png file the user names through output_path on the computer running the AI app. Omitting output_path uses a temporary folder. A destination already present is refused. The active view and model remain unchanged."""
     return await _execute(
         Job.export_view(view, pixel_size, output_path),
         DEFAULT_TIMEOUT_SECONDS,

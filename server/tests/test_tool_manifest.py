@@ -84,6 +84,24 @@ def test_read_only_tools_are_safe(built, registry):
         assert entry["fileSystem"]["access"] in {"none", "read", "write", "read_write"}
 
 
+def test_batch_status_can_persist_supervisor_state(registry):
+    tool = next(tool for tool in registry[0] if tool.name == "revit_batch_status")
+    assert tool.annotations.read_only_hint is False
+    assert tool.annotations.destructive_hint is False
+    assert tool.annotations.idempotent_hint is True
+    assert "can record a stopped supervisor" in tool.description
+
+
+def test_documented_tool_access_counts_match_registry(built):
+    tools = built["tools"]
+    read_only = sum(tool["access"] == "read_only" for tool in tools)
+    modifying = len(tools) - read_only
+    assert (len(tools), read_only, modifying) == (89, 35, 54)
+    row = f"| Tools | {len(tools)} ({read_only} read-only, {modifying} modifying) |"
+    documentation = REPOSITORY_ROOT / "docs" / "mcp-specifications.md"
+    assert row in documentation.read_text(encoding="utf-8")
+
+
 def test_required_manifest_keys(built):
     assert built["schemaVersion"] == "1.0"
     assert isinstance(built["mcpSpecVersion"], str)

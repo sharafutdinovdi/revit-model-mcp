@@ -307,12 +307,11 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             update={
                 "title": "Batch collection status",
                 "idempotent_hint": True,
-                "read_only_hint": True,
             }
         ),
     )
     async def revit_batch_status(run_id: str) -> dict[str, Any]:
-        """Read durable run and model status after the initiating client exits."""
+        """Read durable run and model status; can record a stopped supervisor in the run's saved state."""
         _deny_by_policy("revit_batch_status")
         try:
             return _public(await _file_host(host_provider()).batch_status(_run_id(run_id)))

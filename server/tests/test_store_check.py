@@ -190,7 +190,6 @@ def test_every_tool_has_reviewed_access_annotations():
         "revit_select",
         "revit_show",
         "revit_isolate",
-        "revit_batch_status",
     }
     tools, live = registry()
     assert len(tools) == 89

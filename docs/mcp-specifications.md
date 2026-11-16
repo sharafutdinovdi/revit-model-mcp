@@ -15,7 +15,7 @@ Model A: the server runs on the user's machine. It is a Python process that the 
 | Server name | `revit-model-mcp` |
 | Transport | `stdio` |
 | Latest MCP specification version | `2026-07-28` |
-| Tools | 89 (36 read-only, 53 modifying) |
+| Tools | 89 (35 read-only, 54 modifying) |
 | Resources | 1 (`revit://guides/coordinator`) |
 | Prompts | 7 |
 
