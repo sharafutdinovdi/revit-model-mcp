@@ -104,7 +104,7 @@ def local_file_error(error: Exception, *values: str | None) -> str:
             else:
                 variants.update((str(windows), windows.as_posix()))
                 identity = windows.as_posix().casefold()
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, ValueError):
             if not windows.drive and not Path(value).is_absolute():
                 continue
         names.setdefault(identity, windows.name)
