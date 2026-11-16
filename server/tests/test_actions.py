@@ -1686,17 +1686,20 @@ def test_tag_elements_mapping_and_validation():
     assert payload["leader"] is True
     assert payload["orientation"] == "horizontal"
     assert payload["typeName"] == "Door Tag"
+    assert payload["maxElements"] == 10
     assert payload["skipTagged"] is True
     assert payload["dryRun"] is False
     asyncio.run(
         server.call_tool(
-            "revit_tag_elements", {"view": 123, "element_ids": [5, 6], "dry_run": True}
+            "revit_tag_elements",
+            {"view": 123, "element_ids": [5, 6], "max_elements": 20, "dry_run": True},
         )
     )
     payload = execute.await_args.args[0].payload
     assert payload["view"] == "123"
     assert payload["elementIds"] == [5, 6]
     assert payload["dryRun"] is True
+    assert payload["maxElements"] == 20
     execute.reset_mock()
     for invalid in (
         {"view": "Level 1"},

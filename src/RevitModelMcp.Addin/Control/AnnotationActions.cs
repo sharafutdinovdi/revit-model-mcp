@@ -18,6 +18,8 @@ internal static class AnnotationActions
 
         var skipped = new List<string>();
         var elements = ResolveElements(document, view, action, skipped);
+        if (ActionJobParser.TagElementLimitError(elements.Count, action.MaxElements) is not null)
+            throw new ActionMutations.MatchLimitException(elements.Count, action.MaxElements);
         var tagged = action.SkipTagged ? TaggedElementIds(document, view) : [];
         var independentTypes = ResolveIndependentTagTypes(document, action.TypeName);
         var roomTagType = ResolveRoomTagType(document, action.TypeName);
@@ -26,19 +28,46 @@ internal static class AnnotationActions
 
         var orientation = action.Orientation == "vertical" ? TagOrientation.Vertical : TagOrientation.Horizontal;
         var created = new List<long>();
+        var processed = 0;
+        void CheckCancellation()
+        {
+            if (ResponseDelivery.CancellationRequested?.Invoke() != true) return;
+            var exception = new OperationCanceledException($"Tagging cancelled after processing {processed} of {elements.Count} elements.");
+            exception.Data["processedCount"] = processed;
+            throw exception;
+        }
+        var centers = new Dictionary<long, XYZ?>();
         foreach (var element in elements)
         {
+            CheckCancellation();
+            var id = RevitValueReader.GetId(element.Id);
+            if (tagged.Contains(id)) continue;
+            try
+            {
+                centers[id] = element is SpatialElement and not Room || element.Category is null ? null : Center(element, view);
+            }
+            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
+                or Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+            {
+                skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
+            }
+        }
+        foreach (var element in elements)
+        {
+            CheckCancellation();
+            processed++;
             var id = RevitValueReader.GetId(element.Id);
             if (tagged.Contains(id))
             {
                 skipped.Add($"Element {id}: already tagged in this view.");
                 continue;
             }
+            if (!centers.ContainsKey(id)) continue;
             try
             {
                 var tagId = element is Room room
-                    ? TagRoom(document, view, room, action, roomTagType)
-                    : TagElement(document, view, element, action, orientation, independentTypes);
+                    ? TagRoom(document, view, room, action, roomTagType, centers[id])
+                    : TagElement(document, view, element, action, orientation, independentTypes, centers[id]);
                 if (tagId is null)
                 {
                     skipped.Add(SkipReason(id, element));
@@ -52,6 +81,7 @@ internal static class AnnotationActions
                 skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
             }
         }
+        CheckCancellation();
         if (created.Count == 0)
             throw new InvalidOperationException("No tags were created. " + (skipped.Count > 0
                 ? string.Join(" ", skipped.Take(5))
@@ -80,6 +110,8 @@ internal static class AnnotationActions
         var seen = new HashSet<long>();
         void Add(Element element)
         {
+            if (ResponseDelivery.CancellationRequested?.Invoke() == true)
+                throw new OperationCanceledException("Tagging cancelled before processing any elements.");
             if (seen.Add(RevitValueReader.GetId(element.Id))) result.Add(element);
         }
         if (action.ElementIds.Count > 0)
@@ -114,7 +146,6 @@ internal static class AnnotationActions
             foreach (var element in collector) Add(element);
             if (result.Count == before)
                 skipped.Add($"Category '{category.Name}': no elements are visible in view '{view.Name}'.");
-            if (result.Count > action.MaxElements) throw new ActionMutations.MatchLimitException(result.Count, action.MaxElements);
         }
         return result;
     }
@@ -163,10 +194,10 @@ internal static class AnnotationActions
         string.Equals($"{family}: {type}", requested, StringComparison.OrdinalIgnoreCase);
 
     private static ElementId? TagElement(Document document, View view, Element element, ActionJobContract action,
-        TagOrientation orientation, List<FamilySymbol> types)
+        TagOrientation orientation, List<FamilySymbol> types, XYZ? center)
     {
         if (element is SpatialElement || element.Category is null) return null;
-        var center = Center(element, view) ?? throw new InvalidOperationException("The element has no location in this view.");
+        if (center is null) throw new InvalidOperationException("The element has no location in this view.");
         var head = action.Leader ? center + (view.RightDirection + view.UpDirection) * Millimeters(15) * view.Scale : center;
         var tag = IndependentTag.Create(document, view.Id, new Reference(element), action.Leader,
             TagMode.TM_ADDBY_CATEGORY, orientation, head);
@@ -182,12 +213,12 @@ internal static class AnnotationActions
         return tag.Id;
     }
 
-    private static ElementId? TagRoom(Document document, View view, Room room, ActionJobContract action, RoomTagType? type)
+    private static ElementId? TagRoom(Document document, View view, Room room, ActionJobContract action, RoomTagType? type, XYZ? center)
     {
         if (view is not ViewPlan) throw new InvalidOperationException("Room tags need a plan view.");
         if (room.Location is null || room.Area <= 0) throw new InvalidOperationException("The room is not placed or enclosed.");
         if (action.TypeName is not null && type is null) throw new InvalidOperationException($"Tag type '{action.TypeName}' is not a room tag type.");
-        var center = Center(room, view) ?? throw new InvalidOperationException("The room has no location in this view.");
+        if (center is null) throw new InvalidOperationException("The room has no location in this view.");
         var tag = document.Create.NewRoomTag(new LinkElementId(room.Id), new UV(center.X, center.Y), view.Id);
         if (tag is null) throw new InvalidOperationException("Revit did not create the room tag.");
         tag.HasLeader = action.Leader;

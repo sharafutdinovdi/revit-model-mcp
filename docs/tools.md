@@ -66,26 +66,26 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `read` | 13 | 18,890 | 4,722 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
-| `views-sheets` | 22 | 25,748 | 6,437 |
+| `views-sheets` | 22 | 25,746 | 6,436 |
 | `family` | 5 | 8,774 | 2,193 |
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
 | `export` | 4 | 7,198 | 1,799 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,253 | 1,563 |
-| `all` (default) | 89 | 107,983 | 26,995 |
+| `all` (default) | 89 | 107,981 | 26,995 |
 | `core,read` | 22 | 26,181 | 6,545 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,983 | 26,995 | 108,140 |
+| `all` | 89 | 107,981 | 26,995 | 108,138 |
 | `core,read` | 22 | 26,181 | 6,545 | 26,271 |
 | `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
-| `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
+| `preset:edit` | 59 | 67,909 | 16,977 | 68,036 |
 | `preset:families` | 40 | 46,087 | 11,521 | 46,195 |
-| `preset:sheets` | 54 | 64,005 | 16,001 | 64,127 |
+| `preset:sheets` | 54 | 64,003 | 16,000 | 64,125 |
 | `preset:batch` | 46 | 52,585 | 13,146 | 52,699 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.

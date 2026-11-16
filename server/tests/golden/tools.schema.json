@@ -6289,7 +6289,7 @@
         "type": "boolean"
       },
       "max_elements": {
-        "default": 5000,
+        "default": 10,
         "maximum": 20000,
         "minimum": 1,
         "type": "integer"

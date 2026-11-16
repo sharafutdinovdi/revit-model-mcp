@@ -19,6 +19,10 @@ public static class ActionJobParser
             throw new ArgumentException("families is required in project mode.");
     }
 
+    public static string? TagElementLimitError(int count, int maxElements) => count > maxElements
+        ? $"Matched {count} elements, exceeding max_elements={maxElements}. Narrow the selection or raise max_elements."
+        : null;
+
     public static bool IsAction(string command) => command is
         "save-tool" or "run-tool" or "delete-tool" or "list-tools" or "get-tool" or "set-read-only" or "select" or "show" or "isolate" or "override-graphics" or "move" or "rotate" or "copy" or "mirror" or "change-type" or "update-parameters" or "place-family" or "load-family" or "place-families" or "create-wall" or "link-cad" or "walls-from-cad" or "create-mep-run" or "set-parameter" or "delete" or "batch" or "process-models" or "export-nwc" or "export" or "edit-families" or "align-link-datums" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document" or "set-view-visibility" or "remove-links" or "execute-code" or "undo-last" or "create-view" or "duplicate-view" or "apply-view-template" or "create-sheet" or "place-views-on-sheet" or "tag-elements" or "create-schedule";
 
@@ -55,7 +59,7 @@ public static class ActionJobParser
                 Axis = job.Axis,
                 PointMm = job.PointMm,
                 Copy = job.Copy ?? true,
-                MaxElements = job.MaxElements ?? 5000,
+                MaxElements = job.MaxElements ?? (command == "tag-elements" ? 10 : 5000),
                 IncludeTypeParameters = job.IncludeTypeParameters ?? false,
                 Family = job.Family,
                 TypeName = job.TypeName,
