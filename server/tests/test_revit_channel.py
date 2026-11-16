@@ -1502,7 +1502,8 @@ class ChannelErrorTests(unittest.IsolatedAsyncioTestCase):
     async def test_returns_response_and_cleans_temporary_files(self) -> None:
         remote = FakeRemoteHost()
 
-        response = await RevitChannel(remote).execute(Job.document_info(), timeout_seconds=120)
+        with patch.object(asyncio.get_running_loop(), "time", return_value=100.0):
+            response = await RevitChannel(remote).execute(Job.document_info(), timeout_seconds=120)
 
         self.assertEqual(response["data"]["viewCount"], 84)
         self.assertEqual(
@@ -2783,7 +2784,10 @@ def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
         if persisted:
             host.instance_info["commands"].append("jobs/persisted")
         host.response_content = json.dumps({"command": "export", "success": True, "data": {}})
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10):
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10),
+            patch.object(asyncio.get_running_loop(), "time", return_value=100.0),
+        ):
             await RevitChannel(host).execute(Job("export", {"command": "export"}), 120)
         if persisted:
             assert host.response_timeout <= 10
@@ -3920,5 +3924,64 @@ def test_waiting_dialog_progress_and_running_result():
         await reporter.observe({"state": "waiting_dialog", "dialog": {"dialogId": "Next"}})
         await reporter._sender
         assert ctx.calls[-1][2] == "waiting for dialog Next"
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize("failure", ["unreachable", "timeout"])
+def test_parallel_unreachable_host_shares_discovery_failure_and_deadline(failure):
+    async def check():
+        host = SshPowerShellHost("simulated-unreachable")
+        started = asyncio.Event()
+        release = asyncio.Event()
+        attempts = 0
+
+        async def discover():
+            nonlocal attempts
+            attempts += 1
+            started.set()
+            await release.wait()
+            raise SshUnavailableError("Simulated unreachable host")
+
+        host._discover_instances = discover
+        channel = RevitChannel(host)
+        calls = [
+            asyncio.create_task(channel.execute(Job.ping(), timeout_seconds=0.1)) for _ in range(20)
+        ]
+        await started.wait()
+        # Let every caller queue behind the same discovery attempt.
+        await asyncio.sleep(0.01)
+        if failure == "unreachable":
+            release.set()
+        results = await asyncio.wait_for(asyncio.gather(*calls, return_exceptions=True), 0.5)
+        assert attempts == 1
+        assert all(isinstance(result, RevitChannelError) for result in results)
+        assert not channel._lock.locked()
+
+        # A later call may retry discovery rather than retaining a permanent failure.
+        host._discover_instances = AsyncMock(side_effect=SshUnavailableError("Retry"))
+        with pytest.raises(SshUnavailableError, match="Retry"):
+            await channel.execute(Job.ping(), timeout_seconds=0.1)
+        host._discover_instances.assert_awaited_once()
+
+    asyncio.run(check())
+
+
+def test_discovery_uses_time_remaining_after_channel_lock_wait():
+    async def check():
+        host = SshPowerShellHost("simulated-unreachable")
+
+        async def discover():
+            await asyncio.sleep(1)
+
+        host._discover_instances = discover
+        channel = RevitChannel(host)
+        await channel._lock.acquire()
+        call = asyncio.create_task(channel.execute(Job.ping(), timeout_seconds=0.1))
+        await asyncio.sleep(0.06)
+        channel._lock.release()
+        with pytest.raises(RevitChannelError, match="discovery timed out"):
+            await asyncio.wait_for(call, 0.08)
+        assert not channel._lock.locked()
 
     asyncio.run(check())
