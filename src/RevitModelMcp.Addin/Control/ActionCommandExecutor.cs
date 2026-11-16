@@ -185,7 +185,7 @@ internal static class ActionCommandExecutor
                     }
                     using var dialogs = new CallDialogs(application, PublishDialog);
                     data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId,
-                        ribbonSource: ribbonApproval is not null);
+                        ribbonSource: ribbonApproval is not null, cooperativeCancellation: true);
                     dialogs.Finish();
                     data.Dialogs = dialogs.Records.Count > 0 ? dialogs.Records.ToList() : null;
                 }

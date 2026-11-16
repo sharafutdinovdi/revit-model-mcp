@@ -182,7 +182,11 @@ There is no default execution limit.
 Loops over many elements must call `ctx.ThrowIfCancellationRequested()` between elements, especially when calling `Document.Regenerate()` inside the loop.
 Cancellation never aborts the Revit thread and cannot interrupt a single blocking API call or a script that never checks.
 The runner also checks before invocation and after the script returns.
-`revit_cancel_job(job_id=...)` requests cancellation; the activity pane's queue menu Cancel link sets the same flag for a running job.
+Running scripts and tagging jobs accept cancellation through `revit_cancel_job(job_id=...)` from the AI app.
+The activity pane's Cancel link applies to queued jobs; the Revit UI thread cannot handle its click while a script or tagging job is running.
+Cooperative script cancellation is enabled only for `revit_execute_code` and `revit_run_tool`.
+In `revit_process_models` code steps, `ctx.CancellationRequested` remains false and `ctx.ThrowIfCancellationRequested()` does not throw.
+Cancelling model processing lets the current model finish and save, then stops before the next model.
 Cancellation received after a commit does not undo the committed change; document receipts remain authoritative.
 
 ```csharp
