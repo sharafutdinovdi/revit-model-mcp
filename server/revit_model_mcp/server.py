@@ -956,9 +956,12 @@ async def revit_model_health(
             *warning_result.get("skipped", []),
             {
                 "what": "list-warnings",
-                "reason": warning_result.get("error")
-                or warning_result.get("message")
-                or "Warning details could not be read.",
+                "reason": "Workbook was not written: "
+                + (
+                    warning_result.get("error")
+                    or warning_result.get("message")
+                    or "Warning details could not be read."
+                ),
                 "response": warning_result,
             },
         ]
@@ -1476,9 +1479,20 @@ async def revit_family_audit(
                 "review skipped and failed entries before retrying those names explicitly."
             )
         else:
+            has_limited_names = any(
+                item.get("reason") == "The audit is limited to the first 200 editable families."
+                for item in data.get("skipped", [])
+            )
+            coverage = (
+                f"{audited} families audited. Remaining names past the 200-family limit "
+                "are listed in data.skipped; names unprocessed within the first 200 "
+                "are not supplied."
+                if has_limited_names
+                else f"{audited} families audited; total and remaining family names "
+                "are unavailable in this response."
+            )
             guidance = (
-                f"{audited} families audited; total and remaining family names are unavailable "
-                "in this response. Use revit_list_catalog with section='family-types' to find "
+                coverage + " Use revit_list_catalog with section='family-types' to find "
                 "names, exclude returned families, and continue with an explicit families=[...] "
                 "list of up to 200 names."
             )

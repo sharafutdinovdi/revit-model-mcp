@@ -310,6 +310,7 @@ Issues without requested snapshots do not count as skipped.
 The path must end in `.xlsx`, its parent directory must exist, and an existing file is refused.
 Without `output_path`, the response is unchanged.
 With `output_path`, the response adds `workbook` with `path`, `snapshotCount` and `warnings`.
+If the warnings read fails, health data remains available with `partial=true`, no workbook is written, and the `list-warnings` skipped entry states the failure reason.
 The workbook contains Health, Warnings and Counts sheets.
 All warning groups include affected element IDs; snapshots cover up to five groups with the highest counts, with at most 50 elements per capture.
 The total capture budget is 60 seconds; failed or skipped captures become warnings.

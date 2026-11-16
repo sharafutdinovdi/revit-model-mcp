@@ -163,8 +163,14 @@ def test_health_workbook_preserves_transport_failure(tmp_path, failed_command):
         assert result["partial"] is True
         assert result["skippedCount"] == 1
         assert result["skipped"] == [
-            {"what": "list-warnings", "reason": "Connection refused", "response": failure}
+            {
+                "what": "list-warnings",
+                "reason": "Workbook was not written: Connection refused",
+                "response": failure,
+            }
         ]
+        assert result["success"] is True
+        assert "workbook" not in result
     assert execute.await_count == len(responses)
     assert not target.exists()
 
@@ -233,4 +239,4 @@ def test_health_preserves_data_when_warnings_raise(tmp_path):
     assert result["partial"] is True
     assert result["skippedCount"] == 4
     assert result["skipped"][0] == health["skipped"][0]
-    assert result["skipped"][1]["reason"] == "Warning read failed"
+    assert result["skipped"][1]["reason"] == "Workbook was not written: Warning read failed"
