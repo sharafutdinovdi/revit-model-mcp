@@ -687,7 +687,7 @@
       "destructiveHint": false,
       "idempotentHint": true,
       "openWorldHint": null,
-      "readOnlyHint": true
+      "readOnlyHint": false
     },
     "properties": {
       "run_id": {

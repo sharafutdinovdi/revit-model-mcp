@@ -626,6 +626,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                     "revit_model_audit",
                     "revit_audit_report",
                     "revit_batch_start",
+                    "revit_batch_status",
                     "revit_batch_cancel",
                     "revit_batch_fetch",
                 },
@@ -677,7 +678,7 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             3000,
         )
         self.assertIn(
-            "The active view and model stay unchanged", tools["revit_export_view"].description
+            "The active view and model remain unchanged", tools["revit_export_view"].description
         )
         self.assertFalse(
             tools["revit_query_elements"].input_schema["properties"]["include_geometry"]["default"]
@@ -1149,6 +1150,7 @@ def test_in_process_read_tool_titles():
                 "revit_model_audit",
                 "revit_audit_report",
                 "revit_batch_start",
+                "revit_batch_status",
                 "revit_batch_cancel",
                 "revit_batch_fetch",
             }
