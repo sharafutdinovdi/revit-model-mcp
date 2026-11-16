@@ -39,3 +39,32 @@ def test_descriptions_state_behavior_without_directing_the_model():
         if match
     ]
     assert not offenders, "Model-directed wording in descriptions:\n" + "\n".join(offenders)
+
+
+def test_export_description_states_destination_and_job_recovery():
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    description = tools["revit_export"].description
+    for text in (
+        "output_dir on the Revit workstation",
+        r"Omitting output_dir uses a dated folder under %LOCALAPPDATA%\RevitModelMcp\exports",
+        "dry_run lists the planned names",
+        "overwrite=true replaces an existing destination only through the two-step confirm_token",
+        "Model MCP provides no separate dialog",
+        "status=running and jobId; revit_jobs retrieves its result",
+        "Resubmitting repeats the action",
+    ):
+        assert text in description
+
+
+def test_export_view_description_states_destination_and_incomplete_results():
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    description = tools["revit_export_view"].description
+    for text in (
+        "output_path on the computer running the AI app",
+        "Omitting output_path uses a temporary folder",
+        "A destination already present is refused",
+        "The active view and model remain unchanged",
+        "A non-empty skipped list means incomplete results",
+        "skippedCount counts all skipped entries",
+    ):
+        assert text in description
