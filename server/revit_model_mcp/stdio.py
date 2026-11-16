@@ -14,6 +14,7 @@ from mcp.server import stdio as sdk_stdio
 
 MAX_FRAME_SIZE = 4 * 1024 * 1024
 MAX_FRAME_DEPTH = 64
+EOF_DRAIN_SECONDS = 1.0
 
 
 def _scan_frame(line):
@@ -60,11 +61,29 @@ class _Output:
     def __init__(self, stream):
         self.stream = stream
         self.lock = anyio.Lock()
+        self.pending = set()
+        self.drained = anyio.Event()
+        self.drained.set()
+
+    def expect(self, request_id):
+        if not self.pending:
+            self.drained = anyio.Event()
+        self.pending.add(request_id)
+
+    async def drain(self):
+        # The SDK cancels handlers on EOF; only already forwarded requests get this grace period.
+        with anyio.move_on_after(EOF_DRAIN_SECONDS):
+            await self.drained.wait()
 
     async def write(self, value):
         async with self.lock:
             await self.stream.write(value)
             await self.stream.flush()
+            frame = json.loads(value)
+            if "id" in frame and ("result" in frame or "error" in frame):
+                self.pending.discard(frame["id"])
+                if not self.pending:
+                    self.drained.set()
 
     async def flush(self):
         async with self.lock:
@@ -120,7 +139,7 @@ class _Input:
                 message = f"JSON nesting limit is {MAX_FRAME_DEPTH} levels."
             else:
                 try:
-                    json.loads(line)
+                    frame = json.loads(line)
                 except (ValueError, RecursionError):
                     code, message = -32700, "Parse error."
                 if message is None:
@@ -129,6 +148,8 @@ class _Input:
                     except ValueError:
                         message = "Invalid JSON-RPC request."
             if message is None:
+                if "method" in frame and "id" in frame:
+                    self.output.expect(frame["id"])
                 yield line
             else:
                 await self.output.write(
@@ -141,6 +162,7 @@ class _Input:
                     )
                     + "\n"
                 )
+        await self.output.drain()
 
 
 class MCPServer(SdkServer):

@@ -186,3 +186,83 @@ def test_stdio_exits_when_output_pipe_is_closed():
             process.kill()
         process.wait(timeout=5)
         process.stdin.close()
+
+
+async def _one_shot(arguments, method="ping", params=None):
+    request = {"jsonrpc": "2.0", "id": 2, "method": method}
+    if params is not None:
+        request["params"] = params
+    frames = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-11-25",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "1"},
+            },
+        },
+        {"jsonrpc": "2.0", "method": "notifications/initialized"},
+        request,
+    ]
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        *arguments,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "REVIT_MCP_CHECK_UPDATES": "0"},
+    )
+    try:
+        payload = "".join(json.dumps(frame) + "\n" for frame in frames).encode()
+        stdout, stderr = await asyncio.wait_for(process.communicate(payload), 5)
+        assert process.returncode == 0, stderr.decode()
+        return [json.loads(line) for line in stdout.splitlines()]
+    finally:
+        if process.returncode is None:
+            process.kill()
+        await asyncio.wait_for(process.communicate(), 5)
+
+
+def test_one_shot_stdio_drains_every_request_before_eof():
+    async def check():
+        for _ in range(20):
+            replies = await _one_shot(["-m", "revit_model_mcp.server"])
+            assert {reply["id"] for reply in replies} == {1, 2}
+            assert all("result" in reply for reply in replies)
+        fallback = """
+from types import SimpleNamespace
+import mcp.server
+import mcp.server.stdio as original
+mcp.server.stdio = SimpleNamespace(stdio_server=original.stdio_server)
+from revit_model_mcp import server
+server.main()
+"""
+        fallback_replies = await _one_shot(["-c", fallback])
+        assert {reply["id"] for reply in fallback_replies} <= {reply["id"] for reply in replies}
+
+    asyncio.run(asyncio.wait_for(check(), 45))
+
+
+def test_one_shot_stdio_bounds_unfinished_handlers_after_eof():
+    from revit_model_mcp.stdio import EOF_DRAIN_SECONDS
+
+    async def check():
+        source = """
+import asyncio
+from revit_model_mcp.stdio import MCPServer
+mcp = MCPServer("test")
+@mcp.tool()
+async def never() -> str:
+    await asyncio.Event().wait()
+mcp.run()
+"""
+        started = asyncio.get_running_loop().time()
+        replies = await _one_shot(["-c", source], "tools/call", {"name": "never", "arguments": {}})
+        assert {reply["id"] for reply in replies} == {1, 2}
+        terminal = next(reply for reply in replies if reply["id"] == 2)
+        assert terminal["error"] == {"code": -32000, "message": "Connection closed"}
+        assert asyncio.get_running_loop().time() - started >= EOF_DRAIN_SECONDS
+
+    asyncio.run(asyncio.wait_for(check(), 15))
