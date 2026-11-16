@@ -14,7 +14,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Annotated, Any, Literal, get_type_hints
 
-from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, ImageContent, TextContent, ToolAnnotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
@@ -37,6 +36,7 @@ from revit_model_mcp.revit_channel import (
     with_client_identity,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
+from revit_model_mcp.stdio import MCPServer
 from revit_model_mcp.toolsets import (
     ENVIRONMENT_VARIABLE,
     PRESETS,
