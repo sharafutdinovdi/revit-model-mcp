@@ -1361,6 +1361,44 @@ public sealed class FileExportJob
             $"Not written files: [{string.Join(", ", notWritten)}]. " +
             "Completed file writes and replacements are not undone.";
     }
+
+    public string ConfirmationArguments(IEnumerable<string> plannedTargets, IEnumerable<long> targetIds, bool dryRun)
+    {
+        var options = Format switch
+        {
+            "pdf" => new FileExportOptions
+            {
+                Combine = Options.Combine ?? true,
+                Color = Options.Color ?? "color",
+                ZoomPercent = Options.ZoomPercent ?? 100,
+                HideCropBoundaries = Options.HideCropBoundaries ?? true,
+                HideScopeBoxes = Options.HideScopeBoxes ?? true
+            },
+            "dwg" => new FileExportOptions
+            {
+                Setup = Options.Setup,
+                MergedViews = Options.MergedViews ?? false,
+                FileVersion = Options.FileVersion?.ToUpperInvariant()
+            },
+            "ifc" => new FileExportOptions
+            {
+                Version = Options.Version ?? "IFC2x3CV2",
+                ExportBaseQuantities = Options.ExportBaseQuantities ?? true,
+                SpaceBoundaries = Options.SpaceBoundaries ?? 0,
+                SplitWallsByLevel = Options.SplitWallsByLevel ?? false
+            },
+            "csv" => new FileExportOptions
+            {
+                Delimiter = Options.Delimiter ?? ",",
+                Headers = Options.Headers ?? true,
+                Title = Options.Title ?? false,
+                GroupHeaders = Options.GroupHeaders ?? false
+            },
+            _ => throw new ArgumentException("format must be pdf, dwg, ifc or csv.")
+        };
+        return DocumentConfirmationBinding.ExportArguments("export", plannedTargets, Format, Overwrite, dryRun) +
+            ":" + DocumentConfirmationBinding.CodeHash(ToolJson.Serialize(targetIds.ToArray()) + ToolJson.Serialize(options));
+    }
 }
 
 [DataContract]

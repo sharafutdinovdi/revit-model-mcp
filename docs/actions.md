@@ -300,7 +300,8 @@ The directory must be an absolute drive path or a UNC path under `trustedNetwork
 Device paths and `..` segments are refused.
 Existing output files require `overwrite=true`.
 When `overwrite=true` and at least one target file already exists, the first call returns `needsConfirmation` with the files that would be replaced; retry with `confirm_token`.
-The token binds the document, the complete planned file paths, format, `overwrite`, `dry_run`, and each target's existence, size and modification time.
+The token binds the document, the complete planned file paths, ordered resolved view, sheet or schedule IDs, effective content options, format, `overwrite`, `dry_run`, and each target's existence, size and modification time.
+Omitted options and their explicit defaults have the same binding.
 Changing the plan requires a new confirmation; a supplied token is checked even when the new plan has no existing files or uses `dry_run`.
 With no existing target, or with `dry_run`, no token is needed when none is supplied.
 Exports inside `revit_process_models` are not gated.
@@ -637,7 +638,7 @@ Five more calls use the same two-step flow, with the same response fields (`need
 
 - `revit_delete`, only when more than 500 elements would be removed, dependents included. The threshold is fixed at 500 for now. The token is bound to the document, the requested IDs, the dependent count and the document state. One undo entry restores the deletion. `dry_run` returns the count with no token. In `revit_run_actions` and `revit_process_models` steps such a deletion is refused; use `revit_delete` on its own.
 - `revit_remove_links` without `dry_run`. The token is bound to the document, the exact set of selected link types and the document state.
-- `revit_export` and `revit_export_nwc` with `overwrite=true`, only when at least one target file already exists. The token is bound to the target paths and their size and modification time. `revit_export` also binds the complete planned file set, format, `overwrite` and `dry_run`; a supplied token is checked even if no target exists. Without an existing target there is no new token.
+- `revit_export` and `revit_export_nwc` with `overwrite=true`, only when at least one target file already exists. The token is bound to the target paths and their size and modification time. `revit_export` also binds the complete planned file set, ordered resolved target IDs, effective content options, format, `overwrite` and `dry_run`; a supplied token is checked even if no target exists. Without an existing target there is no new token.
 - `revit_execute_code` without `dry_run`. The token is bound to the SHA-256 of the code, the transaction mode and the target document.
 - `revit_process_models` with `code` and without `dry_run`. The token is bound to the whole request and the source files.
 
@@ -756,7 +757,7 @@ Schema and documentation checks run without Revit; independent preview rollback,
 | Contract | Implementation |
 | --- | --- |
 | Confirmation, first saved-tool preview and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [MyTools.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/MyTools.cs) |
-| Export confirmation binds the complete file plan and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [ActionJobParser.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ActionJobParser.cs), [ConfirmationBindingTests.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/tests/RevitModelMcp.Core.Tests/Control/ConfirmationBindingTests.cs) |
+| Export confirmation binds the complete file plan, ordered resolved targets and effective content options | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [ActionJobParser.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ActionJobParser.cs), [ConfirmationBindingTests.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/tests/RevitModelMcp.Core.Tests/Control/ConfirmationBindingTests.cs) |
 | Export failures retain completed writes and unwritten targets | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [ActionJobParser.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ActionJobParser.cs), [ActionJobParserTests.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/tests/RevitModelMcp.Core.Tests/Control/ActionJobParserTests.cs) |
 | Shared tool file integrity and local import review | [ToolShare.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ToolShare.cs), [ToolShareDialogs.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ToolShareDialogs.cs) |
 | Conditional close and detached-document exemption | [DocumentActions.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/DocumentActions.cs) |

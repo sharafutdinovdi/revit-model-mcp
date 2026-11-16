@@ -89,6 +89,71 @@ public sealed class ConfirmationBindingTests
     }
 
     [Test]
+    [Arguments("views")]
+    [Arguments("order")]
+    [Arguments("combine")]
+    [Arguments("pdf")]
+    [Arguments("dwg")]
+    [Arguments("ifc")]
+    [Arguments("csv")]
+    public async Task ExportToken_BindsResolvedTargetsAndContentOptions(string change)
+    {
+        var format = change is "views" or "order" or "combine" ? "pdf" : change;
+        var request = new FileExportJob { Format = format, Overwrite = true };
+        string[] paths = [@"C:\Out\A." + format];
+        var arguments = request.ConfirmationArguments(paths, [1, 2], false);
+        var tokens = new DocumentConfirmationTokens();
+        var token = tokens.Issue("export", "document", arguments, "state");
+        long[] targetIds = change switch
+        {
+            "views" => [1, 3],
+            "order" => [2, 1],
+            _ => [1, 2]
+        };
+        switch (change)
+        {
+            case "combine": request.Options.Combine = false; break;
+            case "pdf": request.Options.Color = "grayscale"; break;
+            case "dwg": request.Options.MergedViews = true; break;
+            case "ifc": request.Options.ExportBaseQuantities = false; break;
+            case "csv": request.Options.Delimiter = ";"; break;
+        }
+        await Assert.That(tokens.Consume(token, "export", "document",
+            request.ConfirmationArguments(paths, targetIds, false), "state"))
+            .IsEqualTo(DocumentConfirmationResult.ArgumentsMismatch);
+        var unchangedToken = tokens.Issue("export", "document", arguments, "state");
+        var original = new FileExportJob { Format = format, Overwrite = true };
+        await Assert.That(tokens.Consume(unchangedToken, "export", "document",
+            original.ConfirmationArguments(paths, [1, 2], false), "state"))
+            .IsEqualTo(DocumentConfirmationResult.Valid);
+    }
+
+    [Test]
+    [Arguments("pdf")]
+    [Arguments("dwg")]
+    [Arguments("ifc")]
+    [Arguments("csv")]
+    public async Task ExportToken_NormalizesExplicitOptionDefaults(string format)
+    {
+        var request = new FileExportJob { Format = format, Overwrite = true };
+        string[] paths = [@"C:\Out\A." + format];
+        var arguments = request.ConfirmationArguments(paths, [1], false);
+        var tokens = new DocumentConfirmationTokens();
+        var token = tokens.Issue("export", "document", arguments, "state");
+        request.Options = new FileExportOptions
+        {
+            Combine = true, Color = "color", ZoomPercent = 100, Paper = "auto",
+            Naming = "sheet_number_name", HideCropBoundaries = true, HideScopeBoxes = true,
+            MergedViews = false, Version = "IFC2x3CV2", ExportBaseQuantities = true,
+            SpaceBoundaries = 0, SplitWallsByLevel = false, Delimiter = ",",
+            Headers = true, Title = false, GroupHeaders = false, Encoding = "utf-8"
+        };
+        await Assert.That(tokens.Consume(token, "export", "document",
+            request.ConfirmationArguments(paths, [1], false), "state"))
+            .IsEqualTo(DocumentConfirmationResult.Valid);
+    }
+
+    [Test]
     public async Task FileState_ReportsMissingAndBindsLengthAndModificationTime()
     {
         var path = Path.Combine(Path.GetTempPath(), $"confirmation-{Guid.NewGuid():N}.tmp");

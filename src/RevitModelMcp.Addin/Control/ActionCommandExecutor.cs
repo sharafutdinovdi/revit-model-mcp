@@ -906,7 +906,7 @@ internal static class ActionCommandExecutor
             {
                 var gate = ConfirmationStore.Gate("export",
                     DocumentConfirmationBinding.Identity(document.PathName, document.Title),
-                    DocumentConfirmationBinding.ExportArguments("export", paths, request.Format, request.Overwrite, action.DryRun),
+                    request.ConfirmationArguments(paths, selected.Select(view => RevitValueReader.GetId(view.Id)), action.DryRun),
                     DocumentConfirmationBinding.FileState(paths), action.ConfirmToken,
                     "Exporting will overwrite these existing files: " + string.Join(", ", existing),
                     $"Needs confirmation to overwrite {existing.Count} export files.",
