@@ -852,6 +852,10 @@ public static class DocumentConfirmationBinding
         command + ":" + string.Join("\n", existingTargets.Select(NormalizePath)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
 
+    public static string ExportArguments(string command, IEnumerable<string> plannedTargets, string format, bool overwrite, bool dryRun) =>
+        $"{command}:{format}:overwrite={overwrite}:dry_run={dryRun}:" +
+        CodeHash(ExportArguments(command, plannedTargets));
+
     public static string FileState(IEnumerable<string> paths) =>
         string.Join("\n", paths.OrderBy(NormalizePath, StringComparer.OrdinalIgnoreCase)
             .ThenBy(path => path, StringComparer.Ordinal).Select(path =>
@@ -1339,6 +1343,61 @@ public sealed class FileExportJob
         if (!before.TryGetValue(path, out var state)) return false;
         var file = new FileInfo(path);
         return file.Exists && state == $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+    }
+
+    public static string FailureMessage(string error, IEnumerable<string> paths, IReadOnlyDictionary<string, string> before)
+    {
+        var written = new List<string>();
+        var notWritten = new List<string>();
+        foreach (var path in paths)
+        {
+            var file = new FileInfo(path);
+            if (file.Exists && file.Length > 0 && !IsUnchanged(before, path))
+                written.Add(file.Name);
+            else
+                notWritten.Add(file.Name);
+        }
+        return $"{error} Written files: [{string.Join(", ", written)}]. " +
+            $"Not written files: [{string.Join(", ", notWritten)}]. " +
+            "Completed file writes and replacements are not undone.";
+    }
+
+    public string ConfirmationArguments(IEnumerable<string> plannedTargets, IEnumerable<long> targetIds, bool dryRun)
+    {
+        var options = Format switch
+        {
+            "pdf" => new FileExportOptions
+            {
+                Combine = Options.Combine ?? true,
+                Color = Options.Color ?? "color",
+                ZoomPercent = Options.ZoomPercent ?? 100,
+                HideCropBoundaries = Options.HideCropBoundaries ?? true,
+                HideScopeBoxes = Options.HideScopeBoxes ?? true
+            },
+            "dwg" => new FileExportOptions
+            {
+                Setup = Options.Setup,
+                MergedViews = Options.MergedViews ?? false,
+                FileVersion = Options.FileVersion?.ToUpperInvariant()
+            },
+            "ifc" => new FileExportOptions
+            {
+                Version = Options.Version ?? "IFC2x3CV2",
+                ExportBaseQuantities = Options.ExportBaseQuantities ?? true,
+                SpaceBoundaries = Options.SpaceBoundaries ?? 0,
+                SplitWallsByLevel = Options.SplitWallsByLevel ?? false
+            },
+            "csv" => new FileExportOptions
+            {
+                Delimiter = Options.Delimiter ?? ",",
+                Headers = Options.Headers ?? true,
+                Title = Options.Title ?? false,
+                GroupHeaders = Options.GroupHeaders ?? false
+            },
+            _ => throw new ArgumentException("format must be pdf, dwg, ifc or csv.")
+        };
+        return DocumentConfirmationBinding.ExportArguments("export", plannedTargets, Format, Overwrite, dryRun) +
+            ":" + DocumentConfirmationBinding.CodeHash(ToolJson.Serialize(targetIds.ToArray()) + ToolJson.Serialize(options));
     }
 }
 

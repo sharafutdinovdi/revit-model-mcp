@@ -877,6 +877,38 @@ public sealed class ActionJobParserTests
     }
 
     [Test]
+    public async Task Export_FailureReportsWrittenUnchangedMissingAndEmptyFiles()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var replaced = Path.Combine(folder, "replaced.csv");
+            var unchanged = Path.Combine(folder, "unchanged.csv");
+            var created = Path.Combine(folder, "created.csv");
+            var missing = Path.Combine(folder, "missing.csv");
+            var empty = Path.Combine(folder, "empty.csv");
+            string[] paths = [replaced, unchanged, created, missing, empty];
+            File.WriteAllText(replaced, "old");
+            File.WriteAllText(unchanged, "held");
+            var before = FileExportJob.CaptureState(paths);
+            File.WriteAllText(replaced, "replacement");
+            File.WriteAllText(created, "new");
+            File.WriteAllText(empty, "");
+
+            var error = FileExportJob.FailureMessage("Export refused.", paths, before);
+            await Assert.That(error).IsEqualTo(
+                "Export refused. Written files: [replaced.csv, created.csv]. " +
+                "Not written files: [unchanged.csv, missing.csv, empty.csv]. " +
+                "Completed file writes and replacements are not undone.");
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
+    [Test]
     public async Task ScheduleData_SerializesNamedResult()
     {
         var data = new ScheduleDataResult

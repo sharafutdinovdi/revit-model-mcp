@@ -898,15 +898,16 @@ internal static class ActionCommandExecutor
             if (locked is not null)
                 throw new IOException($"'{Path.GetFileName(locked)}' is open in another program or is read-only. Close it and repeat the export.");
         }
-        if (request.Overwrite && !action.DryRun && action.ConfirmOverwrites)
+        if (action.ConfirmOverwrites)
         {
-            var existing = planned.Select(name => Path.Combine(folder, name)).Where(File.Exists).ToList();
-            if (existing.Count > 0)
+            var paths = planned.Select(name => Path.Combine(folder, name)).ToList();
+            var existing = paths.Where(File.Exists).ToList();
+            if (action.ConfirmToken is not null || request.Overwrite && !action.DryRun && existing.Count > 0)
             {
                 var gate = ConfirmationStore.Gate("export",
                     DocumentConfirmationBinding.Identity(document.PathName, document.Title),
-                    DocumentConfirmationBinding.ExportArguments("export", existing),
-                    DocumentConfirmationBinding.FileState(existing), action.ConfirmToken,
+                    request.ConfirmationArguments(paths, selected.Select(view => RevitValueReader.GetId(view.Id)), action.DryRun),
+                    DocumentConfirmationBinding.FileState(paths), action.ConfirmToken,
                     "Exporting will overwrite these existing files: " + string.Join(", ", existing),
                     $"Needs confirmation to overwrite {existing.Count} export files.",
                     "The export targets changed on disk after the preview (size or modification time). The confirmation token is used up; repeat the call without confirm_token to get a new one.");
@@ -925,104 +926,110 @@ internal static class ActionCommandExecutor
         };
         if (action.DryRun) return result;
         Directory.CreateDirectory(folder);
-        var before = request.Overwrite
-            ? FileExportJob.CaptureState(planned.Select(name => Path.Combine(folder, name)))
-            : null;
+        var pathsToWrite = planned.Select(name => Path.Combine(folder, name)).ToList();
+        var before = FileExportJob.CaptureState(pathsToWrite);
         void RefuseUnchangedFile(string path)
         {
-            if (before is not null && FileExportJob.IsUnchanged(before, path))
+            if (FileExportJob.IsUnchanged(before, path))
                 throw new InvalidOperationException($"Export did not replace '{Path.GetFileName(path)}'; the existing file is unchanged.");
         }
         var stopwatch = Stopwatch.StartNew();
-        if (request.Format == "pdf")
+        try
         {
-            foreach (var group in (options.Combine ?? true) ? new[] { selected } : selected.Select(view => new List<View> { view }))
+            if (request.Format == "pdf")
             {
-                var name = planned[(options.Combine ?? true) ? 0 : selected.IndexOf(group[0])];
-                using var pdf = new PDFExportOptions
+                foreach (var group in (options.Combine ?? true) ? new[] { selected } : selected.Select(view => new List<View> { view }))
                 {
-                    Combine = true,
-                    FileName = Path.GetFileNameWithoutExtension(name),
-                    ColorDepth = options.Color switch
+                    var name = planned[(options.Combine ?? true) ? 0 : selected.IndexOf(group[0])];
+                    using var pdf = new PDFExportOptions
                     {
-                        "grayscale" => ColorDepthType.GrayScale,
-                        "black_line" => ColorDepthType.BlackLine,
-                        _ => ColorDepthType.Color
-                    },
-                    ZoomType = ZoomType.Zoom,
-                    ZoomPercentage = options.ZoomPercent ?? 100,
-                    HideCropBoundaries = options.HideCropBoundaries ?? true,
-                    HideScopeBoxes = options.HideScopeBoxes ?? true
-                };
-                if (!document.Export(folder, group.Select(view => view.Id).ToList(), pdf))
-                    throw new InvalidOperationException($"PDF export failed for '{name}'.");
+                        Combine = true,
+                        FileName = Path.GetFileNameWithoutExtension(name),
+                        ColorDepth = options.Color switch
+                        {
+                            "grayscale" => ColorDepthType.GrayScale,
+                            "black_line" => ColorDepthType.BlackLine,
+                            _ => ColorDepthType.Color
+                        },
+                        ZoomType = ZoomType.Zoom,
+                        ZoomPercentage = options.ZoomPercent ?? 100,
+                        HideCropBoundaries = options.HideCropBoundaries ?? true,
+                        HideScopeBoxes = options.HideScopeBoxes ?? true
+                    };
+                    if (!document.Export(folder, group.Select(view => view.Id).ToList(), pdf))
+                        throw new InvalidOperationException($"PDF export failed for '{name}'.");
+                }
             }
-        }
-        else if (request.Format == "dwg")
-        {
-            var setup = options.Setup;
-            using var dwg = setup is null ? new DWGExportOptions() : DWGExportOptions.GetPredefinedOptions(document, setup)
-                ?? throw new ArgumentException($"DWG setup '{setup}' was not found.");
-            dwg.MergedViews = options.MergedViews ?? false;
-            if (options.FileVersion is not null)
+            else if (request.Format == "dwg")
             {
-                if (!Enum.TryParse<ACADVersion>(options.FileVersion, true, out var version) || !Enum.IsDefined(typeof(ACADVersion), version))
-                    throw new ArgumentException("file_version is invalid.");
-                dwg.FileVersion = version;
-            }
-            for (var index = 0; index < selected.Count; index++)
-                if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[index]), [selected[index].Id], dwg))
-                    throw new InvalidOperationException($"DWG export failed for '{planned[index]}'.");
-        }
-        else if (request.Format == "ifc")
-        {
-            using var ifc = new IFCExportOptions
-            {
-                FileVersion = Enum.Parse<IFCVersion>(options.Version ?? "IFC2x3CV2"),
-                FilterViewId = selected.Count == 1 ? selected[0].Id : ElementId.InvalidElementId,
-                ExportBaseQuantities = options.ExportBaseQuantities ?? true,
-                SpaceBoundaryLevel = options.SpaceBoundaries ?? 0,
-                WallAndColumnSplitting = options.SplitWallsByLevel ?? false
-            };
-            using var temporaryUndoState = UndoTracker.BeginTemporary();
-            using var transaction = new Transaction(document, "MCP IFC export");
-            transaction.Start();
-            try
-            {
-                if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[0]), ifc)) throw new InvalidOperationException("IFC export failed.");
-            }
-            finally { transaction.RollBack(); }
-        }
-        else
-        {
-            for (var index = 0; index < selected.Count; index++)
-            {
-                var schedule = (ViewSchedule)selected[index];
-                using var csvOptions = new ViewScheduleExportOptions
+                var setup = options.Setup;
+                using var dwg = setup is null ? new DWGExportOptions() : DWGExportOptions.GetPredefinedOptions(document, setup)
+                    ?? throw new ArgumentException($"DWG setup '{setup}' was not found.");
+                dwg.MergedViews = options.MergedViews ?? false;
+                if (options.FileVersion is not null)
                 {
-                    FieldDelimiter = options.Delimiter ?? ",",
-                    TextQualifier = ExportTextQualifier.DoubleQuote,
-                    HeadersFootersBlanks = options.GroupHeaders ?? false,
-                    Title = options.Title ?? false,
-                    ColumnHeaders = options.Headers == false ? ExportColumnHeaders.None :
-                        options.GroupHeaders == true ? ExportColumnHeaders.MultipleRows : ExportColumnHeaders.OneRow
+                    if (!Enum.TryParse<ACADVersion>(options.FileVersion, true, out var version) || !Enum.IsDefined(typeof(ACADVersion), version))
+                        throw new ArgumentException("file_version is invalid.");
+                    dwg.FileVersion = version;
+                }
+                for (var index = 0; index < selected.Count; index++)
+                    if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[index]), [selected[index].Id], dwg))
+                        throw new InvalidOperationException($"DWG export failed for '{planned[index]}'.");
+            }
+            else if (request.Format == "ifc")
+            {
+                using var ifc = new IFCExportOptions
+                {
+                    FileVersion = Enum.Parse<IFCVersion>(options.Version ?? "IFC2x3CV2"),
+                    FilterViewId = selected.Count == 1 ? selected[0].Id : ElementId.InvalidElementId,
+                    ExportBaseQuantities = options.ExportBaseQuantities ?? true,
+                    SpaceBoundaryLevel = options.SpaceBoundaries ?? 0,
+                    WallAndColumnSplitting = options.SplitWallsByLevel ?? false
                 };
-                schedule.Export(folder, planned[index], csvOptions);
-                var path = Path.Combine(folder, planned[index]);
+                using var temporaryUndoState = UndoTracker.BeginTemporary();
+                using var transaction = new Transaction(document, "MCP IFC export");
+                transaction.Start();
+                try
+                {
+                    if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[0]), ifc)) throw new InvalidOperationException("IFC export failed.");
+                }
+                finally { transaction.RollBack(); }
+            }
+            else
+            {
+                for (var index = 0; index < selected.Count; index++)
+                {
+                    var schedule = (ViewSchedule)selected[index];
+                    using var csvOptions = new ViewScheduleExportOptions
+                    {
+                        FieldDelimiter = options.Delimiter ?? ",",
+                        TextQualifier = ExportTextQualifier.DoubleQuote,
+                        HeadersFootersBlanks = options.GroupHeaders ?? false,
+                        Title = options.Title ?? false,
+                        ColumnHeaders = options.Headers == false ? ExportColumnHeaders.None :
+                            options.GroupHeaders == true ? ExportColumnHeaders.MultipleRows : ExportColumnHeaders.OneRow
+                    };
+                    schedule.Export(folder, planned[index], csvOptions);
+                    var path = Path.Combine(folder, planned[index]);
+                    RefuseUnchangedFile(path);
+                    using var reader = new StreamReader(path, Encoding.Default, true);
+                    var contents = reader.ReadToEnd();
+                    reader.Close();
+                    File.WriteAllText(path, contents, new UTF8Encoding(true));
+                }
+            }
+            foreach (var file in result.Files!)
+            {
+                var path = Path.Combine(folder, file.Name);
+                if (!File.Exists(path) || new FileInfo(path).Length == 0)
+                    throw new InvalidOperationException($"Export did not produce '{file.Name}'.");
                 RefuseUnchangedFile(path);
-                using var reader = new StreamReader(path, Encoding.Default, true);
-                var contents = reader.ReadToEnd();
-                reader.Close();
-                File.WriteAllText(path, contents, new UTF8Encoding(true));
+                file.SizeBytes = new FileInfo(path).Length;
             }
         }
-        foreach (var file in result.Files!)
+        catch (Exception exception)
         {
-            var path = Path.Combine(folder, file.Name);
-            if (!File.Exists(path) || new FileInfo(path).Length == 0)
-                throw new InvalidOperationException($"Export did not produce '{file.Name}'.");
-            RefuseUnchangedFile(path);
-            file.SizeBytes = new FileInfo(path).Length;
+            throw new InvalidOperationException(FileExportJob.FailureMessage(exception.Message, pathsToWrite, before), exception);
         }
         result.ElapsedMs = stopwatch.ElapsedMilliseconds;
         return result;
