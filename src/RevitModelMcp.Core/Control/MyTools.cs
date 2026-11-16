@@ -26,7 +26,9 @@ internal sealed record ToolDefinition
     public static string Normalize(string source) => source.Replace("\r\n", "\n").Replace('\r', '\n').Trim() + "\n";
     public static string Hash(string source) => CodeSource.CodeHash(Normalize(source));
 
-    public void Validate()
+    public void Validate() => Validate(rejectTitleLineSeparators: true);
+
+    internal void Validate(bool rejectTitleLineSeparators)
     {
         RejectFormat(Name);
         RejectFormat(Description);
@@ -39,7 +41,7 @@ internal sealed record ToolDefinition
             throw new ArgumentException("source must contain 1 to 256 KB of UTF-8 text.");
         if (TestedRevitYears is null || TestedRevitYears.Any(year => year is < 2022 or > 2027))
             throw new ArgumentException("tested Revit years must be between 2022 and 2027.");
-        ToolArguments.ValidateSchema(Parameters);
+        ToolArguments.ValidateSchema(Parameters, rejectTitleLineSeparators);
     }
 
     internal static void RejectFormat(string? text)
@@ -137,11 +139,11 @@ public static class ToolArguments
     public static string? Title(string schemaJson) =>
         Members(Parse(schemaJson, "parameters")).TryGetValue("title", out var title) ? title.Value.Trim() : null;
 
-    private static void ValidateTitle(Dictionary<string, XElement> rules, string path)
+    private static void ValidateTitle(Dictionary<string, XElement> rules, string path, bool rejectLineSeparators)
     {
         if (!rules.TryGetValue("title", out var title)) return;
         if (Kind(title) == "string" && title.Value.Any(character => char.IsControl(character) ||
-                char.GetUnicodeCategory(character) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
+                rejectLineSeparators && char.GetUnicodeCategory(character) is UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator))
             throw new ArgumentException($"{path}.title must not contain line breaks or control characters.");
         var message = $"{path}.title must be 1 to 80 characters of text.";
         if (Kind(title) != "string" || title.Value.Trim().Length is < 1 or > 80)
@@ -162,11 +164,11 @@ public static class ToolArguments
         throw new ArgumentException($"{SingleLine(path)}: unsupported schema keyword {string.Join(", ", keywords)}{(unsupported.Length > 5 ? ", ..." : "")}. Supported: {string.Join(", ", supported)}.");
     }
 
-    public static void ValidateSchema(string json)
+    public static void ValidateSchema(string json, bool rejectTitleLineSeparators = false)
     {
         var schema = Members(Parse(json, "parameters"));
         ValidateKeywords(schema, "parameters", ["type", "title", "properties", "required", "additionalProperties"]);
-        ValidateTitle(schema, "parameters");
+        ValidateTitle(schema, "parameters", rejectTitleLineSeparators);
         if (!schema.TryGetValue("type", out var type) || Kind(type) != "string" || type.Value != "object")
             throw new ArgumentException("parameters.type must be object.");
         if (schema.TryGetValue("additionalProperties", out var additional) &&
@@ -178,7 +180,7 @@ public static class ToolArguments
             ToolDefinition.RejectFormat(property.Key);
             var rules = Members(property.Value);
             ValidateKeywords(rules, $"parameters.{property.Key}", ["type", "title", "description", "enum", "minimum", "maximum", "maxLength"]);
-            ValidateTitle(rules, $"parameters.{property.Key}");
+            ValidateTitle(rules, $"parameters.{property.Key}", rejectTitleLineSeparators);
             if (!rules.TryGetValue("type", out var primitive) || Kind(primitive) != "string" ||
                 primitive.Value is not ("string" or "number" or "integer" or "boolean"))
                 throw new ArgumentException($"parameters.{property.Key}: type must be string, number, integer or boolean.");
@@ -348,7 +350,7 @@ internal sealed class ToolStore(string directory)
         var approval = File.ReadAllText(approvalPath);
         // The original JSON text binds legacy approvals independently of runtime escaping policies.
         if (approval != ApprovalSignature(payload)) throw new InvalidOperationException("revision not approved");
-        definition.Validate();
+        definition.Validate(rejectTitleLineSeparators: false);
         return definition;
     }
 
