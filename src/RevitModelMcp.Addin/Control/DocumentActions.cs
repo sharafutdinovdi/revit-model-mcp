@@ -517,17 +517,18 @@ internal static class DocumentActions
                 path is not null && after.Count(item => DocumentPathValidator.SamePath(item.PathName, path)) != 1 ||
                 action.Activate && !document.Equals(application.ActiveUIDocument?.Document))
                 throw new InvalidOperationException($"New document verification failed. Open documents: {OpenDocumentNames(application)}.");
+            var warning = (action.Activate && action.SaveAs is null
+                ? "Saved to the returned path: activation requires a saved path."
+                : path is null
+                    ? "The document is unsaved. Activation requires a saved path; call revit_save_document with save_as before revit_activate_document."
+                    : "") + (closures.Count > 0 ? " " + string.Join(" ", closures) : "");
             result = new ActionResultData
             {
                 Title = document.Title,
                 Path = document.PathName,
                 Active = action.Activate,
                 Saved = path is not null,
-                Warning = (action.Activate && action.SaveAs is null
-                    ? "Saved to the returned path: activation requires a saved path."
-                    : path is null
-                        ? "The document is unsaved. Activation requires a saved path; call revit_save_document with save_as before revit_activate_document."
-                        : "") + (closures.Count > 0 ? " " + string.Join(" ", closures) : "")
+                Warning = string.IsNullOrWhiteSpace(warning) ? null : warning.Trim()
             };
         }
         catch (Exception exception)

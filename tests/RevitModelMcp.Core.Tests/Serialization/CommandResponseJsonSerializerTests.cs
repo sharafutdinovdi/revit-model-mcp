@@ -31,6 +31,19 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    public async Task NewDocument_OmitsAbsentWarning()
+    {
+        var response = CommandResponse<ActionResultData>.Ok("new-document", new ActionResultData
+        {
+            Path = @"C:\New\Project.rvt",
+            Saved = true,
+            Warning = null
+        }, 1);
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(response));
+        await Assert.That(json.RootElement.GetProperty("data").TryGetProperty("warning", out _)).IsFalse();
+    }
+
+    [Test]
     public async Task CreateView_SerializesTemplateControlledSettings()
     {
         var result = new ActionResultData
