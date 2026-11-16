@@ -1344,6 +1344,23 @@ public sealed class FileExportJob
         var file = new FileInfo(path);
         return file.Exists && state == $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
     }
+
+    public static string FailureMessage(string error, IEnumerable<string> paths, IReadOnlyDictionary<string, string> before)
+    {
+        var written = new List<string>();
+        var notWritten = new List<string>();
+        foreach (var path in paths)
+        {
+            var file = new FileInfo(path);
+            if (file.Exists && file.Length > 0 && !IsUnchanged(before, path))
+                written.Add(file.Name);
+            else
+                notWritten.Add(file.Name);
+        }
+        return $"{error} Written files: [{string.Join(", ", written)}]. " +
+            $"Not written files: [{string.Join(", ", notWritten)}]. " +
+            "Completed file writes and replacements are not undone.";
+    }
 }
 
 [DataContract]

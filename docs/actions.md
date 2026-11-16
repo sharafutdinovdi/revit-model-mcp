@@ -309,6 +309,8 @@ The result includes `folder`, `files` with sizes, `targets`, `skipped`, `elapsed
 File export changes no model elements and creates no undo entry.
 A target that another program holds open, or a read-only target, is refused before the export starts.
 An export that leaves an existing target unchanged is reported as failed.
+The failure message lists written files and files not written across the complete plan.
+Completed file writes and replacements are not undone.
 
 PDF and DWG accept any combination of view names or IDs, sheet numbers, names or IDs, a saved `sheet_set`, and `all_sheets=true`. At least one printable target is required; templates and unprintable views are rejected. PDF `options` are `combine=true`, `file_name`, `naming="sheet_number_name"` or `"view_name"`, `color="color"`, `"grayscale"` or `"black_line"`, `zoom_percent=100`, `paper="auto"`, `hide_crop_boundaries=true` and `hide_scope_boxes=true`. DWG options are `setup` (saved export setup), `merged_views=false` and `file_version` (Revit ACADVersion name).
 
@@ -755,6 +757,7 @@ Schema and documentation checks run without Revit; independent preview rollback,
 | --- | --- |
 | Confirmation, first saved-tool preview and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [MyTools.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/MyTools.cs) |
 | Export confirmation binds the complete file plan and execution intent | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [ActionJobParser.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ActionJobParser.cs), [ConfirmationBindingTests.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/tests/RevitModelMcp.Core.Tests/Control/ConfirmationBindingTests.cs) |
+| Export failures retain completed writes and unwritten targets | [ActionCommandExecutor.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ActionCommandExecutor.cs), [ActionJobParser.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ActionJobParser.cs), [ActionJobParserTests.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/tests/RevitModelMcp.Core.Tests/Control/ActionJobParserTests.cs) |
 | Shared tool file integrity and local import review | [ToolShare.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Core/Control/ToolShare.cs), [ToolShareDialogs.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/ToolShareDialogs.cs) |
 | Conditional close and detached-document exemption | [DocumentActions.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/DocumentActions.cs) |
 | Transaction ownership and native scopes | [CodeExecution.cs](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/src/RevitModelMcp.Addin/Control/CodeExecution.cs) |
