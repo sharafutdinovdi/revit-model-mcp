@@ -38,7 +38,7 @@ async def audit_snapshots(directory, rules, compare_with="previous", save=True, 
         if not isinstance(model, dict):
             raise ValueError("Batch models must be objects from revit_batch_fetch.models.")
         local = model.get("localPath")
-        if local is not None:
+        if isinstance(local, str):
             path = Path(local).expanduser()
             path = path if path.is_absolute() else root / path
             if path.is_symlink() or path.resolve().parent != root:
@@ -74,6 +74,8 @@ async def audit_snapshots(directory, rules, compare_with="previous", save=True, 
             "summary": {"byStatus": {"not_assessed": len(rules["rules"])}, "byDelta": {}},
         }
         try:
+            if model.get("localPath") is not None and not isinstance(model["localPath"], str):
+                raise ValueError("localPath must be a string.")
             if model.get("status") not in (2, "completed"):
                 raise ValueError(
                     str(model.get("error") or model.get("reason") or "Collection did not complete.")

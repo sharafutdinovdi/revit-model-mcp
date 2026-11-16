@@ -49,7 +49,7 @@ def local_file_error(error: Exception, *values: str | None) -> str:
     """Render OS failures from fields and hide known local paths in other diagnostics."""
     if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return str(error)
-    paths = [value for value in values if value is not None]
+    paths = [value for value in values if isinstance(value, str)]
     pending, seen, os_messages, os_errors = [error], set(), {}, []
     while pending:
         current = pending.pop()

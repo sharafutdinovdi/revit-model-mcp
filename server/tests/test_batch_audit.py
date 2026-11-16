@@ -421,3 +421,28 @@ def test_equal_or_missing_collection_time_leaves_deltas_unassessed(tmp_path, mon
     assert audit["collectedAtUtc"] is None
     assert "deltas" not in audit
     assert "not assessed" in audit["summary"]["comparison"]
+
+
+@pytest.mark.parametrize("local", [123, False, [], {}])
+def test_invalid_local_path_skips_only_its_batch_row(tmp_path, monkeypatch, local):
+    from revit_model_mcp import server
+
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    source = Path(__file__).parent / "fixtures" / "snapshots" / "current"
+    good = next(source.glob("*.json"))
+    (tmp_path / "good.json").write_bytes(good.read_bytes())
+    result = asyncio.run(
+        server.revit_model_audit(
+            rules_inline={"schema": 1, "name": "Empty", "rules": []},
+            snapshots_dir=str(tmp_path),
+            batch_models=[
+                {"status": "completed", "localPath": local},
+                {"status": "completed", "localPath": "good.json"},
+            ],
+            save=False,
+            compare_with="none",
+        )
+    )
+    assert [row["status"] for row in result["models"]] == ["failed", "audited"]
+    assert result["skippedCount"] == 1
+    assert "localPath must be a string" in result["skipped"][0]["reason"]
