@@ -227,6 +227,10 @@ def validate(
         if base + SERVER_MEMBER not in names:
             errors.append(f"Store bundle needs {SERVER_MEMBER}")
     if managed_version is not None:
+        if any(
+            PurePosixPath(name).name.lower() == UPDATER_NAME.lower() for name in names
+        ):
+            errors.append(f"Managed bundle must not ship {UPDATER_NAME}")
         readme_name = base + "README.txt"
         if readme_name not in names:
             errors.append("Managed bundle needs README.txt")

@@ -47,7 +47,7 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
         var contentFolder = bundleFolder.CreateFolder("Contents");
         var manifestFile = bundleFolder.GetFile("PackageContents.xml");
 
-        PackFiles(targetDirectories, contentFolder);
+        PackFiles(targetDirectories, contentFolder, bundleOptions.Value.Managed || bundleOptions.Value.Store);
         if (bundleOptions.Value.Store)
         {
             bundleOptions.Value.Managed.ShouldBeFalse("A bundle is either managed or store, not both");
@@ -118,7 +118,7 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
         }
     }
 
-    private static void PackFiles(Folder[] targetDirectories, Folder contentFolder)
+    private static void PackFiles(Folder[] targetDirectories, Folder contentFolder, bool excludeUpdater)
     {
         foreach (var targetDirectory in targetDirectories)
         {
@@ -128,6 +128,11 @@ public sealed partial class CreateBundleModule(IOptions<BuildOptions> buildOptio
             var versionFolder = contentFolder.CreateFolder(version);
             foreach (var filePath in targetDirectory.GetFiles(file => file.Exists))
             {
+                if (excludeUpdater && string.Equals(filePath.Name, "RevitModelMcp.Updater.exe", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
                 var relativePath = Path.GetRelativePath(targetDirectory.Path, filePath.Path);
                 var destinationPath = versionFolder.GetFile(relativePath);
                 if (!destinationPath.Folder!.Exists)

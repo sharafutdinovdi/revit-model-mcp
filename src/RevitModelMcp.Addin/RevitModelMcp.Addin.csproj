@@ -87,14 +87,15 @@
                       SetTargetFramework="TargetFramework=net48"/>
   </ItemGroup>
 
-  <Target Name="CopyUpdater" AfterTargets="Build"
+  <Target Name="CopyUpdater" BeforeTargets="PublishAddin" AfterTargets="Build"
           Condition="'$(ManagedInstall)' != 'true' And '$(Channel)' != 'store'">
     <Copy SourceFiles="$(MSBuildProjectDirectory)/../RevitModelMcp.Updater/bin/$(Configuration)/net48/RevitModelMcp.Updater.exe"
           DestinationFolder="$(TargetDir)"/>
   </Target>
 
-  <Target Name="RemoveStoreUpdater" BeforeTargets="PublishAddin" AfterTargets="Build" Condition="'$(Channel)' == 'store'">
-    <Delete Files="$(TargetDir)RevitModelMcp.Updater.exe;$(TargetDir)publish/RevitModelMcp/RevitModelMcp.Updater.exe"/>
+  <Target Name="RemoveExcludedUpdater" BeforeTargets="PublishAddin" AfterTargets="Build"
+          Condition="'$(ManagedInstall)' == 'true' Or '$(Channel)' == 'store'">
+    <Delete Files="$(TargetDir)RevitModelMcp.Updater.exe;$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(AddinPublishDir)', '$(AssemblyName)', 'RevitModelMcp.Updater.exe'))"/>
   </Target>
 
   <Target Name="CopyBatchSupervisor" BeforeTargets="PublishAddin" AfterTargets="Build">

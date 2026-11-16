@@ -85,6 +85,16 @@ def test_valid_managed_zip(tmp_path: Path, version: str) -> None:
     assert validate(write_zip(tmp_path, files), YEARS, managed_version=version) == []
 
 
+@pytest.mark.parametrize("year", YEARS)
+@pytest.mark.parametrize("updater_name", ["RevitModelMcp.Updater.exe", "revitmodelmcp.updater.EXE"])
+def test_managed_zip_must_not_ship_updater(tmp_path: Path, year: int, updater_name: str) -> None:
+    files = bundle_files()
+    files["RevitModelMcp.bundle/README.txt"] = "uvx revit-model-mcp==0.9.1\n"
+    files[f"RevitModelMcp.bundle/Contents/{year}/RevitModelMcp/{updater_name}"] = "exe"
+    errors = validate(write_zip(tmp_path, files), YEARS, managed_version="0.9.1")
+    assert errors == ["Managed bundle must not ship RevitModelMcp.Updater.exe"]
+
+
 def test_managed_zip_needs_readme(tmp_path: Path) -> None:
     errors = validate(write_zip(tmp_path, bundle_files()), YEARS, managed_version="0.9.1")
     assert errors == ["Managed bundle needs README.txt"]
