@@ -1775,7 +1775,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         orientation: Literal["horizontal", "vertical"] = "horizontal",
         tag_type: Name | None = None,
         skip_tagged: bool = True,
-        max_elements: MaxElements = 10,
+        max_elements: MaxElements = 500,
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:

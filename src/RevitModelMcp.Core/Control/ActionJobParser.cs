@@ -59,7 +59,7 @@ public static class ActionJobParser
                 Axis = job.Axis,
                 PointMm = job.PointMm,
                 Copy = job.Copy ?? true,
-                MaxElements = job.MaxElements ?? (command == "tag-elements" ? 10 : 5000),
+                MaxElements = job.MaxElements ?? (command == "tag-elements" ? 500 : 5000),
                 IncludeTypeParameters = job.IncludeTypeParameters ?? false,
                 Family = job.Family,
                 TypeName = job.TypeName,

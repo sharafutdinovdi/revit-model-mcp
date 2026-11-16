@@ -56,7 +56,7 @@ public sealed class TagAndScheduleActionTests
         await Assert.That(action.Leader).IsFalse();
         await Assert.That(action.Orientation).IsEqualTo("horizontal");
         await Assert.That(action.SkipTagged).IsTrue();
-        await Assert.That(action.MaxElements).IsEqualTo(10);
+        await Assert.That(action.MaxElements).IsEqualTo(500);
         await Assert.That(action.View).IsEqualTo("Level 1");
     }
 

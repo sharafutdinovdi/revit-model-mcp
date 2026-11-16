@@ -1686,7 +1686,7 @@ def test_tag_elements_mapping_and_validation():
     assert payload["leader"] is True
     assert payload["orientation"] == "horizontal"
     assert payload["typeName"] == "Door Tag"
-    assert payload["maxElements"] == 10
+    assert payload["maxElements"] == 500
     assert payload["skipTagged"] is True
     assert payload["dryRun"] is False
     asyncio.run(
