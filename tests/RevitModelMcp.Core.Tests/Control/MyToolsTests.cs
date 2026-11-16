@@ -169,13 +169,12 @@ public sealed class MyToolsTests
         for (var level = 2; level < 9; level++)
             nested = objects ? "{\"value\":" + nested + "}" : "[" + nested + "]";
         var json = "{\"type\":" + nested + "}";
-        const string message = "parameters or args are nested deeper than 8 levels.";
         await Assert.That(() => ToolArguments.ValidateSchema(json))
-            .Throws<ArgumentException>().WithMessage(message);
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
         await Assert.That(() => ToolArguments.Validate(Schema, json))
-            .Throws<ArgumentException>().WithMessage(message);
+            .Throws<ArgumentException>().WithMessage("args: The value is nested deeper than 8 levels.");
         await Assert.That(() => ToolArguments.Title(json))
-            .Throws<ArgumentException>().WithMessage(message);
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
     }
 
     [Test]
@@ -205,9 +204,9 @@ public sealed class MyToolsTests
         var schema = "{\"type\":" + new string('[', 30000) + "0" + new string(']', 30000) + "}";
         await Assert.That(Encoding.UTF8.GetByteCount(schema) < 65536).IsTrue();
         await Assert.That(() => ToolArguments.ValidateSchema(schema))
-            .Throws<ArgumentException>().WithMessage("parameters or args are nested deeper than 8 levels.");
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
         await Assert.That(() => (Definition() with { Parameters = schema }).Validate())
-            .Throws<ArgumentException>().WithMessage("parameters or args are nested deeper than 8 levels.");
+            .Throws<ArgumentException>().WithMessage("parameters: The value is nested deeper than 8 levels.");
     }
 
     [Test]
@@ -216,7 +215,7 @@ public sealed class MyToolsTests
         var arguments = "{\"count\":" + new string('[', 30000) + "0" + new string(']', 30000) + "}";
         await Assert.That(Encoding.UTF8.GetByteCount(arguments) < 65536).IsTrue();
         await Assert.That(() => ToolArguments.Validate(Schema, arguments))
-            .Throws<ArgumentException>().WithMessage("parameters or args are nested deeper than 8 levels.");
+            .Throws<ArgumentException>().WithMessage("args: The value is nested deeper than 8 levels.");
     }
 
     [Test]

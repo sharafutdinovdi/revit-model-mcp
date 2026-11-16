@@ -86,17 +86,18 @@ public static class ToolArguments
         $":dry_run={action.DryRun}" +
         (action.ToolName is null ? "" : $":{action.ToolName}:{action.ToolRevision}:{action.ToolApprovalBinding}:{action.ToolArgs}");
 
-    private static XElement Parse(string json)
+    private static XElement Parse(string json, string field)
     {
         if (Encoding.UTF8.GetByteCount(json) > 65536) throw new ArgumentException("parameters or args exceed 64 KB.");
-        using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json),
-            new XmlDictionaryReaderQuotas { MaxDepth = MaxJsonDepth, MaxStringContentLength = 65536, MaxArrayLength = 65536 });
-        try { return XElement.Load(reader); }
-        catch (XmlException)
+        try
         {
-            if (ExceedsMaxDepth(json))
-                throw new ArgumentException($"parameters or args are nested deeper than {MaxJsonDepth} levels.");
-            throw;
+            using var reader = JsonReaderWriterFactory.CreateJsonReader(Encoding.UTF8.GetBytes(json),
+                new XmlDictionaryReaderQuotas { MaxDepth = MaxJsonDepth, MaxStringContentLength = 65536, MaxArrayLength = 65536 });
+            return XElement.Load(reader);
+        }
+        catch (Exception exception) when (exception is XmlException or SerializationException && ExceedsMaxDepth(json))
+        {
+            throw new ArgumentException($"{field}: The value is nested deeper than {MaxJsonDepth} levels.");
         }
     }
 
@@ -134,7 +135,7 @@ public static class ToolArguments
     }
 
     public static string? Title(string schemaJson) =>
-        Members(Parse(schemaJson)).TryGetValue("title", out var title) ? title.Value.Trim() : null;
+        Members(Parse(schemaJson, "parameters")).TryGetValue("title", out var title) ? title.Value.Trim() : null;
 
     private static void ValidateTitle(Dictionary<string, XElement> rules, string path)
     {
@@ -162,7 +163,7 @@ public static class ToolArguments
 
     public static void ValidateSchema(string json)
     {
-        var schema = Members(Parse(json));
+        var schema = Members(Parse(json, "parameters"));
         ValidateKeywords(schema, "parameters", ["type", "title", "properties", "required", "additionalProperties"]);
         ValidateTitle(schema, "parameters");
         if (!schema.TryGetValue("type", out var type) || Kind(type) != "string" || type.Value != "object")
@@ -248,9 +249,9 @@ public static class ToolArguments
     internal static IReadOnlyDictionary<string, object> Validate(string schemaJson, string argsJson, bool useFieldLabels)
     {
         ValidateSchema(schemaJson);
-        var schema = Members(Parse(schemaJson));
+        var schema = Members(Parse(schemaJson, "parameters"));
         var properties = schema.TryGetValue("properties", out var propertyNode) ? Members(propertyNode) : [];
-        var args = Members(Parse(argsJson));
+        var args = Members(Parse(argsJson, "args"));
         if (schema.TryGetValue("required", out var required))
             foreach (var item in required.Elements())
                 if (!args.ContainsKey(item.Value))
