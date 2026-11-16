@@ -430,7 +430,7 @@
     },
     {
       "name": "revit_export_view",
-      "description": "Write a PNG image of the selected Revit view to the new .png file the user names through output_path on the computer running the AI app. Omitting output_path uses a temporary folder. A destination already present is refused. The active view and model remain unchanged. A non-empty skipped list means incomplete results; skippedCount counts all skipped entries. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Write a PNG image of the selected Revit view to the new .png file the user names through output_path on the computer running the AI app. Omitting output_path uses a temporary folder. A destination already present is refused. The active view and model remain unchanged. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "views-sheets",
       "access": "modifying",
       "annotations": {
@@ -1490,7 +1490,7 @@
     },
     {
       "name": "revit_export",
-      "description": "Write PDF, DWG or IFC documents, or a CSV schedule, to the folder the user names with output_dir on the Revit workstation. Omitting output_dir uses a dated folder under %LOCALAPPDATA%\\RevitModelMcp\\exports on the Revit workstation. dry_run lists the planned names. overwrite=true replaces an existing destination only through the two-step confirm_token handshake with the AI app. The AI app is expected to show the action to the user; Model MCP provides no separate dialog. A long action can return status=running and jobId; revit_jobs retrieves its result. Resubmitting repeats the action. May commit; revit_jobs polls; retry repeats.",
+      "description": "Write PDF, DWG or IFC documents, or CSV schedules, to the folder the user names with output_dir on the Revit workstation. CSV exports include all schedules when views is omitted. Omitting output_dir uses a dated folder under %LOCALAPPDATA%\\RevitModelMcp\\exports on the Revit workstation. dry_run lists the planned names. overwrite=true replaces an existing destination only through the two-step confirm_token handshake with the AI app. The AI app is expected to show the action to the user; Model MCP provides no separate dialog. The action may commit before returning status=running and jobId; revit_jobs retrieves its result. Resubmitting repeats the action.",
       "toolset": "export",
       "access": "modifying",
       "annotations": {

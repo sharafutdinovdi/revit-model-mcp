@@ -64,7 +64,24 @@ def test_export_view_description_states_destination_and_incomplete_results():
         "Omitting output_path uses a temporary folder",
         "A destination already present is refused",
         "The active view and model remain unchanged",
-        "A non-empty skipped list means incomplete results",
-        "skippedCount counts all skipped entries",
+        "skipped means incomplete",
+        "skippedCount is the total skipped",
     ):
         assert text in description
+
+
+def test_export_description_states_each_job_fact_once():
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    description = tools["revit_export"].description
+    assert description.count("revit_jobs") == 1
+    assert "retry repeats" not in description
+    assert "may commit" in description
+    assert "CSV schedules" in description
+    assert "CSV exports include all schedules when views is omitted." in description
+
+
+def test_export_view_description_states_incompleteness_once():
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    description = tools["revit_export_view"].description
+    assert description.count("incomplete") == 1
+    assert description.count("skippedCount") == 1
