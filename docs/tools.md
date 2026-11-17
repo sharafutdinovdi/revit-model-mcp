@@ -4,7 +4,7 @@ description: "Model MCP tool reference with toolsets, arguments, response contra
 
 # Tool reference
 
-The default tool list contains 89 tools, about 26,971 tokens.
+The default tool list contains 89 tools, about 26,973 tokens.
 The `core,read` selection contains 22 tools, about 6,545 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
@@ -70,23 +70,23 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `family` | 5 | 8,774 | 2,193 |
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
-| `export` | 4 | 7,193 | 1,798 |
+| `export` | 4 | 7,199 | 1,799 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,887 | 26,971 |
+| `all` (default) | 89 | 107,893 | 26,973 |
 | `core,read` | 22 | 26,181 | 6,545 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,887 | 26,971 | 108,044 |
+| `all` | 89 | 107,893 | 26,973 | 108,050 |
 | `core,read` | 22 | 26,181 | 6,545 | 26,271 |
 | `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
 | `preset:edit` | 59 | 67,907 | 16,976 | 68,034 |
 | `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
-| `preset:sheets` | 54 | 63,997 | 15,999 | 64,119 |
-| `preset:batch` | 46 | 52,493 | 13,123 | 52,607 |
+| `preset:sheets` | 54 | 64,003 | 16,000 | 64,125 |
+| `preset:batch` | 46 | 52,499 | 13,124 | 52,613 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.

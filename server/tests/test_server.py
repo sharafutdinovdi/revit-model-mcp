@@ -1134,6 +1134,7 @@ def test_redaction_accepts_boolean_string(monkeypatch):
     [
         ("revit_export_view", "Save view as PNG"),
         ("revit_export", "Save model files"),
+        ("revit_export_nwc", "Save Navisworks NWC file"),
     ],
 )
 def test_file_saving_tool_titles(name, title):

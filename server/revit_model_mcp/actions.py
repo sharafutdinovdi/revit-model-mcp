@@ -833,7 +833,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             "revit_delete": "Delete Elements",
             "revit_run_actions": "Run Actions",
             "revit_process_models": "Process Many Models",
-            "revit_export_nwc": "Export Navisworks NWC",
+            "revit_export_nwc": "Save Navisworks NWC file",
             "revit_export": "Save model files",
             "revit_edit_families": "Edit Families",
             "revit_align_link_datums": "Align Link Datums",
