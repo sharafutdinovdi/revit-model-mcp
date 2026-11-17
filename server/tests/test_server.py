@@ -1129,6 +1129,21 @@ def test_redaction_accepts_boolean_string(monkeypatch):
     }
 
 
+@pytest.mark.parametrize(
+    ("name", "title"),
+    [
+        ("revit_export_view", "Save view as PNG"),
+        ("revit_export", "Save model files"),
+    ],
+)
+def test_file_saving_tool_titles(name, title):
+    import asyncio
+
+    tools = {tool.name: tool for tool in asyncio.run(revit_server.mcp.list_tools())}
+    assert tools[name].title == title
+    assert tools[name].annotations.title == title
+
+
 def test_in_process_read_tool_titles():
     import asyncio
 

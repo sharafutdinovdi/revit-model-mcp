@@ -4,7 +4,7 @@ description: "Model MCP tool reference with toolsets, arguments, response contra
 
 # Tool reference
 
-The default tool list contains 89 tools, about 26,974 tokens.
+The default tool list contains 89 tools, about 26,971 tokens.
 The `core,read` selection contains 22 tools, about 6,545 tokens.
 These estimates come from `build/tool_size.py`; the [tool list size](#tool-list-size) table lists bytes and counts by toolset.
 
@@ -66,27 +66,27 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `read` | 13 | 18,890 | 4,722 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
-| `views-sheets` | 22 | 25,748 | 6,437 |
+| `views-sheets` | 22 | 25,744 | 6,436 |
 | `family` | 5 | 8,774 | 2,193 |
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
-| `export` | 4 | 7,198 | 1,799 |
+| `export` | 4 | 7,193 | 1,798 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,896 | 26,974 |
+| `all` (default) | 89 | 107,887 | 26,971 |
 | `core,read` | 22 | 26,181 | 6,545 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,895 | 26,973 | 108,052 |
+| `all` | 89 | 107,887 | 26,971 | 108,044 |
 | `core,read` | 22 | 26,181 | 6,545 | 26,271 |
 | `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
-| `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
+| `preset:edit` | 59 | 67,907 | 16,976 | 68,034 |
 | `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
-| `preset:sheets` | 54 | 64,005 | 16,001 | 64,127 |
-| `preset:batch` | 46 | 52,497 | 13,124 | 52,611 |
+| `preset:sheets` | 54 | 63,997 | 15,999 | 64,119 |
+| `preset:batch` | 46 | 52,493 | 13,123 | 52,607 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
