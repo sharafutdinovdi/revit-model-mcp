@@ -55,7 +55,17 @@ internal static class AnnotationActions
                 skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
             }
         }
-        var isolated = TryIsolateTagTargets(view, elements, tagged, centers);
+        var isolationTargets = elements.Where(element =>
+        {
+            var id = RevitValueReader.GetId(element.Id);
+            return element is not SpatialElement && element.Category is not null && !tagged.Contains(id) &&
+                centers.TryGetValue(id, out var center) && center is not null;
+        }).Select(element => element.Id).ToArray();
+        var useIsolation = CanIsolateTagTargets(view, isolationTargets.Length, elements.Any(element => element is Room));
+        using var batches = TaggingPolicy.PlanIsolationBatches(isolationTargets).GetEnumerator();
+        var isolated = false;
+        var nextIsolationTarget = 0;
+        var remainingBatchTargets = 0;
         try
         {
             foreach (var element in elements)
@@ -69,6 +79,18 @@ internal static class AnnotationActions
                     continue;
                 }
                 if (!centers.ContainsKey(id)) continue;
+                if (useIsolation && nextIsolationTarget < isolationTargets.Length &&
+                    isolationTargets[nextIsolationTarget].Equals(element.Id))
+                {
+                    if (remainingBatchTargets == 0)
+                    {
+                        useIsolation = batches.MoveNext() && TryIsolateTagBatch(view, batches.Current, isolated);
+                        isolated = useIsolation;
+                        remainingBatchTargets = useIsolation ? batches.Current.Count : 0;
+                    }
+                    nextIsolationTarget++;
+                    if (useIsolation) remainingBatchTargets--;
+                }
                 try
                 {
                     var tagId = element is Room room
@@ -237,35 +259,34 @@ internal static class AnnotationActions
         return tag.Id;
     }
 
-    private static bool TryIsolateTagTargets(View view, List<Element> elements, HashSet<long> tagged,
-        Dictionary<long, XYZ?> centers)
+    private static bool CanIsolateTagTargets(View view, int independentTargetCount, bool includesRooms)
     {
-        var targets = new List<ElementId>();
-        var includesRooms = false;
-        foreach (var element in elements)
-        {
-            includesRooms |= element is Room;
-            var id = RevitValueReader.GetId(element.Id);
-            if (element is not SpatialElement && element.Category is not null && !tagged.Contains(id) &&
-                centers.TryGetValue(id, out var center) && center is not null)
-                targets.Add(element.Id);
-        }
-        var attemptedIsolation = false;
         try
         {
             var supportsTemporaryVisibility = view.CanUseTemporaryVisibilityModes();
             var hasActiveTemporaryMode = supportsTemporaryVisibility && TemporaryModes.Any(view.IsInTemporaryViewMode);
-            if (!TaggingPolicy.CanTemporarilyIsolate(targets.Count, includesRooms,
-                    supportsTemporaryVisibility, hasActiveTemporaryMode))
-                return false;
-            attemptedIsolation = true;
+            return TaggingPolicy.CanTemporarilyIsolate(independentTargetCount, includesRooms,
+                supportsTemporaryVisibility, hasActiveTemporaryMode);
+        }
+        catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ApplicationException
+            or ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryIsolateTagBatch(View view, ICollection<ElementId> targets, bool clearPreviousIsolation)
+    {
+        try
+        {
+            if (clearPreviousIsolation) view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
             view.IsolateElementsTemporary(targets);
             return true;
         }
         catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ApplicationException
             or ArgumentException or InvalidOperationException)
         {
-            if (attemptedIsolation && view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate))
+            if (view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate))
                 view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
             return false;
         }
