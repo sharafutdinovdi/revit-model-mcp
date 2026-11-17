@@ -31,7 +31,7 @@ def model_identity(snapshot):
 def model_key(model):
     identity = [model.get("centralPath") or model.get("path"), model["title"]]
     if not identity[0]:
-        raise ValueError("A model path is required for audit history.")
+        raise ValueError("A model path is required to save or compare audit history.")
     return hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -49,7 +49,7 @@ def local_file_error(error: Exception, *values: str | None) -> str:
     """Render OS failures from fields and hide known local paths in other diagnostics."""
     if not env_flag("REVIT_MCP_REDACT_PATHS", False):
         return str(error)
-    paths = [value for value in values if value is not None]
+    paths = [value for value in values if isinstance(value, str)]
     pending, seen, os_messages, os_errors = [error], set(), {}, []
     while pending:
         current = pending.pop()
@@ -104,7 +104,7 @@ def local_file_error(error: Exception, *values: str | None) -> str:
             else:
                 variants.update((str(windows), windows.as_posix()))
                 identity = windows.as_posix().casefold()
-        except (OSError, RuntimeError):
+        except (OSError, RuntimeError, ValueError):
             if not windows.drive and not Path(value).is_absolute():
                 continue
         names.setdefault(identity, windows.name)
@@ -249,7 +249,11 @@ def build_result(
     }
     result["rules"]["file"] = redact_path(result["rules"]["file"])
     result["ruleDefinitions"] = rules["rules"]
-    directory = audit_directory() / (history_key or model_key(model))
+    directory = (
+        audit_directory() / (history_key or model_key(model))
+        if save or compare_with != "none"
+        else None
+    )
     previous = None
     collected = _collection_time(result)
     if compare_with == "previous":

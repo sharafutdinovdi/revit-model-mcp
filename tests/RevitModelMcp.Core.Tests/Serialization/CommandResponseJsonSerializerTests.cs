@@ -263,6 +263,42 @@ public sealed class CommandResponseJsonSerializerTests
     }
 
     [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task FamilyAudit_SerializesReadBoundaryOutsideCappedDiagnostics(bool stoppedAtReadBoundary)
+    {
+        var data = new FamilyAuditData
+        {
+            Mode = "project",
+            StoppedAtReadBoundary = stoppedAtReadBoundary,
+            SkippedCount = 241,
+            Skipped = Enumerable.Range(201, 241).Select(index => new SkippedRead
+            {
+                What = $"Family {index}",
+                Reason = "The audit is limited to the first 200 editable families."
+            }).ToList()
+        };
+        var marker = new SkippedRead
+        {
+            What = "family-audit remaining families",
+            Reason = "Inspection stopped at the read budget or cancellation boundary."
+        };
+        var response = CommandResponse<FamilyAuditData>.PartialResult("family-audit", data, "Partial.", 60_000);
+        response.Skipped = [.. data.Skipped, marker];
+        response.SkippedCount = 242;
+        using var json = Parse(response);
+        var root = json.RootElement;
+        await Assert.That(root.GetProperty("partial").GetBoolean()).IsTrue();
+        await Assert.That(root.GetProperty("skipped").GetArrayLength()).IsEqualTo(100);
+        await Assert.That(root.GetProperty("skippedCount").GetInt32()).IsEqualTo(242);
+        var result = root.GetProperty("data");
+        await Assert.That(result.GetProperty("stoppedAtReadBoundary").GetBoolean()).IsEqualTo(stoppedAtReadBoundary);
+        await Assert.That(result.GetProperty("skippedCount").GetInt32()).IsEqualTo(241);
+        await Assert.That(result.GetProperty("skipped").GetArrayLength()).IsEqualTo(241);
+        await Assert.That(result.GetProperty("skipped")[240].GetProperty("what").GetString()).IsEqualTo("Family 441");
+    }
+
+    [Test]
     public async Task ProcessModels_SerializesProgressAndCancelledResult()
     {
         var data = new ActionResultData

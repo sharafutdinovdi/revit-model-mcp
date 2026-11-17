@@ -157,11 +157,29 @@ def test_redaction_removes_directories(parts):
 
 @BOUNDED
 @given(TEXT)
+@example("/")
+@example("\\")
+@example("//")
+@example("C:\\")
+@example("/./")
+@example(".")
+@example("\\\\fileserver\\share\\")
+@example("C:\\private\\Tower.rvt")
 def test_arbitrary_path_fields_keep_only_the_basename(path):
     with patch.dict(os.environ, {"REVIT_MCP_REDACT_PATHS": "1"}):
-        expected = PureWindowsPath(path).name
-        assert redact_path(path) == expected
-        assert redact_model_paths({"path": path}) == {"path": expected}
+        windows = PureWindowsPath(path)
+        local = redact_path(path)
+        model = redact_model_paths({"path": path})["path"]
+        if windows.name:
+            assert local == model == windows.name
+        else:
+            share_root = windows.drive.startswith("\\\\") and windows.drive.strip("/\\.")
+            assert local == ("" if share_root else path)
+            assert model == ""
+        for redacted in (local, model):
+            remaining = PureWindowsPath(redacted)
+            assert not remaining.drive.startswith("\\\\") or not remaining.drive.strip("/\\.")
+            assert remaining.parts in ((), (remaining.name,), (remaining.anchor,))
 
 
 @pytest.mark.parametrize("name", ["revit_document_info", "revit_model_health"])

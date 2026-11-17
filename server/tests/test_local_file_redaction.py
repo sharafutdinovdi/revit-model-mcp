@@ -544,3 +544,13 @@ def test_audit_report_publication_race_displays_derived_filename(
     assert str(caught.value.__cause__) == expected
     assert target.read_bytes() == b"concurrent file"
     assert list(target.parent.iterdir()) == [target]
+
+
+def test_audit_nul_path_is_cleanly_refused(tmp_path, monkeypatch):
+    monkeypatch.setenv("REVIT_MCP_REDACT_PATHS", "1")
+    path = str(tmp_path / "private" / "bad\0.json")
+    with pytest.raises(ToolError) as caught:
+        asyncio.run(server.revit_model_audit(rules=path, save=False, compare_with="none"))
+    assert "null" in str(caught.value).lower()
+    assert str(tmp_path) not in str(caught.value)
+    assert "Traceback" not in str(caught.value)

@@ -65,6 +65,7 @@ internal static class ReadCommandExecutor
                 var audit = FamilyAuditReader.Read(application, target, action.Families, action.Detail,
                     () => budgetStopped |= FastCommandBudget.ShouldStopBetweenFamilies(stopwatch.ElapsedMilliseconds,
                         ResponseDelivery.CancellationRequested?.Invoke() == true), out var partial);
+                audit.StoppedAtReadBoundary = budgetStopped;
                 if (budgetStopped)
                     SkippedReadDiagnostics.Current?.Add("family-audit remaining families",
                         new InvalidOperationException("Inspection stopped at the read budget or cancellation boundary."));

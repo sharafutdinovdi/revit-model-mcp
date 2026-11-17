@@ -156,7 +156,21 @@ def test_health_workbook_preserves_transport_failure(tmp_path, failed_command):
     target = tmp_path / "health.xlsx"
     with patch.object(server, "_execute", execute):
         result = asyncio.run(server.revit_model_health(output_path=str(target)))
-    assert result == failure
+    if failed_command == "model-health":
+        assert result == failure
+    else:
+        assert result["data"] == {"counts": {}}
+        assert result["partial"] is True
+        assert result["skippedCount"] == 1
+        assert result["skipped"] == [
+            {
+                "what": "list-warnings",
+                "reason": "Workbook was not written: Connection refused",
+                "response": failure,
+            }
+        ]
+        assert result["success"] is True
+        assert "workbook" not in result
     assert execute.await_count == len(responses)
     assert not target.exists()
 
@@ -208,3 +222,48 @@ def test_audit_history_errors_redacted(tmp_path, monkeypatch, redact, operation)
         assert tmp_path.parent.name not in message
     else:
         assert any(form in message for form in (str(tmp_path), repr(str(tmp_path))[1:-1]))
+
+
+def test_health_preserves_data_when_warnings_raise(tmp_path):
+    health = {
+        "success": True,
+        "data": {"counts": {"elements": 12}},
+        "skipped": [{"what": "fileSize", "reason": "unsaved"}],
+        "skippedCount": 3,
+    }
+    with patch.object(
+        server, "_execute", AsyncMock(side_effect=[health, ToolError("Warning read failed")])
+    ):
+        result = asyncio.run(server.revit_model_health(output_path=str(tmp_path / "health.xlsx")))
+    assert result["data"] == health["data"]
+    assert result["partial"] is True
+    assert result["skippedCount"] == 4
+    assert result["skipped"][0] == health["skipped"][0]
+    assert result["skipped"][1]["reason"] == "Workbook was not written: Warning read failed"
+
+
+def test_health_warning_failure_explanation_survives_full_diagnostic_lists(tmp_path):
+    responses = [
+        {
+            "success": success,
+            "command": command,
+            "data": {"counts": {"elements": 12}},
+            "error": "Warning read failed" if not success else None,
+            "skipped": [
+                {"what": f"{command} {index}", "reason": "Unavailable."} for index in range(150)
+            ],
+            "skippedCount": 150,
+        }
+        for command, success in [("model-health", True), ("list-warnings", False)]
+    ]
+    with patch.object(server.channel, "execute", AsyncMock(side_effect=responses)):
+        result = asyncio.run(server.revit_model_health(output_path=str(tmp_path / "health.xlsx")))
+    assert result["data"] == {"counts": {"elements": 12}}
+    assert result["partial"] is True
+    assert result["skippedCount"] == 301
+    assert len(result["skipped"]) == 201
+    assert result["skipped"][-1]["what"] == "list-warnings"
+    assert result["skipped"][-1]["reason"] == "Workbook was not written: Warning read failed"
+    assert result["skipped"][-1]["response"]["skippedCount"] == 150
+    assert "workbook" not in result
+    assert not (tmp_path / "health.xlsx").exists()

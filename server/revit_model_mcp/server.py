@@ -942,13 +942,37 @@ async def revit_model_health(
 
     if target is None or health.get("success") is False:
         return health
-    warning_result = await _execute(
-        Job.list_warnings(None, True),
-        timeout_seconds,
-        document,
-    )
+    try:
+        warning_result = await _execute(
+            Job.list_warnings(None, True),
+            timeout_seconds,
+            document,
+        )
+    except ToolError as error:
+        warning_result = {"success": False, "error": str(error)}
     if warning_result.get("success") is False:
-        return warning_result
+        skipped = [
+            *health.get("skipped", []),
+            *warning_result.get("skipped", []),
+            {
+                "what": "list-warnings",
+                "reason": "Workbook was not written: "
+                + (
+                    warning_result.get("error")
+                    or warning_result.get("message")
+                    or "Warning details could not be read."
+                ),
+                "response": warning_result,
+            },
+        ]
+        return {
+            **health,
+            "partial": True,
+            "skipped": skipped,
+            "skippedCount": max(health.get("skippedCount", 0), len(health.get("skipped", [])))
+            + max(warning_result.get("skippedCount", 0), len(warning_result.get("skipped", [])))
+            + 1,
+        }
     groups = warning_result["data"]["groups"]
     selected = sorted(range(len(groups)), key=lambda i: groups[i]["count"], reverse=True)[:5]
     snapshots, notes, warnings = {}, {}, []
@@ -1428,11 +1452,60 @@ async def revit_family_audit(
         raise ToolError("families must contain 1 to 200 non-empty names.")
     if families is not None and "*" in families and families != ["*"]:
         raise ToolError("The '*' family selector must be alone.")
-    return await _execute(
+    result = await _execute(
         Job("family-audit", {"command": "family-audit", "families": families, "detail": detail}),
         timeout_seconds,
         document,
     )
+    data = result.get("data") or {}
+    if (
+        result.get("partial")
+        and data.get("mode") == "project"
+        and (
+            data.get("stoppedAtReadBoundary") is True
+            or any(
+                item.get("what") == "family-audit remaining families"
+                for item in result.get("skipped", [])
+            )
+        )
+    ):
+        completed = data.get("families", [])
+        audited = sum(item.get("status") == "audited" for item in completed)
+        if families and families != ["*"]:
+            processed = {item["name"].casefold() for item in completed}
+            remaining = [name for name in families if name.casefold() not in processed]
+            guidance = (
+                f"{audited} of {len(families)} requested families audited. "
+                f"Continue with families={json.dumps(remaining)}."
+                if remaining
+                else f"{audited} of {len(families)} requested families audited; "
+                "review skipped and failed entries before retrying those names explicitly."
+            )
+        else:
+            has_limited_names = any(
+                item.get("reason") == "The audit is limited to the first 200 editable families."
+                for item in data.get("skipped", [])
+            )
+            coverage = (
+                f"{audited} families audited. Remaining names past the 200-family limit "
+                "are listed in data.skipped; names unprocessed within the first 200 "
+                "are not supplied."
+                if has_limited_names
+                else f"{audited} families audited; total and remaining family names "
+                "are unavailable in this response."
+            )
+            guidance = (
+                coverage + " Use revit_list_catalog with section='family-types' to find "
+                "names, exclude returned families, and continue with an explicit families=[...] "
+                "list of up to 200 names."
+            )
+        result = {
+            **result,
+            "message": (result.get("message") or "")
+            + " Inspection stopped at the read time budget or cancellation boundary. "
+            + guidance,
+        }
+    return result
 
 
 register_actions(mcp, _execute, lambda: host)
