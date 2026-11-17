@@ -1519,3 +1519,8 @@ def test_manifests_do_not_offer_the_removed_server_read_only_setting():
         assert revit_server.LEGACY_READ_ONLY_VARIABLE not in {
             variable["name"] for variable in package["environmentVariables"]
         }
+
+
+def test_registry_description_fits_the_registry_limit():
+    registry = json.loads((MCP_DIRECTORY / "server.json").read_text())
+    assert len(registry["description"]) <= 100
