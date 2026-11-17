@@ -238,6 +238,9 @@ Geometric alignment does not create a monitor relationship or later Coordination
 
 On an open `.rfa`, omit `families`; the audit reads that family without saving it. In a project, pass 1-200 exact family names (case-insensitive) or `["*"]` for every editable loadable family. The add-in opens each family with `EditFamily` and closes it without loading it back. In-place, non-editable and missing families have a `skipped` result with a reason. A project transaction must be closed before the call.
 
+`data.stoppedAtReadBoundary=true` identifies a read-budget or cancellation stop independently of capped `skipped` diagnostics.
+Project audits stopped at that boundary include audited-family counts and continuation guidance.
+
 Each parameter reports scope, shared GUID, group type ID, formula, reporting status and use. Associations, formula substrings and dimension or array labels count as use. Formula matching is deliberately over-inclusive. An unused shared parameter has `dataCarrierRisk:true` because project schedules and tags can still depend on its values.
 
 `purgeable` groups Revit's unused-element candidates by category. Coverage is `full` in Revit 2024 and later. In Revit 2022-2023, coverage is `families-and-types`; materials, patterns and styles are not included.

@@ -446,3 +446,27 @@ def test_invalid_local_path_skips_only_its_batch_row(tmp_path, monkeypatch, loca
     assert [row["status"] for row in result["models"]] == ["failed", "audited"]
     assert result["skippedCount"] == 1
     assert "localPath must be a string" in result["skipped"][0]["reason"]
+
+
+def test_batch_retains_every_invalid_manifest_row_beyond_diagnostic_limit(tmp_path):
+    put(tmp_path, "good.json", snapshot())
+    result = asyncio.run(
+        server.revit_model_audit(
+            rules_inline={"schema": 1, "name": "Empty", "rules": []},
+            snapshots_dir=str(tmp_path),
+            batch_models=[
+                *[
+                    {"path": f"Model {index}", "status": "completed", "localPath": index}
+                    for index in range(105)
+                ],
+                {"status": "completed", "localPath": "good.json"},
+            ],
+            save=False,
+            compare_with="none",
+        )
+    )
+    assert result["skippedCount"] == 105
+    assert len(result["skipped"]) == 105
+    assert result["skipped"][-1]["model"]["path"] == "Model 104"
+    assert result["skipped"][-1]["reason"] == "localPath must be a string."
+    assert result["models"][-1]["status"] == "audited"

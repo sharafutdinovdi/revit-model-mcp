@@ -1461,9 +1461,12 @@ async def revit_family_audit(
     if (
         result.get("partial")
         and data.get("mode") == "project"
-        and any(
-            item.get("what") == "family-audit remaining families"
-            for item in result.get("skipped", [])
+        and (
+            data.get("stoppedAtReadBoundary") is True
+            or any(
+                item.get("what") == "family-audit remaining families"
+                for item in result.get("skipped", [])
+            )
         )
     ):
         completed = data.get("families", [])

@@ -10,6 +10,7 @@ public sealed class FamilyAuditData
     [DataMember(Name = "skippedCount")] public int SkippedCount { get; set; }
 
     [DataMember(Name = "mode")] public string Mode { get; set; } = string.Empty;
+    [DataMember(Name = "stoppedAtReadBoundary")] public bool StoppedAtReadBoundary { get; set; }
     [DataMember(Name = "families")] public List<FamilyAuditFamily> Families { get; set; } = [];
 }
 
