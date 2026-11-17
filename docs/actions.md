@@ -107,6 +107,8 @@ Cancellation is refused while the workstation read-only lock is on.
 The refusal reports the matched count; a narrower selection or an explicit higher limit is required.
 The default limit is 500, reduced from 5000; the maximum is 20000.
 `revit_cancel_job` requests cancellation between elements; cancellation rolls back the tagging transaction and reports the number processed, not the number retained.
+Independent-tag runs temporarily isolate their targets during creation and restore visibility before verification or rollback.
+Views with an active temporary mode, unsupported isolation or room targets use the normal path; API refusals also fall back without changing the default bound.
 
 `revit_create_view` leaves settings controlled by the view's template unchanged and lists them in `templateControlled` when any are skipped.
 The result includes the template name in `viewTemplate` when the view has a template.

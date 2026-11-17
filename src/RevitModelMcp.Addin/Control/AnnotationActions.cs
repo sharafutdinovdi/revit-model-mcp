@@ -9,6 +9,8 @@ namespace RevitModelMcp.Control;
 
 internal static class AnnotationActions
 {
+    private static readonly TemporaryViewMode[] TemporaryModes = (TemporaryViewMode[])Enum.GetValues(typeof(TemporaryViewMode));
+
     /// <summary>Creates one tag per resolvable element in a view; inputs that cannot be tagged are reported in <c>skipped</c>.</summary>
     internal static ActionResultData TagElements(Document document, ActionJobContract action)
     {
@@ -53,36 +55,44 @@ internal static class AnnotationActions
                 skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
             }
         }
-        foreach (var element in elements)
+        var isolated = TryIsolateTagTargets(view, elements, tagged, centers);
+        try
         {
-            CheckCancellation();
-            processed++;
-            var id = RevitValueReader.GetId(element.Id);
-            if (tagged.Contains(id))
+            foreach (var element in elements)
             {
-                skipped.Add($"Element {id}: already tagged in this view.");
-                continue;
-            }
-            if (!centers.ContainsKey(id)) continue;
-            try
-            {
-                var tagId = element is Room room
-                    ? TagRoom(document, view, room, action, roomTagType, centers[id])
-                    : TagElement(document, view, element, action, orientation, independentTypes, centers[id]);
-                if (tagId is null)
+                CheckCancellation();
+                processed++;
+                var id = RevitValueReader.GetId(element.Id);
+                if (tagged.Contains(id))
                 {
-                    skipped.Add(SkipReason(id, element));
+                    skipped.Add($"Element {id}: already tagged in this view.");
                     continue;
                 }
-                created.Add(RevitValueReader.GetId(tagId));
+                if (!centers.ContainsKey(id)) continue;
+                try
+                {
+                    var tagId = element is Room room
+                        ? TagRoom(document, view, room, action, roomTagType, centers[id])
+                        : TagElement(document, view, element, action, orientation, independentTypes, centers[id]);
+                    if (tagId is null)
+                    {
+                        skipped.Add(SkipReason(id, element));
+                        continue;
+                    }
+                    created.Add(RevitValueReader.GetId(tagId));
+                }
+                catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
+                    or Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+                {
+                    skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
+                }
             }
-            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
-                or Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
-            {
-                skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
-            }
+            CheckCancellation();
         }
-        CheckCancellation();
+        finally
+        {
+            if (isolated) view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+        }
         if (created.Count == 0)
             throw new InvalidOperationException("No tags were created. " + (skipped.Count > 0
                 ? string.Join(" ", skipped.Take(5))
@@ -225,6 +235,40 @@ internal static class AnnotationActions
         tag.HasLeader = action.Leader;
         if (type is not null) tag.RoomTagType = type;
         return tag.Id;
+    }
+
+    private static bool TryIsolateTagTargets(View view, List<Element> elements, HashSet<long> tagged,
+        Dictionary<long, XYZ?> centers)
+    {
+        var targets = new List<ElementId>();
+        var includesRooms = false;
+        foreach (var element in elements)
+        {
+            includesRooms |= element is Room;
+            var id = RevitValueReader.GetId(element.Id);
+            if (element is not SpatialElement && element.Category is not null && !tagged.Contains(id) &&
+                centers.TryGetValue(id, out var center) && center is not null)
+                targets.Add(element.Id);
+        }
+        var attemptedIsolation = false;
+        try
+        {
+            var supportsTemporaryVisibility = view.CanUseTemporaryVisibilityModes();
+            var hasActiveTemporaryMode = supportsTemporaryVisibility && TemporaryModes.Any(view.IsInTemporaryViewMode);
+            if (!TaggingPolicy.CanTemporarilyIsolate(targets.Count, includesRooms,
+                    supportsTemporaryVisibility, hasActiveTemporaryMode))
+                return false;
+            attemptedIsolation = true;
+            view.IsolateElementsTemporary(targets);
+            return true;
+        }
+        catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ApplicationException
+            or ArgumentException or InvalidOperationException)
+        {
+            if (attemptedIsolation && view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate))
+                view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+            return false;
+        }
     }
 
     private static XYZ? Center(Element element, View view)
