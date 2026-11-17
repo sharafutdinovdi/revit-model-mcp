@@ -35,7 +35,7 @@ public sealed class TaggingPolicyTests
     [Arguments(500)]
     public async Task IndependentTargetsUseIsolationWhenTheViewIsUnmodified(int count)
     {
-        await Assert.That(TaggingPolicy.CanTemporarilyIsolate(count, false, true, false)).IsTrue();
+        await Assert.That(TaggingPolicy.GetPlainPathReason(count, false, true, null)).IsNull();
     }
 
     [Test]
@@ -47,7 +47,31 @@ public sealed class TaggingPolicyTests
     public async Task EmptyRoomUnsupportedOrAlreadyTemporaryViewsUseThePlainPath(
         int count, bool includesRooms, bool supportsTemporaryVisibility, bool hasActiveTemporaryMode)
     {
-        await Assert.That(TaggingPolicy.CanTemporarilyIsolate(
-            count, includesRooms, supportsTemporaryVisibility, hasActiveTemporaryMode)).IsFalse();
+        await Assert.That(TaggingPolicy.GetPlainPathReason(
+            count, includesRooms, supportsTemporaryVisibility, hasActiveTemporaryMode ? "TemporaryHideIsolate" : null)).IsNotNull();
+    }
+
+    [Test]
+    [Arguments(0, true, true, null, "rooms-in-call")]
+    [Arguments(0, false, true, null, "no-independent-targets")]
+    [Arguments(20, false, false, null, "view-cannot-enter-mode")]
+    [Arguments(20, false, true, "TemporaryHideIsolate", "temporary-mode:TemporaryHideIsolate")]
+    [Arguments(20, false, true, "RevealHiddenElements,TemporaryViewProperties", "temporary-mode:RevealHiddenElements,TemporaryViewProperties")]
+    public async Task PlainPathReportsItsReason(int count, bool includesRooms, bool supportsTemporaryVisibility,
+        string? activeTemporaryModes, string reason)
+    {
+        await Assert.That(TaggingPolicy.GetPlainPathReason(count, includesRooms, supportsTemporaryVisibility, activeTemporaryModes))
+            .IsEqualTo(reason);
+    }
+
+    [Test]
+    [Arguments(3, null, null, "Tagging path=isolated-batches; batches=3; batchSize=20; reason=none; exception=none.")]
+    [Arguments(0, "rooms-in-call", null, "Tagging path=plain; batches=0; batchSize=20; reason=rooms-in-call; exception=none.")]
+    [Arguments(0, null, null, "Tagging path=plain; batches=0; batchSize=20; reason=no-batches-started; exception=none.")]
+    [Arguments(2, "isolation-refused-at-batch-3", "InvalidOperationException",
+        "Tagging path=plain; batches=2; batchSize=20; reason=isolation-refused-at-batch-3; exception=InvalidOperationException.")]
+    public async Task PathLogContainsCountsAndFixedDiagnostics(int batches, string? reason, string? exceptionType, string expected)
+    {
+        await Assert.That(TaggingPolicy.BuildPathLog(batches, reason, exceptionType)).IsEqualTo(expected);
     }
 }

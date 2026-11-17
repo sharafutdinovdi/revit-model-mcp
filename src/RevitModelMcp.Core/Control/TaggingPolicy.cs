@@ -12,7 +12,19 @@ public static class TaggingPolicy
             yield return new ArraySegment<T>(orderedTargets, offset, Math.Min(IsolationBatchSize, orderedTargets.Length - offset));
     }
 
-    public static bool CanTemporarilyIsolate(int independentTargetCount, bool includesRooms,
-        bool supportsTemporaryVisibility, bool hasActiveTemporaryMode) =>
-        independentTargetCount > 0 && !includesRooms && supportsTemporaryVisibility && !hasActiveTemporaryMode;
+    public static string? GetPlainPathReason(int independentTargetCount, bool includesRooms,
+        bool supportsTemporaryVisibility, string? activeTemporaryModes)
+    {
+        if (includesRooms) return "rooms-in-call";
+        if (independentTargetCount <= 0) return "no-independent-targets";
+        if (!supportsTemporaryVisibility) return "view-cannot-enter-mode";
+        return string.IsNullOrEmpty(activeTemporaryModes) ? null : $"temporary-mode:{activeTemporaryModes}";
+    }
+
+    public static string BuildPathLog(int isolatedBatches, string? plainPathReason, string? exceptionType)
+    {
+        var path = plainPathReason is null && isolatedBatches > 0 ? "isolated-batches" : "plain";
+        var reason = plainPathReason ?? (isolatedBatches > 0 ? "none" : "no-batches-started");
+        return $"Tagging path={path}; batches={isolatedBatches}; batchSize={IsolationBatchSize}; reason={reason}; exception={exceptionType ?? "none"}.";
+    }
 }

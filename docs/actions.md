@@ -109,6 +109,7 @@ The default limit is 500, reduced from 5000; the maximum is 20000.
 `revit_cancel_job` requests cancellation between elements; cancellation rolls back the tagging transaction and reports the number processed, not the number retained.
 Independent-tag runs isolate ordered batches of at most 20 targets, disabling temporary isolation between batches and before verification or rollback.
 Existing temporary modes, unsupported views and room targets use the normal path; an isolation refusal restores visibility and uses the normal path for the remaining run.
+A debug log summary reports the isolation path, batch count and fallback reason without model identifiers.
 
 `revit_create_view` leaves settings controlled by the view's template unchanged and lists them in `templateControlled` when any are skipped.
 The result includes the template name in `viewTemplate` when the view has a template.
