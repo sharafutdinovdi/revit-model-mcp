@@ -2754,11 +2754,15 @@ def test_budget_expires_before_pickup_without_removing_submitted_action():
         }
 
         async def pickup(_):
+            clock.return_value += 1
             await asyncio.sleep(1)
             return JobPickupStatus(True, 0, False, 1)
 
         host.wait_until_trigger_is_gone = pickup
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01):
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=0.01),
+            patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock,
+        ):
             result = await RevitChannel(host).execute(
                 Job("process-models", {"command": "process-models"})
             )
@@ -2777,7 +2781,10 @@ def test_long_action_requires_persisted_jobs_for_background_wait(persisted):
         if persisted:
             host.instance_info["commands"].append("jobs/persisted")
         host.response_content = json.dumps({"command": "export", "success": True, "data": {}})
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10):
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=10),
+            patch.object(asyncio.get_running_loop(), "time", return_value=100.0),
+        ):
             await RevitChannel(host).execute(Job("export", {"command": "export"}), 120)
         if persisted:
             assert host.response_timeout <= 10
@@ -2854,7 +2861,15 @@ def test_file_poll_boundary_error_returns_running_job(error_type):
             side_effect=[host.response_name, error_type("Poll timed out.")]
         )
         host.fetch_job = AsyncMock(side_effect=error_type("Boundary fetch timed out."))
-        with patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1):
+
+        async def advance(seconds):
+            clock.return_value += seconds
+
+        with (
+            patch("revit_model_mcp.revit_channel.tool_budget_seconds", return_value=1.1),
+            patch.object(asyncio.get_running_loop(), "time", return_value=100.0) as clock,
+            patch("revit_model_mcp.revit_channel.asyncio.sleep", side_effect=advance),
+        ):
             result = await RevitChannel(host).execute(
                 Job("process-models", {"command": "process-models"})
             )
