@@ -73,6 +73,14 @@ def on_page_markdown(markdown, page, config, files):
 def on_post_page(output, page, config):
     """Publish crawlable metadata without changing the theme or visible content."""
     title = f"{page.title} - {config.site_name}"
+    if page.is_homepage:
+        title = page.meta["title"]
+        output = re.sub(
+            r"<title>[^<]*</title>",
+            f"<title>{html.escape(title)}</title>",
+            output,
+            count=1,
+        )
     description = page.meta["description"]
     image = f"{config.site_url}assets/social-card.png"
     tags = {

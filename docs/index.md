@@ -1,4 +1,5 @@
 ---
+title: "Model MCP: MCP server for Autodesk Revit 2022-2027"
 description: "Model MCP connects AI assistants to live Revit 2022-2027 models for BIM coordination, native authoring, and reviewed changes with Undo and read-only controls."
 ---
 
