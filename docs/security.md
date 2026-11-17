@@ -33,8 +33,10 @@ Redaction applies to outgoing Python responses, not channel files or add-in logs
 HTTP binds to `127.0.0.1:53110` by default.
 A per-user 32-byte random bearer token is generated in `settings.json`; its protected NTFS ACL grants access only to the current user.
 The token is never logged.
-All HTTP routes except `/health` require it; health exposes the active document name and process information.
-Before sending that token, the Python HTTP client verifies a nonce proof from the add-in on the existing health request.
+All HTTP routes require the key; unauthenticated `/health` returns HTTP 401 without instance details.
+Before sending the key, the Python HTTP client verifies a nonce proof from the add-in's HTTP 401 health challenge, then requests authenticated health.
+The listener refuses disallowed Host and Origin headers and non-JSON bodies before reading the key or dispatching a command.
+See the exact [HTTP header rules and upgrade requirement](transport.md#client-connection).
 There is no built-in TLS: put remote access behind a tunnel or a TLS proxy.
 Set `REVIT_MCP_HTTP_ENABLED=0` in Revit's environment or `httpEnabled=false` in settings to disable the listener entirely.
 MCP action calls are refused in read-only mode over every transport.

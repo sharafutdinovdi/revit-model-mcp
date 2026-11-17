@@ -336,10 +336,12 @@ After explicitly enabling HTTP, start Revit with a model open and check from Pow
 
 ```powershell
 Test-NetConnection 127.0.0.1 -Port 53110
-curl.exe -i http://127.0.0.1:53110/health
+curl.exe -i -H "Authorization: Bearer $env:REVIT_MCP_TOKEN" http://127.0.0.1:53110/health
 ```
 
 The TCP check reports `TcpTestSucceeded: True`; `/health` returns HTTP 200.
+The environment variable must contain the workstation access key.
+Without it, `/health` returns HTTP 401 with `{"error":"A valid bearer token is required."}` and no instance details.
 
 ### Client connection
 
@@ -355,14 +357,35 @@ uv run --directory server revit-model-mcp
 HTTP has no built-in TLS.
 Use an SSH tunnel, Tailscale or a TLS reverse proxy; the client validates HTTPS certificates.
 Redirects are rejected to prevent forwarding the bearer token to another endpoint.
-`/health` is unauthenticated and reveals the Revit and add-in versions, supported commands, protocol version, active document name, process ID, startup identity (`startedUtc`) and `readOnly: { enabled, source, setBy, setAtUtc }`.
-The Python client sends a fresh 32-byte random base64url nonce in `X-RevitMcp-Nonce` on every health request.
-The add-in answers with `X-RevitMcp-Proof`, the unpadded base64url HMAC-SHA256 of `revit-model-mcp/health/v1\n` followed by the decoded nonce.
+Every route requires `Authorization: Bearer <token>`.
+Authenticated `/health` returns the Revit and add-in versions, supported commands, protocol version, active document name, process ID, startup identity (`startedUtc`), policy and `readOnly: { enabled, source, setBy, setAtUtc }`.
+Missing or incorrect keys return HTTP 401 with no version, build, command, document or path data.
+There is no unauthenticated liveness body.
+Before sending the key, the Python client sends a fresh 32-byte random base64url nonce in `X-RevitMcp-Nonce` to `/health`.
+The HTTP 401 response carries `X-RevitMcp-Proof`, the unpadded base64url HMAC-SHA256 of `revit-model-mcp/health/v1\n` followed by the decoded nonce.
 The HMAC key is the UTF-8 bytes of the token text sent after `Bearer `, including for an overridden `REVIT_MCP_TOKEN`.
-The client compares each proof before sending the token for a job.
-Health requests without a valid nonce keep the same response body and do not return a proof.
-An older add-in cannot supply the proof, so a newer Python client refuses jobs and asks for an add-in update; an older client works with a newer add-in.
-All other routes require `Authorization: Bearer <token>`.
+The client verifies the proof, then repeats `/health` with the key.
+A missing or invalid nonce produces no proof.
+The add-in's startup self-probe sends the key.
+
+**HTTP upgrade requirement:** both the add-in and Python server must be 2.2.0 or later.
+Server 2.1.0 probes `/health` without the key and receives HTTP 401, even when its configured key is correct.
+It reports `Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.`
+Upgrade both components instead of rotating a correct key.
+
+Before reading the access key or dispatching a command, the listener checks these headers:
+
+| Header rule | Refusal |
+| --- | --- |
+| `Host` must contain the configured IPv4 bind address and listener port; a loopback bind also permits `localhost`. With `0.0.0.0`, the address must match the local receiving interface, or `localhost` on loopback. Hostnames other than `localhost` are not configured bind targets and are refused. | HTTP 400, `Host header is not allowed.` |
+| An absent `Origin` is allowed. A present origin must match the request's allowed `http` scheme, host and port, with no credentials, query, fragment or non-root path. | HTTP 403, `Origin header is not allowed.` |
+| A request carrying a body must use `application/json`, case-insensitively, with optional media-type parameters. Missing types, `text/plain`, form types and other media types are refused. | HTTP 415, `Content-Type must be application/json.` |
+
+Refusals contain only the rule's fixed reason and do not log request headers, bodies or keys.
+The Python client sends `application/json` for bodies, the URL authority as `Host`, and no `Origin`.
+A TLS reverse proxy must rewrite the upstream `Host` to the bound IPv4 address and listener port, or `localhost` on loopback.
+It must preserve bearer authentication, nonce and proof headers, JSON content types, and the absence of `Origin`.
+Forwarded headers do not expand the allowed host or origin set.
 
 | Request | Result |
 | --- | --- |
@@ -378,7 +401,7 @@ A timeout or client disconnect does not cancel a job.
 Completed read results expire ten minutes after completion, action results after 24 hours; see [result retention](#result-retention).
 Do not resubmit an action after a timeout without checking its result and the model.
 The Python client submits once with `timeout=0`, then polls within `timeout_seconds`.
-Proof verification uses the existing health requests for each job and adds no HTTP request per job or poll.
+Each health discovery uses a nonce challenge followed by an authenticated health request; polling adds no proof request.
 `REVIT_MCP_PICKUP_TIMEOUT_SECONDS` in the server environment configures file pickup; HTTP ignores this timeout.
 
 HTTP 401 means the token is missing or invalid.
@@ -389,7 +412,7 @@ It is final: do not poll it again, and inspect the model before resubmitting an 
 HTTP 404 means the ID was never known to this add-in, so check the ID.
 HTTP 503 with `error:shutting_down` means Revit is closing.
 HTTP 400 with `error:invalid_request` means the job body is not valid UTF-8.
-For a submission, the Python client treats only HTTP 400, 401, 403, 408, 413, 429 and 503 as pre-acceptance refusals.
+For a submission, the Python client treats only HTTP 400, 401, 403, 408, 413, 415, 429 and 503 as pre-acceptance refusals.
 HTTP 500 and other unrecognized submission statuses do not establish whether an action executed.
 The client attempts to fetch the original job; without a recorded outcome it returns `outcome_unknown`, the original job ID and model-inspection advice.
 It does not resubmit the action.
@@ -481,10 +504,10 @@ netsh http add urlacl url=http://+:53110/ user=<user>
 netsh advfirewall firewall add rule name="Model MCP" dir=in action=allow protocol=TCP localport=53110
 ```
 
-On the Mac at the clone root, replace `revit-host` with the workstation hostname and supply `REVIT_MCP_TOKEN` through the secret store:
+On the Mac at the clone root, replace `192.0.2.10` with the workstation's bound IPv4 address and supply `REVIT_MCP_TOKEN` through the secret store:
 
 ```sh
-export REVIT_MCP_HOST=http://revit-host:53110
+export REVIT_MCP_HOST=http://192.0.2.10:53110
 uv run --directory server revit-model-mcp
 ```
 

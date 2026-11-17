@@ -104,7 +104,9 @@ internal sealed class HttpChannel : IDisposable
                 exceptionTypeName = null;
                 try
                 {
-                    using var response = await ProbeClient.GetAsync($"http://{host}:{_settings.HttpPort}/health",
+                    using var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{_settings.HttpPort}/health");
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _settings.Token);
+                    using var response = await ProbeClient.SendAsync(request,
                         HttpCompletionOption.ResponseHeadersRead, _shutdown.Token).ConfigureAwait(false);
                     statusCode = (int)response.StatusCode;
                 }
@@ -182,12 +184,28 @@ internal sealed class HttpChannel : IDisposable
                 await JsonAsync(context, 403, new() { ["error"] = "This network interface is disabled." }).ConfigureAwait(false);
                 return;
             }
+            var headerStatus = HttpRequestPolicy.ValidateHeaders(_settings.HttpBind, _settings.HttpPort,
+                context.Request.LocalEndPoint.Address, context.Request.Headers["Host"], context.Request.Headers["Origin"],
+                context.Request.HasEntityBody, context.Request.ContentType);
+            if (headerStatus != 0)
+            {
+                context.Response.KeepAlive = false;
+                await JsonAsync(context, headerStatus, new() { ["error"] = HttpRequestPolicy.RefusalReason(headerStatus) }).ConfigureAwait(false);
+                return;
+            }
             var path = context.Request.Url!.AbsolutePath;
             var method = context.Request.HttpMethod;
+            if (method == "GET" && path == "/health" &&
+                HealthProof.TryCompute(_settings.Token, context.Request.Headers["X-RevitMcp-Nonce"], out var proof))
+                context.Response.Headers["X-RevitMcp-Proof"] = proof;
+            if (!HttpRequestPolicy.Authenticated(_settings.Token, context.Request.Headers["Authorization"]))
+            {
+                context.Response.AddHeader("WWW-Authenticate", "Bearer");
+                await JsonAsync(context, 401, new() { ["error"] = "A valid bearer token is required." }).ConfigureAwait(false);
+                return;
+            }
             if (method == "GET" && path == "/health")
             {
-                if (HealthProof.TryCompute(_settings.Token, context.Request.Headers["X-RevitMcp-Nonce"], out var proof))
-                    context.Response.Headers["X-RevitMcp-Proof"] = proof;
                 await JsonAsync(context, 200, new()
                 {
                     ["ok"] = true,
@@ -201,12 +219,6 @@ internal sealed class HttpChannel : IDisposable
                     ["readOnly"] = ActionCommandExecutor.ReadOnlyLock.State,
                     ["policy"] = PolicyProvider.Summary()
                 }).ConfigureAwait(false);
-                return;
-            }
-            if (!Authenticated(context.Request.Headers["Authorization"]))
-            {
-                context.Response.AddHeader("WWW-Authenticate", "Bearer");
-                await JsonAsync(context, 401, new() { ["error"] = "A valid bearer token is required." }).ConfigureAwait(false);
                 return;
             }
             if (method == "GET" && path.StartsWith("/jobs/", StringComparison.Ordinal))
@@ -408,16 +420,6 @@ internal sealed class HttpChannel : IDisposable
         });
     }
 
-    private bool Authenticated(string? authorization)
-    {
-        if (authorization is null || !authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
-        using var hash = SHA256.Create();
-        var actual = hash.ComputeHash(Encoding.UTF8.GetBytes(authorization.Substring(7)));
-        var expected = hash.ComputeHash(Encoding.UTF8.GetBytes(_settings.Token));
-        var difference = 0;
-        for (var index = 0; index < expected.Length; index++) difference |= actual[index] ^ expected[index];
-        return difference == 0;
-    }
 
     private static bool TryTimeout(HttpListenerContext context, out int timeout)
     {
