@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import base64
 import hashlib
@@ -7,6 +8,8 @@ import shutil
 import struct
 import subprocess
 import threading
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -90,9 +93,15 @@ def endpoint():
                     proof = "wrong-proof"
                 elif state["proof"] == "known":
                     proof = "GfUwWjTyg3_Dag6VadPsgEniE7ybFFAH9msV89o4grU"
-                if self.headers.get("Authorization") != "Bearer test-token":
+                if self.headers.get("Authorization") != "Bearer test-token" and not state.get(
+                    "legacy_health"
+                ):
                     return self.reply(
-                        401, {"error": "A valid bearer token is required."}, proof=proof
+                        401,
+                        state.get(
+                            "anonymous_health", {"error": "A valid bearer token is required."}
+                        ),
+                        proof=proof,
                     )
                 return self.reply(
                     200,
@@ -1143,3 +1152,67 @@ def test_header_submission_refusal_is_pre_acceptance(endpoint, status, reason):
     assert captured.value.before_send is True
     assert state["payload"] is None
     assert state["requests"][-1] == ("POST", "/jobs?timeout=0", "Bearer test-token")
+
+
+def test_new_server_verifies_legacy_unauthenticated_health(endpoint):
+    host, state = endpoint
+    state["legacy_health"] = True
+    assert asyncio.run(host.health())["commands"]
+    assert state["requests"] == [
+        ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
+    ]
+    assert len(state["nonces"]) == 1
+
+
+@pytest.fixture
+def release_smoke_http_check():
+    script = (REPOSITORY / "build" / "release-smoke.ps1").read_text(encoding="utf-8-sig")
+    driver = script.split("$driverSource = @'\n", 1)[1].split("\n'@", 1)[0]
+    tree = ast.parse(driver)
+    check = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "check_http"
+    )
+    rows = []
+    namespace = {
+        "urllib": urllib,
+        "json": json,
+        "HttpHost": HttpHost,
+        "record": lambda *row: rows.append(row),
+    }
+    exec(
+        compile(ast.Module(body=[check], type_ignores=[]), "release-smoke-driver", "exec"),
+        namespace,
+    )
+    return namespace["check_http"], rows
+
+
+def test_release_smoke_checks_private_and_authenticated_health(endpoint, release_smoke_http_check):
+    host, state = endpoint
+    check, rows = release_smoke_http_check
+    asyncio.run(check(host.host, host.token))
+    assert [row[:2] for row in rows] == [
+        ("HTTP anonymous", True),
+        ("HTTP authenticated", True),
+    ]
+    assert state["requests"] == [
+        ("GET", "/health", None),
+        ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
+    ]
+
+
+@pytest.mark.parametrize("legacy_health", [False, True])
+def test_release_smoke_rejects_unauthenticated_details(
+    endpoint, release_smoke_http_check, legacy_health
+):
+    host, state = endpoint
+    state["legacy_health"] = legacy_health
+    state["anonymous_health"] = {"error": "unauthorized", "commands": ["ping"]}
+    check, rows = release_smoke_http_check
+    with pytest.raises(AssertionError, match="Unauthenticated health"):
+        asyncio.run(check(host.host, host.token))
+    assert rows == []
+    assert state["requests"] == [("GET", "/health", None)]

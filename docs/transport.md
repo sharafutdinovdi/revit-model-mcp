@@ -366,12 +366,15 @@ The HTTP 401 response carries `X-RevitMcp-Proof`, the unpadded base64url HMAC-SH
 The HMAC key is the UTF-8 bytes of the token text sent after `Bearer `, including for an overridden `REVIT_MCP_TOKEN`.
 The client verifies the proof, then repeats `/health` with the key.
 A missing or invalid nonce produces no proof.
-The add-in's startup self-probe sends the key.
+The add-in's startup self-probe sends only a fresh nonce, never the access key.
+Only HTTP 401 with the matching proof establishes that its own listener answered.
+HTTP 200, missing or incorrect proofs, and connection errors fail the self-probe.
 
-**HTTP upgrade requirement:** both the add-in and Python server must be 2.2.0 or later.
-Server 2.1.0 probes `/health` without the key and receives HTTP 401, even when its configured key is correct.
+**HTTP compatibility:** a 2.2.0 Python server works with a 2.1.0 add-in.
+The older add-in returns HTTP 200 with a nonce proof before receiving the key; the server verifies that proof and then requests authenticated health.
+A 2.1.0 Python server against a 2.2.0 add-in fails: it probes `/health` without the key and receives HTTP 401, even when its configured key is correct.
 It reports `Revit rejected the bearer token. Check REVIT_MCP_TOKEN or --token against the workstation settings.json.`
-Upgrade both components instead of rotating a correct key.
+Upgrade that server to 2.2.0 or later instead of rotating a correct key.
 
 Before reading the access key or dispatching a command, the listener checks these headers:
 
@@ -386,6 +389,8 @@ The Python client sends `application/json` for bodies, the URL authority as `Hos
 A TLS reverse proxy must rewrite the upstream `Host` to the bound IPv4 address and listener port, or `localhost` on loopback.
 It must preserve bearer authentication, nonce and proof headers, JSON content types, and the absence of `Origin`.
 Forwarded headers do not expand the allowed host or origin set.
+SSH local forwards to a different local port, hostname URLs such as MagicDNS, and `netsh portproxy` routes with a different client-side host or port return HTTP 400.
+Use a same-port loopback SSH forward, the workstation's bound IPv4 address, or a reverse proxy that rewrites the upstream Host.
 
 | Request | Result |
 | --- | --- |

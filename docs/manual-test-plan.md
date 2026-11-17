@@ -174,6 +174,7 @@ Actions run by default; the single workstation read-only lock (Read-only ribbon 
 - [ ] **5.2 SSH tunnel** (remote client → workstation loopback): `revit_ping` + a read tool pass from M2.
 - [ ] **5.3 HTTP** (loopback + bearer token): unauthenticated `/health` returns HTTP 401; authenticated health and a normal read tool succeed. Confirm that the HTTP listener binds on its configured port.
 - [ ] **5.3a HTTP header boundary**: a foreign `Origin` returns HTTP 403, a wrong `Host` returns HTTP 400, and a `text/plain` body returns HTTP 415, with and without a valid key. Each body contains only the fixed rule reason. Confirm that no rejected request executes a command or logs a key. Repeat a normal HTTP tool call after these refusals.
+- [ ] **5.3b HTTP startup probe**: the request carries a fresh nonce and no Authorization header. Only HTTP 401 with the matching proof leaves the listener status as listening; a missing or wrong proof, HTTP 200 or a connection error reports failure. Confirm no access key appears in probe traffic or logs.
 - [ ] **5.4 Concurrency / channel contention** ⚠️ **found 2026-09-15**: fire several tool calls in quick succession (as the agent does when reasoning). Earlier run showed *4 of 7* parallel calls failing (single file-channel "busy: trigger.txt exists"). Test rapid/parallel calls and record the failure rate; if the channel serializes poorly, file an issue.
 
 ---

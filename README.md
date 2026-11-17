@@ -294,7 +294,7 @@ Install these folders with the same copy or ZIP procedure.
   Missing or expired retry journals refuse re-execution instead of repeating an uncertain action.
 - **Path redaction.** `REVIT_MCP_REDACT_PATHS=1` hides directories in response path fields. Names, parameter values, and errors can still contain sensitive data.
 - **Unreachable workstation.** `errorCode: "transport_unavailable"` with `retryable: true` means the transport cannot reach Revit. If an action may have been submitted, inspect its job and the model before resubmitting. See [errors and refusals](https://sharafutdinovdi.github.io/revit-model-mcp/tools/#errors-and-refusals).
-- **HTTP.** Direct requests require the bearer token except for `/health`. Reads and authenticated `set-read-only` remain available while locked. Ordinary actions are refused by either the user lock or enforced policy.
+- **HTTP.** Every route, including `/health`, requires the bearer token. Unauthenticated health returns HTTP 401 without instance details. Reads and authenticated `set-read-only` remain available while locked. Ordinary actions are refused by either the user lock or enforced policy.
 - **Files and completeness.** Client report and download destinations are write-new, including when another process creates the destination during publication.
   Read completeness includes `skipped`, `skippedCount`, nested diagnostics, `partial`, `truncated` and paging indicators.
   See the [contract evidence](docs/actions.md#contract-evidence) for implementations and workstation-only validation limits.
@@ -324,7 +324,7 @@ Install it there once with `uv tool install revit-model-mcp`, then register `ssh
 
 Replace `revit-pc` with the workstation's SSH host alias.
 MCP stdio flows through the SSH session and the remote server uses the named pipe, so no port opens.
-`REVIT_MCP_HOST=ssh:<alias>` (file channel over SSH) and HTTP through an SSH tunnel remain available; HTTP requires a bearer token except for `/health` and binds to loopback by default.
+`REVIT_MCP_HOST=ssh:<alias>` (file channel over SSH) and HTTP through an SSH tunnel remain available; every HTTP route requires a bearer token and the listener binds to loopback by default.
 See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/).
 
 ## Compatibility

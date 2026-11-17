@@ -14,6 +14,7 @@ public static class HttpRequestPolicy
         if (!TryAuthority(host, out var authority) || authority!.Port != port)
             return 400;
         var allowedAddress = bindAddress == "0.0.0.0" ? localAddress : IPAddress.Parse(bindAddress);
+        if (allowedAddress.IsIPv4MappedToIPv6) allowedAddress = allowedAddress.MapToIPv4();
         var hostAllowed = IPAddress.TryParse(authority.Host, out var hostAddress)
             ? hostAddress.Equals(allowedAddress)
             : IPAddress.IsLoopback(allowedAddress) && authority.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);

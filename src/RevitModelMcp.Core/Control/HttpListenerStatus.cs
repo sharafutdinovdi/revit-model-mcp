@@ -35,13 +35,16 @@ public sealed class HttpListenerStatus
             _ => $"The listener could not start for {prefix} (error {nativeErrorCode}). Check netsh http show urlacl and netsh http show servicestate."
         });
 
-    public static HttpListenerStatus FromSelfProbe(int? statusCode, string? exceptionTypeName) => statusCode switch
-    {
-        200 => Started(),
-        503 => new(Failed, "HTTP.sys answered 503 to a self-probe although the listener started. Another service may own this URL or the URL reservation is wrong: check netsh http show urlacl and netsh http show servicestate."),
-        null => new(Failed, $"The self-probe did not complete ({exceptionTypeName})."),
-        _ => new(Failed, $"The self-probe returned HTTP {statusCode}.")
-    };
+    public static HttpListenerStatus FromSelfProbe(int? statusCode, string? exceptionTypeName,
+        string token, string? nonce, string? proof) => statusCode switch
+        {
+            401 when HealthProof.TryCompute(token, nonce, out var expectedProof) &&
+                     string.Equals(proof, expectedProof, StringComparison.Ordinal) => Started(),
+            401 => new(Failed, "The self-probe response did not prove the listener access key."),
+            503 => new(Failed, "HTTP.sys answered 503 to a self-probe although the listener started. Another service may own this URL or the URL reservation is wrong: check netsh http show urlacl and netsh http show servicestate."),
+            null => new(Failed, $"The self-probe did not complete ({exceptionTypeName})."),
+            _ => new(Failed, $"The self-probe returned HTTP {statusCode}.")
+        };
 }
 
 public sealed record ChannelRibbonStatus(string Pipe, string Http, string File)

@@ -22,7 +22,7 @@ namespace RevitModelMcp.Control;
 internal sealed class HttpChannel : IDisposable
 {
     private const long MaxJobBytes = 1024 * 1024;
-    private static readonly HttpClient ProbeClient = new(new HttpClientHandler { UseProxy = false, UseCookies = false })
+    private static readonly HttpClient ProbeClient = new(new HttpClientHandler { UseProxy = false, UseCookies = false, AllowAutoRedirect = false })
     {
         Timeout = TimeSpan.FromSeconds(3)
     };
@@ -96,30 +96,39 @@ internal sealed class HttpChannel : IDisposable
         {
             int? statusCode = null;
             string? exceptionTypeName = null;
+            string? nonce = null;
+            string? proof = null;
+            using var random = RandomNumberGenerator.Create();
+            var nonceBytes = new byte[32];
             var host = _settings.HttpBind == "0.0.0.0" ? "127.0.0.1" : _settings.HttpBind;
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 if (_shutdown.IsCancellationRequested || _closing) return;
                 statusCode = null;
                 exceptionTypeName = null;
+                proof = null;
+                random.GetBytes(nonceBytes);
+                nonce = Convert.ToBase64String(nonceBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
                 try
                 {
                     using var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{_settings.HttpPort}/health");
-                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _settings.Token);
+                    request.Headers.Add("X-RevitMcp-Nonce", nonce);
                     using var response = await ProbeClient.SendAsync(request,
                         HttpCompletionOption.ResponseHeadersRead, _shutdown.Token).ConfigureAwait(false);
                     statusCode = (int)response.StatusCode;
+                    if (response.Headers.TryGetValues("X-RevitMcp-Proof", out var proofs))
+                        proof = proofs.SingleOrDefault();
                 }
                 catch (Exception exception)
                 {
                     exceptionTypeName = exception.GetType().Name;
                 }
-                if (statusCode == 200) break;
+                if (!HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName, _settings.Token, nonce, proof).IsFailed) break;
                 if (attempt < 2)
                     await Task.Delay(1000, _shutdown.Token).ConfigureAwait(false);
             }
             if (_shutdown.IsCancellationRequested || _closing) return;
-            Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName);
+            Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName, _settings.Token, nonce, proof);
             StatusChanged?.Invoke(Status);
             if (Status.IsFailed)
                 PluginLog.Warn($"HTTP self-probe failed. Reason='{Status.Reason}'.{(statusCode == 503 ? $" A wildcard reservation for the same port (http://+:{_settings.HttpPort}/) also causes this; remove it with netsh http delete urlacl url=http://+:{_settings.HttpPort}/." : string.Empty)}");
