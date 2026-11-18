@@ -15,7 +15,7 @@ This page states which MCP clients were checked against Model MCP, which were no
 | Cursor | Not tested | Any client that starts a stdio server should work with the same JSON configuration. |
 | Codex CLI | Not tested | |
 | VS Code with GitHub Copilot | Not tested | |
-| LM Studio, Jan and other local clients | Not tested | |
+| LM Studio, Jan and other local clients | Not tested | See [Use Model MCP with a local model](guides/local-models.md) for experimental measurements, setup and safety limits. |
 | Claude Desktop chat (cloud) | Not supported | Cloud chat cannot start a local stdio server. |
 
 ## What "not tested" means
