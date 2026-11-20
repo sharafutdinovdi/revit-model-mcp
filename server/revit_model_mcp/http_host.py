@@ -43,20 +43,6 @@ class HttpUnavailableError(TransportUnavailableError):
     transport = "HTTP"
 
 
-def _policy_refusal_text(error: urllib.error.HTTPError) -> str | None:
-    """Return the organization policy refusal text from a 403 body, if the add-in sent one."""
-    try:
-        text = json.loads(error.read(65536)).get("error")
-    except (OSError, ValueError, AttributeError):
-        return None
-    return (
-        text
-        if isinstance(text, str)
-        and (text.startswith(POLICY_REFUSAL_PREFIX) or text.startswith("Read-only is "))
-        else None
-    )
-
-
 def _is_job_submission_path(path: str) -> bool:
     route = path.split("?")[0]
     return route == "/jobs" or (route.startswith("/jobs/") and route.endswith("/cancel"))
@@ -95,7 +81,7 @@ class HttpHost:
             else None
         )
         _, body, response_headers = await self._request(
-            "GET", "/health", authenticated=False, extra_headers=headers
+            "GET", "/health", authenticated=False, extra_headers=headers, proof_probe=True
         )
         if nonce is not None:
             expected = base64.urlsafe_b64encode(
@@ -110,6 +96,12 @@ class HttpHost:
                     "Update the add-in, or another process may be using the port. "
                     "Check that REVIT_MCP_TOKEN or --token matches the workstation settings.json."
                 )
+            self._verified_token = token
+        if not token:
+            raise RevitChannelError(
+                "Set REVIT_MCP_TOKEN or --token to the token in the workstation settings.json."
+            )
+        _, body, _ = await self._request("GET", "/health")
         result = self._json(body)
         if result.get("ok") is not True or not isinstance(result.get("processId"), int):
             raise ResponseParseError("Invalid Revit health response.")
@@ -317,6 +309,7 @@ class HttpHost:
         timeout: float = 10,
         authenticated: bool = True,
         extra_headers: dict[str, str] | None = None,
+        proof_probe: bool = False,
     ):
         headers = {"Accept": "application/json, image/png"}
         if extra_headers is not None:
@@ -344,10 +337,41 @@ class HttpHost:
                 with self._opener.open(request, timeout=timeout) as response:
                     return response.status, response.read(), response.headers
             except urllib.error.HTTPError as error:
+                if proof_probe and error.code == 401:
+                    try:
+                        return error.code, error.read(), error.headers
+                    finally:
+                        error.close()
                 submission = method == "POST" and _is_job_submission_path(path)
-                refused = submission and error.code in {400, 401, 403, 408, 413, 429, 503}
-                policy_text = _policy_refusal_text(error) if error.code == 403 else None
+                refused = submission and error.code in {400, 401, 403, 408, 413, 415, 429, 503}
+                rule_text = None
+                if error.code in {400, 403, 415}:
+                    try:
+                        text = json.loads(error.read(65536)).get("error")
+                    except (OSError, ValueError, AttributeError):
+                        text = None
+                    if text in {
+                        "Host header is not allowed.",
+                        "Origin header is not allowed.",
+                        "Content-Type must be application/json.",
+                    }:
+                        rule_text = text
+                    elif isinstance(text, str) and (
+                        text.startswith(POLICY_REFUSAL_PREFIX) or text.startswith("Read-only is ")
+                    ):
+                        policy_text = text
+                    else:
+                        policy_text = None
+                else:
+                    policy_text = None
                 error.close()
+                if rule_text is not None:
+                    failure = (SubmissionRefusedError if submission else RevitChannelError)(
+                        "Revit rejected the HTTP request: " + rule_text
+                    )
+                    if submission:
+                        failure.before_send = True
+                    raise failure from None
                 if policy_text is not None:
                     if policy_text.startswith("Read-only is on for this Windows user"):
                         raise ReadOnlyRefusedError(policy_text) from None

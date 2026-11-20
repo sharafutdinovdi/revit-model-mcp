@@ -22,7 +22,7 @@ namespace RevitModelMcp.Control;
 internal sealed class HttpChannel : IDisposable
 {
     private const long MaxJobBytes = 1024 * 1024;
-    private static readonly HttpClient ProbeClient = new(new HttpClientHandler { UseProxy = false, UseCookies = false })
+    private static readonly HttpClient ProbeClient = new(new HttpClientHandler { UseProxy = false, UseCookies = false, AllowAutoRedirect = false })
     {
         Timeout = TimeSpan.FromSeconds(3)
     };
@@ -96,28 +96,39 @@ internal sealed class HttpChannel : IDisposable
         {
             int? statusCode = null;
             string? exceptionTypeName = null;
+            string? nonce = null;
+            string? proof = null;
+            using var random = RandomNumberGenerator.Create();
+            var nonceBytes = new byte[32];
             var host = _settings.HttpBind == "0.0.0.0" ? "127.0.0.1" : _settings.HttpBind;
             for (var attempt = 0; attempt < 3; attempt++)
             {
                 if (_shutdown.IsCancellationRequested || _closing) return;
                 statusCode = null;
                 exceptionTypeName = null;
+                proof = null;
+                random.GetBytes(nonceBytes);
+                nonce = Convert.ToBase64String(nonceBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
                 try
                 {
-                    using var response = await ProbeClient.GetAsync($"http://{host}:{_settings.HttpPort}/health",
+                    using var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{_settings.HttpPort}/health");
+                    request.Headers.Add("X-RevitMcp-Nonce", nonce);
+                    using var response = await ProbeClient.SendAsync(request,
                         HttpCompletionOption.ResponseHeadersRead, _shutdown.Token).ConfigureAwait(false);
                     statusCode = (int)response.StatusCode;
+                    if (response.Headers.TryGetValues("X-RevitMcp-Proof", out var proofs))
+                        proof = proofs.SingleOrDefault();
                 }
                 catch (Exception exception)
                 {
                     exceptionTypeName = exception.GetType().Name;
                 }
-                if (statusCode == 200) break;
+                if (!HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName, _settings.Token, nonce, proof).IsFailed) break;
                 if (attempt < 2)
                     await Task.Delay(1000, _shutdown.Token).ConfigureAwait(false);
             }
             if (_shutdown.IsCancellationRequested || _closing) return;
-            Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName);
+            Status = HttpListenerStatus.FromSelfProbe(statusCode, exceptionTypeName, _settings.Token, nonce, proof);
             StatusChanged?.Invoke(Status);
             if (Status.IsFailed)
                 PluginLog.Warn($"HTTP self-probe failed. Reason='{Status.Reason}'.{(statusCode == 503 ? $" A wildcard reservation for the same port (http://+:{_settings.HttpPort}/) also causes this; remove it with netsh http delete urlacl url=http://+:{_settings.HttpPort}/." : string.Empty)}");
@@ -182,12 +193,28 @@ internal sealed class HttpChannel : IDisposable
                 await JsonAsync(context, 403, new() { ["error"] = "This network interface is disabled." }).ConfigureAwait(false);
                 return;
             }
+            var headerStatus = HttpRequestPolicy.ValidateHeaders(_settings.HttpBind, _settings.HttpPort,
+                context.Request.LocalEndPoint.Address, context.Request.Headers["Host"], context.Request.Headers["Origin"],
+                context.Request.HasEntityBody, context.Request.ContentType);
+            if (headerStatus != 0)
+            {
+                context.Response.KeepAlive = false;
+                await JsonAsync(context, headerStatus, new() { ["error"] = HttpRequestPolicy.RefusalReason(headerStatus) }).ConfigureAwait(false);
+                return;
+            }
             var path = context.Request.Url!.AbsolutePath;
             var method = context.Request.HttpMethod;
+            if (method == "GET" && path == "/health" &&
+                HealthProof.TryCompute(_settings.Token, context.Request.Headers["X-RevitMcp-Nonce"], out var proof))
+                context.Response.Headers["X-RevitMcp-Proof"] = proof;
+            if (!HttpRequestPolicy.Authenticated(_settings.Token, context.Request.Headers["Authorization"]))
+            {
+                context.Response.AddHeader("WWW-Authenticate", "Bearer");
+                await JsonAsync(context, 401, new() { ["error"] = "A valid bearer token is required." }).ConfigureAwait(false);
+                return;
+            }
             if (method == "GET" && path == "/health")
             {
-                if (HealthProof.TryCompute(_settings.Token, context.Request.Headers["X-RevitMcp-Nonce"], out var proof))
-                    context.Response.Headers["X-RevitMcp-Proof"] = proof;
                 await JsonAsync(context, 200, new()
                 {
                     ["ok"] = true,
@@ -201,12 +228,6 @@ internal sealed class HttpChannel : IDisposable
                     ["readOnly"] = ActionCommandExecutor.ReadOnlyLock.State,
                     ["policy"] = PolicyProvider.Summary()
                 }).ConfigureAwait(false);
-                return;
-            }
-            if (!Authenticated(context.Request.Headers["Authorization"]))
-            {
-                context.Response.AddHeader("WWW-Authenticate", "Bearer");
-                await JsonAsync(context, 401, new() { ["error"] = "A valid bearer token is required." }).ConfigureAwait(false);
                 return;
             }
             if (method == "GET" && path.StartsWith("/jobs/", StringComparison.Ordinal))
@@ -408,16 +429,6 @@ internal sealed class HttpChannel : IDisposable
         });
     }
 
-    private bool Authenticated(string? authorization)
-    {
-        if (authorization is null || !authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
-        using var hash = SHA256.Create();
-        var actual = hash.ComputeHash(Encoding.UTF8.GetBytes(authorization.Substring(7)));
-        var expected = hash.ComputeHash(Encoding.UTF8.GetBytes(_settings.Token));
-        var difference = 0;
-        for (var index = 0; index < expected.Length; index++) difference |= actual[index] ^ expected[index];
-        return difference == 0;
-    }
 
     private static bool TryTimeout(HttpListenerContext context, out int timeout)
     {

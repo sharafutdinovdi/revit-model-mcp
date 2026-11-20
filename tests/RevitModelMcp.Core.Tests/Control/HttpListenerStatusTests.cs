@@ -27,9 +27,9 @@ public sealed class HttpListenerStatusTests
     {
         var started = ChannelRibbonStatus.Derive(false, HttpListenerStatus.Started(), false);
         await Assert.That(started.IsAvailable).IsTrue();
-        var failed = ChannelRibbonStatus.Derive(false, HttpListenerStatus.FromSelfProbe(503, null), false);
+        var failed = ChannelRibbonStatus.Derive(false, HttpListenerStatus.FromSelfProbe(503, null, "token", null, null), false);
         await Assert.That(failed.IsAvailable).IsFalse();
-        var recovered = ChannelRibbonStatus.Derive(false, HttpListenerStatus.FromSelfProbe(503, null), true);
+        var recovered = ChannelRibbonStatus.Derive(false, HttpListenerStatus.FromSelfProbe(503, null, "token", null, null), true);
         await Assert.That(recovered.IsAvailable).IsTrue();
     }
 
@@ -102,9 +102,11 @@ public sealed class HttpListenerStatusTests
     }
 
     [Test]
-    public async Task FromSelfProbe_200_HasNoReason()
+    public async Task FromSelfProbe_401WithCorrectProof_HasNoReason()
     {
-        var status = HttpListenerStatus.FromSelfProbe(200, null);
+        const string nonce = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
+        var status = HttpListenerStatus.FromSelfProbe(401, null, "test-token", nonce,
+            "GfUwWjTyg3_Dag6VadPsgEniE7ybFFAH9msV89o4grU");
         await Assert.That(status.State).IsEqualTo(HttpListenerStatus.Listening);
         await Assert.That(status.Reason).IsNull();
         await Assert.That(status.IsFailed).IsFalse();
@@ -113,7 +115,7 @@ public sealed class HttpListenerStatusTests
     [Test]
     public async Task FromSelfProbe_503_ReportsHttpSysChecks()
     {
-        var status = HttpListenerStatus.FromSelfProbe(503, null);
+        var status = HttpListenerStatus.FromSelfProbe(503, null, "token", null, null);
         await Assert.That(status.State).IsEqualTo(HttpListenerStatus.Failed);
         await Assert.That(status.IsFailed).IsTrue();
         await Assert.That(status.Reason).Contains("HTTP.sys answered 503");
@@ -124,9 +126,10 @@ public sealed class HttpListenerStatusTests
     [Test]
     [Arguments(404)]
     [Arguments(204)]
+    [Arguments(200)]
     public async Task FromSelfProbe_OtherStatus_ReportsStatusCode(int statusCode)
     {
-        var status = HttpListenerStatus.FromSelfProbe(statusCode, "WebException");
+        var status = HttpListenerStatus.FromSelfProbe(statusCode, "WebException", "token", null, null);
         await Assert.That(status.State).IsEqualTo(HttpListenerStatus.Failed);
         await Assert.That(status.IsFailed).IsTrue();
         await Assert.That(status.Reason).IsEqualTo($"The self-probe returned HTTP {statusCode}.");
@@ -135,9 +138,21 @@ public sealed class HttpListenerStatusTests
     [Test]
     public async Task FromSelfProbe_NoResponse_ReportsExceptionType()
     {
-        var status = HttpListenerStatus.FromSelfProbe(null, "WebException");
+        var status = HttpListenerStatus.FromSelfProbe(null, "WebException", "token", null, null);
         await Assert.That(status.State).IsEqualTo(HttpListenerStatus.Failed);
         await Assert.That(status.IsFailed).IsTrue();
         await Assert.That(status.Reason).IsEqualTo("The self-probe did not complete (WebException).");
+    }
+
+    [Test]
+    [Arguments(null)]
+    [Arguments("")]
+    [Arguments("wrong-proof")]
+    public async Task FromSelfProbe_401WithInvalidProof_IsFailed(string? proof)
+    {
+        var status = HttpListenerStatus.FromSelfProbe(401, null, "test-token",
+            "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", proof);
+        await Assert.That(status.IsFailed).IsTrue();
+        await Assert.That(status.Reason).IsEqualTo("The self-probe response did not prove the listener access key.");
     }
 }

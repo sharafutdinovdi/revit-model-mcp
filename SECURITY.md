@@ -10,8 +10,10 @@ The add-in keeps the channel directory private. If another account can write to 
 Responses can contain model paths and parameter values.
 See [server privacy settings](server/README.md#responses-and-privacy).
 
-HTTP binds to loopback by default and authenticates every route except `/health` with a per-user token.
-Health reveals document name, Revit version, process ID and workstation read-only state.
+HTTP binds to loopback by default and authenticates every route, including `/health`, with a per-user token.
+Unauthenticated health returns HTTP 401 without document, version or process details.
+The listener rejects disallowed Host and Origin headers and non-JSON bodies before checking the key.
+The startup self-probe sends only a nonce, never the key, and accepts only an HTTP 401 response with the matching HMAC proof.
 Protect `%LOCALAPPDATA%\RevitModelMcp\settings.json` and use an encrypted tunnel for remote access.
 The listener has no built-in TLS.
 Actions are enabled by default. One workstation read-only lock disables them: turn it on with the Model MCP ribbon button Read-only or the `revit_set_read_only` tool. Turning it off in chat needs explicit user confirmation, and the machine policy overrides the lock.

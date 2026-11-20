@@ -70,15 +70,33 @@ $driverSource = @'
 import asyncio
 import json
 import sys
+import urllib.error
 import urllib.request
 from pathlib import Path
+from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.pipe_host import LocalPipeHost, PipeJobHost
 from revit_model_mcp.revit_channel import Job, RevitChannel, ReadOnlyRefusedError
 
-pid, folder, port = int(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
+pid, folder, port, token = int(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
 rows = []
 def record(check, passed, detail):
     rows.append(dict(Check=check, Result="PASS" if passed else "FAIL", Detail=detail))
+
+async def check_http(url, token):
+    try:
+        with urllib.request.urlopen(url + "/health", timeout=15):
+            raise AssertionError("Unauthenticated health must return HTTP 401")
+    except urllib.error.HTTPError as error:
+        try:
+            assert error.code == 401, "Unauthenticated health must return HTTP 401"
+            denied = json.load(error)
+            assert set(denied) == {"error"}, "Unauthenticated health disclosed details"
+        finally:
+            error.close()
+    record("HTTP anonymous", True, "HTTP 401; no instance details")
+    health = await HttpHost(url, token).health()
+    assert health.get("commands"), "Authenticated health returned no commands"
+    record("HTTP authenticated", True, "Verified health; nonempty commands")
 
 class PipeOnlyHost(LocalPipeHost):
     async def select_job(self, job):
@@ -144,10 +162,7 @@ async def main():
         locked = False
         assert await send("element-details", id=element) == before, "Refused action changed the element"
         record("Read-only", True, "Action refused; token unlock; element unchanged")
-        with urllib.request.urlopen("http://127.0.0.1:%d/health" % port, timeout=15) as response:
-            health = json.load(response)
-            assert response.status == 200 and health.get("commands"), health
-        record("HTTP", True, "HTTP 200; nonempty commands on allocated loopback port")
+        await check_http("http://127.0.0.1:%d" % port, token)
     except Exception as error:
         record("Live checks", False, str(error))
         raise
@@ -250,7 +265,8 @@ try {
             & netsh http add urlacl "url=$url" "user=$([Security.Principal.WindowsIdentity]::GetCurrent().Name)" | Out-Host
             if ($LASTEXITCODE -ne 0) { throw 'HTTP URL reservation failed. Run the release check from elevated PowerShell.' }
             $reservedUrl = $url
-            @{ httpEnabled = $true; httpBind = '127.0.0.1'; httpPort = $port; token = [guid]::NewGuid().ToString('N'); showActivityPaneOnAction = $false } | ConvertTo-Json | Set-Content $settings -Encoding UTF8
+            $httpToken = [guid]::NewGuid().ToString('N')
+            @{ httpEnabled = $true; httpBind = '127.0.0.1'; httpPort = $port; token = $httpToken; showActivityPaneOnAction = $false } | ConvertTo-Json | Set-Content $settings -Encoding UTF8
             $settingsChanged = $true
             $launcher = Join-Path $yearDirectory 'launch.ps1'
             $launchSource | Set-Content $launcher -Encoding UTF8
@@ -284,7 +300,7 @@ try {
                 $env:PYTHONPATH = $server
                 # Windows PowerShell treats native stderr as ErrorRecord objects, even on exit 0.
                 $ErrorActionPreference = 'Continue'
-                & uv run --project $server python $driver $ownedId $yearDirectory $port 2>&1 | Tee-Object (Join-Path $yearDirectory 'checks.log') | Out-Host
+                & uv run --project $server python $driver $ownedId $yearDirectory $port $httpToken 2>&1 | Tee-Object (Join-Path $yearDirectory 'checks.log') | Out-Host
                 $driverExit = $LASTEXITCODE
             }
             finally {

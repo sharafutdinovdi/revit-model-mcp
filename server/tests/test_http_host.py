@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import base64
 import hashlib
@@ -7,6 +8,8 @@ import shutil
 import struct
 import subprocess
 import threading
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -35,6 +38,7 @@ def endpoint():
         "polls": 0,
         "requests": [],
         "nonces": [],
+        "request_headers": [],
         "payload": None,
         "forever": False,
         "proof": "good",
@@ -61,9 +65,16 @@ def endpoint():
             # Unread request data makes Windows reset the connection on close.
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             state["requests"].append((self.command, self.path, self.headers.get("Authorization")))
+            state["request_headers"].append(dict(self.headers))
+            if state.get("header_refusal") and route.path == state.get(
+                "header_refusal_path", route.path
+            ):
+                status, reason = state["header_refusal"]
+                return self.reply(status, {"error": reason})
             if route.path == "/health":
                 encoded_nonce = self.headers.get("X-RevitMcp-Nonce")
-                state["nonces"].append(encoded_nonce)
+                if encoded_nonce is not None:
+                    state["nonces"].append(encoded_nonce)
                 proof = None
                 if encoded_nonce and state["proof"] == "good":
                     nonce = base64.urlsafe_b64decode(encoded_nonce + "==")
@@ -82,6 +93,16 @@ def endpoint():
                     proof = "wrong-proof"
                 elif state["proof"] == "known":
                     proof = "GfUwWjTyg3_Dag6VadPsgEniE7ybFFAH9msV89o4grU"
+                if self.headers.get("Authorization") != "Bearer test-token" and not state.get(
+                    "legacy_health"
+                ):
+                    return self.reply(
+                        401,
+                        state.get(
+                            "anonymous_health", {"error": "A valid bearer token is required."}
+                        ),
+                        proof=proof,
+                    )
                 return self.reply(
                     200,
                     {
@@ -183,7 +204,14 @@ def test_health_and_instance_discovery(endpoint):
     assert instances[0]["processId"] == 42
     assert instances[0]["pluginResponding"] is True
     assert asyncio.run(host.list_revit_instances("other")) == []
-    assert all(request[2] is None for request in state["requests"])
+    assert state["requests"] == [
+        request
+        for _ in range(3)
+        for request in [
+            ("GET", "/health", None),
+            ("GET", "/health", "Bearer test-token"),
+        ]
+    ]
     assert len(set(state["nonces"])) == 3
 
 
@@ -199,7 +227,9 @@ def test_job_round_trip(endpoint):
     assert state["payload"]["clientName"] == "unknown"
     assert state["requests"] == [
         ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
         ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
         ("POST", "/jobs?timeout=0", "Bearer test-token"),
     ]
     assert all(nonce is not None for nonce in state["nonces"])
@@ -215,7 +245,7 @@ def test_http_errors(endpoint, status, message):
     state["status"] = status
     with pytest.raises(RevitChannelError, match=message):
         asyncio.run(RevitChannel(host).execute(Job.ping()))
-    assert len(state["requests"]) == 3
+    assert len(state["requests"]) == 5
 
 
 def test_policy_refusal_text_survives_the_http_403(endpoint):
@@ -319,7 +349,7 @@ def test_image_download_round_trips_non_ascii_mixed_scripts_and_preserves_metada
     assert target.read_bytes() == PNG
     assert result["data"]["width"] == 1600
     assert result["data"]["localPath"] == str(target)
-    assert len(state["requests"]) == 4
+    assert len(state["requests"]) == 6
     with pytest.raises(RevitChannelError, match="already exists"):
         asyncio.run(RevitChannel(host).execute(job))
     assert target.read_bytes() == PNG
@@ -357,7 +387,7 @@ def test_missing_token_does_not_submit(endpoint):
     host.token = ""
     with pytest.raises(RevitChannelError, match="Set REVIT_MCP_TOKEN"):
         asyncio.run(RevitChannel(host).execute(Job.ping()))
-    assert state["requests"] == [("GET", "/health", None), ("GET", "/health", None)]
+    assert state["requests"] == [("GET", "/health", None)]
 
 
 def test_redirect_does_not_forward_token(endpoint):
@@ -365,7 +395,7 @@ def test_redirect_does_not_forward_token(endpoint):
     state.update(status=302, redirect=host.host + "/health")
     with pytest.raises(RevitChannelError, match="HTTP 302"):
         asyncio.run(RevitChannel(host).execute(Job.ping()))
-    assert len(state["requests"]) == 3
+    assert len(state["requests"]) == 5
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
@@ -699,7 +729,10 @@ def test_http_document_id_does_not_override_explicit_process(endpoint):
         asyncio.run(RevitChannel(host).execute(job))
 
     assert state["payload"] is None
-    assert state["requests"] == [("GET", "/health", None)]
+    assert state["requests"] == [
+        ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
+    ]
 
 
 def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
@@ -779,7 +812,7 @@ def test_http_503_points_to_listener_diagnostics(endpoint):
     assert "docs/transport.md" in message
 
 
-@pytest.mark.parametrize("status", [400, 401, 403, 408, 413, 429, 503])
+@pytest.mark.parametrize("status", [400, 401, 403, 408, 413, 415, 429, 503])
 def test_documented_submission_refusals_are_pre_acceptance(endpoint, status):
     host, state = endpoint
     state["status"] = status
@@ -1073,3 +1106,113 @@ def test_action_disconnect_recovers_only_original_request(endpoint, phase):
     assert state.get("executions", 0) == (0 if phase == "before_acceptance" else 1)
     assert sum(method == "POST" for method, _, _ in state["requests"]) == 1
     assert any(path == "/jobs/" + request_id for _, path, _ in state["requests"])
+
+
+def test_http_headers_match_listener_rules(endpoint):
+    host, state = endpoint
+    assert asyncio.run(RevitChannel(host).execute(Job.ping()))["data"] == "pong"
+    for headers in state["request_headers"]:
+        assert headers["Host"] == urlsplit(host.host).netloc
+        assert "Origin" not in headers
+    assert state["request_headers"][-1]["Content-Type"] == "application/json"
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (400, "Host header is not allowed."),
+        (403, "Origin header is not allowed."),
+        (415, "Content-Type must be application/json."),
+    ],
+)
+def test_header_refusal_is_clear_and_never_discloses_token(endpoint, status, reason):
+    host, state = endpoint
+    state["header_refusal"] = status, reason
+    with pytest.raises(RevitChannelError, match=reason) as captured:
+        asyncio.run(host.health())
+    assert "read-only" not in str(captured.value)
+    assert state["requests"] == [("GET", "/health", None)]
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [
+        (400, "Host header is not allowed."),
+        (403, "Origin header is not allowed."),
+        (415, "Content-Type must be application/json."),
+    ],
+)
+def test_header_submission_refusal_is_pre_acceptance(endpoint, status, reason):
+    host, state = endpoint
+    asyncio.run(host.health())
+    state["header_refusal"] = status, reason
+    state["header_refusal_path"] = "/jobs"
+    with pytest.raises(RevitChannelError, match=reason) as captured:
+        asyncio.run(host.prepare_job("job.tmp", '{"command":"ping"}', "ping"))
+    assert captured.value.before_send is True
+    assert state["payload"] is None
+    assert state["requests"][-1] == ("POST", "/jobs?timeout=0", "Bearer test-token")
+
+
+def test_new_server_verifies_legacy_unauthenticated_health(endpoint):
+    host, state = endpoint
+    state["legacy_health"] = True
+    assert asyncio.run(host.health())["commands"]
+    assert state["requests"] == [
+        ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
+    ]
+    assert len(state["nonces"]) == 1
+
+
+@pytest.fixture
+def release_smoke_http_check():
+    script = (REPOSITORY / "build" / "release-smoke.ps1").read_text(encoding="utf-8-sig")
+    driver = script.split("$driverSource = @'\n", 1)[1].split("\n'@", 1)[0]
+    tree = ast.parse(driver)
+    check = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "check_http"
+    )
+    rows = []
+    namespace = {
+        "urllib": urllib,
+        "json": json,
+        "HttpHost": HttpHost,
+        "record": lambda *row: rows.append(row),
+    }
+    exec(
+        compile(ast.Module(body=[check], type_ignores=[]), "release-smoke-driver", "exec"),
+        namespace,
+    )
+    return namespace["check_http"], rows
+
+
+def test_release_smoke_checks_private_and_authenticated_health(endpoint, release_smoke_http_check):
+    host, state = endpoint
+    check, rows = release_smoke_http_check
+    asyncio.run(check(host.host, host.token))
+    assert [row[:2] for row in rows] == [
+        ("HTTP anonymous", True),
+        ("HTTP authenticated", True),
+    ]
+    assert state["requests"] == [
+        ("GET", "/health", None),
+        ("GET", "/health", None),
+        ("GET", "/health", "Bearer test-token"),
+    ]
+
+
+@pytest.mark.parametrize("legacy_health", [False, True])
+def test_release_smoke_rejects_unauthenticated_details(
+    endpoint, release_smoke_http_check, legacy_health
+):
+    host, state = endpoint
+    state["legacy_health"] = legacy_health
+    state["anonymous_health"] = {"error": "unauthorized", "commands": ["ping"]}
+    check, rows = release_smoke_http_check
+    with pytest.raises(AssertionError, match="Unauthenticated health"):
+        asyncio.run(check(host.host, host.token))
+    assert rows == []
+    assert state["requests"] == [("GET", "/health", None)]
