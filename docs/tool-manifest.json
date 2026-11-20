@@ -296,7 +296,7 @@
     },
     {
       "name": "revit_query_elements",
-      "description": "Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read matching rows with filters and paging. link: instance ID, exact name or * (top-level loaded links); omitted: host. unique_id: UniqueId lookup. Linked rows name their instance; geometry is in host model mm, levels use link names. Lengths mm, areas m2, volumes m3. roomCenterMm is inside the room. hasMore=true: more pages. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {
@@ -469,7 +469,7 @@
     },
     {
       "name": "revit_element_details",
-      "description": "Read parameters and geometry of an element by Revit ID, with its type parameters and related warnings. Geometry is in model mm; roomCenterMm is a point inside the room. skipped means incomplete; skippedCount is the total skipped.",
+      "description": "Read parameters, type, warnings and geometry by element_id or unique_id (UniqueId). link: instance ID, exact name or *; omitted: host. Top-level links only; ambiguous matches require an instance ID. Linked geometry is in host model mm. roomCenterMm is inside the room. skipped means incomplete; skippedCount is the total skipped.",
       "toolset": "read",
       "access": "read_only",
       "annotations": {

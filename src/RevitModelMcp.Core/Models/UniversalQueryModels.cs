@@ -145,6 +145,7 @@ public sealed class AggregateGroup
 public sealed class PreparedQueryRecord
 {
     public long Id { get; set; }
+    public long? LinkInstanceId { get; set; }
 
     public Dictionary<string, PreparedQueryValue> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

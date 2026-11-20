@@ -24,6 +24,10 @@ internal static class UniversalJobParser
 
         var result = ControlJobParseResult.Create(ControlJobKind.QueryElements, "query-elements");
         ApplyCommon(result, common);
+        try { RevitModelMcp.Core.Query.LinkSelector.Parse(job.Link); }
+        catch (ArgumentException exception) { return ControlJobParseResult.Invalid("query-elements", exception.Message); }
+        result.Link = job.Link;
+        result.UniqueId = Normalize(job.UniqueId);
         result.Fields = NormalizeMany(job.Fields);
         result.IncludeGeometry = job.IncludeGeometry ?? false;
         result.Sort = ParseSort(job.Sort, out var sortError);

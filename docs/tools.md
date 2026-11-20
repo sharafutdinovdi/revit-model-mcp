@@ -63,7 +63,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
 | `core` | 9 | 7,291 | 1,822 |
-| `read` | 13 | 18,890 | 4,722 |
+| `read` | 13 | 19,463 | 4,865 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
 | `views-sheets` | 22 | 25,748 | 6,437 |
@@ -73,20 +73,20 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `export` | 4 | 7,198 | 1,799 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,896 | 26,974 |
-| `core,read` | 22 | 26,181 | 6,545 |
+| `all` (default) | 89 | 108,468 | 27,117 |
+| `core,read` | 22 | 26,754 | 6,688 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,895 | 26,973 | 108,052 |
-| `core,read` | 22 | 26,181 | 6,545 | 26,271 |
-| `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
-| `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
-| `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
-| `preset:sheets` | 54 | 64,005 | 16,001 | 64,127 |
-| `preset:batch` | 46 | 52,497 | 13,124 | 52,611 |
+| `all` | 89 | 108,468 | 27,117 | 108,625 |
+| `core,read` | 22 | 26,754 | 6,688 | 26,844 |
+| `preset:audit` | 28 | 31,633 | 7,908 | 31,729 |
+| `preset:edit` | 59 | 68,484 | 17,121 | 68,611 |
+| `preset:families` | 40 | 46,572 | 11,643 | 46,680 |
+| `preset:sheets` | 54 | 64,578 | 16,144 | 64,700 |
+| `preset:batch` | 46 | 53,070 | 13,267 | 53,184 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -148,7 +148,7 @@ Neither section opens worksets, checks out elements, synchronizes, nor starts a 
 | `revit_ui_state` | None | Read the active document and view, open UI views, up to 500 selected elements, and all open documents. |
 | `revit_list_catalog` | `section`, `name_contains=null`, `offset=0`, `limit=200` (1 to 2000) | Discover names with a case-insensitive filter. Returns `total`, `hasMore` and `nextOffset`. See [Worksets and ownership](#worksets-and-ownership). |
 | `revit_aggregate_elements` | `group_by`, `sum_field=null`, shared query filters | Group by one or two fields (`group_by` takes 1-2 items); return counts and optional sum/average. |
-| `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false` | Read a page of matching elements. |
+| `revit_query_elements` | Shared query filters, `fields=null`, `offset=0`, `limit=100`, `sort_field="id"`, `sort_direction="asc"`, `include_geometry=false`, `link=null`, `unique_id=null` | Read a page of matching host or linked elements. |
 | `revit_list_sheets` | `include_unplaced_views=true`, `offset=0`, `limit=200`, `document=null`; no timeout argument | Read sheets, title blocks, revisions, placed view IDs and unplaced views. |
 | `revit_list_views` | `view_type=null`, `name_contains=null` | Find views in the active document. |
 | `revit_view_summary` | `view` | Read view metadata and category counts. |
@@ -157,7 +157,7 @@ Neither section opens worksets, checks out elements, synchronizes, nor starts a 
 | `revit_export_view` | `view`, `pixel_size=1600`, `output_path=null`, `document=null`; no timeout arguments | Download a PNG; `pixel_size` is 32-4000 pixels (Revit rejects smaller images) on the fitted image dimension. |
 | `revit_schedule_data` | `schedule`, `max_rows=500`, `offset=0` | Read visible schedule columns and data rows with `totalRows` and `truncated`. Paging excludes heading rows. Rejects non-schedules. |
 | `revit_view_elements` | `view`, `categories=null`, `offset=0`, `limit=100` | Read a page of elements in a view. |
-| `revit_element_details` | `element_id` | Read instance/type parameters and geometry by unitless Revit ID; `element_id` must be at least 1. |
+| `revit_element_details` | Exactly one of `element_id` (positive) or `unique_id`, `link=null` | Read instance/type parameters and geometry in the selected document. |
 | `revit_view_warnings` | `view` | Read warnings involving elements in a view. |
 | `revit_list_warnings` | `warning_text=null`, `include_elements=false` | Group warnings or inspect a specific warning group. |
 | `revit_list_relations` | `relation`, `source_id=null`, `source_name=null` | Read membership or dependencies. |
@@ -262,7 +262,7 @@ The path is resolved on the machine that runs the MCP server, which is the clien
 `revit_element_details` returns geometry alongside parameters in `data`.
 `revit_query_elements(include_geometry=True)` adds the same fields to each element in the returned page.
 The query flag defaults to `False`; default queries omit geometry.
-All coordinates use model axes in millimetres rounded to one decimal place.
+Host coordinates use model axes in millimetres rounded to one decimal place.
 
 | Field | Contents |
 | --- | --- |
@@ -271,6 +271,22 @@ All coordinates use model axes in millimetres rounded to one decimal place.
 | `roomCenterMm` | `[x,y,z]` from a placed room's location. Use `roomCenterMm` when placing something inside a room. A bounding box centre may lie outside a nonrectangular room. |
 
 Unavailable geometry is omitted.
+
+### Linked element reads
+
+`revit_query_elements` and `revit_element_details` accept `link` as a positive instance ID, an exact case-insensitive instance or type name, or `"*"` for all top-level loaded RVT link instances.
+Omitting `link` reads only the host.
+Nested links are not traversed, even when their documents are loaded.
+Repeated placements of one linked document produce separate query rows with `linkInstanceId` and `linkName`.
+Element IDs remain local to the linked document; these IDs are not host action targets.
+`unique_id` resolves a Revit UniqueId (ACC externalId) in the selected documents.
+Queries retain the shared filters, field selection and global paging; names, views, phases, worksets and levels resolve inside each linked document.
+Sorting uses the requested field, element ID, then link instance ID as deterministic tie breakers.
+Single-element details reject ambiguous matches across placements; select one instance ID or use a query for all matches.
+Linked geometry uses the instance total transform into host model millimetres; bounding boxes enclose all transformed corners, and room boundary endpoints are transformed.
+Lengths, areas, volumes and linked level names retain their source meaning.
+Unavailable or unloaded links, closed linked worksets and unreadable elements produce `skipped` reasons and contribute to `skippedCount`; counts cover available matching elements only.
+Paging does not replace skipped diagnostics, and linked reads open no transactions.
 
 ### Action job polling
 

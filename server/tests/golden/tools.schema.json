@@ -2244,8 +2244,31 @@
         "default": null
       },
       "element_id": {
-        "minimum": 1,
-        "type": "integer"
+        "anyOf": [
+          {
+            "minimum": 1,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "link": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       },
       "process_id": {
         "anyOf": [
@@ -2261,11 +2284,19 @@
       "timeout_seconds": {
         "default": 120,
         "type": "integer"
+      },
+      "unique_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
       }
     },
-    "required": [
-      "element_id"
-    ],
     "type": "object"
   },
   "revit_execute_code": {
@@ -5205,6 +5236,21 @@
         "minimum": 1,
         "type": "integer"
       },
+      "link": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
       "offset": {
         "default": 0,
         "minimum": 0,
@@ -5260,6 +5306,17 @@
         "type": "integer"
       },
       "type_name": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "unique_id": {
         "anyOf": [
           {
             "type": "string"

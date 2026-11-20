@@ -72,6 +72,8 @@ public sealed class ControlJobParseResult
     public int Offset { get; internal set; }
     public int Limit { get; internal set; } = 100;
     public long? ElementId { get; internal set; }
+    public string? Link { get; internal set; }
+    public string? UniqueId { get; internal set; }
     public ElementFilterSpec Filters { get; internal set; } = new();
     public IReadOnlyList<string> Fields { get; internal set; } = Array.Empty<string>();
     public QuerySortSpec Sort { get; internal set; } = new();
@@ -143,12 +145,6 @@ public sealed class ControlJobParseResult
         return result;
     }
 
-    private static ControlJobParseResult ElementDetails(long elementId)
-    {
-        var result = Create(ControlJobKind.ElementDetails, "element-details");
-        result.ElementId = elementId;
-        return result;
-    }
 
     private static ControlJobParseResult ExportView(string view, int pixelSize, bool zoomToFit)
     {
@@ -200,7 +196,7 @@ public sealed class ControlJobParseResult
             "view-summary" => RequireView(ControlJobKind.ViewSummary, command, view),
             "view-info" => RequireView(ControlJobKind.ViewInfo, command, view),
             "view-elements" => ParseViewElements(command, view, categories, job.Offset, job.Limit),
-            "element-details" => ParseElementDetails(command, job.Id),
+            "element-details" => ParseElementDetails(command, job),
             "view-warnings" => RequireView(ControlJobKind.ViewWarnings, command, view),
             "capture-elements" => ParseCaptureElements(job),
             "export-view" => ParseExportView(command, view, job.PixelSize, job.ZoomToFit),
@@ -365,11 +361,17 @@ public sealed class ControlJobParseResult
             : ViewElements(view, categories, resolvedOffset, Math.Min(resolvedLimit, ControlJobParser.MaximumQueryLimit));
     }
 
-    private static ControlJobParseResult ParseElementDetails(string command, long? id)
+    private static ControlJobParseResult ParseElementDetails(string command, ControlJobContract job)
     {
-        return !id.HasValue || id.Value <= 0
-            ? Invalid(command, "The element-details command requires a positive id.")
-            : ElementDetails(id.Value);
+        if ((job.Id.HasValue && job.Id <= 0) || job.Id.HasValue == !string.IsNullOrWhiteSpace(job.UniqueId))
+            return Invalid(command, "element-details requires exactly one positive id or uniqueId.");
+        try { RevitModelMcp.Core.Query.LinkSelector.Parse(job.Link); }
+        catch (ArgumentException exception) { return Invalid(command, exception.Message); }
+        var result = Create(ControlJobKind.ElementDetails, command);
+        result.ElementId = job.Id;
+        result.Link = job.Link;
+        result.UniqueId = Normalize(job.UniqueId);
+        return result;
     }
 
     private static ControlJobParseResult ParseExportView(
@@ -566,6 +568,7 @@ public sealed partial class ControlJobContract
     public int? Limit { get; set; }
     [DataMember(Name = "id")]
     public long? Id { get; set; }
+    [DataMember(Name = "uniqueId")] public string? UniqueId { get; set; }
     [DataMember(Name = "family")]
     public string? Family { get; set; }
     [DataMember(Name = "type")]

@@ -509,6 +509,12 @@ public static class PageSlice
 [DataContract]
 public class ElementGeometryData
 {
+    [DataMember(Name = "linkInstanceId", EmitDefaultValue = false)]
+    public long? LinkInstanceId { get; set; }
+
+    [DataMember(Name = "linkName", EmitDefaultValue = false)]
+    public string? LinkName { get; set; }
+
     [DataMember(Name = "location", EmitDefaultValue = false)]
     public ElementLocationData? Location { get; set; }
 

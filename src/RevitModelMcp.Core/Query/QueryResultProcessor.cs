@@ -33,7 +33,7 @@ public static class QueryResultProcessor
             ordered = ordered.ThenBy(record => record.Id);
         }
 
-        var all = ordered.ToList();
+        var all = ordered.ThenBy(record => record.LinkInstanceId).ToList();
         var page = PageSlice.Create(all, offset, limit);
         hasMore = page.HasMore;
         return page.Items;
