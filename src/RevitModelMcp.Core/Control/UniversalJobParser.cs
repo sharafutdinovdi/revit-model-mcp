@@ -26,6 +26,8 @@ internal static class UniversalJobParser
         ApplyCommon(result, common);
         try { RevitModelMcp.Core.Query.LinkSelector.Parse(job.Link); }
         catch (ArgumentException exception) { return ControlJobParseResult.Invalid("query-elements", exception.Message); }
+        if (job.Link is not null && common.Filters.View is not null)
+            return ControlJobParseResult.Invalid("query-elements", "view cannot be combined with link; host-view visibility in linked documents is not supported.");
         result.Link = job.Link;
         result.UniqueId = Normalize(job.UniqueId);
         result.Fields = NormalizeMany(job.Fields);

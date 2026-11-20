@@ -64,7 +64,7 @@ class UniversalJobTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 Job.element_details(**kwargs)
         linked = {
-            "elements": [{"id": 7, "linkInstanceId": 42, "linkName": "MEP"}],
+            "elements": [{"linkedElementId": 7, "linkInstanceId": 42, "linkName": "MEP"}],
             "offset": 0,
             "limit": 1,
             "total": 2,
@@ -78,6 +78,12 @@ class UniversalJobTests(unittest.TestCase):
             "skippedCount": 1,
         }
         self.assertEqual(parse_response(json.dumps(response), "query-elements"), response)
+
+    def test_link_queries_reject_host_view_filters(self) -> None:
+        for link in (42, "MEP.rvt", "*"):
+            with self.assertRaisesRegex(Exception, "view cannot be combined with link"):
+                Job.query_elements(link=link, view="Host Level 1")
+        self.assertEqual(Job.query_elements(view="Host Level 1").payload["view"], "Host Level 1")
 
     def test_response_parser_preserves_geometry_for_details_and_query(self) -> None:
         bounds = {"minMm": [-100, 0, 0], "maxMm": [100, 200, 3000], "centerMm": [0, 100, 1500]}

@@ -74,23 +74,29 @@ internal static class ElementQueryReader
         var readers = sources.ToDictionary(source => source, source => new ElementFieldReader(source.Document));
         var origins = new Dictionary<PreparedQueryRecord, LinkedReadSource>();
         var total = 0;
+        var resolvedSources = 0;
+        string? firstSourceError = null;
         foreach (var source in sources)
         {
-            var context = QueryFilterBuilder.Build(source.Document, job.Filters, fields.Concat(sortFields));
-            using var collector = context.CreateCollector();
-            IEnumerable<ElementId> ids = collector.ToElementIds();
-            if (job.UniqueId is not null)
+            ICollection<ElementId> ids;
+            try
             {
-                try
+                var context = QueryFilterBuilder.Build(source.Document, job.Filters, fields.Concat(sortFields));
+                using var collector = context.CreateCollector();
+                ids = collector.ToElementIds();
+                if (job.UniqueId is not null)
                 {
                     var element = source.Document.GetElement(job.UniqueId);
-                    ids = element is null ? Array.Empty<ElementId>() : ids.Where(id => id == element.Id);
+                    ids = element is not null && ids.Contains(element.Id) ? new[] { element.Id } : Array.Empty<ElementId>();
                 }
-                catch (Exception exception)
-                {
-                    PluginLog.Skipped($"link {source.InstanceId} UniqueId lookup", exception);
-                    continue;
-                }
+                resolvedSources++;
+            }
+            catch (Exception exception)
+            {
+                if (source.InstanceId is null) throw;
+                firstSourceError ??= exception.Message;
+                PluginLog.Skipped($"link {source.InstanceId} {source.Name} query filters or fields", exception);
+                continue;
             }
             foreach (var id in ids)
             {
@@ -107,6 +113,8 @@ internal static class ElementQueryReader
                 catch (Exception exception) { PluginLog.Skipped($"link {source.InstanceId} element {RevitValueReader.GetId(id)}", exception); }
             }
         }
+        if (sources.Count > 0 && resolvedSources == 0)
+            throw new ArgumentException($"No selected link can resolve the requested query filters or fields: {firstSourceError}");
         var page = QueryResultProcessor.SortAndPage(records, job.Sort, job.Offset, job.Limit, out var hasMore);
         var result = new QueryElementsData
         {
@@ -114,7 +122,7 @@ internal static class ElementQueryReader
             Limit = job.Limit,
             Total = total,
             HasMore = hasMore,
-            Fields = fields.ToList()
+            Fields = fields.Select(field => job.Link is not null && string.Equals(field, "id", StringComparison.OrdinalIgnoreCase) ? "linkedElementId" : field).ToList()
         };
         foreach (var record in page)
         {

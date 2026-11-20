@@ -195,8 +195,13 @@ public sealed class RoomBoundaryLoop
 [DataContract]
 public sealed class RoomBoundarySegment
 {
-    [DataMember(Name = "elementId")]
     public long ElementId { get; set; }
+
+    [DataMember(Name = "elementId", EmitDefaultValue = false)]
+    private long? HostElementId { get => LinkedElementId.HasValue ? null : ElementId; set => ElementId = value.GetValueOrDefault(); }
+
+    [DataMember(Name = "linkedElementId", EmitDefaultValue = false)]
+    public long? LinkedElementId { get; set; }
 
     [DataMember(Name = "lengthMm")]
     public double LengthMm { get; set; }

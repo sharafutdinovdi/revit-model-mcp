@@ -1,11 +1,93 @@
+using System.Text.Json;
 using RevitModelMcp.Core.Control;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Core.Query;
+using RevitModelMcp.Core.Serialization;
 
 namespace RevitModelMcp.Core.Tests.Query;
 
 public sealed class LinkedElementReadTests
 {
+    [Test]
+    public async Task LinkedRows_SerializeLocalIdsWithoutHostIdFields()
+    {
+        var row = new QueryElementItem
+        {
+            Id = 7,
+            Values = { ["ID"] = new QueryFieldValue { HasValue = true, Value = "7", NumericValue = 7 } }
+        };
+        using var hostJson = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<QueryElementsData>.Ok("query-elements", new QueryElementsData { Elements = [row] }, 1)));
+        var hostRow = hostJson.RootElement.GetProperty("data").GetProperty("elements")[0];
+        await Assert.That(hostRow.GetProperty("id").GetInt64()).IsEqualTo(7L);
+        await Assert.That(hostRow.TryGetProperty("linkedElementId", out _)).IsFalse();
+        var transform = new LinkReadTransform([0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]);
+        transform.Apply(row, 42, "MEP");
+        using var linkedJson = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<QueryElementsData>.Ok("query-elements", new QueryElementsData { Elements = [row] }, 1)));
+        var linkedRow = linkedJson.RootElement.GetProperty("data").GetProperty("elements")[0];
+        await Assert.That(linkedRow.TryGetProperty("id", out _)).IsFalse();
+        await Assert.That(linkedRow.GetProperty("linkedElementId").GetInt64()).IsEqualTo(7L);
+        await Assert.That(linkedRow.GetProperty("linkInstanceId").GetInt64()).IsEqualTo(42L);
+        await Assert.That(linkedRow.GetProperty("values").TryGetProperty("id", out _)).IsFalse();
+        await Assert.That(linkedRow.GetProperty("values").GetProperty("linkedElementId").GetProperty("numericValue").GetDouble()).IsEqualTo(7d);
+    }
+
+    [Test]
+    public async Task LinkedDetails_SerializeLocalInstanceTypeAndBoundaryReferences()
+    {
+        var details = new ElementDetailsData
+        {
+            Element = new ViewElementDump { Id = 7 },
+            TypeElement = new ElementTypeDetails { Id = 8 },
+            Room = new RoomDetails
+            {
+                Boundaries = [new RoomBoundaryLoop { Segments = [new RoomBoundarySegment { ElementId = 9 }] }]
+            }
+        };
+        using var hostJson = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ElementDetailsData>.Ok("element-details", details, 1)));
+        var host = hostJson.RootElement.GetProperty("data");
+        await Assert.That(host.GetProperty("element").GetProperty("id").GetInt64()).IsEqualTo(7L);
+        await Assert.That(host.GetProperty("typeElement").GetProperty("id").GetInt64()).IsEqualTo(8L);
+        await Assert.That(host.GetProperty("room").GetProperty("boundaries")[0].GetProperty("segments")[0].GetProperty("elementId").GetInt64()).IsEqualTo(9L);
+        new LinkReadTransform([0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]).Apply(details, 42, "MEP");
+        using var linkedJson = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<ElementDetailsData>.Ok("element-details", details, 1)));
+        var linked = linkedJson.RootElement.GetProperty("data");
+        await Assert.That(linked.GetProperty("linkedElementId").GetInt64()).IsEqualTo(7L);
+        foreach (var reference in new[] { linked.GetProperty("element"), linked.GetProperty("typeElement") })
+        {
+            await Assert.That(reference.TryGetProperty("id", out _)).IsFalse();
+            await Assert.That(reference.GetProperty("linkedElementId").GetInt64()).IsGreaterThan(0L);
+        }
+        var boundary = linked.GetProperty("room").GetProperty("boundaries")[0].GetProperty("segments")[0];
+        await Assert.That(boundary.TryGetProperty("elementId", out _)).IsFalse();
+        await Assert.That(boundary.GetProperty("linkedElementId").GetInt64()).IsEqualTo(9L);
+    }
+
+    [Test]
+    public async Task LinkedGeometry_RoundsRotatedAndTranslatedCoordinatesToTenths()
+    {
+        var diagonal = Math.Sqrt(0.5);
+        var row = new QueryElementItem { RoomCenterMm = [1.1, 2.2, 3.3] };
+        new LinkReadTransform([0.03, 0.04, 0.06], [diagonal, diagonal, 0], [-diagonal, diagonal, 0], [0, 0, 1]).Apply(row, 42, "MEP");
+        await Assert.That(row.RoomCenterMm[0]).IsEqualTo(-0.7);
+        await Assert.That(row.RoomCenterMm[1]).IsEqualTo(2.4);
+        await Assert.That(row.RoomCenterMm[2]).IsEqualTo(3.4);
+    }
+
+    [Test]
+    public async Task PublicJobParser_RefusesViewWithLinkButPreservesHostViews()
+    {
+        var linked = ControlJobParser.Parse("""{"command":"query-elements","link":"*","view":"Host Level 1"}""");
+        await Assert.That(linked.Kind).IsEqualTo(ControlJobKind.Invalid);
+        await Assert.That(linked.Error).Contains("view cannot be combined with link");
+        var host = ControlJobParser.Parse("""{"command":"query-elements","view":"Host Level 1"}""");
+        await Assert.That(host.Error).IsNull();
+        await Assert.That(host.Filters.View).IsEqualTo("Host Level 1");
+    }
+
     [Test]
     public async Task Selector_DistinguishesHostAllIdsAndExactNames()
     {

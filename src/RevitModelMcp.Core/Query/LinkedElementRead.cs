@@ -30,15 +30,31 @@ public sealed record LinkReadTransform(double[] OriginMm, double[] BasisX, doubl
 {
     public double[] Point(double[] point) =>
     [
-        OriginMm[0] + BasisX[0] * point[0] + BasisY[0] * point[1] + BasisZ[0] * point[2],
-        OriginMm[1] + BasisX[1] * point[0] + BasisY[1] * point[1] + BasisZ[1] * point[2],
-        OriginMm[2] + BasisX[2] * point[0] + BasisY[2] * point[1] + BasisZ[2] * point[2]
+        Math.Round(OriginMm[0] + BasisX[0] * point[0] + BasisY[0] * point[1] + BasisZ[0] * point[2], 1),
+        Math.Round(OriginMm[1] + BasisX[1] * point[0] + BasisY[1] * point[1] + BasisZ[1] * point[2], 1),
+        Math.Round(OriginMm[2] + BasisX[2] * point[0] + BasisY[2] * point[1] + BasisZ[2] * point[2], 1)
     ];
 
     public void Apply(ElementGeometryData row, long instanceId, string name)
     {
         row.LinkInstanceId = instanceId;
         row.LinkName = name;
+        if (row is QueryElementItem query)
+        {
+            query.LinkedElementId = query.Id;
+            if (query.Values.TryGetValue("id", out var idValue))
+            {
+                query.Values.Remove("id");
+                query.Values["linkedElementId"] = idValue;
+            }
+        }
+        if (row is ElementDetailsData elementDetails)
+        {
+            elementDetails.LinkedElementId = elementDetails.Element.Id;
+            elementDetails.Element.LinkedElementId = elementDetails.Element.Id;
+            if (elementDetails.TypeElement is not null)
+                elementDetails.TypeElement.LinkedElementId = elementDetails.TypeElement.Id;
+        }
         if (row.RoomCenterMm is not null) row.RoomCenterMm = Point(row.RoomCenterMm);
         if (row.Location is not null)
         {
@@ -78,6 +94,7 @@ public sealed record LinkReadTransform(double[] OriginMm, double[] BasisX, doubl
         {
             foreach (var boundary in details.Room.Boundaries.SelectMany(loop => loop.Segments))
             {
+                boundary.LinkedElementId = boundary.ElementId;
                 var start = Point([boundary.StartMm.X, boundary.StartMm.Y, boundary.StartMm.Z]);
                 var end = Point([boundary.EndMm.X, boundary.EndMm.Y, boundary.EndMm.Z]);
                 boundary.StartMm = new VectorSnapshot { X = start[0], Y = start[1], Z = start[2] };

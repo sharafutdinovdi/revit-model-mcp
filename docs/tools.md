@@ -63,7 +63,7 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | Toolset | Tools | Bytes | About tokens |
 | --- | --- | --- | --- |
 | `core` | 9 | 7,291 | 1,822 |
-| `read` | 13 | 19,463 | 4,865 |
+| `read` | 13 | 19,654 | 4,913 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
 | `views-sheets` | 22 | 25,748 | 6,437 |
@@ -73,20 +73,20 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `export` | 4 | 7,198 | 1,799 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 108,468 | 27,117 |
-| `core,read` | 22 | 26,754 | 6,688 |
+| `all` (default) | 89 | 108,659 | 27,164 |
+| `core,read` | 22 | 26,945 | 6,736 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 108,468 | 27,117 | 108,625 |
-| `core,read` | 22 | 26,754 | 6,688 | 26,844 |
-| `preset:audit` | 28 | 31,633 | 7,908 | 31,729 |
-| `preset:edit` | 59 | 68,484 | 17,121 | 68,611 |
-| `preset:families` | 40 | 46,572 | 11,643 | 46,680 |
-| `preset:sheets` | 54 | 64,578 | 16,144 | 64,700 |
-| `preset:batch` | 46 | 53,070 | 13,267 | 53,184 |
+| `all` | 89 | 108,659 | 27,164 | 108,816 |
+| `core,read` | 22 | 26,945 | 6,736 | 27,035 |
+| `preset:audit` | 28 | 31,824 | 7,956 | 31,920 |
+| `preset:edit` | 59 | 68,675 | 17,168 | 68,802 |
+| `preset:families` | 40 | 46,763 | 11,690 | 46,871 |
+| `preset:sheets` | 54 | 64,769 | 16,192 | 64,891 |
+| `preset:batch` | 46 | 53,261 | 13,315 | 53,375 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
 The schema-size test permits no drift; schema changes require updated measured values.
@@ -277,13 +277,16 @@ Unavailable geometry is omitted.
 `revit_query_elements` and `revit_element_details` accept `link` as a positive instance ID, an exact case-insensitive instance or type name, or `"*"` for all top-level loaded RVT link instances.
 Omitting `link` reads only the host.
 Nested links are not traversed, even when their documents are loaded.
-Repeated placements of one linked document produce separate query rows with `linkInstanceId` and `linkName`.
-Element IDs remain local to the linked document; these IDs are not host action targets.
+Repeated placements of one linked document produce separate query rows with `linkedElementId`, `linkInstanceId` and `linkName`, without a host `id`.
+Details use `linkedElementId` for the linked instance, type and room boundary references; linked query `values.id` is named `values.linkedElementId`.
+Element IDs remain local to the linked document; these IDs are not accepted by host action tools.
 `unique_id` resolves a Revit UniqueId (ACC externalId) in the selected documents.
-Queries retain the shared filters, field selection and global paging; names, views, phases, worksets and levels resolve inside each linked document.
+Queries retain the shared filters, field selection and global paging; names, phases, worksets and levels resolve inside each linked document.
+`view` cannot be combined with `link`; host-view visibility filtering in linked documents is not implemented.
+Links that cannot resolve the requested filters or fields produce link-specific `skipped` reasons; failure in every selected source returns an error.
 Sorting uses the requested field, element ID, then link instance ID as deterministic tie breakers.
 Single-element details reject ambiguous matches across placements; select one instance ID or use a query for all matches.
-Linked geometry uses the instance total transform into host model millimetres; bounding boxes enclose all transformed corners, and room boundary endpoints are transformed.
+Linked geometry uses the instance total transform into host model millimetres rounded to one decimal place; bounding boxes enclose all transformed corners, and room boundary endpoints are transformed.
 Lengths, areas, volumes and linked level names retain their source meaning.
 Unavailable or unloaded links, closed linked worksets and unreadable elements produce `skipped` reasons and contribute to `skippedCount`; counts cover available matching elements only.
 Paging does not replace skipped diagnostics, and linked reads open no transactions.

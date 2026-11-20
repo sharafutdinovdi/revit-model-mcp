@@ -110,7 +110,7 @@
     },
     {
       "name": "revit_query_elements",
-      "description": "Read matching rows with filters and paging. link: instance ID, exact name or * (top-level loaded links); omitted: host. unique_id: UniqueId lookup. Linked rows name their instance; geometry is in host model mm, levels use link names. Lengths mm, areas m2, volumes m3. roomCenterMm is inside the room. hasMore=true: more pages. skipped means incomplete; skippedCount is the total skipped."
+      "description": "Read matching rows with filters and paging. link: instance ID, exact name or * (top-level loaded links); omitted: host. view cannot combine with link. unique_id: UniqueId lookup. Linked rows name their instance; geometry is in host model mm, levels use link names. Lengths mm, areas m2, volumes m3. roomCenterMm is inside the room. hasMore=true: more pages. skipped means incomplete; skippedCount is the total skipped."
     },
     {
       "name": "revit_list_sheets",

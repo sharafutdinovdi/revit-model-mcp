@@ -183,6 +183,10 @@ ElementId = Annotated[
         description="Revit element ID from revit_query_elements or revit_view_elements.",
     ),
 ]
+ReadLink = Annotated[
+    str | Annotated[int, Field(gt=0, strict=True)] | None,
+    Field(description="Linked IDs are local to the link, not accepted by action tools."),
+]
 WarningText = Annotated[
     str | None,
     Field(
@@ -1165,12 +1169,12 @@ async def revit_query_elements(
     include_geometry: IncludeGeometry = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
-    link: str | Annotated[int, Field(gt=0, strict=True)] | None = None,
+    link: ReadLink = None,
     unique_id: Annotated[
         str | None, Field(validation_alias=AliasChoices("unique_id", "uniqueId"))
     ] = None,
 ) -> dict[str, Any]:
-    """Read matching rows with filters and paging. link: instance ID, exact name or * (top-level loaded links); omitted: host. unique_id: UniqueId lookup. Linked rows name their instance; geometry is in host model mm, levels use link names. Lengths mm, areas m2, volumes m3. roomCenterMm is inside the room. hasMore=true: more pages."""
+    """Read matching rows with filters and paging. link: instance ID, exact name or * (top-level loaded links); omitted: host. view cannot combine with link. unique_id: UniqueId lookup. Linked rows name their instance; geometry is in host model mm, levels use link names. Lengths mm, areas m2, volumes m3. roomCenterMm is inside the room. hasMore=true: more pages."""
     return await _execute(
         Job.query_elements(
             categories,
@@ -1354,7 +1358,7 @@ async def revit_element_details(
     element_id: ElementId = None,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
-    link: str | Annotated[int, Field(gt=0, strict=True)] | None = None,
+    link: ReadLink = None,
     unique_id: Annotated[
         str | None, Field(validation_alias=AliasChoices("unique_id", "uniqueId"))
     ] = None,

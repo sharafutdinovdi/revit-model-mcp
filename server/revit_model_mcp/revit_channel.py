@@ -660,6 +660,10 @@ class Job:
         link: str | int | None = None,
         unique_id: str | None = None,
     ) -> Job:
+        if link is not None and _optional_text(view) is not None:
+            raise RevitChannelError(
+                "view cannot be combined with link; host-view visibility in linked documents is not supported."
+            )
         try:
             payload = query_payload(
                 categories,
