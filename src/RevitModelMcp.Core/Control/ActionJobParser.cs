@@ -1366,14 +1366,30 @@ public sealed class FileExportOptions
     [DataMember(Name = "group_headers")] public bool? GroupHeaders { get; set; }
     [DataMember(Name = "encoding")] public string? Encoding { get; set; }
 
+    public void ValidateIfcVersion(string revitVersion, IReadOnlyCollection<string> apiVersions)
+    {
+        if (apiVersions is null) throw new ArgumentNullException(nameof(apiVersions));
+        var requested = Version ?? "IFC2x3CV2";
+        if (!apiVersions.Contains(requested))
+        {
+            var supported = new[] { "IFC2x3CV2", "IFC4RV", "IFC4x3" }.Where(apiVersions.Contains);
+            throw new ArgumentException($"IFC version {requested} is not supported by this Revit {revitVersion} build. Supported values: {string.Join(", ", supported)}.");
+        }
+    }
+
     public void Validate(string format)
     {
+        if (format == "ifc" && (Combine.HasValue || Naming is not null || Color is not null ||
+            ZoomPercent.HasValue || Paper is not null || HideCropBoundaries.HasValue || HideScopeBoxes.HasValue ||
+            Setup is not null || MergedViews.HasValue || FileVersion is not null || Delimiter is not null ||
+            Headers.HasValue || Title.HasValue || GroupHeaders.HasValue || Encoding is not null))
+            throw new ArgumentException("Unsupported IFC options. Supported keys: file_name, version, export_base_quantities, space_boundaries, split_walls_by_level.");
         if (format == "pdf" && (Naming is not null and not ("sheet_number_name" or "view_name") ||
             Color is not null and not ("color" or "grayscale" or "black_line") ||
             ZoomPercent is < 1 or > 1000 || Paper is not null and not "auto"))
             throw new ArgumentException("Invalid PDF options.");
         if (format == "ifc" && (Version is not null and not ("IFC2x3CV2" or "IFC4RV" or "IFC4x3") || SpaceBoundaries is < 0 or > 2))
-            throw new ArgumentException("Invalid IFC options.");
+            throw new ArgumentException("Invalid IFC options. Supported version values: IFC2x3CV2, IFC4RV, IFC4x3 (Revit 2023+); space_boundaries: 0, 1, 2.");
         if (format == "csv" && (Delimiter is not null && Delimiter.Length != 1 || Encoding is not null && Encoding != "utf-8"))
             throw new ArgumentException("CSV delimiter must be one character and encoding must be utf-8.");
         if (FileName is not null && (FileName.Length == 0 || FileName.IndexOfAny(['/', '\\']) >= 0 || FileName == "." || FileName == ".."))

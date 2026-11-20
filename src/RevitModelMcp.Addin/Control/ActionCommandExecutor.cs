@@ -13,6 +13,7 @@ using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
@@ -834,6 +835,8 @@ internal static class ActionCommandExecutor
         if (document.IsFamilyDocument) throw new ArgumentException("File export requires a project document.");
         var request = action.Export;
         request.Validate();
+        if (request.Format == "ifc")
+            request.Options.ValidateIfcVersion(document.Application.VersionNumber, Enum.GetNames(typeof(IFCVersion)));
         var folder = request.Folder ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "exports",
             FileExportJob.FileName(document.Title, "tmp")[..^4], DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ"));
@@ -984,6 +987,11 @@ internal static class ActionCommandExecutor
                 SpaceBoundaryLevel = options.SpaceBoundaries ?? 0,
                 WallAndColumnSplitting = options.SplitWallsByLevel ?? false
             };
+            using var scope = selected.Count == 1
+                ? new FilteredElementCollector(document, selected[0].Id)
+                : new FilteredElementCollector(document);
+            var hasModelElements = scope.WhereElementIsNotElementType().Any(element =>
+                element.Category?.CategoryType == CategoryType.Model && element.get_BoundingBox(null) is not null);
             using var temporaryUndoState = UndoTracker.BeginTemporary();
             using var transaction = new Transaction(document, "MCP IFC export");
             transaction.Start();
@@ -992,6 +1000,8 @@ internal static class ActionCommandExecutor
                 if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[0]), ifc)) throw new InvalidOperationException("IFC export failed.");
             }
             finally { transaction.RollBack(); }
+            using var reader = File.OpenText(Path.Combine(folder, planned[0]));
+            IfcFileValidation.RequireBuildingElements(reader, hasModelElements);
         }
         else
         {

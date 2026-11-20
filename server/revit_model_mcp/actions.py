@@ -469,6 +469,36 @@ class ProcessCode(BaseModel):
     transaction: Literal["auto", "group", "none"] = "auto"
 
 
+def _validate_ifc_options(options: dict[str, Any] | None) -> None:
+    if options is None:
+        return
+    supported = {
+        "file_name",
+        "version",
+        "export_base_quantities",
+        "space_boundaries",
+        "split_walls_by_level",
+    }
+    unknown = options.keys() - supported
+    if unknown:
+        raise ValueError(
+            f"Unsupported IFC options: {', '.join(sorted(unknown))}. "
+            f"Supported keys: {', '.join(sorted(supported))}. "
+            "Site placement is not configurable by this tool."
+        )
+    version = options.get("version")
+    if version is not None and version not in ("IFC2x3CV2", "IFC4RV", "IFC4x3"):
+        raise ValueError("Supported IFC version values: IFC2x3CV2, IFC4RV, IFC4x3 (Revit 2023+).")
+    boundaries = options.get("space_boundaries")
+    if boundaries is not None and (type(boundaries) is not int or boundaries not in (0, 1, 2)):
+        raise ValueError("Supported IFC space_boundaries values: 0, 1, 2.")
+    for key in ("export_base_quantities", "split_walls_by_level"):
+        if options.get(key) is not None and type(options[key]) is not bool:
+            raise ValueError(f"Supported IFC {key} values: true, false.")
+    if options.get("file_name") is not None and not isinstance(options["file_name"], str):
+        raise ValueError("IFC file_name must be a string.")
+
+
 class ProcessExport(BaseModel):
     model_config = ConfigDict(extra="forbid")
     format: Literal["pdf", "dwg", "ifc", "csv"]
@@ -494,6 +524,8 @@ class ProcessExport(BaseModel):
             raise ValueError("Sheets are supported only for PDF and DWG.")
         if self.format == "ifc" and self.views is not None and len(self.views) > 1:
             raise ValueError("IFC accepts at most one view.")
+        if self.format == "ifc":
+            _validate_ifc_options(self.options)
         return self
 
     def payload(self) -> dict[str, Any]:
@@ -1879,6 +1911,11 @@ def register_actions(mcp, execute, host_provider) -> None:
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 1800,
     ) -> dict[str, Any]:
         """Save PDF, DWG, IFC or schedule CSV files to a folder the user names with output_dir on the Revit workstation; dry_run returns planned file names. Replacing existing files (overwrite=true) uses a two-step confirm_token handshake with the AI app. The AI app is expected to show the action to you; Model MCP does not show its own dialog."""
+        if format == "ifc":
+            try:
+                _validate_ifc_options(options)
+            except ValueError as exception:
+                raise ToolError(str(exception)) from exception
         return await send(
             "export",
             format=format,

@@ -301,7 +301,51 @@ An export that leaves an existing target unchanged is reported as failed.
 
 PDF and DWG accept any combination of view names or IDs, sheet numbers, names or IDs, a saved `sheet_set`, and `all_sheets=true`. At least one printable target is required; templates and unprintable views are rejected. PDF `options` are `combine=true`, `file_name`, `naming="sheet_number_name"` or `"view_name"`, `color="color"`, `"grayscale"` or `"black_line"`, `zoom_percent=100`, `paper="auto"`, `hide_crop_boundaries=true` and `hide_scope_boxes=true`. DWG options are `setup` (saved export setup), `merged_views=false` and `file_version` (Revit ACADVersion name).
 
-IFC exports the whole model or one view selected through `views`. Its options are `version="IFC2x3CV2"`, `"IFC4RV"` or `"IFC4x3"`, `file_name`, `export_base_quantities=true`, `space_boundaries=0` and `split_walls_by_level=false`. The required IFC transaction is rolled back after export. CSV accepts schedule names or IDs in `views`; omitting `views` exports all non-template schedules except revision and keynote legends. CSV options are `delimiter=","`, `headers=true`, `title=false`, `group_headers=false` and `encoding="utf-8"`. Revit exports the visible schedule fields. The file is then encoded as UTF-8 with a BOM for Excel. With path redaction enabled, the response `folder` contains only the final folder name.
+IFC exports the whole model or one view selected through `views`.
+Its options are `version="IFC2x3CV2"`, `"IFC4RV"` or `"IFC4x3"` (Revit 2023 builds exposing that API value and Revit 2024-2027), `file_name`, `export_base_quantities=true`, `space_boundaries=0` (0, 1 or 2) and `split_walls_by_level=false`.
+Other IFC option keys, including `site_placement` and exporter `AddOption` keys such as `SitePlacement`, are refused before submission, also in `revit_process_models`.
+The tool does not expose site placement, file type, phase overrides or active-view geometry options.
+Revit builds without the requested `IFCVersion` value refuse it before creating the output directory, including in dry runs, and list the versions supported by the loaded API.
+The required IFC transaction is rolled back after export.
+An IFC file containing no physical element instances is reported as failed when the export scope contains model elements with a bounding box.
+The check streams STEP records with bounded memory; project, site, storey, type and geometry records alone do not qualify.
+MEP, furnishing, proxy and structural element instances qualify without requiring a wall.
+This check detects metadata-only exports, not missing individual elements or invalid geometry.
+The failed file remains on disk for diagnosis.
+
+CSV accepts schedule names or IDs in `views`; omitting `views` exports all non-template schedules except revision and keynote legends.
+CSV options are `delimiter=","`, `headers=true`, `title=false`, `group_headers=false` and `encoding="utf-8"`.
+Revit exports the visible schedule fields.
+The file is then encoded as UTF-8 with a BOM for Excel.
+With path redaction enabled, the response `folder` contains only the final folder name.
+
+#### Revit 2022 IFC diagnosis
+
+The Revit 2022-2027 API references expose the same `FilterViewId`, `ExportBaseQuantities`, `SpaceBoundaryLevel` and `WallAndColumnSplitting` properties.
+`IFC4x3` is absent from the Revit 2022 and baseline 2023.0.1 `IFCVersion` enumerations; it is present in 2023.1.90 and the Revit 2024-2027 references.
+The export uses `IFC2x3CV2` by default, the selected view ID or `InvalidElementId`, and no `AddOption` keys.
+The [2022 export API](https://www.revitapidocs.com/2022/7efa4eb3-8d94-b8e7-f608-3dbae751331d.htm) requires an open transaction; removing the transaction is not a supported workaround.
+The [2022 exporter](https://github.com/Autodesk/revit-ifc/blob/Release_22.x.x/Source/Revit.IFC.Export/Exporter/Exporter.cs) explicitly permits a plan view as a visibility filter while exporting 3D geometry.
+It catches nonfatal element export exceptions, writes their details to the Revit journal, and can continue without those elements.
+The [2022 options cache](https://github.com/Autodesk/revit-ifc/blob/Release_22.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs) selects the filter view phase, or the final document phase without a filter view.
+Its default file format is STEP IFC; `IFCFileType`, `ActivePhaseId`, `UseActiveViewGeometry`, `ActiveViewId` and `SitePlacement` are exporter-specific named options, not required arguments to `Document.Export`.
+The [2026 options cache](https://github.com/Autodesk/revit-ifc/blob/Release_26.x.x/Source/Revit.IFC.Export/Utility/ExportOptionsCache.cs) retains these keys but gives the filter view phase precedence over an explicit phase.
+The tool passes no conflicting phase override.
+
+The leading hypothesis is a Revit 2022 exporter/native export-path defect or exporter installation mismatch, with low-to-moderate confidence.
+The [upstream empty-export report](https://github.com/Autodesk/revit-ifc/issues/411) reproduces with 2022 exporters 22.4.0-22.4.2 and the built-in exporter, and Autodesk records REVIT-190535.
+The [related Autodesk discussion](https://forums.autodesk.com/t5/revit-api-forum/ifc-export-result-empty-files/td-p/11082264) reports successful UI export with unsuccessful API export.
+That report is view-filtered; the whole-model, new-wall reproduction in this issue prevents attributing this issue solely to `FilterViewId` or an existing model phase.
+Whether the open-source exporter is installed and registered in the affected Revit 2022 process remains unverified.
+No exporter workaround or transaction change is applied without a matching workstation reproduction.
+
+On Revit 2022, compare UI and API exports of a new wall and the sample model with no view filter and with a 3D filter, using IFC2x3CV2 and IFC4RV, with base quantities enabled and disabled.
+Record the Revit build, loaded IFC exporter assembly version and registration, the journal element-export exceptions, the filter view phase and final document phase.
+Compare the built-in exporter with the latest compatible open-source 2022 exporter on the same build.
+The proposed remediation is the compatible exporter update if this comparison isolates it; any code workaround remains conditional on an isolated 2022-only cause.
+Revit 2022 must refuse IFC4x3 and metadata-only output instead of reporting success.
+Revit 2026 must retain full-model and view-scoped export, quantities, splitting and space boundaries, with unchanged model state after rollback.
+Both years must reject unsupported options without creating files, accept MEP-only output, and permit metadata-only output for an empty scope.
 
 ### Process many models
 
