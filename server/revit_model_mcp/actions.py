@@ -1189,6 +1189,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         dry_run: bool = False,
         confirm_token: str | None = None,
         timeout_seconds: Annotated[int, Field(ge=30, le=3600)] = 600,
+        max_seconds: Annotated[int, Field(ge=1)] | None = None,
     ) -> dict[str, Any]:
         """Run a C# body or public static Script.Execute(ScriptContext ctx) on the Revit thread. revit_api_lookup supplies API metadata. Auto owns a Transaction; group lets scripts own Transactions and edit scopes inside one Undo group. Close all scopes before returning; transaction="none" is refused. Needs confirm_token except dry_run, which rolls back."""
         if dry_run and transaction == "none":
@@ -1201,6 +1202,7 @@ def register_actions(mcp, execute, host_provider) -> None:
             dryRun=dry_run,
             confirmToken=confirm_token,
             timeout_seconds=timeout_seconds,
+            maxSeconds=max_seconds,
         )
 
     @action
@@ -1256,7 +1258,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         document: Document = None,
         process_id: ProcessId = None,
     ) -> dict[str, Any]:
-        """Request cancellation of an action jobId. Process-models stops before the next model and marks unstarted models cancelled; a single running Revit operation finishes, and completed changes stay committed."""
+        """Process-models stops between models; completed models stay committed. Scripts and tagging roll back at a check or on return."""
         if (gate := policy_gate("revit_cancel_job", label="jobs")) is not None:
             return gate
         job = (
@@ -1773,7 +1775,7 @@ def register_actions(mcp, execute, host_provider) -> None:
         orientation: Literal["horizontal", "vertical"] = "horizontal",
         tag_type: Name | None = None,
         skip_tagged: bool = True,
-        max_elements: MaxElements = 5000,
+        max_elements: MaxElements = 500,
         dry_run: bool = False,
         document: Document = None,
     ) -> dict[str, Any]:

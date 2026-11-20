@@ -527,7 +527,8 @@ class SshPowerShellHost:
     async def cancel_job(self, job_id: str) -> dict[str, Any]:
         response = await self.fetch_job(job_id)
         if (
-            response.get("command") != "process-models"
+            response.get("command")
+            not in {"process-models", "execute-code", "run-tool", "tag-elements"}
             or response.get("partial") is not True
             or response.get("message") != "Command accepted and running."
         ):
@@ -544,7 +545,9 @@ class SshPowerShellHost:
         return {
             "cancelled": True,
             "jobId": job_id,
-            "message": "Cancellation requested before the next model.",
+            "message": "Cancellation requested; cooperating operations stop at their next cancellation point. "
+            "Scripts and tagging roll back at that point or on return. "
+            "Process-models stops before the next model; completed models stay committed.",
         }
 
     async def prepare_job(self, name: str, content: str, command: str) -> set[str]:

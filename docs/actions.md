@@ -65,7 +65,7 @@ Cancellation is refused while the workstation read-only lock is on.
 
 | Tool | Arguments | Action and units |
 | --- | --- | --- |
-| `revit_cancel_job` | `job_id`, `document=null`, `process_id=null` | Request cancellation. Process-models stops before the next model. Poll `revit_jobs` for the final result. Completed changes remain committed. |
+| `revit_cancel_job` | `job_id`, `document=null`, `process_id=null` | Request cancellation. Process-models stops before the next model; completed models remain committed. Scripts and tagging stop at a cancellation check or on return, then roll back. Poll `revit_jobs` for the final result. |
 | `revit_select` | `element_ids` | Select IDs; `[]` clears selection. Return `count`, the current selection size after the call. |
 | `revit_show` | `element_ids`, `select=true` | Frame nonempty IDs in an explicitly selected level plan or orthographic 3D view; return `activeView`, `viewOpened`, `elapsedMs` and `count`. With `select=false`, `count` reports the requested element count. |
 | `revit_override_graphics` | `element_ids`, `color="#FF0000"`, `views="active"`, `halftone_others=false`, `line_weight=null`, `fill=true`, `transparency=0`, `reset=false` | Highlight visible elements in the active view, all eligible model views or named views. Reset restores graphics saved in the current Revit session. Returns `viewsTouched` and `elementsPerView`. |
@@ -88,7 +88,7 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_apply_view_template` | `views`, `template` | Apply a matching template to one or more views. Type mismatches are reported in `typeMismatches`. When no view matches the template type the call is refused and nothing is committed. |
 | `revit_create_sheet` | `number`, `name`, `title_block=null` | Create a sheet with a loaded title block. Sheet numbers must be unique. |
 | `revit_place_views_on_sheet` | `sheet`, `views` | Place views and schedules. Each item has `view` and optional paired `x_mm`, `y_mm` sheet coordinates. Missing positions lay out left to right with 20 mm gaps and row wrapping. Cannot run in a batch. |
-| `revit_tag_elements` | `view`, `categories=null`, `element_ids=null`, `leader=false`, `orientation="horizontal"`, `tag_type=null`, `skip_tagged=true`, `max_elements=5000` | Tag elements in a view, chosen by category names or by element IDs (exactly one). Returns the created tag IDs in `createdElementIds`. Elements that already have a tag in the view are left alone unless `skip_tagged=false`. Inputs Revit cannot tag are listed in `skipped` with a reason, and the call fails when no tag is created. `tag_type` matches a tag type name, a family name or `Family: Type`; without it Revit uses the default tag type of each category. Room tags need a plan view and ignore `orientation`. Spaces and areas are not supported. Cannot run in a batch. |
+| `revit_tag_elements` | `view`, `categories=null`, `element_ids=null`, `leader=false`, `orientation="horizontal"`, `tag_type=null`, `skip_tagged=true`, `max_elements=500` | Tag elements in a view, chosen by category names or by element IDs (exactly one). Returns the created tag IDs in `createdElementIds`. Elements that already have a tag in the view are left alone unless `skip_tagged=false`. Inputs Revit cannot tag are listed in `skipped` with a reason, and the call fails when no tag is created. `tag_type` matches a tag type name, a family name or `Family: Type`; without it Revit uses the default tag type of each category. Room tags need a plan view and ignore `orientation`. Spaces and areas are not supported. Cannot run in a batch. |
 | `revit_create_schedule` | `category`, `fields`, `name=null`, `filters=null`, `sort=null`, `itemized=true` | Create a schedule for one category. `fields` are Revit UI field names in column order. `filters` are `{field, operator, value}` records; `operator` is `equal`, `not_equal`, `greater_than`, `greater_than_or_equal`, `less_than`, `less_than_or_equal`, `contains`, `not_contains`, `begins_with`, `not_begins_with`, `ends_with`, `not_ends_with`, `has_value` or `has_no_value` (the last two take no value). Numeric values use mm for lengths, m2 for areas and m3 for volumes. For fields that reference an element (Level, Phase), `value` is the element name; it is resolved to the element and filtered by its ID, and an unknown or ambiguous name is reported in `skipped`. `sort` records are `{field, descending=false, header=false, footer=false, blank_line=false}`; a header or footer groups rows. A field used only by a filter or sort is added hidden. Returns the schedule view ID in `viewId`, the resolved `fields`, `filtersApplied` and `sortApplied`. Names Revit does not know are listed in `skipped`, and the call fails when no field resolves. Cannot run in a batch. |
 | `revit_set_parameter` | `element_id`, `parameter`, `value`, optional `parameter_id` | Set exactly one instance or type parameter. Group members that Revit refuses to change fail with a clear message, including in dry runs. `parameter_id` is a `BuiltInParameter` enum name, shared parameter GUID or positive decimal `ParameterElement` ID. `parameter` remains required. Without an ID, names accept the localized Revit UI name, a `BuiltInParameter` enum name or a supported English alias. Multiple matches are refused with each candidate's ID, name, storage type, owner and kind. No name guessing occurs. Use a JSON string for String, integer for Integer or number for Double. Lengths use mm, areas m2, other doubles internal units. |
 | `revit_delete` | `element_ids`, `dry_run=false`, `confirm_token=null` | Delete nonempty IDs and their dependents. A real deletion of more than 500 elements, dependents included, needs a confirmation token. |
@@ -100,8 +100,16 @@ Cancellation is refused while the workstation read-only lock is on.
 | `revit_align_link_datums` | All `revit_compare_link_datums` arguments, `create_missing=true`, `level_type=null`, `grid_type=null`, `include_pinned=false`, `create_plan_views=false`, `plan_view_type=null`, `dry_run=false`, `timeout_seconds=600` | Move same-name grids and levels to a linked model; optionally create missing datums and floor plans. Cannot be used in a batch. |
 | `revit_set_view_visibility` | `view`, `hide_categories=null`, `show_categories=null`, `category_classes=null`, `hide_categories_by_type=null`, `worksets=null`, `filters=null`, `template_mode=null`, `dry_run=false` | Change view category, class, workset and filter visibility. Cannot be used in a batch. |
 | `revit_remove_links` | `links` (names, IDs or `"*"`), `kinds=null` (`revit`, `cad` and `point_cloud`; `image` only when listed), `include_imported_cad=false`, `dry_run=false`, `confirm_token=null` | Remove selected link types and their instances. `dry_run` lists the links and dependent elements without deleting anything and leaves links loaded. A real removal needs a confirmation token. Cannot be used in a batch. |
-| `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
+| `revit_execute_code` | `code`, `transaction="auto"`, `dry_run=false`, `confirm_token=null`, `timeout_seconds=600`, `max_seconds=null` | Compile and run C# on the Revit API thread. Every call except `dry_run` needs a confirmation token. Cannot be used in a batch. |
 | `revit_undo_last` | `document` | Undo the last MCP action through Revit's own undo command; refused unless it is still Revit's last undo entry. |
+
+`revit_tag_elements` refuses a resolved selection above `max_elements` before creating any tags, for previews and committed runs.
+The refusal reports the matched count; a narrower selection or an explicit higher limit is required.
+The default limit is 500, reduced from 5000; the maximum is 20000.
+`revit_cancel_job` requests cancellation between elements; cancellation rolls back the tagging transaction and reports the number processed, not the number retained.
+Independent-tag runs isolate ordered batches of at most 20 targets, disabling temporary isolation between batches and before verification or rollback.
+Existing temporary modes, unsupported views and room targets use the normal path; an isolation refusal restores visibility and uses the normal path for the remaining run.
+A debug log summary reports the isolation path, batch count and fallback reason without model identifiers.
 
 `revit_create_view` leaves settings controlled by the view's template unchanged and lists them in `templateControlled` when any are skipped.
 The result includes the template name in `viewTemplate` when the view has a template.
@@ -168,6 +176,30 @@ Saved-tool runs use the same result limiter and artifact handling.
 Script logs retain the first 2000 non-empty lines; omitted lines appear in `logOmittedCount` beside `log`, including per-model code results in `revit_process_models`; successful results also set `partial`, `skipped` and `skippedCount`, and `resultCompleteness` describes only the return value.
 
 `revit_execute_code` accepts up to 200,000 C# characters. Submit either the body of `public static object Execute(ScriptContext ctx)` or a full compilation unit declaring `public static class Script` with that method. Method bodies have common `System` and Revit namespaces imported. `ScriptContext` provides `UiApplication`, `Application`, `UiDocument`, `Document`, `Log`, `ToMm` and `FromMm`. The target document follows the normal `document` resolution rules. Both supported transaction modes require a target document.
+
+`ctx.CancellationRequested` reports client cancellation or expiry of the optional `max_seconds` execution limit.
+`ctx.ThrowIfCancellationRequested()` throws on either condition; the managed run fails and rolls back its owned transactions and groups where possible.
+The failure reports elapsed seconds in the error and elapsed milliseconds in `data.elapsedMs`.
+There is no default execution limit.
+`timeout_seconds` only limits the client's wait; it does not stop Revit execution.
+Loops over many elements must call `ctx.ThrowIfCancellationRequested()` between elements, especially when calling `Document.Regenerate()` inside the loop.
+Cancellation never aborts the Revit thread and cannot interrupt a single blocking API call.
+The runner also checks before invocation and after the script returns.
+Running scripts and tagging jobs accept cancellation through `revit_cancel_job(job_id=...)` from the AI app.
+The activity pane's Cancel link applies to queued jobs; the Revit UI thread cannot handle its click while a script or tagging job is running.
+Cooperative script cancellation is enabled only for `revit_execute_code` and `revit_run_tool`.
+In `revit_process_models` code steps, `ctx.CancellationRequested` remains false and `ctx.ThrowIfCancellationRequested()` does not throw.
+Cancelling model processing lets the current model finish and save, then stops before the next model.
+A cancelled script that never checks the flag runs to its end, then the runner checks and rolls back the managed run; document receipts remain authoritative.
+
+```csharp
+for (var index = 0; index < 10000; index++)
+{
+    ctx.ThrowIfCancellationRequested();
+    System.Threading.Thread.Sleep(100);
+}
+return null;
+```
 
 The default `auto` mode owns one Revit transaction inside a group. Scripts in this mode must not open transactions.
 `EditFamily` and the family-document `LoadFamily` overloads require an unmodifiable target document.

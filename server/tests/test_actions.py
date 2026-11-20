@@ -246,6 +246,9 @@ def test_execute_code_maps_arguments_and_respects_read_only():
     assert job.payload["transaction"] == "auto"
     assert job.payload["dryRun"] is False
     assert execute.await_args.args[1] == 600
+    assert job.payload["maxSeconds"] is None
+    asyncio.run(server.call_tool("revit_execute_code", {"code": "return 42;", "max_seconds": 2}))
+    assert execute.await_args.args[0].payload["maxSeconds"] == 2
 
     execute.reset_mock()
     result = asyncio.run(
@@ -1683,17 +1686,20 @@ def test_tag_elements_mapping_and_validation():
     assert payload["leader"] is True
     assert payload["orientation"] == "horizontal"
     assert payload["typeName"] == "Door Tag"
+    assert payload["maxElements"] == 500
     assert payload["skipTagged"] is True
     assert payload["dryRun"] is False
     asyncio.run(
         server.call_tool(
-            "revit_tag_elements", {"view": 123, "element_ids": [5, 6], "dry_run": True}
+            "revit_tag_elements",
+            {"view": 123, "element_ids": [5, 6], "max_elements": 20, "dry_run": True},
         )
     )
     payload = execute.await_args.args[0].payload
     assert payload["view"] == "123"
     assert payload["elementIds"] == [5, 6]
     assert payload["dryRun"] is True
+    assert payload["maxElements"] == 20
     execute.reset_mock()
     for invalid in (
         {"view": "Level 1"},

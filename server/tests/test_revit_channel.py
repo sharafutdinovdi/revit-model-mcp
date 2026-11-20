@@ -2718,12 +2718,14 @@ def test_invalid_tool_budget_is_rejected(value):
             tool_budget_seconds()
 
 
-def test_file_action_fetch_and_cancel_use_retained_instance_job_files():
+@pytest.mark.parametrize("command", ["process-models", "execute-code", "run-tool", "tag-elements"])
+@pytest.mark.parametrize("local", [False, True])
+def test_file_action_fetch_and_cancel_use_retained_instance_job_files(command, local):
     async def check():
-        host = SshPowerShellHost("local", local=True)
+        host = SshPowerShellHost("local", local=local)
         host._directory = "selected-instance-directory"
         progress = {
-            "command": "process-models",
+            "command": command,
             "success": False,
             "partial": True,
             "message": "Command accepted and running.",
@@ -2732,7 +2734,12 @@ def test_file_action_fetch_and_cancel_use_retained_instance_job_files():
         encoded = base64.b64encode(json.dumps(progress).encode()).decode()
         host._run = AsyncMock(side_effect=[encoded, encoded, ""])
         assert await host.fetch_job("a" * 32) == progress
-        assert (await host.cancel_job("a" * 32))["cancelled"] is True
+        cancellation = await host.cancel_job("a" * 32)
+        assert cancellation["cancelled"] is True
+        assert "next cancellation point" in cancellation["message"]
+        assert "Scripts and tagging roll back at that point or on return" in cancellation["message"]
+        assert "Process-models stops before the next model" in cancellation["message"]
+        assert "completed models stay committed" in cancellation["message"]
         scripts = [call.args[0] for call in host._run.await_args_list]
         assert all("selected-instance-directory" in script for script in scripts)
         assert "jobs/" + "a" * 32 + ".json" in scripts[0]
@@ -2741,6 +2748,26 @@ def test_file_action_fetch_and_cancel_use_retained_instance_job_files():
         assert "a" * 32 + ".cancel" in scripts[2]
         assert "read-only" in scripts[2]
         assert "trigger.txt" not in "".join(scripts)
+
+    asyncio.run(check())
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"command": "delete", "partial": True, "message": "Command accepted and running."},
+        {"command": "execute-code", "partial": False, "message": "Command accepted and running."},
+        {"command": "tag-elements", "partial": True, "message": "Job has already finished."},
+    ],
+)
+def test_file_action_cancellation_does_not_write_for_finished_or_unsupported_jobs(response):
+    async def check():
+        host = SshPowerShellHost("local", local=False)
+        host.fetch_job = AsyncMock(return_value=response)
+        host._run = AsyncMock()
+        cancellation = await host.cancel_job("a" * 32)
+        assert cancellation["cancelled"] is False
+        host._run.assert_not_awaited()
 
     asyncio.run(check())
 

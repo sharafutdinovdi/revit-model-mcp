@@ -56,8 +56,19 @@ public sealed class TagAndScheduleActionTests
         await Assert.That(action.Leader).IsFalse();
         await Assert.That(action.Orientation).IsEqualTo("horizontal");
         await Assert.That(action.SkipTagged).IsTrue();
-        await Assert.That(action.MaxElements).IsEqualTo(5000);
+        await Assert.That(action.MaxElements).IsEqualTo(500);
         await Assert.That(action.View).IsEqualTo("Level 1");
+    }
+
+    [Test]
+    public async Task TagLimitRefusesAboveBoundAndAcceptsExplicitIncrease()
+    {
+        await Assert.That(ActionJobParser.TagElementLimitError(10, 10)).IsNull();
+        await Assert.That(ActionJobParser.TagElementLimitError(11, 10))
+            .IsEqualTo("Matched 11 elements, exceeding max_elements=10. Narrow the selection or raise max_elements.");
+        var job = ControlJobParser.Parse("""{"command":"tag-elements","view":"Level 1","elementIds":[1,2],"maxElements":20}""");
+        await Assert.That(job.Action!.MaxElements).IsEqualTo(20);
+        await Assert.That(ActionJobParser.TagElementLimitError(11, job.Action.MaxElements)).IsNull();
     }
 
     [Test]

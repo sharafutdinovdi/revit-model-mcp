@@ -3,75 +3,157 @@ using Autodesk.Revit.DB.Architecture;
 using Nice3point.Revit.Extensions;
 using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Output;
 
 namespace RevitModelMcp.Control;
 
 internal static class AnnotationActions
 {
+    private static readonly TemporaryViewMode[] TemporaryModes = (TemporaryViewMode[])Enum.GetValues(typeof(TemporaryViewMode));
+
     /// <summary>Creates one tag per resolvable element in a view; inputs that cannot be tagged are reported in <c>skipped</c>.</summary>
     internal static ActionResultData TagElements(Document document, ActionJobContract action)
     {
-        var view = ReadCommandReader.FindView(document, action.View!)
-            ?? throw new ArgumentException($"View '{action.View}' was not found.");
-        if (view is ViewSheet or ViewSchedule or ViewDrafting)
-            throw new ArgumentException($"View '{view.Name}' cannot hold element tags; use a plan, section, elevation or 3D view.");
-
-        var skipped = new List<string>();
-        var elements = ResolveElements(document, view, action, skipped);
-        var tagged = action.SkipTagged ? TaggedElementIds(document, view) : [];
-        var independentTypes = ResolveIndependentTagTypes(document, action.TypeName);
-        var roomTagType = ResolveRoomTagType(document, action.TypeName);
-        if (action.TypeName is not null && independentTypes.Count == 0 && roomTagType is null)
-            throw new ArgumentException($"Tag type '{action.TypeName}' was not found.");
-
-        var orientation = action.Orientation == "vertical" ? TagOrientation.Vertical : TagOrientation.Horizontal;
-        var created = new List<long>();
-        foreach (var element in elements)
+        string? plainPathReason = "view-resolution";
+        string? isolationExceptionType = null;
+        var isolatedBatches = 0;
+        try
         {
-            var id = RevitValueReader.GetId(element.Id);
-            if (tagged.Contains(id))
+            var view = ReadCommandReader.FindView(document, action.View!)
+                ?? throw new ArgumentException($"View '{action.View}' was not found.");
+            if (view is ViewSheet or ViewSchedule or ViewDrafting)
+                throw new ArgumentException($"View '{view.Name}' cannot hold element tags; use a plan, section, elevation or 3D view.");
+
+            plainPathReason = "selection-resolution";
+            var skipped = new List<string>();
+            var elements = ResolveElements(document, view, action, skipped);
+            plainPathReason = "selection-limit";
+            if (ActionJobParser.TagElementLimitError(elements.Count, action.MaxElements) is not null)
+                throw new ActionMutations.MatchLimitException(elements.Count, action.MaxElements);
+            plainPathReason = "tag-type-resolution";
+            var tagged = action.SkipTagged ? TaggedElementIds(document, view) : [];
+            var independentTypes = ResolveIndependentTagTypes(document, action.TypeName);
+            var roomTagType = ResolveRoomTagType(document, action.TypeName);
+            if (action.TypeName is not null && independentTypes.Count == 0 && roomTagType is null)
+                throw new ArgumentException($"Tag type '{action.TypeName}' was not found.");
+
+            var orientation = action.Orientation == "vertical" ? TagOrientation.Vertical : TagOrientation.Horizontal;
+            var created = new List<long>();
+            var processed = 0;
+            void CheckCancellation()
             {
-                skipped.Add($"Element {id}: already tagged in this view.");
-                continue;
+                if (ResponseDelivery.CancellationRequested?.Invoke() != true) return;
+                var exception = new OperationCanceledException($"Tagging cancelled after processing {processed} of {elements.Count} elements.");
+                exception.Data["processedCount"] = processed;
+                throw exception;
             }
+            plainPathReason = "placement-preparation";
+            var centers = new Dictionary<long, XYZ?>();
+            foreach (var element in elements)
+            {
+                CheckCancellation();
+                var id = RevitValueReader.GetId(element.Id);
+                if (tagged.Contains(id)) continue;
+                try
+                {
+                    centers[id] = element is SpatialElement and not Room || element.Category is null ? null : Center(element, view);
+                }
+                catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
+                    or Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+                {
+                    skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
+                }
+            }
+            var isolationTargets = elements.Where(element =>
+            {
+                var id = RevitValueReader.GetId(element.Id);
+                return element is not SpatialElement && element.Category is not null && !tagged.Contains(id) &&
+                    centers.TryGetValue(id, out var center) && center is not null;
+            }).Select(element => element.Id).ToArray();
+            plainPathReason = GetPlainTagPathReason(view, isolationTargets.Length, elements.Any(element => element is Room),
+                out isolationExceptionType);
+            var useIsolation = plainPathReason is null;
+            using var batches = TaggingPolicy.PlanIsolationBatches(isolationTargets).GetEnumerator();
+            var isolated = false;
+            var nextIsolationTarget = 0;
+            var remainingBatchTargets = 0;
             try
             {
-                var tagId = element is Room room
-                    ? TagRoom(document, view, room, action, roomTagType)
-                    : TagElement(document, view, element, action, orientation, independentTypes);
-                if (tagId is null)
+                foreach (var element in elements)
                 {
-                    skipped.Add(SkipReason(id, element));
-                    continue;
+                    CheckCancellation();
+                    processed++;
+                    var id = RevitValueReader.GetId(element.Id);
+                    if (tagged.Contains(id))
+                    {
+                        skipped.Add($"Element {id}: already tagged in this view.");
+                        continue;
+                    }
+                    if (!centers.ContainsKey(id)) continue;
+                    if (useIsolation && nextIsolationTarget < isolationTargets.Length &&
+                        isolationTargets[nextIsolationTarget].Equals(element.Id))
+                    {
+                        if (remainingBatchTargets == 0)
+                        {
+                            useIsolation = batches.MoveNext() && TryIsolateTagBatch(view, batches.Current, isolated,
+                                out isolationExceptionType);
+                            if (useIsolation) isolatedBatches++;
+                            else plainPathReason = $"isolation-refused-at-batch-{isolatedBatches + 1}";
+                            isolated = useIsolation;
+                            remainingBatchTargets = useIsolation ? batches.Current.Count : 0;
+                        }
+                        nextIsolationTarget++;
+                        if (useIsolation) remainingBatchTargets--;
+                    }
+                    try
+                    {
+                        var tagId = element is Room room
+                            ? TagRoom(document, view, room, action, roomTagType, centers[id])
+                            : TagElement(document, view, element, action, orientation, independentTypes, centers[id]);
+                        if (tagId is null)
+                        {
+                            skipped.Add(SkipReason(id, element));
+                            continue;
+                        }
+                        created.Add(RevitValueReader.GetId(tagId));
+                    }
+                    catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
+                        or Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+                    {
+                        skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
+                    }
                 }
-                created.Add(RevitValueReader.GetId(tagId));
+                CheckCancellation();
             }
-            catch (Exception exception) when (exception is ArgumentException or InvalidOperationException
-                or Autodesk.Revit.Exceptions.ArgumentException or Autodesk.Revit.Exceptions.InvalidOperationException)
+            finally
             {
-                skipped.Add($"Element {id}: {exception.Message.Split('\n')[0].Trim()}");
+                if (isolated) view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
             }
-        }
-        if (created.Count == 0)
-            throw new InvalidOperationException("No tags were created. " + (skipped.Count > 0
-                ? string.Join(" ", skipped.Take(5))
-                : $"No taggable element was found in view '{view.Name}'."));
+            if (created.Count == 0)
+                throw new InvalidOperationException("No tags were created. " + (skipped.Count > 0
+                    ? string.Join(" ", skipped.Take(5))
+                    : $"No taggable element was found in view '{view.Name}'."));
 
-        var result = new ActionResultData
-        {
-            Count = created.Count,
-            CreatedElementIds = created,
-            ViewId = RevitValueReader.GetId(view.Id),
-            ViewName = view.Name,
-            Category = "Tag",
-            Verification = new ActionVerification { Changed = [.. created] }
-        };
-        if (skipped.Count > 0)
-        {
-            result.Skipped = skipped;
-            result.Warning = $"Skipped {skipped.Count} input(s); see skipped.";
+            var result = new ActionResultData
+            {
+                Count = created.Count,
+                CreatedElementIds = created,
+                ViewId = RevitValueReader.GetId(view.Id),
+                ViewName = view.Name,
+                Category = "Tag",
+                Verification = new ActionVerification { Changed = [.. created] }
+            };
+            if (skipped.Count > 0)
+            {
+                result.Skipped = skipped;
+                result.Warning = $"Skipped {skipped.Count} input(s); see skipped.";
+            }
+            return result;
         }
-        return result;
+        finally
+        {
+            PluginLog.Debug(TaggingPolicy.BuildPathLog(isolatedBatches, plainPathReason, isolationExceptionType));
+        }
     }
 
     private static List<Element> ResolveElements(Document document, View view, ActionJobContract action, List<string> skipped)
@@ -80,6 +162,8 @@ internal static class AnnotationActions
         var seen = new HashSet<long>();
         void Add(Element element)
         {
+            if (ResponseDelivery.CancellationRequested?.Invoke() == true)
+                throw new OperationCanceledException("Tagging cancelled before processing any elements.");
             if (seen.Add(RevitValueReader.GetId(element.Id))) result.Add(element);
         }
         if (action.ElementIds.Count > 0)
@@ -114,7 +198,6 @@ internal static class AnnotationActions
             foreach (var element in collector) Add(element);
             if (result.Count == before)
                 skipped.Add($"Category '{category.Name}': no elements are visible in view '{view.Name}'.");
-            if (result.Count > action.MaxElements) throw new ActionMutations.MatchLimitException(result.Count, action.MaxElements);
         }
         return result;
     }
@@ -163,10 +246,10 @@ internal static class AnnotationActions
         string.Equals($"{family}: {type}", requested, StringComparison.OrdinalIgnoreCase);
 
     private static ElementId? TagElement(Document document, View view, Element element, ActionJobContract action,
-        TagOrientation orientation, List<FamilySymbol> types)
+        TagOrientation orientation, List<FamilySymbol> types, XYZ? center)
     {
         if (element is SpatialElement || element.Category is null) return null;
-        var center = Center(element, view) ?? throw new InvalidOperationException("The element has no location in this view.");
+        if (center is null) throw new InvalidOperationException("The element has no location in this view.");
         var head = action.Leader ? center + (view.RightDirection + view.UpDirection) * Millimeters(15) * view.Scale : center;
         var tag = IndependentTag.Create(document, view.Id, new Reference(element), action.Leader,
             TagMode.TM_ADDBY_CATEGORY, orientation, head);
@@ -182,17 +265,57 @@ internal static class AnnotationActions
         return tag.Id;
     }
 
-    private static ElementId? TagRoom(Document document, View view, Room room, ActionJobContract action, RoomTagType? type)
+    private static ElementId? TagRoom(Document document, View view, Room room, ActionJobContract action, RoomTagType? type, XYZ? center)
     {
         if (view is not ViewPlan) throw new InvalidOperationException("Room tags need a plan view.");
         if (room.Location is null || room.Area <= 0) throw new InvalidOperationException("The room is not placed or enclosed.");
         if (action.TypeName is not null && type is null) throw new InvalidOperationException($"Tag type '{action.TypeName}' is not a room tag type.");
-        var center = Center(room, view) ?? throw new InvalidOperationException("The room has no location in this view.");
+        if (center is null) throw new InvalidOperationException("The room has no location in this view.");
         var tag = document.Create.NewRoomTag(new LinkElementId(room.Id), new UV(center.X, center.Y), view.Id);
         if (tag is null) throw new InvalidOperationException("Revit did not create the room tag.");
         tag.HasLeader = action.Leader;
         if (type is not null) tag.RoomTagType = type;
         return tag.Id;
+    }
+
+    private static string? GetPlainTagPathReason(View view, int independentTargetCount, bool includesRooms,
+        out string? exceptionType)
+    {
+        exceptionType = null;
+        try
+        {
+            var supportsTemporaryVisibility = view.CanUseTemporaryVisibilityModes();
+            var activeTemporaryModes = supportsTemporaryVisibility
+                ? string.Join(",", TemporaryModes.Where(view.IsInTemporaryViewMode).Select(mode => mode.ToString())) : null;
+            return TaggingPolicy.GetPlainPathReason(independentTargetCount, includesRooms,
+                supportsTemporaryVisibility, activeTemporaryModes);
+        }
+        catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ApplicationException
+            or ArgumentException or InvalidOperationException)
+        {
+            exceptionType = exception.GetType().Name;
+            return "view-mode-query-refused";
+        }
+    }
+
+    private static bool TryIsolateTagBatch(View view, ICollection<ElementId> targets, bool clearPreviousIsolation,
+        out string? exceptionType)
+    {
+        exceptionType = null;
+        try
+        {
+            if (clearPreviousIsolation) view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+            view.IsolateElementsTemporary(targets);
+            return true;
+        }
+        catch (Exception exception) when (exception is Autodesk.Revit.Exceptions.ApplicationException
+            or ArgumentException or InvalidOperationException)
+        {
+            exceptionType = exception.GetType().Name;
+            if (view.IsInTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate))
+                view.DisableTemporaryViewMode(TemporaryViewMode.TemporaryHideIsolate);
+            return false;
+        }
     }
 
     private static XYZ? Center(Element element, View view)

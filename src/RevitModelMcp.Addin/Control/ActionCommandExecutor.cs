@@ -185,7 +185,7 @@ internal static class ActionCommandExecutor
                     }
                     using var dialogs = new CallDialogs(application, PublishDialog);
                     data = CodeExecution.Execute(application, document, uiDocument, action, failures, job.ClientName, job.JobId,
-                        ribbonSource: ribbonApproval is not null);
+                        ribbonSource: ribbonApproval is not null, cooperativeCancellation: true);
                     dialogs.Finish();
                     data.Dialogs = dialogs.Records.Count > 0 ? dialogs.Records.ToList() : null;
                 }
@@ -217,12 +217,23 @@ internal static class ActionCommandExecutor
                     _ => exception.Message
                 }
                 : exception.Message;
+            if (job.Command == "tag-elements" && exception is ActionMutations.MatchLimitException tagLimit)
+                error = ActionJobParser.TagElementLimitError(tagLimit.Count, job.Action!.MaxElements)!;
             response = CommandResponse<ActionResultData>.Fail(job.Command, error, stopwatch.ElapsedMilliseconds);
             response.Error = error;
             if (exception is ActionMutations.FamilyNotLoadedException missing)
                 response.Data = new ActionResultData { ClosestFamilies = missing.ClosestFamilies };
             if (exception is ActionMutations.MatchLimitException limit)
                 response.Data = new ActionResultData { MatchedCount = limit.Count, Count = limit.Count };
+            if (job.Command == "tag-elements" && exception is OperationCanceledException)
+                response.Data = new ActionResultData
+                {
+                    Count = exception.Data["processedCount"] is int processed ? processed : 0,
+                    Cancelled = true,
+                    RolledBack = true,
+                    Committed = false,
+                    ElapsedMs = stopwatch.ElapsedMilliseconds
+                };
             if (job.Command is "export-nwc" or "load-family" or "place-families" or "export" or "link-cad" or "open-document" or "close-document" or "save-document" or "sync-document" or "activate-document" or "activate-view" or "close-views" or "new-document")
                 PluginLog.Warn($"Action failed. Command='{job.Command}'; path and exception details omitted from log.");
             else if (job.Command is "execute-code" or "run-tool")

@@ -32,6 +32,17 @@ public static class CodeSource
 
     public static bool IsCompilationUnit(string code) => ScriptClass.IsMatch(code);
 
+    public static bool CancellationRequested(bool requested, TimeSpan elapsed, int? maxSeconds) =>
+        requested || maxSeconds.HasValue && elapsed.TotalSeconds >= maxSeconds.Value;
+
+    public static void ThrowIfCancellationRequested(bool requested, TimeSpan elapsed, int? maxSeconds)
+    {
+        if (requested)
+            throw new OperationCanceledException($"Script cancelled after {elapsed.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)} seconds.");
+        if (maxSeconds.HasValue && elapsed.TotalSeconds >= maxSeconds.Value)
+            throw new OperationCanceledException($"Script exceeded max_seconds={maxSeconds.Value} after {elapsed.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture)} seconds.");
+    }
+
     public static string CacheKey(string code, string transaction)
     {
         using var sha = SHA256.Create();

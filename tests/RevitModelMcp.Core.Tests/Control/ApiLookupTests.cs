@@ -138,7 +138,7 @@ namespace RevitModelMcp.Core.Tests.Control
                 [typeof(LookupFixtures.ScriptContext), typeof(LookupFixtures.HiddenContext)]);
             await Assert.That(result.Types.Single().FullName).IsEqualTo(typeof(LookupFixtures.ScriptContext).FullName);
             await Assert.That(result.Members.Select(member => member.Name).ToArray())
-                .IsEquivalentTo(new[] { "Document", "UiDocument", "Log" });
+                .IsEquivalentTo(new[] { "Document", "UiDocument", "Log", "CancellationRequested", "ThrowIfCancellationRequested" });
             await Assert.That(result.Members.Single(member => member.Name == "UiDocument").Signature)
                 .IsEqualTo("public string UiDocument { get; }");
             var hidden = ApiLookup.Lookup([], new ApiLookupRequest(typeof(LookupFixtures.HiddenContext).FullName!, "type"),
@@ -156,7 +156,7 @@ namespace RevitModelMcp.Core.Tests.Control
             var result = ApiLookup.Lookup([assembly], new ApiLookupRequest("ScriptContext", Limit: 100), _ => null,
                 [typeof(LookupFixtures.ScriptContext), typeof(LookupFixtures.ScriptContext)]);
             await Assert.That(result.Types.Count).IsEqualTo(1);
-            await Assert.That(result.Members.Count).IsEqualTo(3);
+            await Assert.That(result.Members.Count).IsEqualTo(5);
             await Assert.That(result.AssemblyVersions.Single().Name).IsEqualTo("LookupFixture");
             await Assert.That(result.SkippedCount).IsEqualTo(1);
             await Assert.That(result.Skipped.Single().What).IsEqualTo("LookupFixture");
@@ -252,6 +252,8 @@ namespace RevitModelMcp.LookupFixtures
         public string Document => throw new InvalidOperationException("Metadata lookup must not invoke getters.");
         public string UiDocument { get; internal set; } = "";
         public void Log(string message) => throw new InvalidOperationException("Metadata lookup must not invoke methods.");
+        public bool CancellationRequested => throw new InvalidOperationException("Metadata lookup must not invoke getters.");
+        public void ThrowIfCancellationRequested() => throw new InvalidOperationException("Metadata lookup must not invoke methods.");
         internal static ScriptContext? Current => null;
         internal void CloseOpenScopes() => throw new InvalidOperationException();
     }

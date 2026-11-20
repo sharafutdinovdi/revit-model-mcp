@@ -14,6 +14,7 @@ using Microsoft.CodeAnalysis.Emit;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Output;
 
 #if !NETFRAMEWORK
 using System.Runtime.Loader;
@@ -26,6 +27,9 @@ public sealed class ScriptContext
     private readonly ScriptLog _log = new();
     [ThreadStatic] internal static ScriptContext? Current;
     private readonly List<IDisposable> _scopes = [];
+    private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+    internal int? MaxSeconds { get; init; }
+    internal bool CooperativeCancellation { get; init; }
 
     /// <summary>Registers a disposable scope with the current script execution.</summary>
     /// <typeparam name="T">The disposable scope type.</typeparam>
@@ -93,6 +97,16 @@ public sealed class ScriptContext
     public IReadOnlyList<string> Lines => _log.Lines;
     /// <summary>Gets the arguments supplied to the script.</summary>
     public IReadOnlyDictionary<string, object> Args { get; internal set; } = new Dictionary<string, object>();
+    /// <summary>Gets whether cancellation or the cooperative execution limit was requested.</summary>
+    public bool CancellationRequested => CooperativeCancellation && CodeSource.CancellationRequested(
+        ResponseDelivery.CancellationRequested?.Invoke() == true, _stopwatch.Elapsed, MaxSeconds);
+    /// <summary>Throws when cancellation or the cooperative execution limit was requested.</summary>
+    public void ThrowIfCancellationRequested()
+    {
+        if (!CooperativeCancellation) return;
+        CodeSource.ThrowIfCancellationRequested(
+            ResponseDelivery.CancellationRequested?.Invoke() == true, _stopwatch.Elapsed, MaxSeconds);
+    }
     /// <summary>Records nonempty message lines up to the execution limit of 2000 lines.</summary>
     /// <param name="message">The message to record.</param>
     public void Log(string message) => _log.Add(message);
@@ -129,7 +143,8 @@ internal static class CodeExecution
     [ThreadStatic] private static ActionCommandExecutor.ActionFailures? _currentFailures;
 
     public static ActionResultData Execute(UIApplication application, Document? document, UIDocument? uiDocument,
-        ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId, bool compileOnly = false, bool ribbonSource = false)
+        ActionJobContract action, ActionCommandExecutor.ActionFailures failures, string clientName, string? jobId,
+        bool compileOnly = false, bool ribbonSource = false, bool cooperativeCancellation = false)
     {
         var stopwatch = Stopwatch.StartNew();
         var code = action.Code ?? throw new ArgumentException("code is required.");
@@ -213,7 +228,12 @@ internal static class CodeExecution
         }
 
         if (compileOnly) return result;
-        var context = new ScriptContext(application, uiDocument, document) { Args = action.Args };
+        var context = new ScriptContext(application, uiDocument, document)
+        {
+            Args = action.Args,
+            MaxSeconds = action.MaxSeconds,
+            CooperativeCancellation = cooperativeCancellation
+        };
         void ProcessFailures(object? sender, FailuresProcessingEventArgs arguments)
         {
             if (ReferenceEquals(_currentFailures, failures)) failures.ProcessCallFailures(arguments);
@@ -355,6 +375,7 @@ internal static class CodeExecution
             try
             {
                 ScriptContext.Current = counting ? context : null;
+                if (cooperativeCancellation) context.ThrowIfCancellationRequested();
                 returned = method.Invoke(null, [context]);
             }
             catch (TargetInvocationException exception) when (exception.InnerException is not null)
@@ -362,6 +383,7 @@ internal static class CodeExecution
                 System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception.InnerException).Throw();
                 throw;
             }
+            if (cooperativeCancellation) context.ThrowIfCancellationRequested();
             if (failures.Message is not null) throw new InvalidOperationException(failures.Message);
             if (context.CloseOpenScopes() || action.TransactionMode == "group" && document!.IsModifiable)
                 throw new InvalidOperationException("The script left a transaction or edit scope open. Inspect documentReceipts for rollback outcomes.");
