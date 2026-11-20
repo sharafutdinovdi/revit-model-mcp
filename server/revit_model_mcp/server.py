@@ -680,7 +680,7 @@ def addressed_tool(function):
         "revit_view_info": "View Info",
         "revit_capture_elements": "Capture Elements",
         "revit_issue_register": "Issue Register",
-        "revit_export_view": "Export View to PNG",
+        "revit_export_view": "Save view as PNG",
         "revit_schedule_data": "Read Schedule Data",
         "revit_view_elements": "View Elements",
         "revit_element_details": "Element Details",
