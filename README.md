@@ -13,67 +13,38 @@ Read-only mode is one switch away.
 [![CI](https://img.shields.io/github/actions/workflow/status/sharafutdinovdi/revit-model-mcp/ci.yml?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/sharafutdinovdi/revit-model-mcp?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) [![PyPI](https://img.shields.io/pypi/v/revit-model-mcp?style=flat-square)](https://pypi.org/project/revit-model-mcp/) ![Revit 2022-2027](https://img.shields.io/badge/Revit-2022--2027-368EF5?style=flat-square) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/sharafutdinovdi/revit-model-mcp/badge)](https://scorecard.dev/viewer/?uri=github.com/sharafutdinovdi/revit-model-mcp) [![MIT](https://img.shields.io/badge/license-MIT-5C6F88?style=flat-square)](LICENSE)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15861/badge)](https://www.bestpractices.dev/projects/15861) [![Downloads](https://img.shields.io/github/downloads/sharafutdinovdi/revit-model-mcp/total?style=flat-square)](https://github.com/sharafutdinovdi/revit-model-mcp/releases) [![PyPI downloads](https://img.shields.io/pypi/dm/revit-model-mcp?style=flat-square)](https://pypi.org/project/revit-model-mcp/)
 
-## Install with an AI agent
+## Install in five minutes
 
-On Windows, paste this prompt into Claude Code, Codex, Cursor, or another agent:
-`Install Model MCP for Revit from https://github.com/sharafutdinovdi/revit-model-mcp. Follow docs/agent-install.md exactly.`
-The [agent install guide](docs/agent-install.md) uses the published MSI and client registration, with no checkout or .NET SDK.
-The one-command installer arrives with the next release; the current release does not contain `install.ps1`.
+Use Windows 10 or 11 with Revit 2022-2027 and an installed local MCP client.
 
-## Quick start
+1. Close Revit and download `RevitModelMcp-<version>-SingleUser.msi` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
+2. Run the MSI.
+   It installs the add-in and its own server; no Python, uv or .NET SDK is needed.
+   Windows may warn about an unknown publisher: the release files are not code-signed.
+   Continue only for a download from the official release.
+3. Open Revit, choose **Always Load** for Model MCP, and open a model.
+   This separate Revit prompt permits the unsigned add-in to run inside Revit.
+4. Click **Model MCP > Model MCP > Connect AI app**, then **Add** for your app.
+   For Claude Code, click **Copy command** and run it in a terminal instead.
+   Fully restart the app.
+5. Ask: **Call `revit_ping`, then tell me which model is open.**
+   A successful ping proves access to Revit; the model response confirms access to the open project.
+   A **Configured** label alone is not a live connection test.
 
-You need two parts: the add-in inside Revit on Windows, and the server next to your MCP client.
-Details and requirements are in [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/).
-Tested with Claude Desktop over SSH; other clients are listed on the [tested clients page](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/).
+Connect supports Claude Desktop, Cursor, VS Code and local Codex configuration.
+It does not provide a separate ChatGPT Desktop integration.
+See [tested clients](https://sharafutdinovdi.github.io/revit-model-mcp/tested-clients/) for recorded validation and untested clients.
 
-**1. Install the add-in.**
-On the Windows machine with Revit, download `RevitModelMcp-<version>-SingleUser.msi` (current user) or `RevitModelMcp-<version>-MultiUser.msi` (all users) from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
-Install only one of them.
-WinGet publication is pending.
-The [submission](https://github.com/microsoft/winget-pkgs/pull/469197) is open, and the package is not yet in the catalog.
-Use an MSI from the latest release until it is accepted.
+<details>
+<summary>Optional: verify the download</summary>
 
-Keep Revit closed during installation, then start Revit and open a model.
-Revit asks whether to load the add-in, because release builds are not code-signed yet.
+Download `SHA256SUMS.txt` from the same release and follow [download verification](https://sharafutdinovdi.github.io/revit-model-mcp/security/#verify-downloads).
 
-**2. Add the server to your MCP client.**
-In Revit, Model MCP > Model MCP > Connect AI app registers the bundled server in Claude Desktop, Cursor, VS Code, or Codex (the ChatGPT app or codex CLI); Claude Code gets a copy-paste command.
-The MSI includes the server executable, so this path needs no separate Python or uv installation.
+</details>
 
-If you prefer the PyPI server:
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then register the server.
-For Claude Code on the same Windows machine:
-
-```sh
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uvx revit-model-mcp
-```
-
-For Claude Desktop, open the `revit-model-mcp-<version>.mcpb` bundle from the latest release, or add this to its MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "revit-model-mcp": {
-      "command": "uvx",
-      "args": ["revit-model-mcp"],
-      "env": {
-        "REVIT_MCP_HOST": "local",
-        "REVIT_MCP_REDACT_PATHS": "1"
-      }
-    }
-  }
-}
-```
-
-On macOS or Linux, use a [remote workstation](#remote-workstations) instead of `REVIT_MCP_HOST=local`.
-The [Claude Desktop bundle](https://sharafutdinovdi.github.io/revit-model-mcp/install/#claude-desktop-bundle) page explains its settings form.
-
-**3. Ask a first question.**
-Restart the client, keep a model open in Revit and ask: "Call `revit_ping`, then tell me which model is open."
-`success: true` means both parts are connected.
-From a clone, `uv run --directory server revit-model-mcp` runs the same server without installing the package.
-
-For updates, the release add-in checks GitHub daily and notifies by default; the PyPI server checks PyPI, or install the newer MSI ([updates](https://sharafutdinovdi.github.io/revit-model-mcp/updates/)).
+For MultiUser, ZIP, MCPB, remote workstations and installation with an AI agent, see [requirements and installation](https://sharafutdinovdi.github.io/revit-model-mcp/install/).
+WinGet publication is pending; use the release MSI.
+For updates, the release add-in checks GitHub daily and notifies by default; see [updates](https://sharafutdinovdi.github.io/revit-model-mcp/updates/).
 Report bugs in [Issues](https://github.com/sharafutdinovdi/revit-model-mcp/issues/new/choose), ask questions in [Discussions](https://github.com/sharafutdinovdi/revit-model-mcp/discussions), and report vulnerabilities through [SECURITY.md](SECURITY.md).
 
 ## Why Model MCP

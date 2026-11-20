@@ -4,9 +4,52 @@ description: "Model MCP requirements, release MSI installation, client configura
 
 # Requirements and installation
 
-Model MCP has two parts. The add-in runs inside Revit on Windows. The server runs next to your MCP client and talks to the add-in. You need both.
+## Install in five minutes
 
+Use this path on Windows 10 or 11 with Revit 2022-2027 and an installed local MCP client.
+
+1. Close Revit and download `RevitModelMcp-<version>-SingleUser.msi` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest).
+2. Run the MSI and finish installation.
+   It installs the Revit add-in and its own server; no Python, uv or .NET SDK is needed.
+   The SingleUser installer needs no administrator rights.
+3. Start Revit, choose **Always Load** for Model MCP, and open a model.
+4. Click **Model MCP > Model MCP > Connect AI app**, then **Add** for your app.
+   For Claude Code, click **Copy command** and run the copied command in a terminal instead.
+   Fully restart the app.
+5. Ask: **Call `revit_ping`, then tell me which model is open.**
+   Allow the read tool calls when your app requests permission.
+   A successful ping confirms access to Revit; the model response confirms access to the open project.
+   **Configured** alone is not evidence of a live connection.
+
+Connect writes local configuration for Claude Desktop, Cursor, VS Code and Codex.
+It does not provide a separate ChatGPT Desktop integration.
+Configuration support is not a recorded live test; see [tested clients](tested-clients.md).
+If an app shows **Not installed**, start it once to create its profile, then reopen Connect.
+See [Connect an AI app](#connect-an-ai-app) for configuration states.
+
+!!! note "Windows and Revit trust prompts"
+
+    Release files are not code-signed.
+    Windows may show an unknown-publisher or reputation warning when the MSI runs.
+    It means Windows cannot verify the publisher through a code-signing certificate.
+    Continue only for the installer downloaded from the official release.
+    Revit's separate load prompt permits the unsigned add-in to run inside Revit.
+    Choose **Always Load** only after checking that it identifies Model MCP and the expected installation path.
+    See [code signing](code-signing.md).
+
+??? info "Optional: verify the download"
+
+    Download `SHA256SUMS.txt` from the same release as the MSI.
+    Compare the MSI's SHA256 hash with its entry in that file.
+    [Download verification](security.md#verify-downloads) includes commands and optional GitHub provenance verification.
+
+## Other installation routes
+
+The MSI path above includes both components.
+The archive and MCPB alternatives below require separate server setup.
 For installation by Claude Code, Codex, or Cursor, follow [Install with an AI agent](agent-install.md).
+For an all-users installation, use the [MultiUser MSI](#install-from-the-msi-or-winget).
+For a client on macOS or Linux, use a [remote Windows workstation](transport.md).
 
 ## Requirements
 
@@ -30,11 +73,16 @@ Signing starts with the first release after the project's application is approve
 
 ## Install the add-in bundle
 
+For a per-year ZIP archive, extract `revit-model-mcp-addin-<version>-R<yy>.zip` into `%APPDATA%\Autodesk\Revit\Addins\<year>\` with Revit closed (`R26` for Revit 2026).
+Keep the included `RevitModelMcp.addin` manifest beside its `RevitModelMcp` folder.
+Then start Revit, accept the load prompt, and follow steps 5-7 below for server setup.
+
 1. Get the add-in package from your BIM manager or IT team, or build it from the repository. It is an Autodesk `.bundle` folder with a `PackageContents.xml` file.
 2. Close Revit and copy the folder to `%APPDATA%\Autodesk\ApplicationPlugins` (current user) or `%ProgramData%\Autodesk\ApplicationPlugins` (all users).
 3. Start Revit and open a model. The first time, Revit asks whether to load the add-in. Choose **Always Load** after you check the publisher and path. Release builds are not code-signed yet; see [code signing](code-signing.md).
 4. Find the **Model MCP** panel on the **Model MCP** tab. Its **Activity** button opens the activity pane, which lists every request and action, and its **Connect AI app** button registers the server in your AI apps (see [Connect an AI app](#connect-an-ai-app)).
-5. Unless you installed an MSI (which bundles the server, see [Connect an AI app](#connect-an-ai-app)), install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
+
+5. Install uv on the machine with your MCP client, following the [uv installation guide](https://docs.astral.sh/uv/getting-started/installation/).
 6. Register the server in your MCP client.
 
    For Claude Code on the same Windows machine:
@@ -97,7 +145,11 @@ It appears and disappears instantly; there are no animations, including with red
 
 ### Connect an AI app
 
-**Connect AI app** writes the same local registration as step 6 above, with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`, into the configuration of each app it finds on the Revit workstation. When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed. Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH. The dialog shows which one it will write. It does not install the apps.
+**Connect AI app** registers the local server with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1` in an app you explicitly choose.
+When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed.
+Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH.
+The dialog shows which one it will write.
+It does not install the apps or change their configuration until you choose Add, Update or Remove.
 
 | App | Configuration file |
 |---|---|
@@ -117,7 +169,9 @@ Each app shows one state:
 
 Add, Update and Remove change only the `revit-model-mcp` entry. Other servers, comments, unknown keys and indentation stay as they were. Before every change the add-in copies the old file next to it as `<file>.<yyyyMMdd-HHmmss>.bak`, then replaces the file in one step. Restart the app to load the change.
 
-The **Claude Code** row has a **Copy command** button for the `claude mcp add` command from step 6; paste it into a terminal. For a remote workstation, a managed install pinned to a release, or settings the dialog does not write, edit the configuration by hand as described above.
+The **Claude Code** row has a **Copy command** button; paste the copied command into a terminal.
+With an MSI installation, this command uses the bundled executable, not uvx.
+For a remote workstation, a managed install pinned to a release, or settings the dialog does not write, edit the configuration by hand as described above.
 
 ### Managed installs
 
@@ -157,23 +211,28 @@ Machines that had both 0.9.0 installer scopes need leftover cleanup with Revit a
 
 Run the installer with Revit closed, then start Revit and open a model.
 The installer replaces the add-in files and the `RevitModelMcp.addin` manifest it ships, even when an older developer build left a higher file version or a manifest with absolute paths. It leaves other add-ins in the same folder alone.
-Both support automatic updates; see [automatic updates](updates.md) for behavior and opt-out settings.
-From a clone, run `.\install.ps1 -Source Release` in PowerShell instead.
-WinGet manifests for the package `Sharafutdinov.RevitModelMcp` are generated weekly for the latest stable release; see [CONTRIBUTING](contributing.md) for how they are published.
+The SingleUser MSI checks for updates and notifies by default.
+Automatic installation is opt-in; MultiUser updates require an administrator.
+See [updates](updates.md) for behavior and settings.
+From a clone, `.\install.ps1 -Source Release` installs the release MSI; it is not required for the quick path.
+WinGet publication is pending; generated manifests do not establish catalog availability.
+Use the release MSI until the [submission](https://github.com/microsoft/winget-pkgs/pull/469197) is accepted.
 
-Then register the server as in step 6 of [Install the add-in bundle](#install-the-add-in-bundle), or use the Claude Desktop bundle below.
+Then use [Connect an AI app](#connect-an-ai-app) to register the bundled server.
+Do not install uv or the MCPB bundle for this MSI route.
 
 ## Claude Desktop bundle
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/) on the client's PATH, download `revit-model-mcp-<version>.mcpb` from the [latest release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest), and open it in Claude Desktop.
 The bundle starts from the local uv cache. The server checks for a newer stable release in the background once per day.
 The next client start uses the refreshed version. Set `REVIT_MCP_NO_UPDATE_CHECK=1` to opt out.
-The settings form configures the workstation host, path redaction, read-only mode and the HTTP bearer token without editing JSON.
+The settings form configures the workstation host, path redaction and the HTTP bearer token without editing JSON.
 Use `local` on the Windows Revit workstation, or configure a [remote workstation](transport.md) for macOS and Linux clients.
-Path redaction starts enabled and actions start enabled. Check "Read-only mode" to refuse actions.
+Path redaction starts enabled and actions start enabled.
+The bundle has no read-only checkbox; use the **Read-only** switch on the Revit ribbon to refuse actions.
 The Windows workstation still needs the add-in.
 See the [bundle guide](https://github.com/sharafutdinovdi/revit-model-mcp/blob/main/bundle/README.md) for build details and prerequisites.
-Release assets include GitHub build provenance attestations. Follow [download verification](security.md#verify-downloads) before installing.
+Release assets include GitHub build provenance attestations; see optional [download verification](security.md#verify-downloads).
 
 ## Uninstall
 

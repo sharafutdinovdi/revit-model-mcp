@@ -3,6 +3,8 @@
 The release asset `revit-model-mcp-<version>.mcpb` registers the Python MCP server in Claude Desktop and presents its connection and privacy settings.
 The client requires [uv](https://docs.astral.sh/uv/getting-started/installation/) on PATH before opening the bundle.
 Install the Revit add-in separately on the Windows workstation, start Revit and open a model.
+For an MSI installation on the same Windows computer, use **Connect AI app** in Revit instead.
+The MSI includes its own server and needs neither uv nor this MCPB bundle.
 
 The workstation host defaults to `local` for a Windows client under the Revit user's account.
 macOS and Linux clients use `ssh:<alias>`, `http://host:port` or `https://host:port` to reach Windows.
@@ -11,7 +13,8 @@ The optional HTTP bearer token field is sensitive and maps to `REVIT_MCP_TOKEN`.
 See [transport setup](https://sharafutdinovdi.github.io/revit-model-mcp/transport/) for workstation configuration.
 
 Path redaction defaults to enabled.
-Actions run by default; check Read-only mode to disable them without hiding the action tools.
+Actions run by default.
+The bundle has no read-only checkbox; use the **Read-only** switch on the Revit ribbon to refuse actions.
 Redaction leaves model names, parameter values, errors and exported image `localPath` values visible.
 
 ## Privacy policy

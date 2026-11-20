@@ -79,9 +79,9 @@ plugins:
       full_output: llms-full.txt
       sections:
         Agent install:
-          - agent-install.md: "Install and verify Model MCP for Revit with one release command, checksum verification, client registration, diagnostics, and uninstall steps."
+          - agent-install.md: "Install Model MCP for Revit from the latest release MSI, verify its checksum, register a selected client, and check the live connection."
         Guides:
-          - guides/connect-claude-to-revit.md: "Connect Claude Desktop or Claude Code to Revit 2022-2027 with one verified release command, first-start steps, and connection diagnostics."
+          - guides/connect-claude-to-revit.md: "Connect Claude Desktop or Claude Code to Revit 2022-2027 through the bundled MSI server and verify model access."
           - guides/connect-chatgpt-codex-cursor-vscode-to-revit.md: "Connect local Codex, Cursor, or VS Code to Revit, and understand the boundary between ChatGPT cloud chat and local MCP access."
           - guides/revit-mcp-servers-compared.md: "Compare seven public Revit MCP servers using their own documentation: supported versions, installation, model access, and distinct strengths."
           - guides/ai-model-coordination-in-revit.md: "Run daily Revit QA, warnings triage, parameter checks, issue registers, sheet sets, link datum checks, and batch audits with Model MCP."
@@ -95,7 +95,7 @@ plugins:
           - tool-manifest.md: "Model MCP machine-readable tool manifest and schema reference for client integration."
           - stability.md: "Model MCP stability guarantees and compatibility boundaries for tool names, arguments, and response contracts."
         Install:
-          - install.md: "Model MCP requirements, release MSI installation, client configuration, managed deployment, and uninstall instructions."
+          - install.md: "Install Model MCP in five minutes on Windows, understand trust prompts, connect an AI app, or choose an alternative installation route."
           - server.md: "Configure and run the Model MCP Python server with transport options, toolsets, diagnostics, and MCP client settings."
           - transport.md: "Model MCP local, SSH, and authenticated HTTP transports with setup, addressing, timeouts, and result retention."
           - how-it-works.md: "How Model MCP connects an AI client to a running Revit add-in through local, SSH, or HTTP transport."
@@ -135,8 +135,8 @@ nav:
       - "Is it safe? Read-only, Undo and privacy": guides/safety.md
       - FAQ: guides/faq.md
   - Setup and concepts:
+      - Install in five minutes: install.md
       - Install with an AI agent: agent-install.md
-      - Requirements and install: install.md
       - Server: server.md
       - How it works: how-it-works.md
       - Transport: transport.md
