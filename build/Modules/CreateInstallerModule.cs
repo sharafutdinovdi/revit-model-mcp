@@ -36,7 +36,12 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
         {
             ProjectSolution = wixInstaller.Path,
             Configuration = "Release",
-            NoRestore = true
+            NoRestore = true,
+            Properties =
+            [
+                ("VersionPrefix", versioning.VersionPrefix),
+                ("VersionSuffix", versioning.VersionSuffix!)
+            ]
         }, cancellationToken: cancellationToken);
 
         var builderFile = wixInstaller.Folder!
@@ -69,6 +74,15 @@ public sealed class CreateInstallerModule(IOptions<BuildOptions> buildOptions) :
             }
 
             assemblyFolder.GetFile("RevitModelMcp.dll").Exists.ShouldBeTrue($"Missing add-in: {buildDirectory.Path}");
+            var addinVersion = FileVersionInfo.GetVersionInfo(assemblyFolder.GetFile("RevitModelMcp.dll").Path).ProductVersion;
+            foreach (var name in new[] { "RevitModelMcp.ConnectSetup.exe", "RevitModelMcp.Core.dll" })
+            {
+                var helperPath = Path.Combine(Path.GetDirectoryName(builderFile.Path)!, "connect", name);
+                System.IO.File.Exists(helperPath).ShouldBeTrue($"Missing connection setup binary: {name}");
+                var helperVersion = FileVersionInfo.GetVersionInfo(helperPath);
+                helperVersion.ProductName.ShouldBe("Model MCP", $"Unexpected product name for {name}");
+                helperVersion.ProductVersion.ShouldBe(addinVersion, $"Connection setup version must match the add-in: {name}");
+            }
             buildDirectory.GetFolder("publish").GetFile("RevitModelMcp.addin")
                 .CopyTo(yearFolder.GetFile("RevitModelMcp.addin").Path);
             foreach (var name in new[] { "LICENSE", "THIRD-PARTY-NOTICES.md" })

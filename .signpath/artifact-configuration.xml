@@ -5,7 +5,7 @@
   (six per-year add-in archives, the managed Revit bundle and the store Revit bundle). The release workflow builds it.
   The store MSI and the store bundle have no updater, so that include allows zero matches.
 
-  Signed: the add-in assembly, its Core assembly, the updater, the batch supervisor and the MSIs.
+  Signed: the add-in assembly, its Core assembly, the updater, the batch supervisor, connection setup and the MSIs.
   Not listed, so left unchanged: third-party assemblies (Nice3point.*, JetBrains.Annotations,
   Microsoft.CodeAnalysis.*, System.*). Revit API assemblies are never shipped and never listed.
 
@@ -25,6 +25,7 @@
         <include path="**/RevitModelMcp.Core.dll" max-matches="unbounded" />
         <include path="**/RevitModelMcp.Updater.exe" min-matches="0" max-matches="unbounded" />
         <include path="**/RevitModelMcp.BatchSupervisor.exe" max-matches="unbounded" />
+        <include path="**/RevitModelMcp.ConnectSetup.exe" min-matches="0" max-matches="unbounded" />
         <for-each>
           <authenticode-sign />
         </for-each>
@@ -41,6 +42,7 @@
           <include path="**/RevitModelMcp.Core.dll" max-matches="unbounded" />
           <include path="**/RevitModelMcp.Updater.exe" min-matches="0" max-matches="unbounded" />
           <include path="**/RevitModelMcp.BatchSupervisor.exe" max-matches="unbounded" />
+          <include path="**/RevitModelMcp.ConnectSetup.exe" min-matches="0" max-matches="unbounded" />
           <for-each>
             <authenticode-sign />
           </for-each>
