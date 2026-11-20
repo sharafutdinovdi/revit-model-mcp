@@ -24,6 +24,49 @@ public static class TomlConfigEditor
             spec is null || StartsSpec(scan, spec) ? McpClientState.Configured : McpClientState.ConfiguredDifferentCommand);
     }
 
+    internal static McpClientStatus CheckSettings(McpClientTarget target, string text, McpServerSpec spec)
+    {
+        var status = Inspect(target, text, spec);
+        if (status.State != McpClientState.Configured) return status;
+        var scan = Scan(text);
+        var environment = new Dictionary<string, string>();
+        foreach (var section in scan.Sections)
+        {
+            var header = scan.Lines[section.HeaderLine].Text.TrimStart();
+            var position = 1;
+            TryParseKeyPath(header, ref position, out var path, ']');
+            for (var index = section.HeaderLine + 1; index < section.EndLine; index++)
+            {
+                var line = scan.Lines[index].Text.Trim();
+                if (line.Length == 0 || line[0] == '#') continue;
+                if (section.PathLength == 2)
+                {
+                    if (TryKeyValue(line, "command", out _)) continue;
+                    if (TryKeyValue(line, "args", out var arguments))
+                    {
+                        var state = new ValueState();
+                        ScanValue(arguments, 0, state);
+                        while ((state.Depth > 0 || state.Multiline is not null) && ++index < section.EndLine)
+                            ScanValue(scan.Lines[index].Text, 0, state);
+                        continue;
+                    }
+                    return status with { State = McpClientState.ConfiguredDifferentCommand };
+                }
+                var keyPosition = 0;
+                if (path.Count != 3 || path[2] != "env" ||
+                    !TryParseKeyPath(line, ref keyPosition, out var key, '=') || key.Count != 1)
+                    return status with { State = McpClientState.ConfiguredDifferentCommand };
+                var value = ReadString(line.Substring(keyPosition).TrimStart());
+                if (value is null || environment.ContainsKey(key[0]))
+                    return status with { State = McpClientState.ConfiguredDifferentCommand };
+                environment.Add(key[0], value);
+            }
+        }
+        return environment.Count == McpServerSpec.Env.Count &&
+            McpServerSpec.Env.All(pair => environment.TryGetValue(pair.Key, out var value) && value == pair.Value)
+            ? status : status with { State = McpClientState.ConfiguredDifferentCommand };
+    }
+
     // Looks only at the entry's own table; its [..env] sub-table is not part of the launch.
     private static bool StartsSpec(ScanResult scan, McpServerSpec spec)
     {
