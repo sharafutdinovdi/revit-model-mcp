@@ -99,6 +99,13 @@ It appears and disappears instantly; there are no animations, including with red
 
 **Connect AI app** writes the same local registration as step 6 above, with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`, into the configuration of each app it finds on the Revit workstation. When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed. Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH. The dialog shows which one it will write. It does not install the apps.
 
+The full-UI SingleUser MSI offers a final **Connect AI apps** window without opening Revit.
+All boxes start unchecked; only selected apps receive an entry, through the same backup and atomic-write code as the Revit dialog.
+Claude Code is offered only when `claude.exe` is on PATH; registration uses the shared command with `--scope user`, has a 30-second timeout, and reports failure in the window.
+Silent installs (`/qn`, WinGet and updater auto mode), upgrades, repairs and uninstalls never open this window or change client settings.
+MultiUser installs skip this step entirely to avoid writing an administrator's profile; each user connects later from Revit.
+Restart connected apps, open a model in Revit, and ask the app to call `revit_ping` and describe the open model; registration alone does not prove connectivity.
+
 | App | Configuration file |
 |---|---|
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |

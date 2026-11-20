@@ -72,8 +72,10 @@ public sealed record McpServerSpec(string Command, IReadOnlyList<string> Args)
     }
 
     /// <summary>The Claude Code registration command, as documented in the README.</summary>
-    public string ClaudeCodeCommand =>
-        "claude mcp add " + Name + " " + string.Join(" ", Env.Select(pair => "-e " + pair.Key + "=" + pair.Value)) +
+    public string ClaudeCodeCommand => "claude " + ClaudeCodeArguments;
+
+    public string ClaudeCodeArguments =>
+        "mcp add " + Name + " --scope user " + string.Join(" ", Env.Select(pair => "-e " + pair.Key + "=" + pair.Value)) +
         " -- " + string.Join(" ", new[] { Command }.Concat(Args).Select(ShellQuote));
 
     /// <summary>

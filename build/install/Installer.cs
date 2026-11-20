@@ -71,6 +71,11 @@ void BuildSingleUserMsi()
     // Public directory overrides support offline installs and isolated installation verification.
     project.Actions =
     [
+        new PathFileAction(new Id("ConnectAiApps"),
+            @"[LocalAppDataFolder]Programs\Model MCP\connect\RevitModelMcp.ConnectSetup.exe",
+            "", "LocalAppDataFolder", Return.ignore, When.After, Step.ExecuteAction,
+            new Condition("UILevel=5 AND NOT Installed AND NOT WIX_UPGRADE_DETECTED AND NOT REMOVE AND NOT ALLUSERS"),
+            Sequence.InstallUISequence),
         new SetPropertyAction("AppDataFolder", "[RMM_APPDATA]", Return.check, When.Before, Step.CostFinalize,
             new Condition("RMM_APPDATA<>\"\"")),
         new SetPropertyAction("LocalAppDataFolder", "[RMM_LOCALAPPDATA]", Return.check, When.Before, Step.CostFinalize,
@@ -81,7 +86,9 @@ void BuildSingleUserMsi()
     project.Dirs =
     [
         new Dir(@"%AppDataFolder%\Autodesk\Revit\Addins\", [.. wixEntities.Select(entity => entity.Directory)]),
-        ServerDir(@"%LocalAppDataFolder%\Programs")
+        ServerDir(@"%LocalAppDataFolder%\Programs"),
+        new Dir(@"%LocalAppDataFolder%\Programs\Model MCP\connect",
+            new Files(Path.Combine(AppContext.BaseDirectory, "connect", "*.*")))
     ];
     project.BuildMsi();
 }
