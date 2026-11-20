@@ -2,6 +2,9 @@ namespace RevitModelMcp.Core.Export;
 
 public static class IfcFileValidation
 {
+    public static bool IsPhysicalModelElement(IfcExportElementKind kind, bool isModelCategory, bool isViewSpecific) =>
+        kind == IfcExportElementKind.Physical && isModelCategory && !isViewSpecific;
+
     public static void RequireBuildingElements(TextReader reader, bool scopeHasModelElements)
     {
         if (reader is null) throw new ArgumentNullException(nameof(reader));
@@ -100,4 +103,18 @@ public static class IfcFileValidation
         "IFCNAVIGATIONELEMENT", "IFCPAVEMENT", "IFCRAIL", "IFCRAILWAYTRACKELEMENT",
         "IFCSIGN", "IFCSIGNAL", "IFCTRACKELEMENT"
     ];
+}
+
+public enum IfcExportElementKind
+{
+    Physical,
+    Link,
+    Import,
+    Spatial,
+    Curve,
+    ReferencePoint,
+    Terrain,
+    Construction,
+    PointCloud,
+    Container
 }

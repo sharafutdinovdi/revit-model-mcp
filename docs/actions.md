@@ -307,7 +307,9 @@ Other IFC option keys, including `site_placement` and exporter `AddOption` keys 
 The tool does not expose site placement, file type, phase overrides or active-view geometry options.
 Revit builds without the requested `IFCVersion` value refuse it before creating the output directory, including in dry runs, and list the versions supported by the loaded API.
 The required IFC transaction is rolled back after export.
-An IFC file containing no physical element instances is reported as failed when the export scope contains model elements with a bounding box.
+An IFC file containing no physical element instances is reported as failed when the export scope contains physical model candidates with a bounding box.
+View-specific elements and reference-only, linked-only, imported-only, spatial-only, curve-only and terrain-only scopes do not trigger this check.
+Datum, sketch, point-cloud, analytical and grouping elements do not establish a physical model scope.
 The check streams STEP records with bounded memory; project, site, storey, type and geometry records alone do not qualify.
 MEP, furnishing, proxy and structural element instances qualify without requiring a wall.
 This check detects metadata-only exports, not missing individual elements or invalid geometry.

@@ -6,6 +6,58 @@ namespace RevitModelMcp.Core.Tests.Export;
 public sealed class IfcFileValidationTests
 {
     [Test]
+    [Arguments(IfcExportElementKind.Link)]
+    [Arguments(IfcExportElementKind.Import)]
+    [Arguments(IfcExportElementKind.Spatial)]
+    [Arguments(IfcExportElementKind.Curve)]
+    [Arguments(IfcExportElementKind.ReferencePoint)]
+    [Arguments(IfcExportElementKind.Terrain)]
+    [Arguments(IfcExportElementKind.Construction)]
+    [Arguments(IfcExportElementKind.PointCloud)]
+    [Arguments(IfcExportElementKind.Container)]
+    public async Task NonPhysicalScopesPermitMetadataOnlyOutput(IfcExportElementKind kind)
+    {
+        var scopeHasPhysicalElements = IfcFileValidation.IsPhysicalModelElement(kind, true, false);
+        using var reader = new StringReader("#1=IFCPROJECT('project');");
+        IfcFileValidation.RequireBuildingElements(reader, scopeHasPhysicalElements);
+        await Assert.That(scopeHasPhysicalElements).IsFalse();
+        await Assert.That(reader.Read()).IsEqualTo((int)'#');
+    }
+
+    [Test]
+    public async Task RoomsAndLinesOnlyPermitMetadataOnlyOutput()
+    {
+        var scope = new[] { IfcExportElementKind.Spatial, IfcExportElementKind.Curve };
+        var scopeHasPhysicalElements = scope.Any(kind => IfcFileValidation.IsPhysicalModelElement(kind, true, false));
+        using var reader = new StringReader("#1=IFCPROJECT('project');");
+        IfcFileValidation.RequireBuildingElements(reader, scopeHasPhysicalElements);
+        await Assert.That(scopeHasPhysicalElements).IsFalse();
+    }
+
+    [Test]
+    public async Task OneWallRequiresPhysicalIfcOutputEvenAlongsideReferences()
+    {
+        var scope = new[] { IfcExportElementKind.Link, IfcExportElementKind.ReferencePoint, IfcExportElementKind.Physical };
+        var scopeHasPhysicalElements = scope.Any(kind => IfcFileValidation.IsPhysicalModelElement(kind, true, false));
+        using var reader = new StringReader("#1=IFCPROJECT('project');");
+        Exception? failure = null;
+        try { IfcFileValidation.RequireBuildingElements(reader, scopeHasPhysicalElements); }
+        catch (InvalidOperationException exception) { failure = exception; }
+        await Assert.That(scopeHasPhysicalElements).IsTrue();
+        await Assert.That(failure?.Message).Contains("no building elements");
+    }
+
+    [Test]
+    [Arguments(true, true)]
+    [Arguments(false, false)]
+    [Arguments(false, true)]
+    public async Task ViewSpecificAndNonModelElementsDoNotRequirePhysicalOutput(bool isModelCategory, bool isViewSpecific)
+    {
+        await Assert.That(IfcFileValidation.IsPhysicalModelElement(
+            IfcExportElementKind.Physical, isModelCategory, isViewSpecific)).IsFalse();
+    }
+
+    [Test]
     [Arguments("IFCWALL")]
     [Arguments("IFCWALLSTANDARDCASE")]
     [Arguments("IFCSLAB")]
