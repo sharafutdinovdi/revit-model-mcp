@@ -12,6 +12,7 @@ internal static class SheetListReader
     {
         var sheets = Collect<ViewSheet>(document).OrderBy(sheet => sheet.SheetNumber, StringComparer.Ordinal)
             .ThenBy(sheet => RevitValueReader.GetId(sheet.Id)).ToList();
+        var sheetCount = sheets.Count;
         var placements = new Dictionary<long, HashSet<long>>();
         var viewportCounts = new Dictionary<long, int>();
         foreach (var element in Collect<Viewport>(document).Cast<Element>()
@@ -62,28 +63,34 @@ internal static class SheetListReader
         }
 
         var unplaced = new List<UnplacedViewItem>();
+        int? unplacedViewCount = null;
         if (job.IncludeUnplacedViews)
         {
+            var eligibleCount = 0;
             var placed = new HashSet<long>(placements.Values.SelectMany(ids => ids));
             foreach (var view in Collect<View>(document))
             {
                 var viewId = RevitValueReader.GetId(view.Id);
                 try
                 {
-                    if (view.IsTemplate || placed.Contains(viewId) || !CanPlace(view)) continue;
+                    if (!UnplacedViewRule.IsUnplaced(view, viewId, view.IsTemplate, placed, CanPlace)) continue;
+                    eligibleCount++;
                     unplaced.Add(new UnplacedViewItem { Id = viewId, Name = view.Name, ViewType = view.ViewType.ToString() });
                 }
                 catch (Exception exception) { PluginLog.Skipped($"unplaced view {viewId}", exception); }
             }
+            unplacedViewCount = eligibleCount;
         }
         return new SheetListData
         {
             Sheets = rows,
             UnplacedViews = unplaced.OrderBy(view => view.Id).ToList(),
-            Total = sheets.Count,
+            Total = sheetCount,
             Offset = job.Offset,
             Limit = job.Limit,
-            HasMore = (long)job.Offset + job.Limit < sheets.Count
+            HasMore = (long)job.Offset + job.Limit < sheetCount,
+            SheetCount = sheetCount,
+            UnplacedViewCount = unplacedViewCount
         };
     }
 

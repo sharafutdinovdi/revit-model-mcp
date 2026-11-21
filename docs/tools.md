@@ -66,26 +66,26 @@ Tool and parameter descriptions state plain behavior. The confirmation procedure
 | `read` | 13 | 18,890 | 4,722 |
 | `actions` | 9 | 11,103 | 2,775 |
 | `documents` | 6 | 4,879 | 1,219 |
-| `views-sheets` | 22 | 25,748 | 6,437 |
+| `views-sheets` | 22 | 25,753 | 6,438 |
 | `family` | 5 | 8,774 | 2,193 |
 | `links` | 3 | 4,053 | 1,013 |
 | `cad-mep` | 4 | 5,720 | 1,430 |
-| `export` | 4 | 7,198 | 1,799 |
+| `export` | 4 | 7,197 | 1,799 |
 | `batch` | 7 | 8,075 | 2,018 |
 | `code` | 7 | 6,165 | 1,541 |
-| `all` (default) | 89 | 107,896 | 26,974 |
+| `all` (default) | 89 | 107,900 | 26,975 |
 | `core,read` | 22 | 26,181 | 6,545 |
 
 ### Preset and full-result costs
 
 | Selection | Tools | Schema baseline bytes | Estimated tokens | Full result bytes |
 | --- | --- | --- | --- | --- |
-| `all` | 89 | 107,895 | 26,973 | 108,052 |
+| `all` | 89 | 107,900 | 26,975 | 108,057 |
 | `core,read` | 22 | 26,181 | 6,545 | 26,271 |
 | `preset:audit` | 28 | 31,060 | 7,765 | 31,156 |
-| `preset:edit` | 59 | 67,911 | 16,977 | 68,038 |
+| `preset:edit` | 59 | 67,916 | 16,979 | 68,043 |
 | `preset:families` | 40 | 45,999 | 11,499 | 46,107 |
-| `preset:sheets` | 54 | 64,005 | 16,001 | 64,127 |
+| `preset:sheets` | 54 | 64,010 | 16,002 | 64,132 |
 | `preset:batch` | 46 | 52,497 | 13,124 | 52,611 |
 
 `cd server && uv run --with pytest pytest -q -s tests/test_toolsets.py -k documented_schema_sizes` prints the measured rows and checks this table exactly, without Revit.
@@ -194,14 +194,15 @@ Failed item reads are reported there.
 Sheets include placeholders and sort by number, then ID.
 Paging applies only to sheets.
 The limit accepts 1 to 5000.
-Total counts all sheets, including skipped rows.
+`data.sheetCount` and `data.total` both count all sheets before paging, including skipped rows.
 The title block is the type name of the first title block by ID, or null.
 Revision count includes all revisions on the sheet.
 Viewport count excludes schedules.
 View IDs include viewport views, schedules, and panel schedules, sorted and deduplicated.
 
 Unplaced views are returned in full on every page, sorted by ID.
-Setting `include_unplaced_views=False` returns an empty list.
+`data.unplacedViewCount` counts all eligible unplaced views before reading their output rows.
+Setting `include_unplaced_views=False` returns an empty list and omits `data.unplacedViewCount`.
 Templates, sheets, browsers, internal views, and walkthroughs are excluded.
 Printable plans, elevations, sections, details, drafting views, 3D views, legends, and renderings are eligible.
 User schedules and panel schedules are included only if they have no placement on any sheet.

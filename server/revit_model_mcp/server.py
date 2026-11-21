@@ -1197,7 +1197,7 @@ async def revit_list_sheets(
     limit: Annotated[int, Field(ge=1, le=5000)] = 200,
     document: Document = None,
 ) -> dict[str, Any]:
-    """List sheets with title blocks, revisions and placed view IDs, plus unplaced views."""
+    """List sheets, placed view IDs and unplaced views. Counts: sheetCount, unplacedViewCount."""
     return await _execute(
         Job(
             "list-sheets",

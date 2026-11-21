@@ -151,7 +151,9 @@ public sealed class CommandResponseJsonSerializerTests
                 Total = 201,
                 Offset = 0,
                 Limit = 200,
-                HasMore = true
+                HasMore = true,
+                SheetCount = 201,
+                UnplacedViewCount = 2
             };
             var serialized = CommandResponseJsonSerializer.Serialize(CommandResponse<SheetListData>.Ok("list-sheets", result, 1));
             using var json = JsonDocument.Parse(serialized);
@@ -169,11 +171,17 @@ public sealed class CommandResponseJsonSerializerTests
             await Assert.That(data.GetProperty("offset").GetInt32()).IsEqualTo(0);
             await Assert.That(data.GetProperty("limit").GetInt32()).IsEqualTo(200);
             await Assert.That(data.GetProperty("hasMore").GetBoolean()).IsTrue();
+            await Assert.That(data.GetProperty("sheets").GetArrayLength()).IsEqualTo(2);
+            await Assert.That(data.GetProperty("sheetCount").GetInt32()).IsEqualTo(201);
+            await Assert.That(data.GetProperty("unplacedViews").GetArrayLength()).IsEqualTo(1);
+            await Assert.That(data.GetProperty("unplacedViewCount").GetInt32()).IsEqualTo(2);
             await Assert.That(json.RootElement.GetProperty("skippedCount").GetInt32()).IsEqualTo(1);
             await Assert.That(json.RootElement.GetProperty("skipped")[0].GetProperty("what").GetString()).IsEqualTo("sheet 99");
             var roundTrip = RoundTripCoordinator("list-sheets", result);
             await Assert.That(roundTrip.Sheets[0].TitleBlock).IsEqualTo("A1");
             await Assert.That(roundTrip.UnplacedViews[0].Id).IsEqualTo(3);
+            await Assert.That(roundTrip.SheetCount).IsEqualTo(201);
+            await Assert.That(roundTrip.UnplacedViewCount).IsEqualTo(2);
         }
         finally { SkippedReadDiagnostics.Current = null; }
     }
@@ -188,6 +196,18 @@ public sealed class CommandResponseJsonSerializerTests
         await Assert.That(data.GetProperty("unplacedViews").GetArrayLength()).IsEqualTo(0);
         await Assert.That(data.GetProperty("hasMore").GetBoolean()).IsFalse();
         await Assert.That(data.GetProperty("offset").GetInt32()).IsEqualTo(200);
+        await Assert.That(data.GetProperty("sheetCount").GetInt32()).IsEqualTo(0);
+        await Assert.That(data.TryGetProperty("unplacedViewCount", out _)).IsFalse();
+    }
+
+    [Test]
+    public async Task ListSheets_IncludedEmptyUnplacedViewsSerializeZeroCount()
+    {
+        using var json = JsonDocument.Parse(CommandResponseJsonSerializer.Serialize(
+            CommandResponse<SheetListData>.Ok("list-sheets", new SheetListData { UnplacedViewCount = 0 }, 1)));
+        var data = json.RootElement.GetProperty("data");
+        await Assert.That(data.GetProperty("unplacedViews").GetArrayLength()).IsEqualTo(0);
+        await Assert.That(data.GetProperty("unplacedViewCount").GetInt32()).IsEqualTo(0);
     }
 
     [Test]
