@@ -1572,19 +1572,20 @@ def test_active_selector_matches_omission(
             "command": command,
             "success": True,
             "data": {},
-            "responder": {"documentName": selected["documentTitle"]},
         }
     )
 
     async def call():
         tool = f"revit_{command.replace('-', '_')}"
         omitted = await revit_server.mcp.call_tool(tool, arguments)
+        omitted_payload = json.loads(remote.written_content)
         active = await revit_server.mcp.call_tool(tool, {**arguments, "document": selector})
         assert active.structured_content == omitted.structured_content
-        assert active.structured_content["responder"]["documentName"] == selected["documentTitle"]
         payload = json.loads(remote.written_content)
         assert payload["targetProcessId"] == selected["processId"]
         assert "targetDocument" not in payload
+        assert payload["targetProcessId"] == omitted_payload["targetProcessId"]
+        assert "targetDocument" not in omitted_payload
 
     asyncio.run(call())
 
@@ -1600,17 +1601,13 @@ def test_literal_active_document_wins_in_background(addressed_server, title, pat
             "command": "list-warnings",
             "success": True,
             "data": {},
-            "responder": {"documentName": title},
         }
     )
 
-    result = asyncio.run(
-        revit_server.mcp.call_tool("revit_list_warnings", {"document": "  ACTIVE "})
-    )
+    asyncio.run(revit_server.mcp.call_tool("revit_list_warnings", {"document": "  ACTIVE "}))
     payload = json.loads(remote.written_content)
     assert payload["targetProcessId"] == 84
     assert payload["targetDocument"] == "ACTIVE"
-    assert result.structured_content["responder"]["documentName"] == title
 
 
 @pytest.mark.parametrize(

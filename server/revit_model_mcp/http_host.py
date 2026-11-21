@@ -142,8 +142,13 @@ class HttpHost:
         # Health advertises only the active title, not the open documents or their IDs.
         # Resolve the document in the add-in after selecting the configured endpoint.
         endpoint_job = replace(job, payload={**job.payload, "targetDocument": None})
-        instance, _ = select_instance(await self.list_revit_instances(), endpoint_job)
-        if is_active_document_selector(job.payload.get("targetDocument")):
+        instance, endpoint_job = select_instance(await self.list_revit_instances(), endpoint_job)
+        document = job.payload.get("targetDocument")
+        if is_active_document_selector(document) and job.payload.get("fetchJobId"):
+            # Existing jobs are addressed by ID. Document discovery would queue behind the job.
+            if resolve_document_selector([instance], document) is None:
+                job = endpoint_job
+        elif is_active_document_selector(document):
             progress_token = _progress_reporter.set(None)
             try:
                 documents = await RevitChannel(self).execute(

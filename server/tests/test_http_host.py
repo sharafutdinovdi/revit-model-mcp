@@ -88,7 +88,7 @@ def endpoint():
                     {
                         "ok": True,
                         "revitVersion": "2026",
-                        "documentName": "Model",
+                        "documentName": state.get("document_name", "Model"),
                         "processId": state.get("processId", 42),
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": {
@@ -103,6 +103,7 @@ def endpoint():
                             "ping",
                             "document-info",
                             "documents",
+                            "jobs",
                             "select",
                             "export",
                             "export-view",
@@ -112,6 +113,8 @@ def endpoint():
                 )
             if self.headers.get("Authorization") != "Bearer test-token":
                 return self.reply(401, {"error": "unauthorized"})
+            if route.path in state.get("existing_jobs", {}):
+                return self.reply(200, state["existing_jobs"][route.path])
             if route.path == "/jobs" and state.get("drop_once"):
                 state["drop_once"] = False
                 if state.get("accept_before_drop"):
@@ -702,12 +705,16 @@ def test_http_reads_defer_document_resolution_to_addin(endpoint, command, proces
 
 
 @pytest.mark.parametrize(
-    ("tool", "arguments"),
-    [("revit_document_info", {}), ("revit_select", {"element_ids": [1]})],
+    ("tool", "arguments", "command"),
+    [
+        ("revit_document_info", {}, "document-info"),
+        ("revit_select", {"element_ids": [1]}, "select"),
+        ("revit_jobs", {}, "jobs"),
+    ],
 )
 @pytest.mark.parametrize("background_matches", [False, True])
 def test_http_active_selector_checks_background_documents(
-    endpoint, monkeypatch, tool, arguments, background_matches
+    endpoint, monkeypatch, tool, arguments, command, background_matches
 ):
     host, state = endpoint
     monkeypatch.setattr(revit_server, "host", host)
@@ -724,6 +731,7 @@ def test_http_active_selector_checks_background_documents(
 
     assert result.structured_content["success"] is True
     assert state["documents_payload"]["includeLinked"] is True
+    assert state["payload"]["command"] == command
     assert "targetDocument" not in state["documents_payload"]
     if background_matches:
         assert state["payload"]["targetDocument"] == "AcTiVe"
@@ -740,6 +748,34 @@ def test_http_document_id_does_not_override_explicit_process(endpoint):
 
     assert state["payload"] is None
     assert state["requests"] == [("GET", "/health", None)]
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "suffix", "expected"),
+    [
+        ("revit_jobs", "GET", "", {"command": "export", "success": True, "data": {}}),
+        ("revit_cancel_job", "POST", "/cancel", {"cancelled": True}),
+    ],
+)
+@pytest.mark.parametrize("document_name", ["Model", "Active Campus"])
+def test_http_active_selector_does_not_submit_a_job_for_existing_job_id(
+    endpoint, monkeypatch, tool, method, suffix, expected, document_name
+):
+    host, state = endpoint
+    state["document_name"] = document_name
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", RevitChannel(host))
+    job_id = "a" * 32
+    path = f"/jobs/{job_id}{suffix}"
+    state["existing_jobs"] = {path: {"result": expected} if method == "GET" else expected}
+
+    arguments = {"job_id": job_id, "document": " AcTiVe "}
+    result = asyncio.run(revit_server.mcp.call_tool(tool, arguments))
+
+    assert all(result.structured_content[key] == value for key, value in expected.items())
+    assert [request for request in state["requests"] if request[1] != "/health"] == [
+        (method, path, "Bearer test-token")
+    ]
 
 
 def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():
