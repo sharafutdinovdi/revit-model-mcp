@@ -27,6 +27,23 @@ public static class JsonConfigEditor
             spec is null || StartsSpec(text, entry.Value, spec) ? McpClientState.Configured : McpClientState.ConfiguredDifferentCommand);
     }
 
+    internal static McpClientStatus CheckSettings(McpClientTarget target, string text, McpServerSpec spec)
+    {
+        var status = Inspect(target, text, spec);
+        if (status.State != McpClientState.Configured) return status;
+        TryParse(text, out var root, out _);
+        var entry = Find(Find(root, target.RootKey)!.Value, McpServerSpec.Name)!.Value;
+        var environment = Find(entry, "env");
+        var matches = environment is { Kind: NodeKind.Object } &&
+            environment.Value.Members!.Count == McpServerSpec.Env.Count &&
+            McpServerSpec.Env.All(pair => Find(environment.Value, pair.Key) is Node value && ReadString(text, value) == pair.Value);
+        var transport = Find(entry, "type");
+        if (target.IncludeType || transport is not null)
+            matches &= transport is Node type && ReadString(text, type) == "stdio";
+        matches &= Find(entry, "url") is null && Find(entry, "disabled") is null;
+        return matches ? status : status with { State = McpClientState.ConfiguredDifferentCommand };
+    }
+
     private static bool StartsSpec(string text, Node entry, McpServerSpec spec)
     {
         if (entry.Kind != NodeKind.Object) return false;

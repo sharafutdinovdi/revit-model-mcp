@@ -99,6 +99,13 @@ It appears and disappears instantly; there are no animations, including with red
 
 **Connect AI app** writes the same local registration as step 6 above, with `REVIT_MCP_HOST=local` and `REVIT_MCP_REDACT_PATHS=1`, into the configuration of each app it finds on the Revit workstation. When the MSI installed the bundled server, the entry starts that executable directly (`%LocalAppData%\Programs\Model MCP\server\revit-model-mcp.exe` for the single-user MSI, `%ProgramFiles%\Model MCP\server\revit-model-mcp.exe` for the multi-user MSI) and nothing else needs to be installed. Without it (add-in bundle or ZIP installs) the entry is `uvx revit-model-mcp`, and uv must be on the PATH. The dialog shows which one it will write. It does not install the apps.
 
+**Check connection** reads the local channel state and detected app configurations without changing them, then starts the bundled server briefly to verify its version and MCP tools.
+Each line shows **ok**, **warning** or **problem** with advice; the startup check stops after about 20 seconds and closes its process.
+The `uvx` version cannot be checked offline.
+The modal window cannot serve Revit API requests: close it and ask your AI app to call `revit_ping` for the full connection check.
+
+![Check connection results in the Connect AI app window](assets/gallery/connect-check.png)
+
 | App | Configuration file |
 |---|---|
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |

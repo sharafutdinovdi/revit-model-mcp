@@ -1,3 +1,6 @@
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -25,6 +28,9 @@ internal sealed class ConnectAiWindow : Window
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
     private readonly StackPanel _rows = new();
     private readonly TextBlock _message = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 10, 0, 0) };
+    private readonly StackPanel _checkResults = new();
+    private readonly CancellationTokenSource _checkLifetime = new();
+    private readonly Button _check = new() { Content = "Check connection", Padding = new Thickness(12, 4, 12, 4), HorizontalAlignment = HorizontalAlignment.Left };
 
     public ConnectAiWindow()
     {
@@ -44,12 +50,58 @@ internal sealed class ConnectAiWindow : Window
         root.Children.Add(new TextBlock { Text = _spec is null ? ConnectText.BundledServerMissing : ConnectText.Intro(_spec), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 12) });
         root.Children.Add(_rows);
         root.Children.Add(_message);
+        root.Children.Add(_check);
+        root.Children.Add(new ScrollViewer { Content = _checkResults, MaxHeight = 230, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        _check.Click += CheckConnectionAsync;
+        Closed += (_, _) => _checkLifetime.Cancel();
         var close = new Button { Content = ConnectText.Close, MinWidth = 80, Padding = new Thickness(12, 4, 12, 4), IsCancel = true, IsDefault = true, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
         close.Click += (_, _) => Close();
         root.Children.Add(close);
         Content = root;
         Refresh();
     }
+
+    private async void CheckConnectionAsync(object sender, RoutedEventArgs eventArgs)
+    {
+        _check.IsEnabled = false;
+        _rows.IsEnabled = false;
+        _checkResults.Children.Clear();
+        ShowCheck(ConnectionCheck.LocalChannel(RevitModelMcp.Application.LocalChannelListening));
+        try
+        {
+            var results = await Task.Run(() =>
+            {
+                var checks = new List<ConnectionCheckResult>
+                {
+                    ConnectionCheck.Server(_spec, _spec is not null && File.Exists(_spec.Command))
+                };
+                checks.AddRange(ConnectionCheck.Clients(_targets, _spec));
+                return checks;
+            });
+            foreach (var result in results) ShowCheck(result);
+            ShowCheck(await ConnectionServerProbe.CheckAsync(_spec, RevitModelMcp.Application.AddinVersion, _checkLifetime.Token));
+            ShowCheck(new("Revit access", ConnectionCheckLevel.Warning,
+                "This modal command cannot serve Revit requests; close this window and ask your AI app to call revit_ping."));
+        }
+        finally
+        {
+            _check.IsEnabled = true;
+            _rows.IsEnabled = true;
+        }
+    }
+
+    private void ShowCheck(ConnectionCheckResult result) => _checkResults.Children.Add(new TextBlock
+    {
+        Text = result.ToString(),
+        TextWrapping = TextWrapping.Wrap,
+        Margin = new Thickness(0, 6, 0, 0),
+        Foreground = result.Level switch
+        {
+            ConnectionCheckLevel.Ok => Brushes.DarkGreen,
+            ConnectionCheckLevel.Warning => Brushes.DarkGoldenrod,
+            _ => Brushes.Firebrick
+        }
+    });
 
     private void Refresh()
     {

@@ -67,6 +67,8 @@ public sealed class Application : ExternalApplication
     private readonly string _instanceId = Guid.NewGuid().ToString("N");
     private static Application? _instance;
     internal static string InstanceId => _instance?._instanceId ?? string.Empty;
+    internal static bool LocalChannelListening => _instance is not null &&
+        (_instance._pipeChannel?.PipeName is not null || _instance._controlChannel.FileChannelEnabled);
 
     public override void OnStartup()
     {
