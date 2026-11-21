@@ -6,6 +6,13 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v2.1.0...v2.1.1) (2026-11-21)
+
+
+### Documentation
+
+* add CITATION.cff for software citation ([#476](https://github.com/sharafutdinovdi/revit-model-mcp/issues/476)) ([06ec8ac](https://github.com/sharafutdinovdi/revit-model-mcp/commit/06ec8acefb87b9fd6f09057a13d9a7b1522bf28c))
+
 ## [2.1.0](https://github.com/sharafutdinovdi/revit-model-mcp/compare/v2.0.0...v2.1.0) (2026-11-16)
 
 
