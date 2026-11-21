@@ -73,7 +73,7 @@ internal static class SheetListReader
                 var viewId = RevitValueReader.GetId(view.Id);
                 try
                 {
-                    if (!SheetViewPlacement.IsUnplaced(view, viewId, view.IsTemplate, placed, CanPlace)) continue;
+                    if (!UnplacedViewRule.IsUnplaced(view, viewId, view.IsTemplate, placed, CanPlace)) continue;
                     eligibleCount++;
                     unplaced.Add(new UnplacedViewItem { Id = viewId, Name = view.Name, ViewType = view.ViewType.ToString() });
                 }

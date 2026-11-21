@@ -2,7 +2,7 @@ using RevitModelMcp.Core.Models;
 
 namespace RevitModelMcp.Core.Tests.Serialization;
 
-public sealed class SheetViewPlacementTests
+public sealed class UnplacedViewRuleTests
 {
     [Test]
     [Arguments(false, false, true, true)]
@@ -15,7 +15,7 @@ public sealed class SheetViewPlacementTests
         const long viewId = 42;
         HashSet<long> placedViewIds = isPlaced ? [viewId] : [99];
 
-        var unplaced = SheetViewPlacement.IsUnplaced(canPlace, viewId, isTemplate, placedViewIds, eligible => eligible);
+        var unplaced = UnplacedViewRule.IsUnplaced(canPlace, viewId, isTemplate, placedViewIds, eligible => eligible);
 
         await Assert.That(unplaced).IsEqualTo(expected);
     }
