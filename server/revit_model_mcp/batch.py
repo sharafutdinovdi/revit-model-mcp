@@ -239,7 +239,7 @@ def register_batch(mcp, host_provider, channel_provider) -> None:
             ):
                 await file_host.batch_activate_interactive()
                 instances = await _wait_for_responsive_instance(host)
-            selected = select_instance(
+            selected, _ = select_instance(
                 instances, Job("batch-supervisor-start", {}).for_process(process_id)
             )
             if isinstance(host, SshPowerShellHost) and not host.local:

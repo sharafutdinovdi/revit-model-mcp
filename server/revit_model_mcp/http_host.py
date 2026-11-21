@@ -26,10 +26,14 @@ from revit_model_mcp.revit_channel import (
     ResponseParseError,
     ResponseTimeoutError,
     ResultExpiredError,
+    RevitChannel,
     RevitChannelError,
     SubmissionRefusedError,
     TransportUnavailableError,
+    _progress_reporter,
+    is_active_document_selector,
     matches_document,
+    resolve_document_selector,
     select_instance,
 )
 
@@ -124,29 +128,39 @@ class HttpHost:
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
         status = await self.health()
         name = status.get("documentName", "")
-        if document and not matches_document(status, document):
-            return []
-        return [
-            {
-                **status,
-                "documentTitle": name,
-                "documentPath": "",
-                "windowTitle": "",
-                "pluginResponding": True,
-            }
-        ]
+        instance = {
+            **status,
+            "documentTitle": name,
+            "documentPath": "",
+            "windowTitle": "",
+            "pluginResponding": True,
+        }
+        document = resolve_document_selector([instance], document)
+        return [instance] if not document or matches_document(instance, document) else []
 
     async def select_job(self, job: Job) -> tuple[HttpHost, Job]:
         # Health advertises only the active title, not the open documents or their IDs.
         # Resolve the document in the add-in after selecting the configured endpoint.
         endpoint_job = replace(job, payload={**job.payload, "targetDocument": None})
-        instance = select_instance(await self.list_revit_instances(), endpoint_job)
+        instance, _ = select_instance(await self.list_revit_instances(), endpoint_job)
+        if is_active_document_selector(job.payload.get("targetDocument")):
+            progress_token = _progress_reporter.set(None)
+            try:
+                documents = await RevitChannel(self).execute(
+                    Job("documents", {"command": "documents", "includeLinked": True}).for_process(
+                        instance["processId"]
+                    )
+                )
+            finally:
+                _progress_reporter.reset(progress_token)
+            if not isinstance(documents.get("data"), list) or documents.get("partial"):
+                raise ResponseParseError("Could not resolve the selector against open documents.")
+            instance = {**instance, "documentTitle": "", "documents": documents["data"]}
+            _, job = select_instance([instance], job)
         selected = copy.copy(self)
         selected._verified_token = None
         selected._identity = instance
-        return selected, replace(
-            job, payload={**job.payload, "targetProcessId": instance["processId"]}
-        )
+        return selected, job.for_process(instance["processId"])
 
     async def fetch_job(self, job_id: str) -> dict[str, Any]:
         _, body, _ = await self._request("GET", "/jobs/" + urllib.parse.quote(job_id, safe=""))

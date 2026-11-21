@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import pytest
 
 from revit_model_mcp import package_version
+from revit_model_mcp import server as revit_server
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
     Job,
@@ -98,7 +99,14 @@ def endpoint():
                         },
                         "addinVersion": package_version(),
                         "protocolVersion": 1,
-                        "commands": ["ping", "document-info", "select", "export", "export-view"],
+                        "commands": [
+                            "ping",
+                            "document-info",
+                            "documents",
+                            "select",
+                            "export",
+                            "export-view",
+                        ],
                     },
                     proof=proof,
                 )
@@ -141,11 +149,13 @@ def endpoint():
                 }
                 return self.reply(200, PNG, "image/png")
             command = state["payload"]["command"]
-            data = (
-                {"fileName": "view.png", "width": 1600, "height": 900}
-                if command == "export-view"
-                else "pong"
-            )
+            if command == "documents":
+                state["documents_payload"] = state["payload"]
+                data = state["documents"]
+            elif command == "export-view":
+                data = {"fileName": "view.png", "width": 1600, "height": 900}
+            else:
+                data = "pong"
             result = {"command": command, "success": True, "data": data}
             return self.reply(
                 200,
@@ -689,6 +699,36 @@ def test_http_reads_defer_document_resolution_to_addin(endpoint, command, proces
     )
     assert job.payload.get("targetProcessId") == process_id
     assert job.payload["targetDocument"] == document
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [("revit_document_info", {}), ("revit_select", {"element_ids": [1]})],
+)
+@pytest.mark.parametrize("background_matches", [False, True])
+def test_http_active_selector_checks_background_documents(
+    endpoint, monkeypatch, tool, arguments, background_matches
+):
+    host, state = endpoint
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", RevitChannel(host))
+    state["documents"] = [
+        {"title": "Front", "path": r"C:\Models\Front.rvt", "isActive": True},
+        {
+            "title": "Annex",
+            "path": r"C:\Models\Active Annex.rvt" if background_matches else r"C:\Models\Annex.rvt",
+            "isActive": False,
+        },
+    ]
+    result = asyncio.run(revit_server.mcp.call_tool(tool, {**arguments, "document": " AcTiVe "}))
+
+    assert result.structured_content["success"] is True
+    assert state["documents_payload"]["includeLinked"] is True
+    assert "targetDocument" not in state["documents_payload"]
+    if background_matches:
+        assert state["payload"]["targetDocument"] == "AcTiVe"
+    else:
+        assert "targetDocument" not in state["payload"]
 
 
 def test_http_document_id_does_not_override_explicit_process(endpoint):

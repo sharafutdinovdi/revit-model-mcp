@@ -60,23 +60,24 @@ class Router:
         self.instances = [Instance(41, "doc:first"), Instance(42, "doc:second")]
 
     async def select_job(self, job):
-        selected = select_instance([item.instance_info for item in self.instances], job)
+        selected, job = select_instance([item.instance_info for item in self.instances], job)
         remote = next(item for item in self.instances if item.instance_info is selected)
-        return remote, job.for_process(selected["processId"])
+        return remote, job
 
 
 def test_session_document_selector_and_conjunctive_process():
     router = Router()
     instances = [item.instance_info for item in router.instances]
     job = Job("execute-code", {}).for_document("doc:second")
-    assert select_instance(instances, job)["processId"] == 42
+    assert select_instance(instances, job)[0]["processId"] == 42
     with pytest.raises(RevitChannelError, match="not open"):
         select_instance(instances, job.for_process(41))
     with pytest.raises(RevitChannelError, match="exact document ID"):
         select_instance(instances, Job("execute-code", {}).for_document("Same"))
 
 
-def test_polling_keeps_process_and_rejects_restart_or_mismatch():
+@pytest.mark.parametrize("document", [None, "active"])
+def test_polling_keeps_process_and_rejects_restart_or_mismatch(document):
     async def scenario():
         router = Router()
         channel = RevitChannel(router)
@@ -88,7 +89,9 @@ def test_polling_keeps_process_and_rejects_restart_or_mismatch():
         assert running["responder"]["documentId"] == "doc:second"
         assert running["responder"]["activeDocument"]["documentId"] == "doc:ui-42"
         assert "process_id=42" in running["message"]
-        polling = Job("jobs", {"fetchJobId": running["jobId"], "waitSeconds": 0})
+        polling = Job("jobs", {"fetchJobId": running["jobId"], "waitSeconds": 0}).for_document(
+            document
+        )
         result = await channel.execute(polling)
         assert result["responder"]["processId"] == 42
         assert not router.instances[0].fetches
@@ -249,10 +252,14 @@ def test_exact_action_targets_and_read_title_selection(command):
     instances = [item.instance_info for item in router.instances]
     instances[1] = {"processId": 42, "pluginResponding": False}
     job = Job(command, {"requestCancellation": True})
-    assert select_instance(instances, job.for_document("doc:first"))["processId"] == 41
-    assert select_instance(instances, job.for_document("Same").for_process(41))["processId"] == 41
-    assert select_instance(instances[:1], job.for_document("Same"))["processId"] == 41
-    assert select_instance(instances, Job.document_info().for_document("Same"))["processId"] == 41
+    assert select_instance(instances, job.for_document("doc:first"))[0]["processId"] == 41
+    assert (
+        select_instance(instances, job.for_document("Same").for_process(41))[0]["processId"] == 41
+    )
+    assert select_instance(instances[:1], job.for_document("Same"))[0]["processId"] == 41
+    assert (
+        select_instance(instances, Job.document_info().for_document("Same"))[0]["processId"] == 41
+    )
 
 
 def test_action_wrapper_refuses_title_before_sending_and_adds_identity():

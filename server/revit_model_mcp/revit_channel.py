@@ -829,6 +829,16 @@ def matches_document(instance: dict[str, Any], document: str) -> bool:
     )
 
 
+def is_active_document_selector(document: str | None) -> bool:
+    return document is not None and document.strip().casefold() == "active"
+
+
+def resolve_document_selector(instances: list[dict[str, Any]], document: str | None) -> str | None:
+    if document is None or not is_active_document_selector(document):
+        return document
+    return document if any(matches_document(instance, document) for instance in instances) else None
+
+
 def _describe_instance(instance: dict[str, Any]) -> str:
     documents = instance.get("documents")
     if isinstance(documents, list) and documents:
@@ -882,8 +892,8 @@ def resolve_instance(
     return matches[0]
 
 
-def select_instance(instances: list[dict[str, Any]], job: Job) -> dict[str, Any]:
-    document = job.payload.get("targetDocument")
+def select_instance(instances: list[dict[str, Any]], job: Job) -> tuple[dict[str, Any], Job]:
+    document = resolve_document_selector(instances, job.payload.get("targetDocument"))
     process_id = job.payload.get("targetProcessId")
     if process_id is not None:
         if type(process_id) is not int or process_id <= 0:
@@ -907,7 +917,10 @@ def select_instance(instances: list[dict[str, Any]], job: Job) -> dict[str, Any]
             + ("; ".join(_describe_instance(item) for item in matches) or "none")
             + ". Use revit_list_instances to choose a document or process."
         )
-    return selected
+    payload = {**job.payload, "targetProcessId": selected["processId"]}
+    if document is None:
+        payload.pop("targetDocument", None)
+    return selected, replace(job, payload=payload)
 
 
 class RemoteHost(Protocol):
@@ -1039,13 +1052,20 @@ class RevitChannel:
                 if requested_process not in (None, identity.get("processId")):
                     raise RevitChannelError("The job belongs to a different Revit process.")
                 requested_document = job.payload.get("targetDocument")
-                if requested_document and requested_document != original_job.payload.get(
-                    "targetDocument"
+                if (
+                    requested_document
+                    and not is_active_document_selector(requested_document)
+                    and requested_document != original_job.payload.get("targetDocument")
                 ):
                     raise RevitChannelError("The job belongs to a different target document.")
                 job = job.for_process(identity.get("processId"))
             remote, job = await self.remote.select_job(job)
             if route is not None:
+                requested_document = job.payload.get("targetDocument")
+                if is_active_document_selector(requested_document) and requested_document != (
+                    original_job.payload.get("targetDocument")
+                ):
+                    raise RevitChannelError("The job belongs to a different target document.")
                 current = getattr(remote, "instance_info", {})
                 if any(
                     identity.get(key) != current.get(key)

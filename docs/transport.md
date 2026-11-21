@@ -591,6 +591,7 @@ Title, file name and full path references alone are refused before action submis
 Reads retain title matching, and single-process selection is unchanged.
 Action responses include top-level `processId` and `revitVersion`; existing response fields remain intact.
 `document` accepts the Revit session `documentId` advertised in instance discovery, an exact full path, or a case-insensitive title or file-name substring.
+`document: "active"` (case-insensitive, ignoring surrounding whitespace) is equivalent to omitting `document` when no open document matches it.
 Session IDs start with `doc:` and distinguish same-name unsaved documents.
 An ID belongs to the open document in its Revit process and is shared across local, SSH and HTTP connections, not scoped to a Python server session.
 Obtain a new ID after closing and reopening a document or restarting Revit.

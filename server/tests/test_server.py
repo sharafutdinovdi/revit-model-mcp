@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import os
@@ -18,11 +19,12 @@ import pytest
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.server.mcpserver.exceptions import ToolError
+from test_revit_channel import FakeRemoteHost, instance_status
 
 from revit_model_mcp import package_version
 from revit_model_mcp import server as revit_server
 from revit_model_mcp.pipe_host import LocalPipeHost
-from revit_model_mcp.revit_channel import Job, parse_response
+from revit_model_mcp.revit_channel import Job, RevitChannel, parse_response
 from revit_model_mcp.ssh_host import SshPowerShellHost
 
 MCP_DIRECTORY = Path(__file__).resolve().parents[1]
@@ -1519,3 +1521,143 @@ def test_manifests_do_not_offer_the_removed_server_read_only_setting():
         assert revit_server.LEGACY_READ_ONLY_VARIABLE not in {
             variable["name"] for variable in package["environmentVariables"]
         }
+
+
+@pytest.fixture
+def addressed_server(monkeypatch, tmp_path):
+    instances = [
+        instance_status(
+            process_id,
+            title,
+            documents=[{"title": title, "path": rf"C:\Models\{title}.rvt", "isActive": True}],
+            commands=["list-warnings", "activate-view"],
+        )
+        for process_id, title in ((42, "Structural"), (84, "Architectural"))
+    ]
+    remote = FakeRemoteHost()
+    remote._handshake = AsyncMock()
+    host = SshPowerShellHost("test-host")
+
+    def for_instance(instance):
+        remote.instance_info = instance
+        return remote
+
+    monkeypatch.setattr(host, "_discover_instances", AsyncMock(return_value=instances))
+    monkeypatch.setattr(host, "_for_instance", for_instance)
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", RevitChannel(host))
+    monkeypatch.setattr(
+        "revit_model_mcp.revit_channel._request_journal_directory", lambda: tmp_path
+    )
+    return instances, remote
+
+
+@pytest.mark.parametrize(
+    ("command", "arguments"),
+    [("list-warnings", {}), ("activate-view", {"view": "Level 1"})],
+)
+@pytest.mark.parametrize("selector", ["active", "  AcTiVe  "])
+@pytest.mark.parametrize("process_id", [None, 84])
+def test_active_selector_matches_omission(
+    addressed_server, command, arguments, selector, process_id
+):
+    instances, remote = addressed_server
+    if process_id is None:
+        del instances[1:]
+    else:
+        arguments = {**arguments, "process_id": process_id}
+    selected = instances[-1]
+    remote.response_content = json.dumps(
+        {
+            "command": command,
+            "success": True,
+            "data": {},
+            "responder": {"documentName": selected["documentTitle"]},
+        }
+    )
+
+    async def call():
+        tool = f"revit_{command.replace('-', '_')}"
+        omitted = await revit_server.mcp.call_tool(tool, arguments)
+        active = await revit_server.mcp.call_tool(tool, {**arguments, "document": selector})
+        assert active.structured_content == omitted.structured_content
+        assert active.structured_content["responder"]["documentName"] == selected["documentTitle"]
+        payload = json.loads(remote.written_content)
+        assert payload["targetProcessId"] == selected["processId"]
+        assert "targetDocument" not in payload
+
+    asyncio.run(call())
+
+
+@pytest.mark.parametrize(
+    ("title", "path"), [("active", ""), ("Annex", r"C:\Models\Campus Active Annex.rvt")]
+)
+def test_literal_active_document_wins_in_background(addressed_server, title, path):
+    instances, remote = addressed_server
+    instances[1]["documents"].append({"title": title, "path": path, "isActive": False})
+    remote.response_content = json.dumps(
+        {
+            "command": "list-warnings",
+            "success": True,
+            "data": {},
+            "responder": {"documentName": title},
+        }
+    )
+
+    result = asyncio.run(
+        revit_server.mcp.call_tool("revit_list_warnings", {"document": "  ACTIVE "})
+    )
+    payload = json.loads(remote.written_content)
+    assert payload["targetProcessId"] == 84
+    assert payload["targetDocument"] == "ACTIVE"
+    assert result.structured_content["responder"]["documentName"] == title
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "message"),
+    [
+        ("revit_list_warnings", {}, "Pass document"),
+        ("revit_activate_view", {"view": "Level 1"}, "requires an exact document ID"),
+    ],
+)
+def test_active_selector_does_not_choose_between_processes(
+    addressed_server, tool, arguments, message
+):
+    _, remote = addressed_server
+
+    async def call():
+        with pytest.raises(ToolError, match=message) as omitted:
+            await revit_server.mcp.call_tool(tool, arguments)
+        with pytest.raises(ToolError, match=message) as active:
+            await revit_server.mcp.call_tool(tool, {**arguments, "document": "active"})
+        assert str(active.value) == str(omitted.value)
+
+    asyncio.run(call())
+    assert remote.written_content is None
+
+
+def test_unmatched_document_other_than_active_keeps_existing_error(addressed_server):
+    instances, remote = addressed_server
+    del instances[1:]
+    with pytest.raises(
+        ToolError, match="Document 'active project' is not open in Revit process 42"
+    ):
+        asyncio.run(
+            revit_server.mcp.call_tool("revit_list_warnings", {"document": "active project"})
+        )
+    assert remote.written_content is None
+
+
+def test_active_selector_preserves_instance_filtering(addressed_server):
+    instances, _ = addressed_server
+
+    async def call():
+        omitted = await revit_server.mcp.call_tool("revit_list_instances", {})
+        unmatched = await revit_server.mcp.call_tool("revit_list_instances", {"document": "active"})
+        assert unmatched.structured_content == omitted.structured_content
+
+        instances[1]["documents"].append({"title": "active", "isActive": False})
+        matched = await revit_server.mcp.call_tool("revit_list_instances", {"document": "active"})
+        assert [item["processId"] for item in matched.structured_content["instances"]] == [84]
+
+    asyncio.run(call())

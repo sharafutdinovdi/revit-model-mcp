@@ -56,7 +56,7 @@ class Host(SshPowerShellHost):
 
     async def select_job(self, job):
         selected = copy.copy(self)
-        selected._instance = select_instance(self.instances, job)
+        selected._instance, job = select_instance(self.instances, job)
         return selected, job
 
     async def batch_discover(self, folder, recursive):
