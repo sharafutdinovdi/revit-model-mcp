@@ -5,9 +5,8 @@ description: "Install Model MCP for Revit from a published MSI, verify its check
 # Install with an AI agent
 
 Model MCP installs per user on Windows 10 or 11 with Revit 2022-2027.
-The published v2.0.0 release provides MSI installers but does not contain `install.ps1`.
-The one-command installer arrives with the next release.
-Until then, use the published MSI and client registration below.
+Use the SingleUser MSI from the latest stable release.
+For the manual path and the Windows and Revit trust prompts, see [Install in five minutes](install.md#install-in-five-minutes).
 Close Revit before installation.
 
 ## For agents
@@ -21,14 +20,18 @@ Close Revit before installation.
 
 ## Download and verify
 
-The [v2.0.0 release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/tag/v2.0.0) contains the current-user installer.
+Resolve the [latest stable release](https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest) and download its current-user installer and checksum manifest.
 Run these commands in Windows PowerShell from a writable download folder:
 
 ```powershell
-$base = 'https://github.com/sharafutdinovdi/revit-model-mcp/releases/download/v2.0.0'
-$msi = 'RevitModelMcp-2.0.0-SingleUser.msi'
-Invoke-WebRequest "$base/$msi" -OutFile $msi
-Invoke-WebRequest "$base/SHA256SUMS.txt" -OutFile SHA256SUMS.txt
+$release = Invoke-RestMethod 'https://api.github.com/repos/sharafutdinovdi/revit-model-mcp/releases/latest'
+$version = $release.tag_name -replace '^v', ''
+$msi = "RevitModelMcp-$version-SingleUser.msi"
+$asset = @($release.assets | Where-Object name -eq $msi)
+$sums = @($release.assets | Where-Object name -eq 'SHA256SUMS.txt')
+if ($asset.Count -ne 1 -or $sums.Count -ne 1) { throw 'Release assets are incomplete' }
+Invoke-WebRequest $asset[0].browser_download_url -OutFile $msi
+Invoke-WebRequest $sums[0].browser_download_url -OutFile SHA256SUMS.txt
 $entry = @(Get-Content SHA256SUMS.txt | Where-Object { $_ -match "^[0-9a-fA-F]{64}  $([regex]::Escape($msi))$" })
 if ($entry.Count -ne 1) { throw 'Expected exactly one MSI checksum' }
 $expected = ($entry[0] -split '  ', 2)[0]
@@ -49,31 +52,10 @@ Claude Code receives a copy-paste registration command.
 Restart the client after registration.
 The bundled executable needs no separate Python or uv installation.
 
-Alternatively, install [uv](https://docs.astral.sh/uv/getting-started/installation/) and register the PyPI server.
-For Claude Code on the same Windows machine:
-
-```powershell
-claude mcp add revit-model-mcp -e REVIT_MCP_HOST=local -e REVIT_MCP_REDACT_PATHS=1 -- uvx revit-model-mcp
-```
-
-For clients with a JSON MCP configuration:
-
-```json
-{
-  "mcpServers": {
-    "revit-model-mcp": {
-      "command": "uvx",
-      "args": ["revit-model-mcp"],
-      "env": {
-        "REVIT_MCP_HOST": "local",
-        "REVIT_MCP_REDACT_PATHS": "1"
-      }
-    }
-  }
-}
-```
-
-Client-specific instructions are in [requirements and installation](install.md).
+Do not replace this MSI registration with uvx or an MCPB bundle.
+Those are [alternative installation routes](install.md#other-installation-routes), not MSI prerequisites.
+Configure only the client explicitly selected by the user.
+Connect changes only its `revit-model-mcp` entry, keeps a timestamped `.bak` of an existing file, and replaces the configuration atomically.
 On macOS and Linux, use the [SSH transport](transport.md) instead of `REVIT_MCP_HOST=local`.
 
 ### Task tool selection
@@ -98,14 +80,10 @@ Hidden tools require a new selection before use.
 
 ## Verify
 
-For the PyPI server, run:
-
-```powershell
-uvx revit-model-mcp doctor --json
-```
-
-In the client, ask: **Call `revit_ping`, then tell me which model is open.**
+With a model open, ask the client: **Call `revit_ping`, then tell me which model is open.**
 A successful ping confirms connectivity to Revit.
+A response naming the open model confirms project access.
+Client configuration or a local diagnostic result alone does not establish either result.
 
 ## Uninstall
 
@@ -115,13 +93,9 @@ Client configurations remain; remove the `revit-model-mcp` entry through Connect
 ## Offline and managed installations
 
 Download the MSI and `SHA256SUMS.txt` from the same release on a connected computer.
-Transfer both files into a local folder, then run the verification and installation commands above without the two `Invoke-WebRequest` commands.
+Transfer both files into a local folder and open PowerShell there.
+Set `$msi` to the transferred MSI filename, then run the commands above starting at `$entry = ...`.
+Skip the release lookup and download commands; they require internet access.
 The bundled server supports client registration without a PyPI download.
 Managed deployments can use the MultiUser MSI and [deployment guide](admin/deployment.md).
 Machine policy and the workstation read-only lock remain authoritative.
-
-## Next-release one-command installer
-
-The next release includes `install.ps1` with checksum verification, silent per-user installation, client registration, JSON results, diagnostics, and offline installation support.
-The current published release does not support downloading that script as a release asset.
-Use the MSI procedure above until a release containing the script is published.

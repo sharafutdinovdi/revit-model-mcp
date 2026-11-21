@@ -10,22 +10,14 @@ Revit 2022-2027 is supported; actions are enabled by default, with a shared read
 
 ## Install and connect
 
-1. Close Revit on Windows 10 or 11.
-2. Give a local installation agent this prompt, naming Claude Desktop or Claude Code as the target:
+Follow [Install in five minutes](../install.md#install-in-five-minutes) on the Windows Revit computer.
+The MSI includes the add-in and server; no Python or uv installation is needed.
+In **Connect AI app**, click **Add** for Claude Desktop.
+For Claude Code, click **Copy command** and run it in a terminal.
+Fully restart Claude, then ask: **Call `revit_ping`, then tell me which model is open.**
 
-    ```text
-    Install Model MCP for Revit from https://github.com/sharafutdinovdi/revit-model-mcp. Follow docs/agent-install.md exactly. Configure Claude Desktop only.
-    ```
-
-3. Follow [MSI download and verification](../agent-install.md#download-and-verify).
-   The MSI includes the add-in and server executable.
-4. Start Revit, choose **Always Load** for Model MCP at the first-start prompt, and open a model.
-5. Use **Model MCP > Model MCP > Connect AI app** to register Claude Desktop or obtain the Claude Code registration command, then restart Claude completely.
-6. Follow [connection verification](../agent-install.md#verify), then ask Claude: **What model is open in Revit?**
-   A successful `revit_ping` establishes a live connection.
-
-Claude Code registration uses the command provided by **Connect AI app**.
-The [one-command installer](../agent-install.md#next-release-one-command-installer) arrives with the next release.
+For installation through a local agent, use [Install with an AI agent](../agent-install.md) and explicitly select Claude Desktop or Claude Code.
+The manual quick path explains the separate Windows and Revit trust prompts and optional download verification.
 
 ## First review
 
