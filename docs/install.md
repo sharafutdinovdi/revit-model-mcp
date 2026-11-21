@@ -104,6 +104,8 @@ Each line shows **ok**, **warning** or **problem** with advice; the startup chec
 The `uvx` version cannot be checked offline.
 The modal window cannot serve Revit API requests: close it and ask your AI app to call `revit_ping` for the full connection check.
 
+![Check connection results in the Connect AI app window](assets/gallery/connect-check.png)
+
 | App | Configuration file |
 |---|---|
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
