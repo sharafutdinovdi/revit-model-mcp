@@ -1530,7 +1530,7 @@ def addressed_server(monkeypatch, tmp_path):
             process_id,
             title,
             documents=[{"title": title, "path": rf"C:\Models\{title}.rvt", "isActive": True}],
-            commands=["list-warnings", "activate-view"],
+            commands=["list-warnings", "activate-view", "save-document", "close-document"],
         )
         for process_id, title in ((42, "Structural"), (84, "Architectural"))
     ]
@@ -1658,3 +1658,45 @@ def test_active_selector_preserves_instance_filtering(addressed_server):
         assert [item["processId"] for item in matched.structured_content["instances"]] == [84]
 
     asyncio.run(call())
+
+
+@pytest.mark.parametrize("command", ["save-document", "close-document"])
+@pytest.mark.parametrize(
+    ("document", "matches", "error"),
+    [
+        (" AcTiVe ", False, "document is required."),
+        (None, False, "document is required."),
+        ("active", True, "document is required."),
+        ("active", False, "read-only mode"),
+    ],
+)
+def test_required_document_error_on_file_channel(
+    addressed_server, command, document, matches, error
+):
+    instances, remote = addressed_server
+    del instances[1:]
+    if matches:
+        instances[0]["documents"].append({"title": "active", "isActive": False})
+    remote.response_content = json.dumps(
+        {"command": command, "success": False, "error": error, "message": error}
+    )
+    expected = error
+    if not matches and document and error == "document is required.":
+        expected = (
+            'This tool requires an exact document. "active" is accepted only when document may be '
+            "omitted. Call revit_documents and pass the document ID."
+        )
+
+    async def call():
+        if document is None:
+            # The public schema rejects empty input before the add-in can refuse it.
+            return await revit_server.channel.execute(Job(command, {"command": command}))
+        tool = f"revit_{command.replace('-', '_')}"
+        result = await revit_server.mcp.call_tool(tool, {"document": document})
+        return result.structured_content
+
+    result = asyncio.run(call())
+    assert result["error"] == result["message"] == expected
+    assert json.loads(remote.written_content).get("targetDocument") == (
+        document if matches else None
+    )

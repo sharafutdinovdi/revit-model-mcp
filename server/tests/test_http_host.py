@@ -107,6 +107,8 @@ def endpoint():
                             "select",
                             "export",
                             "export-view",
+                            "save-document",
+                            "close-document",
                         ],
                     },
                     proof=proof,
@@ -160,6 +162,9 @@ def endpoint():
             else:
                 data = "pong"
             result = {"command": command, "success": True, "data": data}
+            if command in {"save-document", "close-document"}:
+                error = state["document_action_error"]
+                result = {"command": command, "success": False, "error": error, "message": error}
             return self.reply(
                 200,
                 {"jobId": "job-1", "state": "done", "position": 0, "result": result},
@@ -737,6 +742,42 @@ def test_http_active_selector_checks_background_documents(
         assert state["payload"]["targetDocument"] == "AcTiVe"
     else:
         assert "targetDocument" not in state["payload"]
+
+
+@pytest.mark.parametrize("command", ["save-document", "close-document"])
+@pytest.mark.parametrize(
+    ("document", "matches", "error"),
+    [
+        (" AcTiVe ", False, "document is required."),
+        (None, False, "document is required."),
+        ("active", True, "document is required."),
+        ("active", False, "read-only mode"),
+    ],
+)
+def test_http_required_document_error(endpoint, monkeypatch, command, document, matches, error):
+    host, state = endpoint
+    channel = RevitChannel(host)
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", channel)
+    state["documents"] = [{"title": "active", "isActive": False}] if matches else []
+    state["document_action_error"] = error
+    expected = error
+    if not matches and document and error == "document is required.":
+        expected = (
+            'This tool requires an exact document. "active" is accepted only when document may be '
+            "omitted. Call revit_documents and pass the document ID."
+        )
+
+    async def call():
+        if document is None:
+            return await channel.execute(Job(command, {"command": command}))
+        tool = f"revit_{command.replace('-', '_')}"
+        result = await revit_server.mcp.call_tool(tool, {"document": document})
+        return result.structured_content
+
+    result = asyncio.run(call())
+    assert result["error"] == result["message"] == expected
+    assert state["payload"].get("targetDocument") == (document if matches else None)
 
 
 def test_http_document_id_does_not_override_explicit_process(endpoint):
