@@ -406,8 +406,13 @@ public sealed class ElementWarningInfo
 [DataContract]
 public sealed class ElementTypeDetails
 {
-    [DataMember(Name = "id")]
     public long Id { get; set; }
+
+    [DataMember(Name = "id", EmitDefaultValue = false)]
+    private long? HostId { get => LinkedElementId.HasValue ? null : Id; set => Id = value.GetValueOrDefault(); }
+
+    [DataMember(Name = "linkedElementId", EmitDefaultValue = false)]
+    public long? LinkedElementId { get; set; }
 
     [DataMember(Name = "family", EmitDefaultValue = false)]
     public string? Family { get; set; }
@@ -509,6 +514,15 @@ public static class PageSlice
 [DataContract]
 public class ElementGeometryData
 {
+    [DataMember(Name = "linkedElementId", EmitDefaultValue = false)]
+    public long? LinkedElementId { get; set; }
+
+    [DataMember(Name = "linkInstanceId", EmitDefaultValue = false)]
+    public long? LinkInstanceId { get; set; }
+
+    [DataMember(Name = "linkName", EmitDefaultValue = false)]
+    public string? LinkName { get; set; }
+
     [DataMember(Name = "location", EmitDefaultValue = false)]
     public ElementLocationData? Location { get; set; }
 
@@ -705,8 +719,13 @@ public sealed class ViewCategorySummary
 [DataContract]
 public sealed class ViewElementDump
 {
-    [DataMember(Name = "id", Order = 1)]
     public long Id { get; set; }
+
+    [DataMember(Name = "id", Order = 1, EmitDefaultValue = false)]
+    private long? HostId { get => LinkedElementId.HasValue ? null : Id; set => Id = value.GetValueOrDefault(); }
+
+    [DataMember(Name = "linkedElementId", Order = 1, EmitDefaultValue = false)]
+    public long? LinkedElementId { get; set; }
 
     [DataMember(Name = "category", Order = 2, EmitDefaultValue = false)]
     public string? Category { get; set; }

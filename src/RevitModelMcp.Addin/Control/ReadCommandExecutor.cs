@@ -389,6 +389,11 @@ internal static class ReadCommandExecutor
         ControlJobParseResult job,
         Stopwatch stopwatch)
     {
+        if (job.Link is not null || job.UniqueId is not null)
+        {
+            WriteSuccess(output, job.Command, LinkedElementReader.ReadDetails(document, job), stopwatch);
+            return;
+        }
         var id = CreateElementId(job.ElementId!.Value);
         var element = id is null ? null : document.GetElement(id);
         if (element is null)

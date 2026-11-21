@@ -613,10 +613,24 @@ class Job:
         return cls("view-elements", payload)
 
     @classmethod
-    def element_details(cls, element_id: int) -> Job:
-        if element_id <= 0:
+    def element_details(
+        cls,
+        element_id: int | None = None,
+        link: str | int | None = None,
+        unique_id: str | None = None,
+    ) -> Job:
+        if element_id is not None and (isinstance(element_id, bool) or element_id <= 0):
             raise RevitChannelError("element-details requires a positive element id.")
-        return cls("element-details", {"command": "element-details", "id": element_id})
+        if (element_id is not None) == (unique_id is not None):
+            raise RevitChannelError("Supply exactly one element_id or unique_id.")
+        payload: dict[str, Any] = {"command": "element-details"}
+        if element_id is not None:
+            payload["id"] = element_id
+        if unique_id is not None:
+            payload["uniqueId"] = _required_text(unique_id, "unique_id")
+        if link is not None:
+            payload["link"] = _required_text(str(link), "link")
+        return cls("element-details", payload)
 
     @classmethod
     def view_warnings(cls, view: str) -> Job:
@@ -643,7 +657,13 @@ class Job:
         sort_field: str = "id",
         sort_direction: str = "asc",
         include_geometry: bool = False,
+        link: str | int | None = None,
+        unique_id: str | None = None,
     ) -> Job:
+        if link is not None and _optional_text(view) is not None:
+            raise RevitChannelError(
+                "view cannot be combined with link; host-view visibility in linked documents is not supported."
+            )
         try:
             payload = query_payload(
                 categories,
@@ -667,6 +687,10 @@ class Job:
             raise RevitChannelError(str(error)) from error
         if include_geometry:
             payload["includeGeometry"] = True
+        if link is not None:
+            payload["link"] = _required_text(str(link), "link")
+        if unique_id is not None:
+            payload["uniqueId"] = _required_text(unique_id, "unique_id")
         return cls("query-elements", payload)
 
     @classmethod

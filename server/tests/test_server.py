@@ -309,6 +309,8 @@ EXPECTED_PARAMETERS = {
         "include_geometry",
         "timeout_seconds",
         "document",
+        "link",
+        "unique_id",
     ],
     "revit_list_sheets": ["include_unplaced_views", "offset", "limit", "document"],
     "revit_list_views": [
@@ -343,6 +345,8 @@ EXPECTED_PARAMETERS = {
         "element_id",
         "timeout_seconds",
         "document",
+        "link",
+        "unique_id",
     ],
     "revit_view_warnings": ["view", "timeout_seconds", "document"],
     "revit_list_warnings": [
@@ -746,6 +750,26 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(channel.calls[-1][0].payload["includeGeometry"])
             await revit_server.mcp.call_tool("revit_query_elements", {})
             self.assertNotIn("includeGeometry", channel.calls[-1][0].payload)
+
+    async def test_link_and_unique_id_reach_read_jobs(self) -> None:
+        channel = RecordingChannel()
+        with patch.object(revit_server, "channel", channel):
+            for link in (42, "MEP.rvt", "*"):
+                await revit_server.mcp.call_tool(
+                    "revit_query_elements",
+                    {"link": link, "unique_id": "external-id", "offset": 2, "limit": 3},
+                )
+                payload = channel.calls[-1][0].payload
+                self.assertEqual(payload["link"], str(link))
+                self.assertEqual(payload["uniqueId"], "external-id")
+                self.assertEqual((payload["offset"], payload["limit"]), (2, 3))
+                await revit_server.mcp.call_tool(
+                    "revit_element_details", {"link": link, "uniqueId": "external-id"}
+                )
+                self.assertEqual(channel.calls[-1][0].payload["uniqueId"], "external-id")
+                self.assertEqual(channel.calls[-1][0].payload["link"], str(link))
+            await revit_server.mcp.call_tool("revit_element_details", {"element_id": 7})
+            self.assertNotIn("link", channel.calls[-1][0].payload)
 
     async def test_list_instances_reads_processes_without_channel(self) -> None:
         class RecordingHost:

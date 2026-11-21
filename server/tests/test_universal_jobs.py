@@ -50,6 +50,41 @@ class UniversalJobTests(unittest.TestCase):
         self.assertNotIn("includeGeometry", Job.query_elements(include_geometry=False).payload)
         self.assertTrue(Job.query_elements(include_geometry=True).payload["includeGeometry"])
 
+    def test_link_read_payloads_and_detail_lookup_validation(self) -> None:
+        for link in (42, "MEP.rvt", "*"):
+            query = Job.query_elements(link=link, unique_id=" uid ")
+            details = Job.element_details(link=link, unique_id=" uid ")
+            self.assertEqual(query.payload["link"], str(link))
+            self.assertEqual(details.payload["link"], str(link))
+            self.assertEqual(query.payload["uniqueId"], "uid")
+            self.assertEqual(details.payload["uniqueId"], "uid")
+        self.assertNotIn("link", Job.query_elements().payload)
+        self.assertEqual(Job.element_details(7, link=42).payload["id"], 7)
+        for kwargs in ({}, {"element_id": 7, "unique_id": "uid"}, {"unique_id": ""}):
+            with self.assertRaises(Exception):
+                Job.element_details(**kwargs)
+        linked = {
+            "elements": [{"linkedElementId": 7, "linkInstanceId": 42, "linkName": "MEP"}],
+            "offset": 0,
+            "limit": 1,
+            "total": 2,
+            "hasMore": True,
+        }
+        response = {
+            "command": "query-elements",
+            "success": True,
+            "data": linked,
+            "skipped": [{"context": "link 43", "reason": "Unloaded"}],
+            "skippedCount": 1,
+        }
+        self.assertEqual(parse_response(json.dumps(response), "query-elements"), response)
+
+    def test_link_queries_reject_host_view_filters(self) -> None:
+        for link in (42, "MEP.rvt", "*"):
+            with self.assertRaisesRegex(Exception, "view cannot be combined with link"):
+                Job.query_elements(link=link, view="Host Level 1")
+        self.assertEqual(Job.query_elements(view="Host Level 1").payload["view"], "Host Level 1")
+
     def test_response_parser_preserves_geometry_for_details_and_query(self) -> None:
         bounds = {"minMm": [-100, 0, 0], "maxMm": [100, 200, 3000], "centerMm": [0, 100, 1500]}
         point = {

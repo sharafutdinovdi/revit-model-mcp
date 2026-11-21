@@ -75,8 +75,10 @@ public sealed class QueryElementsData
 [DataContract]
 public sealed class QueryElementItem : ElementGeometryData
 {
-    [DataMember(Name = "id")]
     public long Id { get; set; }
+
+    [DataMember(Name = "id", EmitDefaultValue = false)]
+    private long? HostId { get => LinkedElementId.HasValue ? null : Id; set => Id = value.GetValueOrDefault(); }
 
     [DataMember(Name = "values")]
     public Dictionary<string, QueryFieldValue> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
@@ -145,6 +147,7 @@ public sealed class AggregateGroup
 public sealed class PreparedQueryRecord
 {
     public long Id { get; set; }
+    public long? LinkInstanceId { get; set; }
 
     public Dictionary<string, PreparedQueryValue> Values { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

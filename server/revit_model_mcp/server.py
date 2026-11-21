@@ -176,12 +176,16 @@ OptionalViewName = Annotated[
     ),
 ]
 ElementId = Annotated[
-    int,
+    int | None,
     Field(
         ge=1,
         validation_alias=AliasChoices("element_id", "elementId", "id"),
         description="Revit element ID from revit_query_elements or revit_view_elements.",
     ),
+]
+ReadLink = Annotated[
+    str | Annotated[int, Field(gt=0, strict=True)] | None,
+    Field(description="Linked IDs are local to the link, not accepted by action tools."),
 ]
 WarningText = Annotated[
     str | None,
@@ -1165,8 +1169,12 @@ async def revit_query_elements(
     include_geometry: IncludeGeometry = False,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
+    link: ReadLink = None,
+    unique_id: Annotated[
+        str | None, Field(validation_alias=AliasChoices("unique_id", "uniqueId"))
+    ] = None,
 ) -> dict[str, Any]:
-    """Read a page of matching element rows. Lengths use mm, areas m2, volumes m3; optional geometry is in model mm. roomCenterMm is a point inside the room, a bounding-box centre can lie outside it. hasMore=true means further pages exist."""
+    """Read matching rows with filters and paging. link: instance ID, exact name or * (top-level loaded links); omitted: host. view cannot combine with link. unique_id: UniqueId lookup. Linked rows name their instance; geometry is in host model mm, levels use link names. Lengths mm, areas m2, volumes m3. roomCenterMm is inside the room. hasMore=true: more pages."""
     return await _execute(
         Job.query_elements(
             categories,
@@ -1184,6 +1192,8 @@ async def revit_query_elements(
             sort_field,
             sort_direction,
             include_geometry,
+            link,
+            unique_id,
         ),
         timeout_seconds,
         document,
@@ -1345,12 +1355,18 @@ async def revit_view_elements(
 
 @addressed_tool
 async def revit_element_details(
-    element_id: ElementId,
+    element_id: ElementId = None,
     timeout_seconds: TimeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
     document: Document = None,
+    link: ReadLink = None,
+    unique_id: Annotated[
+        str | None, Field(validation_alias=AliasChoices("unique_id", "uniqueId"))
+    ] = None,
 ) -> dict[str, Any]:
-    """Read parameters and geometry of an element by Revit ID, with its type parameters and related warnings. Geometry is in model mm; roomCenterMm is a point inside the room."""
-    return await _execute(Job.element_details(element_id), timeout_seconds, document)
+    """Read parameters, type, warnings and geometry by element_id or unique_id (UniqueId). link: instance ID, exact name or *; omitted: host. Top-level links only; ambiguous matches require an instance ID. Linked geometry is in host model mm. roomCenterMm is inside the room."""
+    return await _execute(
+        Job.element_details(element_id, link, unique_id), timeout_seconds, document
+    )
 
 
 @addressed_tool
