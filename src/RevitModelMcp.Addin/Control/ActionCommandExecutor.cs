@@ -13,6 +13,7 @@ using RevitModelMcp.Capture;
 using RevitModelMcp.Core.Activity;
 using RevitModelMcp.Core.Batch;
 using RevitModelMcp.Core.Control;
+using RevitModelMcp.Core.Export;
 using RevitModelMcp.Core.Formatting;
 using RevitModelMcp.Core.Models;
 using RevitModelMcp.Output;
@@ -834,6 +835,8 @@ internal static class ActionCommandExecutor
         if (document.IsFamilyDocument) throw new ArgumentException("File export requires a project document.");
         var request = action.Export;
         request.Validate();
+        if (request.Format == "ifc")
+            request.Options.ValidateIfcVersion(document.Application.VersionNumber, Enum.GetNames(typeof(IFCVersion)));
         var folder = request.Folder ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RevitModelMcp", "exports",
             FileExportJob.FileName(document.Title, "tmp")[..^4], DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ"));
@@ -984,6 +987,38 @@ internal static class ActionCommandExecutor
                 SpaceBoundaryLevel = options.SpaceBoundaries ?? 0,
                 WallAndColumnSplitting = options.SplitWallsByLevel ?? false
             };
+            using var scope = selected.Count == 1
+                ? new FilteredElementCollector(document, selected[0].Id)
+                : new FilteredElementCollector(document);
+            var hasModelElements = scope.WhereElementIsNotElementType().Any(element =>
+            {
+                var kind = element switch
+                {
+                    RevitLinkInstance => IfcExportElementKind.Link,
+                    ImportInstance => IfcExportElementKind.Import,
+                    SpatialElement => IfcExportElementKind.Spatial,
+                    CurveElement => IfcExportElementKind.Curve,
+                    BasePoint or InternalOrigin or ReferencePoint => IfcExportElementKind.ReferencePoint,
+                    Autodesk.Revit.DB.Architecture.TopographySurface => IfcExportElementKind.Terrain,
+#if REVIT2024_OR_GREATER
+                    Toposolid => IfcExportElementKind.Terrain,
+#endif
+#if REVIT2025_OR_GREATER
+                    FaceToposolid => IfcExportElementKind.Terrain,
+#endif
+                    DatumPlane or SketchPlane or Sketch => IfcExportElementKind.Construction,
+                    PointCloudInstance => IfcExportElementKind.PointCloud,
+                    Group or PartMaker => IfcExportElementKind.Container,
+                    _ => IfcExportElementKind.Physical
+                };
+#if REVIT2023_OR_GREATER
+                if (element is Autodesk.Revit.DB.Structure.AnalyticalElement)
+                    kind = IfcExportElementKind.Construction;
+#endif
+                return IfcFileValidation.IsPhysicalModelElement(kind,
+                    element.Category?.CategoryType == CategoryType.Model, element.ViewSpecific) &&
+                    element.get_BoundingBox(null) is not null;
+            });
             using var temporaryUndoState = UndoTracker.BeginTemporary();
             using var transaction = new Transaction(document, "MCP IFC export");
             transaction.Start();
@@ -992,6 +1027,11 @@ internal static class ActionCommandExecutor
                 if (!document.Export(folder, Path.GetFileNameWithoutExtension(planned[0]), ifc)) throw new InvalidOperationException("IFC export failed.");
             }
             finally { transaction.RollBack(); }
+            var path = Path.Combine(folder, planned[0]);
+            if (!File.Exists(path))
+                throw new InvalidOperationException($"Export did not produce '{planned[0]}'.");
+            using var reader = File.OpenText(path);
+            IfcFileValidation.RequireBuildingElements(reader, hasModelElements);
         }
         else
         {

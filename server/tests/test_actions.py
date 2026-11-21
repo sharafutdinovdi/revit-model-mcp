@@ -660,6 +660,68 @@ def test_file_export_maps_targets_options_and_timeout():
     }
 
 
+@pytest.mark.parametrize("process_models", [False, True])
+@pytest.mark.parametrize(
+    "options,message",
+    [
+        ({"site_placement": 1}, "Supported keys:"),
+        ({"SitePlacement": "1"}, "Supported keys:"),
+        ({"IFCFileType": "IfcZIP"}, "Supported keys:"),
+        ({"combine": False}, "Supported keys:"),
+        ({"ActivePhaseId": "123"}, "Supported keys:"),
+        ({"UseActiveViewGeometry": True}, "Supported keys:"),
+        ({"version": "IFC9"}, "Supported IFC version values:"),
+        ({"space_boundaries": 3}, "Supported IFC space_boundaries values:"),
+        ({"space_boundaries": True}, "Supported IFC space_boundaries values:"),
+        ({"export_base_quantities": "true"}, "Supported IFC export_base_quantities values:"),
+        ({"split_walls_by_level": 1}, "Supported IFC split_walls_by_level values:"),
+        ({"file_name": 123}, "IFC file_name must be a string."),
+    ],
+)
+def test_ifc_refuses_unapplied_or_invalid_options_before_submission(
+    process_models, options, message
+):
+    import asyncio
+
+    server, execute, _ = action_server()
+    export = {"format": "ifc", "options": options}
+    name = "revit_process_models" if process_models else "revit_export"
+    arguments = (
+        {"paths": [r"C:\Models\sample.rvt"], "exports": [export]}
+        if process_models
+        else {**export, "dry_run": True}
+    )
+    with pytest.raises((ToolError, ValueError), match=message):
+        asyncio.run(server.call_tool(name, arguments))
+    execute.assert_not_awaited()
+
+
+@pytest.mark.parametrize("process_models", [False, True])
+@pytest.mark.parametrize("version", ["IFC2x3CV2", "IFC4RV", "IFC4x3"])
+def test_ifc_applied_options_reach_the_exporter_unchanged(process_models, version):
+    import asyncio
+
+    server, execute, _ = action_server()
+    options = {
+        "version": version,
+        "file_name": "sample",
+        "export_base_quantities": False,
+        "space_boundaries": 2,
+        "split_walls_by_level": False,
+    }
+    export = {"format": "ifc", "views": ["{3D}"], "options": options}
+    name = "revit_process_models" if process_models else "revit_export"
+    arguments = (
+        {"paths": [r"C:\Models\sample.rvt"], "exports": [export]} if process_models else export
+    )
+    asyncio.run(server.call_tool(name, arguments))
+    payload = execute.await_args.args[0].payload
+    if process_models:
+        payload = payload["process"]["exports"][0]
+    assert payload["options"] == options
+    assert payload["views"] == ["{3D}"]
+
+
 def test_nwc_xml_and_explicit_false_reach_channel():
     import asyncio
 
