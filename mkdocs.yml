@@ -83,6 +83,7 @@ plugins:
         Guides:
           - guides/connect-claude-to-revit.md: "Connect Claude Desktop or Claude Code to Revit 2022-2027 with one verified release command, first-start steps, and connection diagnostics."
           - guides/connect-chatgpt-codex-cursor-vscode-to-revit.md: "Connect local Codex, Cursor, or VS Code to Revit, and understand the boundary between ChatGPT cloud chat and local MCP access."
+          - guides/local-models.md: "Use Model MCP with a local model: experimental setup, full-tool-set measurements, client support and safety limits."
           - guides/revit-mcp-servers-compared.md: "Compare seven public Revit MCP servers using their own documentation: supported versions, installation, model access, and distinct strengths."
           - guides/ai-model-coordination-in-revit.md: "Run daily Revit QA, warnings triage, parameter checks, issue registers, sheet sets, link datum checks, and batch audits with Model MCP."
           - guides/build-bim-model-in-revit-with-ai.md: "Plan native Revit family authoring, stairs and railings, linked structure checks, and project naming with AI and Model MCP."
@@ -129,6 +130,7 @@ nav:
   - Guides:
       - "Connect Claude to Revit": guides/connect-claude-to-revit.md
       - "Connect ChatGPT, Codex, Cursor or VS Code to Revit": guides/connect-chatgpt-codex-cursor-vscode-to-revit.md
+      - "Use Model MCP with a local model": guides/local-models.md
       - "Revit MCP servers compared": guides/revit-mcp-servers-compared.md
       - "AI model coordination in Revit": guides/ai-model-coordination-in-revit.md
       - "Build a BIM model in Revit with AI": guides/build-bim-model-in-revit-with-ai.md
