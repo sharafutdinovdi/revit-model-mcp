@@ -69,5 +69,31 @@ These tasks produced the fully intended first call in all three repeats:
 ## Clients
 
 [LM Studio](https://lmstudio.ai/docs/app/mcp) and [Jan](https://docs.jan.ai/desktop/mcp) document stdio MCP support and per-call approval.
-Neither has been [tested with Model MCP](../tested-clients.md).
+LM Studio has not been [tested with Model MCP](../tested-clients.md).
 Set the client tool timeout above the tool's `timeout_seconds` (default 120 seconds).
+
+### Jan 0.8.8 trial
+
+A November 2026 trial ran Jan 0.8.8 and Ollama on a Mac against Revit 2026 on a Windows workstation over SSH, with Model MCP 2.1.0 and all 89 tools.
+
+Setup the trial needed:
+
+- Add Ollama as an OpenAI-compatible provider at `http://localhost:11434/v1` with any nonempty API key, then refresh the model list.
+- Enable **Capabilities > Tools** for each model; it is off for newly found models.
+- Set the context in Ollama, not in Jan: create a model tag from a `Modelfile` with `PARAMETER num_ctx 32768` and `PARAMETER temperature 0`, and confirm it with `ollama ps`. The OpenAI-compatible endpoint ignores a context size sent by the client.
+- Add the stdio entry under **Settings > MCP Servers**; use the absolute path to `uvx` if Jan does not find it.
+- Leave **Allow All MCP Tool Permissions** off and set **Tool call timeout** to 180 seconds.
+
+Results with Qwen3 14B, each answer compared with a separate read from Revit:
+
+| Question | Time to answer | Result |
+| --- | ---: | --- |
+| Which models are open? | 46 s | Correct project; wrongly said that no links were open |
+| Group the warnings by type | 112 s | Correct total of 49; wrong split by type |
+| How many doors have an empty Fire Rating, counting the type value? | 57 s | Correct: 29 |
+| How many views are not placed on any sheet? | No answer in 217 s | The sheet list result filled the context |
+| Delete one door, with the request denied in Jan | 74 s | Reported the denial; nothing was deleted |
+
+The tool list used about 19,000 of 32,768 tokens with no truncation.
+Qwen3 8B gave no usable answer in this trial.
+A call with `document: "active"` failed; name the model in the question.
