@@ -25,13 +25,17 @@ def test_artifact_configuration_never_lists_revit_api_assemblies():
 
 
 def test_artifact_configuration_signs_only_own_binaries():
-    pe_paths = {path.rsplit("/", 1)[-1] for path in _paths() if "/" in path}
-    assert pe_paths == {
-        "RevitModelMcp.dll",
-        "RevitModelMcp.Core.dll",
-        "RevitModelMcp.Updater.exe",
-        "RevitModelMcp.BatchSupervisor.exe",
-    }
+    root = ET.parse(CONFIG).getroot()
+    sets = root.findall(".//s:pe-file-set", NS)
+    assert len(sets) == 2
+    for item in sets:
+        assert {entry.get("path") for entry in item.findall("s:include", NS)} == {
+            "**/RevitModelMcp.dll",
+            "**/RevitModelMcp.Core.dll",
+            "**/RevitModelMcp.Updater.exe",
+            "**/RevitModelMcp.BatchSupervisor.exe",
+            "**/RevitModelMcp.ConnectSetup.exe",
+        }
 
 
 def test_artifact_configuration_enforces_product_metadata_and_signs_the_msi():
