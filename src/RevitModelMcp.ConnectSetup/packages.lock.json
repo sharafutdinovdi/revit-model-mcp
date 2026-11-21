@@ -19,6 +19,7 @@
       "revitmodelmcp.core": {
         "type": "Project"
       }
-    }
+    },
+    ".NETFramework,Version=v4.8/win-x86": {}
   }
 }

@@ -2,6 +2,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net48</TargetFramework>
+    <RuntimeIdentifiers>win-x86</RuntimeIdentifiers>
     <AssemblyName>RevitModelMcp.ConnectSetup</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
