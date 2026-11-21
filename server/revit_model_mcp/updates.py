@@ -13,6 +13,8 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from revit_model_mcp.state import state_path
+
 LOGGER = logging.getLogger(__name__)
 PACKAGE = "revit-model-mcp"
 RELEASES_URL = "https://github.com/sharafutdinovdi/revit-model-mcp/releases/latest"
@@ -49,16 +51,6 @@ def newer_stable(candidate: str, current: str) -> bool:
         current_release + (0,) * (width - len(current_release)),
         current_post,
     )
-
-
-def state_path() -> Path:
-    if sys.platform == "win32":
-        root = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-    elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Caches"
-    else:
-        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return root / PACKAGE / "update.json"
 
 
 def read_state(path: Path | None = None) -> dict[str, str]:
