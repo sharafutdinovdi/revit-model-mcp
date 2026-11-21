@@ -106,6 +106,8 @@ Silent installs (`/qn`, WinGet and updater auto mode), upgrades, repairs and uni
 MultiUser installs skip this step entirely to avoid writing an administrator's profile; each user connects later from Revit.
 Restart connected apps, open a model in Revit, and ask the app to call `revit_ping` and describe the open model; registration alone does not prove connectivity.
 
+![Connect AI apps window at the end of the installer, with no app selected](assets/gallery/installer-connect.png)
+
 | App | Configuration file |
 |---|---|
 | Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` |
