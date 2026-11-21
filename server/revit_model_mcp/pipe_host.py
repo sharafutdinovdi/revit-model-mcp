@@ -13,7 +13,6 @@ import sys
 import tempfile
 from collections.abc import Awaitable, Callable
 from ctypes import wintypes
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +33,7 @@ from revit_model_mcp.revit_channel import (
     TransportUnavailableError,
     current_progress_reporter,
     matches_document,
+    resolve_document_selector,
     select_instance,
 )
 from revit_model_mcp.ssh_host import SshPowerShellHost
@@ -426,6 +426,7 @@ class LocalPipeHost:
         instances = self.heartbeats()
         if not instances or any(PIPE_PROTOCOL not in _protocols(item) for item in instances):
             return await self.fallback.list_revit_instances(document)
+        document = resolve_document_selector(instances, document)
         matched = [item for item in instances if not document or matches_document(item, document)]
 
         async def ping(instance: dict[str, Any]) -> dict[str, Any]:
@@ -443,16 +444,14 @@ class LocalPipeHost:
             await self.fallback._discover_instances() if job.is_action else self.heartbeats()
         )
         if any(PIPE_PROTOCOL in _protocols(item) for item in instances):
-            instance = select_instance(instances, job)
+            instance, selected_job = select_instance(instances, job)
             if PIPE_PROTOCOL in _protocols(instance):
                 try:
                     connection = await self.connection(instance)
                 except PipeDisconnectedError as error:
                     LOGGER.warning("Revit pipe unavailable; using the file channel: %s", error)
                 else:
-                    return PipeJobHost(self, instance, connection), replace(
-                        job, payload={**job.payload, "targetProcessId": instance["processId"]}
-                    )
+                    return PipeJobHost(self, instance, connection), selected_job
         return await self.fallback.select_job(job)
 
     async def connection(self, instance: dict[str, Any]) -> PipeConnection:

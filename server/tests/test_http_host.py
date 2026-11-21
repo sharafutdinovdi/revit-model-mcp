@@ -14,6 +14,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import pytest
 
 from revit_model_mcp import package_version
+from revit_model_mcp import server as revit_server
 from revit_model_mcp.http_host import HttpHost
 from revit_model_mcp.revit_channel import (
     Job,
@@ -87,7 +88,7 @@ def endpoint():
                     {
                         "ok": True,
                         "revitVersion": "2026",
-                        "documentName": "Model",
+                        "documentName": state.get("document_name", "Model"),
                         "processId": state.get("processId", 42),
                         "startedUtc": state.get("startedUtc", "2026-09-16T00:00:00Z"),
                         "readOnly": {
@@ -98,12 +99,24 @@ def endpoint():
                         },
                         "addinVersion": package_version(),
                         "protocolVersion": 1,
-                        "commands": ["ping", "document-info", "select", "export", "export-view"],
+                        "commands": [
+                            "ping",
+                            "document-info",
+                            "documents",
+                            "jobs",
+                            "select",
+                            "export",
+                            "export-view",
+                            "save-document",
+                            "close-document",
+                        ],
                     },
                     proof=proof,
                 )
             if self.headers.get("Authorization") != "Bearer test-token":
                 return self.reply(401, {"error": "unauthorized"})
+            if route.path in state.get("existing_jobs", {}):
+                return self.reply(200, state["existing_jobs"][route.path])
             if route.path == "/jobs" and state.get("drop_once"):
                 state["drop_once"] = False
                 if state.get("accept_before_drop"):
@@ -141,12 +154,17 @@ def endpoint():
                 }
                 return self.reply(200, PNG, "image/png")
             command = state["payload"]["command"]
-            data = (
-                {"fileName": "view.png", "width": 1600, "height": 900}
-                if command == "export-view"
-                else "pong"
-            )
+            if command == "documents":
+                state["documents_payload"] = state["payload"]
+                data = state["documents"]
+            elif command == "export-view":
+                data = {"fileName": "view.png", "width": 1600, "height": 900}
+            else:
+                data = "pong"
             result = {"command": command, "success": True, "data": data}
+            if command in {"save-document", "close-document"}:
+                error = state["document_action_error"]
+                result = {"command": command, "success": False, "error": error, "message": error}
             return self.reply(
                 200,
                 {"jobId": "job-1", "state": "done", "position": 0, "result": result},
@@ -691,6 +709,77 @@ def test_http_reads_defer_document_resolution_to_addin(endpoint, command, proces
     assert job.payload["targetDocument"] == document
 
 
+@pytest.mark.parametrize(
+    ("tool", "arguments", "command"),
+    [
+        ("revit_document_info", {}, "document-info"),
+        ("revit_select", {"element_ids": [1]}, "select"),
+        ("revit_jobs", {}, "jobs"),
+    ],
+)
+@pytest.mark.parametrize("background_matches", [False, True])
+def test_http_active_selector_checks_background_documents(
+    endpoint, monkeypatch, tool, arguments, command, background_matches
+):
+    host, state = endpoint
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", RevitChannel(host))
+    state["documents"] = [
+        {"title": "Front", "path": r"C:\Models\Front.rvt", "isActive": True},
+        {
+            "title": "Annex",
+            "path": r"C:\Models\Active Annex.rvt" if background_matches else r"C:\Models\Annex.rvt",
+            "isActive": False,
+        },
+    ]
+    result = asyncio.run(revit_server.mcp.call_tool(tool, {**arguments, "document": " AcTiVe "}))
+
+    assert result.structured_content["success"] is True
+    assert state["documents_payload"]["includeLinked"] is True
+    assert state["payload"]["command"] == command
+    assert "targetDocument" not in state["documents_payload"]
+    if background_matches:
+        assert state["payload"]["targetDocument"] == "AcTiVe"
+    else:
+        assert "targetDocument" not in state["payload"]
+
+
+@pytest.mark.parametrize("command", ["save-document", "close-document"])
+@pytest.mark.parametrize(
+    ("document", "matches", "error"),
+    [
+        (" AcTiVe ", False, "document is required."),
+        (None, False, "document is required."),
+        ("active", True, "document is required."),
+        ("active", False, "read-only mode"),
+    ],
+)
+def test_http_required_document_error(endpoint, monkeypatch, command, document, matches, error):
+    host, state = endpoint
+    channel = RevitChannel(host)
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", channel)
+    state["documents"] = [{"title": "active", "isActive": False}] if matches else []
+    state["document_action_error"] = error
+    expected = error
+    if not matches and document and error == "document is required.":
+        expected = (
+            'This tool requires an exact document. "active" is accepted only when document may be '
+            "omitted. Call revit_documents and pass the document ID."
+        )
+
+    async def call():
+        if document is None:
+            return await channel.execute(Job(command, {"command": command}))
+        tool = f"revit_{command.replace('-', '_')}"
+        result = await revit_server.mcp.call_tool(tool, {"document": document})
+        return result.structured_content
+
+    result = asyncio.run(call())
+    assert result["error"] == result["message"] == expected
+    assert state["payload"].get("targetDocument") == (document if matches else None)
+
+
 def test_http_document_id_does_not_override_explicit_process(endpoint):
     host, state = endpoint
     job = Job.ping().for_document("doc:" + "a" * 32).for_process(84)
@@ -700,6 +789,34 @@ def test_http_document_id_does_not_override_explicit_process(endpoint):
 
     assert state["payload"] is None
     assert state["requests"] == [("GET", "/health", None)]
+
+
+@pytest.mark.parametrize(
+    ("tool", "method", "suffix", "expected"),
+    [
+        ("revit_jobs", "GET", "", {"command": "export", "success": True, "data": {}}),
+        ("revit_cancel_job", "POST", "/cancel", {"cancelled": True}),
+    ],
+)
+@pytest.mark.parametrize("document_name", ["Model", "Active Campus"])
+def test_http_active_selector_does_not_submit_a_job_for_existing_job_id(
+    endpoint, monkeypatch, tool, method, suffix, expected, document_name
+):
+    host, state = endpoint
+    state["document_name"] = document_name
+    monkeypatch.setattr(revit_server, "host", host)
+    monkeypatch.setattr(revit_server, "channel", RevitChannel(host))
+    job_id = "a" * 32
+    path = f"/jobs/{job_id}{suffix}"
+    state["existing_jobs"] = {path: {"result": expected} if method == "GET" else expected}
+
+    arguments = {"job_id": job_id, "document": " AcTiVe "}
+    result = asyncio.run(revit_server.mcp.call_tool(tool, arguments))
+
+    assert all(result.structured_content[key] == value for key, value in expected.items())
+    assert [request for request in state["requests"] if request[1] != "/health"] == [
+        (method, path, "Bearer test-token")
+    ]
 
 
 def test_http_action_fetch_and_cancel_do_not_submit_a_new_job():

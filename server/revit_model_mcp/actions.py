@@ -21,6 +21,7 @@ from revit_model_mcp.revit_channel import (
     TransportUnavailableError,
     _optional_text,
     _unique_texts,
+    is_active_document_selector,
     select_instance,
     with_client_identity,
 )
@@ -703,6 +704,7 @@ async def _send_action(
     confirmation_processes: dict[str, int] | None = None,
     **payload,
 ) -> dict[str, Any]:
+    from revit_model_mcp.http_host import HttpHost
     from revit_model_mcp.pipe_host import LocalPipeHost
 
     try:
@@ -723,24 +725,26 @@ async def _send_action(
                 process_id = confirmation_processes.get(payload.get("confirmToken"), process_id)
         if command == "set-read-only" and process_id is None and document is None and instances:
             process_id = min(int(instance["processId"]) for instance in instances)
-        selected = select_instance(
+        # HTTP health does not include background document titles or file names.
+        defer_document = isinstance(host, HttpHost) and is_active_document_selector(document)
+        selected, job = select_instance(
             instances,
-            Job(command, {**payload, "targetProcessId": process_id, "targetDocument": document}),
+            Job(
+                command,
+                {
+                    "command": command,
+                    **payload,
+                    "targetProcessId": process_id,
+                    "targetDocument": None if defer_document else document,
+                },
+            ),
         )
     except TransportUnavailableError as error:
         return redact_model_paths(unavailable(command, str(error)))
     except RevitChannelError as error:
         raise ToolError(redact_model_paths({"error": str(error)})["error"]) from error
-    if document is not None:
-        payload["targetDocument"] = document
-    job = Job(
-        command,
-        {
-            "command": command,
-            **payload,
-            "targetProcessId": selected["processId"],
-        },
-    )
+    if defer_document:
+        job = job.for_document(document)
     result = redact_model_paths(await execute(job, timeout_seconds, None))
     if job.is_action:
         for key in ("processId", "revitVersion"):

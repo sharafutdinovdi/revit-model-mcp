@@ -14,7 +14,6 @@ import tempfile
 import xml.etree.ElementTree as ET
 from collections import deque
 from collections.abc import Callable
-from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -35,6 +34,7 @@ from revit_model_mcp.revit_channel import (
     SshUnavailableError,
     TransportUnavailableError,
     matches_document,
+    resolve_document_selector,
     select_instance,
 )
 
@@ -436,6 +436,7 @@ class SshPowerShellHost:
 
     async def list_revit_instances(self, document: str | None = None) -> list[dict[str, object]]:
         instances = await self._discover_instances()
+        document = resolve_document_selector(instances, document)
         candidates = [
             item for item in instances if not document or matches_document(item, document)
         ]
@@ -461,7 +462,7 @@ class SshPowerShellHost:
         for process_id, identity in list(self._verified_instances.items()):
             if current.get(process_id) != identity:
                 del self._verified_instances[process_id]
-        instance = select_instance(instances, job)
+        instance, job = select_instance(instances, job)
         selected = self._for_instance(instance)
         process_id = instance["processId"]
         identity = _instance_identity(instance)
@@ -471,9 +472,7 @@ class SshPowerShellHost:
         ):
             await selected._handshake()
             self._verified_instances[process_id] = identity
-        return selected, replace(
-            job, payload={**job.payload, "targetProcessId": instance["processId"]}
-        )
+        return selected, job
 
     async def _verify_identity(self) -> None:
         instances = await self._discover_instances()

@@ -11,6 +11,8 @@ from types import ModuleType
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from revit_model_mcp import package_version, pipe_host
 from revit_model_mcp.pipe_host import (
     PIPE_PROTOCOL,
@@ -121,6 +123,8 @@ def write_heartbeat(directory: Path, protocols: list[str] | None) -> None:
 class FakeRevit:
     """Loopback TCP stand-in for the add-in pipe: the same newline-delimited pipe/1 messages."""
 
+    commands = ["ping", "document-info"]
+
     def __init__(
         self,
         drop_after_submit: int = 0,
@@ -186,7 +190,7 @@ class FakeRevit:
                             "revitVersion": "2026",
                             "addinVersion": package_version(),
                             "protocolVersion": 1,
-                            "commands": ["ping", "document-info"],
+                            "commands": self.commands,
                             "documents": [],
                         }
                     )
@@ -315,6 +319,48 @@ def test_hello_submit_and_pushed_result(tmp_path: Path) -> None:
     assert job["clientId"] == CLIENT_ID
     assert job["targetProcessId"] == PID
     assert result["correlationId"] == job["correlationId"]
+
+
+@pytest.mark.parametrize("command", ["save-document", "close-document"])
+def test_required_document_error_on_local_pipe(tmp_path, monkeypatch, command):
+    write_heartbeat(tmp_path, [PIPE_PROTOCOL, "file/2"])
+    monkeypatch.setattr(
+        "revit_model_mcp.revit_channel._request_journal_directory", lambda: tmp_path
+    )
+
+    class DocumentActionRevit(FakeRevit):
+        commands = [command]
+
+        @staticmethod
+        def result(job):
+            return {
+                "command": job["command"],
+                "success": False,
+                "error": "document is required.",
+                "message": "document is required.",
+                "correlationId": job["correlationId"],
+            }
+
+    async def scenario():
+        async with DocumentActionRevit() as revit:
+            fallback = AsyncMock()
+            fallback._discover_instances.return_value = [
+                {"processId": PID, "instanceId": INSTANCE_ID, "protocols": [PIPE_PROTOCOL]}
+            ]
+            host = LocalPipeHost(fallback, revit.connect, tmp_path)
+            try:
+                job = Job(command, {"command": command}).for_document(" AcTiVe ")
+                result = await RevitChannel(host).execute(job)
+            finally:
+                await host.aclose()
+            assert "targetDocument" not in next(iter(revit.jobs.values()))
+            expected = (
+                'This tool requires an exact document. "active" is accepted only when document may '
+                "be omitted. Call revit_documents and pass the document ID."
+            )
+            assert result["error"] == result["message"] == expected
+
+    asyncio.run(scenario())
 
 
 def test_reconnects_after_the_pipe_closes(tmp_path: Path) -> None:
