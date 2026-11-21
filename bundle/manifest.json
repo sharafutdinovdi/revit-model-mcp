@@ -114,7 +114,7 @@
     },
     {
       "name": "revit_list_sheets",
-      "description": "List sheets with title blocks, revisions and placed view IDs, plus unplaced views. skipped means incomplete; skippedCount is the total skipped."
+      "description": "List sheets, placed view IDs and unplaced views. Counts: sheetCount, unplacedViewCount. skipped means incomplete; skippedCount is the total skipped."
     },
     {
       "name": "revit_list_views",

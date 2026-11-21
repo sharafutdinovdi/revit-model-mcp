@@ -897,10 +897,11 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             "data": {
                 "sheets": [],
                 "unplacedViews": [],
-                "total": 0,
+                "total": 55,
                 "offset": 200,
                 "limit": 25,
                 "hasMore": False,
+                "sheetCount": 55,
             },
         }
         with patch.object(revit_server, "_execute", AsyncMock(return_value=response)) as execute:
@@ -920,6 +921,37 @@ class ServerTests(unittest.IsolatedAsyncioTestCase):
             execute.call_args.args[0].payload,
             {"command": "list-sheets", "includeUnplacedViews": True, "offset": 0, "limit": 200},
         )
+
+    async def test_list_sheets_passes_counts_through_structured_content(self) -> None:
+        data = {
+            "sheets": [{"id": 1}],
+            "unplacedViews": [{"id": 2}],
+            "total": 55,
+            "offset": 0,
+            "limit": 1,
+            "hasMore": True,
+            "sheetCount": 55,
+            "unplacedViewCount": 122,
+        }
+        response = {
+            "command": "list-sheets",
+            "success": True,
+            "data": data,
+            "skipped": [{"what": "unplaced view 3", "reason": "Unavailable"}],
+            "skippedCount": 1,
+        }
+        with patch.object(revit_server.channel, "execute", AsyncMock(return_value=response)):
+            result = await revit_server.mcp.call_tool("revit_list_sheets", {"limit": 1})
+        self.assertFalse(result.is_error)
+        self.assertEqual(result.structured_content["data"], data)
+        self.assertEqual(result.structured_content["skippedCount"], 1)
+
+    async def test_list_sheets_documents_count_fields(self) -> None:
+        tool = next(
+            tool for tool in await revit_server.mcp.list_tools() if tool.name == "revit_list_sheets"
+        )
+        self.assertIn("sheetCount", tool.description)
+        self.assertIn("unplacedViewCount", tool.description)
 
     async def test_read_diagnostics_survive_tool_response_and_redact_reason(self) -> None:
         response = {

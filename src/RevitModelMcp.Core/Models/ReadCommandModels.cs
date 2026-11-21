@@ -810,6 +810,8 @@ public sealed record SheetListData
     [DataMember(Name = "offset")] public int Offset { get; init; }
     [DataMember(Name = "limit")] public int Limit { get; init; }
     [DataMember(Name = "hasMore")] public bool HasMore { get; init; }
+    [DataMember(Name = "sheetCount", Order = 1)] public int SheetCount { get; init; }
+    [DataMember(Name = "unplacedViewCount", Order = 2, EmitDefaultValue = false)] public int? UnplacedViewCount { get; init; }
 }
 
 [DataContract]
