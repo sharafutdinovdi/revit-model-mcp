@@ -10,7 +10,7 @@ from pathlib import Path, PureWindowsPath
 
 from revit_model_mcp.actions import env_flag, redact_model_paths
 from revit_model_mcp.atomic_write import write_new_file
-from revit_model_mcp.updates import state_path
+from revit_model_mcp.state import state_path
 
 
 def audit_directory():

@@ -1,4 +1,4 @@
-"""Smoke-test the bundled server: --version, then MCP initialize and tools/list over stdio."""
+"""Smoke-test server version, MCP registry, and offline audit tools over stdio."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -67,7 +68,12 @@ def main() -> None:
     print(f"--version: {version}")
     if not version.startswith("revit-model-mcp ") or version.endswith("+unknown"):
         raise SystemExit(f"Unexpected --version output: {version!r}")
+    with tempfile.TemporaryDirectory(prefix="revit-model-mcp-smoke-") as temporary:
+        smoke_stdio(command, expected, Path(temporary))
+    print("Smoke test passed")
 
+
+def smoke_stdio(command: list[str], expected: int, temporary: Path) -> None:
     initialize = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -84,6 +90,8 @@ def main() -> None:
         **os.environ,
         "REVIT_MCP_HOST": "local",
         "REVIT_MCP_NO_UPDATE_CHECK": "1",
+        "REVIT_MCP_REDACT_PATHS": "0",
+        "REVIT_MCP_AUDIT_DIR": str(temporary / "history"),
     }
     initialize_started = time.perf_counter()
     process = subprocess.Popen(
@@ -137,31 +145,85 @@ def main() -> None:
                     fail(f"{what} failed")
                 return message
 
-    send(initialize)
-    server = wait_response(1, "initialize")["result"]["serverInfo"]
-    print(
-        f"initialize: {server['name']} {server.get('version')} "
-        f"({time.perf_counter() - initialize_started:.3f} s)"
-    )
-    send(initialized)
-    tools_started = time.perf_counter()
-    send(tools_list)
-    count = len(wait_response(2, "tools/list")["result"]["tools"])
-    print(f"tools/list: {count} tools ({time.perf_counter() - tools_started:.3f} s)")
+    def call_tool(message_id: int, name: str, arguments: dict) -> dict:
+        send(
+            {
+                "jsonrpc": "2.0",
+                "id": message_id,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            }
+        )
+        result = wait_response(message_id, name)["result"]
+        if result.get("isError") or not isinstance(
+            result.get("structuredContent"), dict
+        ):
+            fail(f"{name} failed: {result}")
+        return result["structuredContent"]
 
-    assert process.stdin is not None
-    process.stdin.close()
     try:
-        process.wait(timeout=EXIT_GRACE)
-    except subprocess.TimeoutExpired:
-        process.terminate()
+        send(initialize)
+        server = wait_response(1, "initialize")["result"]["serverInfo"]
+        print(
+            f"initialize: {server['name']} {server.get('version')} "
+            f"({time.perf_counter() - initialize_started:.3f} s)"
+        )
+        send(initialized)
+        tools_started = time.perf_counter()
+        send(tools_list)
+        count = len(wait_response(2, "tools/list")["result"]["tools"])
+        print(
+            f"tools/list: {count} tools ({time.perf_counter() - tools_started:.3f} s)"
+        )
+        if count != expected:
+            fail(f"Expected {expected} tools, got {count}")
+
+        snapshots = temporary / "snapshots"
+        snapshots.mkdir()
+        (snapshots / "model.json").write_text(
+            json.dumps(
+                {
+                    "schemaVersion": 1,
+                    "source": {"path": "models/smoke.rvt"},
+                    "passport": {"title": "Smoke model"},
+                    "warnings": {"total": 0},
+                }
+            ),
+            encoding="utf-8",
+        )
+        audit = call_tool(
+            3,
+            "revit_model_audit",
+            {"snapshots_dir": str(snapshots), "compare_with": "none"},
+        )
+        if audit.get("summary", {}).get("byModelStatus") != {"audited": 1}:
+            fail("revit_model_audit did not audit the snapshot")
+        saved = audit.get("savedTo")
+        if not saved or not Path(saved).is_file():
+            fail("revit_model_audit did not write the audit JSON")
+        print("tools/call revit_model_audit: audited 1 snapshot and wrote audit JSON")
+
+        report = temporary / "audit.html"
+        call_tool(
+            4,
+            "revit_audit_report",
+            {"audit": saved, "output": str(report), "format": "html"},
+        )
+        if not report.is_file():
+            fail("revit_audit_report did not write the HTML report")
+        print("tools/call revit_audit_report: wrote HTML report")
+    finally:
+        assert process.stdin is not None
+        process.stdin.close()
         try:
             process.wait(timeout=EXIT_GRACE)
         except subprocess.TimeoutExpired:
-            process.kill()
-    if count != expected:
-        raise SystemExit(f"Expected {expected} tools, got {count}")
-    print("Smoke test passed")
+            process.terminate()
+            try:
+                process.wait(timeout=EXIT_GRACE)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
 
 
 if __name__ == "__main__":

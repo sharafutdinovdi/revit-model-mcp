@@ -3,6 +3,7 @@
 import asyncio
 import copy
 import json
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -858,12 +859,39 @@ def test_live_adapter_and_audit_addressing(tmp_path, monkeypatch):
     assert channel.execute.call_args.args[0].payload["includeUnplacedViews"] is True
 
 
-def test_default_state_root(monkeypatch):
+@pytest.mark.parametrize(
+    ("platform", "default_root", "override_root"),
+    [
+        ("win32", "AppData/Local", "local-app-data"),
+        ("darwin", "Library/Caches", "Library/Caches"),
+        ("linux", ".cache", "xdg-cache"),
+    ],
+)
+def test_audit_and_update_state_paths(monkeypatch, tmp_path, platform, default_root, override_root):
+    from revit_model_mcp import updates
     from revit_model_mcp.audit.result import audit_directory
-    from revit_model_mcp.updates import state_path
+    from revit_model_mcp.state import state_path
 
-    monkeypatch.delenv("REVIT_MCP_AUDIT_DIR", raising=False)
-    assert audit_directory() == state_path().parent / "audits"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    for variable in ("LOCALAPPDATA", "XDG_CACHE_HOME", "REVIT_MCP_AUDIT_DIR"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setattr(sys, "platform", platform)
+
+    default = tmp_path / default_root / "revit-model-mcp"
+    assert state_path() == default / "update.json"
+    assert audit_directory() == default / "audits"
+    assert updates.state_path is state_path
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local-app-data"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    override = tmp_path / override_root / "revit-model-mcp"
+    assert state_path() == override / "update.json"
+    assert audit_directory() == override / "audits"
+
+    monkeypatch.setenv("REVIT_MCP_AUDIT_DIR", "~/audit-review")
+    assert audit_directory() == tmp_path / "audit-review"
+    assert state_path() == override / "update.json"
 
 
 def test_history_does_not_mutate_inputs(tmp_path, monkeypatch):

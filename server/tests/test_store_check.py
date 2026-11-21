@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import runpy
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -124,12 +129,8 @@ def test_publish_fixtures(tmp_path):
     assert CHECK["check_folder"](tmp_path)
 
 
-def test_store_registry_import_without_update_module(tmp_path):
-    import os
-    import shutil
-    import subprocess
-    import sys
-
+@pytest.fixture
+def staged_store(tmp_path):
     package = tmp_path / "revit_model_mcp"
     shutil.copytree(
         ROOT / "server/revit_model_mcp", package, ignore=shutil.ignore_patterns("__pycache__")
@@ -137,20 +138,81 @@ def test_store_registry_import_without_update_module(tmp_path):
     init = package / "__init__.py"
     init.write_text(init.read_text().replace('CHANNEL = "github"', 'CHANNEL = "store"'))
     (package / "updates.py").unlink()
+    return tmp_path
+
+
+def test_store_registry_import_without_update_module(staged_store):
     result = subprocess.run(
         [sys.executable, "-m", "revit_model_mcp.server", "--tool-manifest"],
-        cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        cwd=staged_store,
+        env={**os.environ, "PYTHONPATH": str(staged_store)},
         capture_output=True,
         text=True,
         check=True,
         timeout=30,
     )
-    import json
-
     actual = json.loads(result.stdout)
     assert actual["channel"] == "store"
     assert {tool["name"] for tool in actual["tools"]} == {tool.name for tool in registry()[0]}
+
+
+def test_store_audit_tools_and_imports_without_update_module(staged_store):
+    snapshots = staged_store / "snapshots"
+    snapshots.mkdir()
+    shutil.copyfile(
+        Path(__file__).parent / "fixtures/snapshots/current/model-a.json",
+        snapshots / "model-a.json",
+    )
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import asyncio
+import importlib
+import pkgutil
+from pathlib import Path
+
+import revit_model_mcp
+from revit_model_mcp.server import mcp
+
+assert revit_model_mcp.CHANNEL == "store"
+assert importlib.util.find_spec("revit_model_mcp.updates") is None
+
+async def audit_and_report():
+    audit = await mcp.call_tool(
+        "revit_model_audit", {"snapshots_dir": "snapshots", "compare_with": "none"}
+    )
+    assert not audit.is_error, audit
+    result = audit.structured_content
+    assert result["summary"]["byModelStatus"] == {"audited": 1}, result
+    assert Path(result["savedTo"]).is_file(), result
+    report = await mcp.call_tool(
+        "revit_audit_report", {"audit": result["savedTo"], "output": "review", "format": "html"}
+    )
+    assert not report.is_error, report
+    assert Path("review.html").is_file()
+
+asyncio.run(audit_and_report())
+
+for module in pkgutil.walk_packages(revit_model_mcp.__path__, revit_model_mcp.__name__ + "."):
+    importlib.import_module(module.name)
+""",
+        ],
+        cwd=staged_store,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(staged_store),
+            "PROGRAMDATA": str(staged_store),
+            "REVIT_MCP_AUDIT_DIR": str(staged_store / "history"),
+            "REVIT_MCP_REDACT_PATHS": "0",
+            "REVIT_MCP_TOOLSETS": "all",
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_every_tool_has_reviewed_access_annotations():
