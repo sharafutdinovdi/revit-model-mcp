@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it as below."
+type: software
+title: "revit-model-mcp: Model Context Protocol server for Autodesk Revit"
+abstract: >-
+  An open-source Model Context Protocol (MCP) server that gives AI agents
+  controlled access to live Autodesk Revit models, with read-only operation,
+  dry-run previews and one undo entry per change.
+authors:
+  - family-names: Sharafutdinov
+    given-names: Dinar
+    orcid: "https://orcid.org/0009-0000-3207-9751"
+repository-code: "https://github.com/sharafutdinovdi/revit-model-mcp"
+url: "https://sharafutdinovdi.github.io/revit-model-mcp/"
+license: MIT
+keywords:
+  - BIM
+  - Autodesk Revit
+  - Model Context Protocol
+  - AI agents
+  - large language models
+  - construction informatics
